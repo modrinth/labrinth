@@ -15,7 +15,6 @@ reqwest = "0.10.4"
 
 meilisearch-sdk = "0.1.4"
 
-handlebars = { version = "3.0.0", features = ["dir_source"] }
 serde_json = "1.0"
 serde = {version="1.0", features=["derive"]}
 

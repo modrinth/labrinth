@@ -1,5 +1,4 @@
 use actix_web::{get, post, web, HttpResponse};
-use handlebars::*;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
