@@ -15,6 +15,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - name: Cache build artifacts
+          id: cache-build
+          uses: actions/cache@v2
+          with:
+            path: target/**
+            key: ${{ runner.os }}-build-cache
       - name: Build
         run: cargo build
       - name: Run tests
