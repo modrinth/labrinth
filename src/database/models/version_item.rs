@@ -1,17 +1,7 @@
 use serde::{Serialize, Deserialize};
-
-#[derive(Deserialize, Serialize)]
-pub struct Mod {
-    pub id: i32,
-    pub title: String,
-    pub description: String,
-    pub published: String,
-    pub author: String,
-    pub downloads: i32,
-    pub categories: Vec<String>,
-    pub body_path: String,
-    pub icon_path: String,
-}
+use crate::database::models::Item;
+use crate::database::Result;
+use bson::{Document, Bson};
 
 #[derive(Deserialize, Serialize)]
 pub struct Version {
@@ -25,4 +15,14 @@ pub struct Version {
     pub downloads: i32,
     pub dependencies: Vec<String>,
     pub game_versions: Vec<String>,
+}
+impl Item for Version {
+    fn get_collection() -> &'static str {
+        "versions"
+    }
+
+    fn from_doc(elem: Document) -> Result<Box<Version>>{
+        let version : Version = bson::from_bson(Bson::from(elem))?;
+        Ok(Box::from(version))
+    }
 }
