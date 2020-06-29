@@ -46,15 +46,10 @@ pub struct CurseForgeMod {
 
 #[derive(Serialize, Deserialize)]
 pub struct SearchRequest {
-    #[serde(rename = "q")]
     pub query: Option<String>,
-    #[serde(rename = "f")]
     pub filters: Option<String>,
-    #[serde(rename = "v")]
     pub version: Option<String>,
-    #[serde(rename = "o")]
     pub offset: Option<String>,
-    #[serde(rename = "s")]
     pub index: Option<String>,
 }
 

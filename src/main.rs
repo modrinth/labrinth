@@ -39,11 +39,11 @@ async fn main() -> std::io::Result<()> {
     if env::args().find(|x| x == "regen").is_some() {
         // User forced regen of indexing
         info!("Forced regeneration of indexes!");
-        index_mods(client);
+        index_mods(client).await?;
     } else if exe_path.exists() {
         // The indexes were not created, or the version was upgraded
         info!("Indexing of mods for first time...");
-        index_mods(client);
+        index_mods(client).await?;
         // Create the lock file
         File::create(exe_path)?;
     }
