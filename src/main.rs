@@ -36,7 +36,7 @@ async fn main() -> std::io::Result<()> {
     exe_path.push("index.v1.lock");
 
     //Indexing mods if not already done
-    if env::args().find(|x| x == "regen") {
+    if env::args().find(|x| x == "regen").is_some() {
         // User forced regen of indexing
         info!("Forced regeneration of indexes!");
         index_mods(client);
