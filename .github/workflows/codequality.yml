@@ -15,11 +15,11 @@ jobs:
       - uses: actions/checkout@v2
         run: rustup component add clippy
       - name: Cache build artifacts
-          id: cache-build
-          uses: actions/cache@v2
-          with:
-            path: target/**
-            key: ${{ runner.os }}-build-cache
+        id: cache-build
+        uses: actions/cache@v2
+        with:
+          path: target/**
+          key: ${{ runner.os }}-build-cache
       - name: Annotate commit with clippy warnings
         uses: actions-rs/clippy-check@v1
         with:
