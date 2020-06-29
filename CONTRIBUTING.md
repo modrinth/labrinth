@@ -7,4 +7,8 @@ Contributions to fabricate are welcome! However, we do have a couple dependencie
 3. Run `mongod --dbpath path/to/db`
 4. Everything should be setup and you should be ready to contribute.
 
-A docker container for all of this is coming soon to make this process easier.
+Alternatively, if you have Docker and docker-compose installed, you may run:
+```sh
+docker-compose up -f docker-compose.yml
+```
+which will deploy a Meilisearch container on port 7700, a MongoDB instance on port 27017 and a MongoDB web UI on port 8081
