@@ -1,9 +1,57 @@
-use crate::search::models::{SearchRequest, SearchMod};
+use actix_web::{get, web, HttpResponse};
 use meilisearch_sdk::client::Client;
+use meilisearch_sdk::document::Document;
 use meilisearch_sdk::search::Query;
+use serde::{Deserialize, Serialize};
 
 pub mod indexing;
-pub mod models;
+
+#[derive(Serialize, Deserialize)]
+pub struct SearchRequest {
+    pub query: Option<String>,
+    pub filters: Option<String>,
+    pub version: Option<String>,
+    pub offset: Option<String>,
+    pub index: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SearchMod {
+    pub mod_id: i32,
+    pub author: String,
+    pub title: String,
+    pub description: String,
+    pub keywords: Vec<String>,
+    pub versions: Vec<String>,
+    pub downloads: i32,
+    pub page_url: String,
+    pub icon_url: String,
+    pub author_url: String,
+    pub date_created: String,
+    pub created: i64,
+    pub date_modified: String,
+    pub updated: i64,
+    pub latest_version: String,
+    pub empty: String,
+}
+
+impl Document for SearchMod {
+    type UIDType = i32;
+
+    fn get_uid(&self) -> &Self::UIDType {
+        &self.mod_id
+    }
+}
+
+#[get("api/v1/search")]
+pub fn search_endpoint(web::Query(info): web::Query<SearchRequest>) -> HttpResponse {
+    //TODO: Fix this line with anyhow
+    let body = serde_json::to_string(&search(&info)).unwrap();
+
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .body(body)
+}
 
 fn search(info: &SearchRequest) -> Vec<SearchMod> {
     let client = Client::new("http://localhost:7700", "");
@@ -44,6 +92,10 @@ fn search(info: &SearchRequest) -> Vec<SearchMod> {
         query = query.with_filters(&filters);
     }
 
-    client.get_index(format!("{}_mods", index).as_ref()).unwrap()
-        .search::<SearchMod>(&query).unwrap().hits
+    client
+        .get_index(format!("{}_mods", index).as_ref())
+        .unwrap()
+        .search::<SearchMod>(&query)
+        .unwrap()
+        .hits
 }

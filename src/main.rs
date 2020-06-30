@@ -7,18 +7,17 @@ extern crate bson;
 #[macro_use]
 extern crate log;
 
+use crate::search::indexing::index_mods;
 use actix_files as fs;
-use actix_web::{web, App, HttpServer};
 use actix_web::middleware::Logger;
+use actix_web::{web, App, HttpServer};
 use env_logger::Env;
 use std::env;
-use crate::search::indexing::index_mods;
 use std::fs::File;
-use std::path::Path;
 use std::io::Write;
+use std::path::Path;
 
 mod database;
-//mod helpers;
 mod models;
 mod routes;
 mod search;
@@ -39,15 +38,14 @@ async fn main() -> std::io::Result<()> {
     if env::args().find(|x| x == "regen").is_some() {
         // User forced regen of indexing
         info!("Forced regeneration of indexes!");
-        index_mods(client).await?;
+        index_mods(client).await.unwrap();
     } else if exe_path.exists() {
         // The indexes were not created, or the version was upgraded
         info!("Indexing of mods for first time...");
-        index_mods(client).await?;
+        index_mods(client).await.unwrap();
         // Create the lock file
         File::create(exe_path)?;
     }
-
 
     info!("Starting Actix HTTP server!");
 
@@ -57,11 +55,11 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .service(routes::index_get)
-            //.service(routes::search_post)
+            .service(search::search_endpoint)
             //.service(routes::search_get)
             //.service(routes::mod_page_get)
             //.service(routes::mod_create_get)
-            .default_service( web::get().to(routes::not_found))
+            .default_service(web::get().to(routes::not_found))
     })
     .bind("127.0.0.1:8000")?
     .run()

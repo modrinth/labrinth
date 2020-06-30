@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
 use crate::database::models::Item;
 use crate::database::Result;
-use bson::{Document, Bson};
+use bson::{Bson, Document};
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
 pub struct Mod {
@@ -20,8 +20,8 @@ impl Item for Mod {
         "mods"
     }
 
-    fn from_doc(elem: Document) -> Result<Box<Mod>>{
-        let result : Mod = bson::from_bson(Bson::from(elem))?;
+    fn from_doc(elem: Document) -> Result<Box<Mod>> {
+        let result: Mod = bson::from_bson(Bson::from(elem))?;
         Ok(Box::from(result))
     }
 }

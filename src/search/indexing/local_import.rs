@@ -1,17 +1,19 @@
-use crate::search::indexing::IndexingError;
-use meilisearch_sdk::client::Client;
-use crate::search::models::{SearchRequest, SearchMod};
 use bson::Bson;
 use futures::StreamExt;
-use crate::database::models::Item;
-use crate::database::{Version, Mod};
+use meilisearch_sdk::client::Client;
 
-pub async fn index_local(client: mongodb::Client) -> Result<Vec<SearchMod>,  IndexingError> {
+use crate::database::models::Item;
+use crate::database::{Mod, Version};
+
+use crate::search::indexing::IndexingError;
+use crate::search::{SearchMod, SearchRequest};
+
+pub async fn index_local(client: mongodb::Client) -> Result<Vec<SearchMod>, IndexingError> {
     info!("Indexing local mods!");
 
     let mut docs_to_add: Vec<SearchMod> = vec![];
 
-    let db = client.database("fabricate");
+    let db = client.database("modrinth");
 
     let mods = db.collection("mods");
     let versions = db.collection("versions");
@@ -19,14 +21,14 @@ pub async fn index_local(client: mongodb::Client) -> Result<Vec<SearchMod>,  Ind
     let mut results = mods.find(None, None).await?;
 
     while let Some(unparsed_result) = results.next().await {
-        let result : Mod = *Mod::from_doc(unparsed_result?)?;
+        let result: Mod = *Mod::from_doc(unparsed_result?)?;
 
-        let mut mod_versions = versions.find(doc!{ "mod_id": result.id}, None).await?;
+        let mut mod_versions = versions.find(doc! { "mod_id": result.id}, None).await?;
 
         let mut mod_game_versions = vec![];
 
         while let Some(unparsed_version) = mod_versions.next().await {
-            let mut version : Version = *Version::from_doc(unparsed_version?)?;
+            let mut version: Version = *Version::from_doc(unparsed_version?)?;
             mod_game_versions.append(&mut version.game_versions);
         }
 

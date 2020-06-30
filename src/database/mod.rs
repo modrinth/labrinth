@@ -17,5 +17,5 @@ pub enum DatabaseError {
     #[error("BSON deserialization error")]
     BsonError(#[from] bson::de::Error),
     #[error("Local database error")]
-    LocalDatabaseError(#[from] mongodb::error::Error)
+    LocalDatabaseError(#[from] mongodb::error::Error),
 }

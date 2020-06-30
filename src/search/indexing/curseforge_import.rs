@@ -1,24 +1,79 @@
-use crate::search::models::{SearchMod, Attachment, CurseForgeMod};
 use crate::search::indexing::IndexingError;
+use crate::search::SearchMod;
+use serde::{Deserialize, Serialize};
 
-pub async fn index_curseforge(start_index: i32, end_index: i32) ->  Result<Vec<SearchMod>, IndexingError>{
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Attachment {
+    pub url: String,
+    pub thumbnail_url: String,
+    pub is_default: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Category {
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Author {
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CurseVersion {
+    pub game_version: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CurseForgeMod {
+    pub id: i32,
+    pub name: String,
+    pub authors: Vec<Author>,
+    pub attachments: Vec<Attachment>,
+    pub website_url: String,
+    pub summary: String,
+    pub download_count: f32,
+    pub categories: Vec<Category>,
+    pub game_version_latest_files: Vec<CurseVersion>,
+    pub date_created: String,
+    pub date_modified: String,
+    pub game_slug: String,
+}
+
+pub async fn index_curseforge(
+    start_index: i32,
+    end_index: i32,
+) -> Result<Vec<SearchMod>, IndexingError> {
     info!("Indexing curseforge mods!");
 
     let mut docs_to_add: Vec<SearchMod> = vec![];
 
-    let res = reqwest::Client::new().post("https://addons-ecs.forgesvc.net/api/v2/addon")
+    let res = reqwest::Client::new()
+        .post("https://addons-ecs.forgesvc.net/api/v2/addon")
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(format!("{:?}", (start_index..end_index).collect::<Vec<_>>()))
-        .send().await?;
+        .body(format!(
+            "{:?}",
+            (start_index..end_index).collect::<Vec<_>>()
+        ))
+        .send()
+        .await?;
 
     let text = &res.text().await?;
-    let curseforge_mods : Vec<CurseForgeMod> = serde_json::from_str(text)?;
+    let curseforge_mods: Vec<CurseForgeMod> = serde_json::from_str(text)?;
 
     let mut max_index = 0;
 
     for curseforge_mod in curseforge_mods {
         max_index = curseforge_mod.id;
-        if curseforge_mod.game_slug != "minecraft" || !curseforge_mod.website_url.contains("/mc-mods/") { continue; }
+        if curseforge_mod.game_slug != "minecraft"
+            || !curseforge_mod.website_url.contains("/mc-mods/")
+        {
+            continue;
+        }
 
         let mut mod_game_versions = vec![];
 
@@ -53,7 +108,9 @@ pub async fn index_curseforge(start_index: i32, end_index: i32) ->  Result<Vec<S
                 "Technology" => mod_categories.push(String::from("technology")),
                 "Processing" => mod_categories.push(String::from("technology")),
                 "Player Transport" => mod_categories.push(String::from("technology")),
-                "Energy, Fluid, and Item Transport" => { mod_categories.push(String::from("technology")) }
+                "Energy, Fluid, and Item Transport" => {
+                    mod_categories.push(String::from("technology"))
+                }
                 "Food" => mod_categories.push(String::from("food")),
                 "Farming" => mod_categories.push(String::from("food")),
                 "Energy" => mod_categories.push(String::from("technology")),
@@ -116,7 +173,9 @@ pub async fn index_curseforge(start_index: i32, end_index: i32) ->  Result<Vec<S
             "None".to_string()
         };
 
-        let icon_url = mod_attachments[0].thumbnail_url.replace("/256/256/", "/64/64/");
+        let icon_url = mod_attachments[0]
+            .thumbnail_url
+            .replace("/256/256/", "/64/64/");
 
         docs_to_add.push(SearchMod {
             mod_id: -curseforge_mod.id,
@@ -130,9 +189,19 @@ pub async fn index_curseforge(start_index: i32, end_index: i32) ->  Result<Vec<S
             icon_url,
             author_url: (&curseforge_mod.authors[0].url).to_string(),
             date_created: curseforge_mod.date_created.chars().take(10).collect(),
-            created: curseforge_mod.date_created.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse()?,
+            created: curseforge_mod
+                .date_created
+                .chars()
+                .filter(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse()?,
             date_modified: curseforge_mod.date_modified.chars().take(10).collect(),
-            updated: curseforge_mod.date_modified.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse()?,
+            updated: curseforge_mod
+                .date_modified
+                .chars()
+                .filter(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse()?,
             latest_version,
             empty: String::from("{}{}{}"),
         })

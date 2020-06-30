@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
 use crate::database::models::Item;
 use crate::database::Result;
-use bson::{Document, Bson};
+use bson::{Bson, Document};
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
 pub struct Version {
@@ -21,8 +21,8 @@ impl Item for Version {
         "versions"
     }
 
-    fn from_doc(elem: Document) -> Result<Box<Version>>{
-        let version : Version = bson::from_bson(Bson::from(elem))?;
+    fn from_doc(elem: Document) -> Result<Box<Version>> {
+        let version: Version = bson::from_bson(Bson::from(elem))?;
         Ok(Box::from(version))
     }
 }
