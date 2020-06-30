@@ -45,9 +45,6 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::new("%a %{User-Agent}i"))
             .service(routes::index_get)
             .service(routes::mod_search)
-            //.service(routes::search_get)
-            //.service(routes::mod_page_get)
-            //.service(routes::mod_create_get)
             .default_service(web::get().to(routes::not_found))
     })
     .bind("127.0.0.1:8000")?
