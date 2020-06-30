@@ -1,19 +1,9 @@
-use actix_web::{get, web, HttpResponse};
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::document::Document;
 use meilisearch_sdk::search::Query;
 use serde::{Deserialize, Serialize};
 
 pub mod indexing;
-
-#[derive(Serialize, Deserialize)]
-pub struct SearchRequest {
-    pub query: Option<String>,
-    pub filters: Option<String>,
-    pub version: Option<String>,
-    pub offset: Option<String>,
-    pub index: Option<String>,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SearchMod {
@@ -41,16 +31,6 @@ impl Document for SearchMod {
     fn get_uid(&self) -> &Self::UIDType {
         &self.mod_id
     }
-}
-
-#[get("api/v1/search")]
-pub fn search_endpoint(web::Query(info): web::Query<SearchRequest>) -> HttpResponse {
-    //TODO: Fix this line with anyhow
-    let body = serde_json::to_string(&search(&info)).unwrap();
-
-    HttpResponse::Ok()
-        .content_type("application/json")
-        .body(body)
 }
 
 fn search(info: &SearchRequest) -> Vec<SearchMod> {

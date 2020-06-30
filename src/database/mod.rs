@@ -1,7 +1,7 @@
-mod database;
+mod mongo_database;
 pub mod models;
 
-pub use database::connect;
+pub use mongo_database::connect;
 pub use models::Mod;
 pub use models::Version;
 use thiserror::Error;
@@ -12,8 +12,6 @@ type Result<T> = std::result::Result<T, DatabaseError>;
 pub enum DatabaseError {
     #[error("Impossible to find document")]
     NotFound(),
-    #[error("Remote database error")]
-    DatabaseError(),
     #[error("BSON deserialization error")]
     BsonError(#[from] bson::de::Error),
     #[error("Local database error")]

@@ -1,21 +1,9 @@
-#[macro_use]
-extern crate serde_json;
-
-#[macro_use]
-extern crate bson;
-
-#[macro_use]
-extern crate log;
-
 use crate::search::indexing::index_mods;
-use actix_files as fs;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpServer};
 use env_logger::Env;
 use std::env;
 use std::fs::File;
-use std::io::Write;
-use std::path::Path;
 
 mod database;
 mod models;
@@ -35,7 +23,7 @@ async fn main() -> std::io::Result<()> {
     exe_path.push("index.v1.lock");
 
     //Indexing mods if not already done
-    if env::args().find(|x| x == "regen").is_some() {
+    if env::args().any(|x| x == "regen") {
         // User forced regen of indexing
         info!("Forced regeneration of indexes!");
         index_mods(client).await.unwrap();
