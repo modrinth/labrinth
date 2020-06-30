@@ -8,6 +8,7 @@ use bson::{Document};
 pub use mod_item::Mod;
 use mongodb::Database;
 pub use version_item::Version;
+use bson::doc;
 
 #[async_trait]
 pub trait Item {

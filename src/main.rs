@@ -4,6 +4,7 @@ use actix_web::{web, App, HttpServer};
 use env_logger::Env;
 use std::env;
 use std::fs::File;
+use log::info;
 
 mod database;
 mod models;
@@ -43,7 +44,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .service(routes::index_get)
-            .service(search::search_endpoint)
+            .service(routes::mod_search)
             //.service(routes::search_get)
             //.service(routes::mod_page_get)
             //.service(routes::mod_create_get)

@@ -1,6 +1,6 @@
-use crate::search::indexing::IndexingError;
-use crate::search::SearchMod;
+use crate::search::{SearchMod, SearchError};
 use serde::{Deserialize, Serialize};
+use log::info;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -47,7 +47,7 @@ pub struct CurseForgeMod {
 pub async fn index_curseforge(
     start_index: i32,
     end_index: i32,
-) -> Result<Vec<SearchMod>, IndexingError> {
+) -> Result<Vec<SearchMod>, SearchError> {
     info!("Indexing curseforge mods!");
 
     let mut docs_to_add: Vec<SearchMod> = vec![];

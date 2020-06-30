@@ -1,3 +1,6 @@
+use serde::{Serialize, Deserialize};
+
+
 #[derive(Serialize, Deserialize)]
 pub struct SearchRequest {
     pub query: Option<String>,

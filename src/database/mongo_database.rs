@@ -1,6 +1,7 @@
 use mongodb::error::Error;
 use mongodb::options::ClientOptions;
 use mongodb::Client;
+use log::info;
 
 pub async fn connect() -> Result<Client, Error> {
     info!("Initializing database connection");

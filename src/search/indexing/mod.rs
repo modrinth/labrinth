@@ -5,33 +5,15 @@ pub mod local_import;
 use crate::database::DatabaseError;
 use crate::search::indexing::curseforge_import::index_curseforge;
 use crate::search::indexing::local_import::index_local;
-use crate::search::SearchMod;
+use crate::search::{SearchMod, SearchError};
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::settings::Settings;
 use std::collections::{HashMap, VecDeque};
-use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum IndexingError {
-    #[error("Error while connection to the MeiliSearch database")]
-    IndexDBError(),
-    #[error("Error while connecting to the local server")]
-    LocalDatabaseError(#[from] mongodb::error::Error),
-    #[error("Error while accessing the data from remote")]
-    RemoteWebsiteError(#[from] reqwest::Error),
-    #[error("Error while serializing or deserializing JSON")]
-    SerDeError(#[from] serde_json::Error),
-    #[error("Error while parsing float")]
-    FloatParsingError(#[from] std::num::ParseFloatError),
-    #[error("Error while parsing float")]
-    IntParsingError(#[from] std::num::ParseIntError),
-    #[error("Error while parsing BSON")]
-    DatabaseError(#[from] DatabaseError),
-}
-
-pub async fn index_mods(db: mongodb::Client) -> Result<(), IndexingError> {
+pub async fn index_mods(db: mongodb::Client) -> Result<(), SearchError> {
     // Check if the index exists
-    let client = Client::new("http://localhost:7700", "");
+    let address = &*dotenv::var("MEILISEARCH_ADDR")?;
+    let client = Client::new(address, "");
 
     let mut docs_to_add: Vec<SearchMod> = vec![];
 

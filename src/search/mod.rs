@@ -2,8 +2,31 @@ use meilisearch_sdk::client::Client;
 use meilisearch_sdk::document::Document;
 use meilisearch_sdk::search::Query;
 use serde::{Deserialize, Serialize};
+use crate::models::mods::SearchRequest;
+use crate::database::DatabaseError;
+use thiserror::Error;
 
 pub mod indexing;
+
+#[derive(Error, Debug)]
+pub enum SearchError {
+    #[error("Error while connection to the MeiliSearch database")]
+    IndexDBError(),
+    #[error("Error while connecting to the local server")]
+    LocalDatabaseError(#[from] mongodb::error::Error),
+    #[error("Error while accessing the data from remote")]
+    RemoteWebsiteError(#[from] reqwest::Error),
+    #[error("Error while serializing or deserializing JSON")]
+    SerDeError(#[from] serde_json::Error),
+    #[error("Error while parsing float")]
+    FloatParsingError(#[from] std::num::ParseFloatError),
+    #[error("Error while parsing float")]
+    IntParsingError(#[from] std::num::ParseIntError),
+    #[error("Error while parsing BSON")]
+    DatabaseError(#[from] DatabaseError),
+    #[error("Environment Error")]
+    EnvError(#[from] dotenv::Error),
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SearchMod {
@@ -33,8 +56,9 @@ impl Document for SearchMod {
     }
 }
 
-fn search(info: &SearchRequest) -> Vec<SearchMod> {
-    let client = Client::new("http://localhost:7700", "");
+pub fn search_for_mod(info: &SearchRequest) -> Result<Vec<SearchMod>, SearchError> {
+    let address = &*dotenv::var("MEILISEARCH_ADDR")?;
+    let client = Client::new(address, "");
 
     let search_query: &str;
     let mut filters = String::new();
@@ -72,10 +96,10 @@ fn search(info: &SearchRequest) -> Vec<SearchMod> {
         query = query.with_filters(&filters);
     }
 
-    client
+    Ok(client
         .get_index(format!("{}_mods", index).as_ref())
         .unwrap()
         .search::<SearchMod>(&query)
         .unwrap()
-        .hits
+        .hits)
 }
