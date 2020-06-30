@@ -1,6 +1,6 @@
-use actix_web::{get, web, HttpResponse};
 use crate::models::mods::SearchRequest;
 use crate::search::search_for_mod;
+use actix_web::{get, web, HttpResponse};
 
 #[get("api/v1/mods")]
 pub fn mod_search(web::Query(info): web::Query<SearchRequest>) -> HttpResponse {

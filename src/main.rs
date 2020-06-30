@@ -2,9 +2,9 @@ use crate::search::indexing::index_mods;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpServer};
 use env_logger::Env;
+use log::info;
 use std::env;
 use std::fs::File;
-use log::info;
 
 mod database;
 mod models;

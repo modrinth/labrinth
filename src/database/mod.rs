@@ -1,9 +1,9 @@
-mod mongo_database;
 pub mod models;
+mod mongo_database;
 
-pub use mongo_database::connect;
 pub use models::Mod;
 pub use models::Version;
+pub use mongo_database::connect;
 use thiserror::Error;
 
 type Result<T> = std::result::Result<T, DatabaseError>;

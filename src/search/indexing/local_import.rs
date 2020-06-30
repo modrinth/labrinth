@@ -1,13 +1,13 @@
+use bson::doc;
 use bson::Bson;
 use futures::StreamExt;
-use meilisearch_sdk::client::Client;
-use bson::doc;
 use log::info;
+use meilisearch_sdk::client::Client;
 
 use crate::database::models::Item;
 use crate::database::{Mod, Version};
 
-use crate::search::{SearchMod, SearchRequest, SearchError};
+use crate::search::{SearchError, SearchMod, SearchRequest};
 
 pub async fn index_local(client: mongodb::Client) -> Result<Vec<SearchMod>, SearchError> {
     info!("Indexing local mods!");

@@ -5,7 +5,7 @@ pub mod local_import;
 use crate::database::DatabaseError;
 use crate::search::indexing::curseforge_import::index_curseforge;
 use crate::search::indexing::local_import::index_local;
-use crate::search::{SearchMod, SearchError};
+use crate::search::{SearchError, SearchMod};
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::settings::Settings;
 use std::collections::{HashMap, VecDeque};

@@ -1,9 +1,9 @@
+use crate::database::DatabaseError;
+use crate::models::mods::SearchRequest;
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::document::Document;
 use meilisearch_sdk::search::Query;
 use serde::{Deserialize, Serialize};
-use crate::models::mods::SearchRequest;
-use crate::database::DatabaseError;
 use thiserror::Error;
 
 pub mod indexing;

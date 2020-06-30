@@ -1,6 +1,6 @@
-use crate::search::{SearchMod, SearchError};
-use serde::{Deserialize, Serialize};
+use crate::search::{SearchError, SearchMod};
 use log::info;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
