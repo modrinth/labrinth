@@ -1,33 +1,46 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// The ID of a specific mod, encoded as base62 for usage in the API
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct ModId(pub u64);
 
+/// The ID of a specific user, encoded as base62 for usage in the API
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct UserId(pub u64);
 
+/// The ID of a specific version of a mod
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct VersionId(pub u64);
 
+/// The ID of a team
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct TeamId(pub u64);
 
+/// An ID encoded as base62 for use in the API.
+///
+/// All ids should be random and encode to 8-10 character base62 strings,
+/// to avoid enumeration and other attacks.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Base62Id(pub u64);
 
+/// An error decoding a number from base62.
 #[derive(Error, Debug)]
-pub enum EncodingError {
-    #[error("Invalid base62 encoding")]
+pub enum DecodingError {
+    /// Encountered a non base62 character in base62 string
+    #[error("Invalid character `{0:?}` in base62 encoding")]
     InvalidBase62(char),
+    /// Encountered integer overflow when decoding a base62 id.
+    #[error("Base62 decoding overflowed")]
+    Overflow,
 }
 
 macro_rules! from_base62id {
@@ -59,7 +72,7 @@ mod base62_impl {
     use serde::ser::Serializer;
     use serde::{Deserialize, Serialize};
 
-    use super::{Base62Id, EncodingError};
+    use super::{Base62Id, DecodingError};
 
     impl<'de> Deserialize<'de> for Base62Id {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -115,18 +128,25 @@ mod base62_impl {
         output
     }
 
-    fn parse_base62(string: &str) -> Result<u64, EncodingError> {
-        let mut num = 0;
+    fn parse_base62(string: &str) -> Result<u64, DecodingError> {
+        let mut num: u64 = 0;
         for c in string.chars().rev() {
-            num *= 62;
+            let next_digit;
             if c.is_ascii_digit() {
-                num += (c as u8 - b'0') as u64;
+                next_digit = (c as u8 - b'0') as u64;
             } else if c.is_ascii_uppercase() {
-                num += 10 + (c as u8 - b'A') as u64;
+                next_digit = 10 + (c as u8 - b'A') as u64;
             } else if c.is_ascii_lowercase() {
-                num += 36 + (c as u8 - b'a') as u64;
+                next_digit = 36 + (c as u8 - b'a') as u64;
             } else {
-                return Err(EncodingError::InvalidBase62(c));
+                return Err(DecodingError::InvalidBase62(c));
+            }
+
+            // We don't want this panicing or wrapping on integer overflow
+            if let Some(n) = num.checked_mul(62).and_then(|n| n.checked_add(next_digit)) {
+                num = n;
+            } else {
+                return Err(DecodingError::Overflow);
             }
         }
         Ok(num)
