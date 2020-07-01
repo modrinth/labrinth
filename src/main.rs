@@ -10,6 +10,7 @@ mod database;
 mod models;
 mod routes;
 mod search;
+mod file_hosting;
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
