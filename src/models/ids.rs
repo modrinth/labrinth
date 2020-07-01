@@ -1,29 +1,7 @@
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// The ID of a specific mod, encoded as base62 for usage in the API
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "Base62Id")]
-#[serde(into = "Base62Id")]
-pub struct ModId(pub u64);
-
-/// The ID of a specific user, encoded as base62 for usage in the API
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "Base62Id")]
-#[serde(into = "Base62Id")]
-pub struct UserId(pub u64);
-
-/// The ID of a specific version of a mod
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "Base62Id")]
-#[serde(into = "Base62Id")]
-pub struct VersionId(pub u64);
-
-/// The ID of a team
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "Base62Id")]
-#[serde(into = "Base62Id")]
-pub struct TeamId(pub u64);
+pub use super::mods::{ModId, VersionId};
+pub use super::teams::{UserId, TeamId};
 
 /// An ID encoded as base62 for use in the API.
 ///

@@ -1,8 +1,19 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-
-use super::ids::*;
+use super::ids::Base62Id;
 use super::teams::Team;
+
+/// The ID of a specific mod, encoded as base62 for usage in the API
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Base62Id")]
+#[serde(into = "Base62Id")]
+pub struct ModId(pub u64);
+
+/// The ID of a specific version of a mod
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Base62Id")]
+#[serde(into = "Base62Id")]
+pub struct VersionId(pub u64);
 
 /// A mod returned from the API
 #[derive(Serialize, Deserialize)]
