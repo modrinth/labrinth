@@ -1,7 +1,7 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use super::ids::Base62Id;
 use super::teams::Team;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// The ID of a specific mod, encoded as base62 for usage in the API
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]

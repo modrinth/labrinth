@@ -1,7 +1,53 @@
 use thiserror::Error;
 
 pub use super::mods::{ModId, VersionId};
-pub use super::teams::{UserId, TeamId};
+pub use super::teams::{TeamId, UserId};
+
+/// Generates a random 64 bit integer that is exactly `n` characters
+/// long when encoded as base62.
+///
+/// Uses `rand`'s thread rng on every call.
+///
+/// # Panics
+///
+/// This method panics if `n` is 0 or greater than 11, since a `u64`
+/// can only represent up to 11 character base62 strings
+pub fn random_base62(n: usize) -> u64 {
+    use rand::Rng;
+    assert!(n > 0 && n <= 11);
+    let mut rng = rand::thread_rng();
+    // gen_range is [low, high): max value is `MULTIPLES[n] - 1`,
+    // which is n characters long when encoded
+    rng.gen_range(MULTIPLES[n - 1], MULTIPLES[n])
+}
+
+/// Generates a random 64 bit integer that is exactly `n` characters
+/// long when encoded as base62, using the given rng.
+///
+/// # Panics
+///
+/// This method panics if `n` is 0 or greater than 11, since a `u64`
+/// can only represent up to 11 character base62 strings
+pub fn random_base62_rng<R: rand::RngCore>(rng: &mut R, n: usize) -> u64 {
+    use rand::Rng;
+    assert!(n > 0 && n <= 11);
+    rng.gen_range(MULTIPLES[n - 1], MULTIPLES[n])
+}
+
+const MULTIPLES: [u64; 12] = [
+    1,
+    62,
+    62 * 62,
+    62 * 62 * 62,
+    62 * 62 * 62 * 62,
+    62 * 62 * 62 * 62 * 62,
+    62 * 62 * 62 * 62 * 62 * 62,
+    62 * 62 * 62 * 62 * 62 * 62 * 62,
+    62 * 62 * 62 * 62 * 62 * 62 * 62 * 62,
+    62 * 62 * 62 * 62 * 62 * 62 * 62 * 62 * 62,
+    62 * 62 * 62 * 62 * 62 * 62 * 62 * 62 * 62 * 62,
+    std::u64::MAX,
+];
 
 /// An ID encoded as base62 for use in the API.
 ///
@@ -45,7 +91,7 @@ from_base62id! {
     TeamId, TeamId;
 }
 
-mod base62_impl {
+pub mod base62_impl {
     use serde::de::{self, Deserializer, Visitor};
     use serde::ser::Serializer;
     use serde::{Deserialize, Serialize};
@@ -95,12 +141,14 @@ mod base62_impl {
         b'y', b'z',
     ];
 
-    fn to_base62(mut num: u64) -> String {
+    pub fn to_base62(mut num: u64) -> String {
         let length = (num as f64).log(62.0).ceil() as usize;
         let mut output = String::with_capacity(length);
 
         while num > 0 {
-            output.push(BASE62_CHARS[(num % 62) as usize] as char);
+            // Could be done more efficiently, but requires byte
+            // manipulation of strings & Vec<u8> -> String conversion
+            output.insert(0, BASE62_CHARS[(num % 62) as usize] as char);
             num /= 62;
         }
         output

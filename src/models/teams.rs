@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::ids::Base62Id;
+use serde::{Deserialize, Serialize};
 
 /// The ID of a specific user, encoded as base62 for usage in the API
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
