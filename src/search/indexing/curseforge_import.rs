@@ -60,10 +60,13 @@ pub async fn index_curseforge(
             (start_index..end_index).collect::<Vec<_>>()
         ))
         .send()
-        .await?;
+        .await
+        .map_err(SearchError::CurseforgeImportError)?;
 
-    let text = &res.text().await?;
-    let curseforge_mods: Vec<CurseForgeMod> = serde_json::from_str(text)?;
+    let curseforge_mods: Vec<CurseForgeMod> = res
+        .json()
+        .await
+        .map_err(SearchError::CurseforgeImportError)?;
 
     for curseforge_mod in curseforge_mods {
         if curseforge_mod.game_slug != "minecraft"

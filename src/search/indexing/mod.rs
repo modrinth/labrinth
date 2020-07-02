@@ -20,63 +20,71 @@ pub async fn index_mods(db: mongodb::Client) -> Result<(), SearchError> {
     if dotenv::var("INDEX_CURSEFORGE")
         .expect("`INDEX_CURSEFORGE` is missing in the .env file.")
         .parse()
-        .unwrap()
+        .expect("`INDEX_CURSEFORGE` is not a boolean.")
     {
         docs_to_add.append(&mut index_curseforge(1, 400000).await?);
     }
     //Write Indexes
     //Relevance Index
 
-    let mut relevance_index = client.get_or_create("relevance_mods").unwrap();
+    let mut relevance_index = client
+        .get_or_create("relevance_mods")
+        .map_err(SearchError::IndexDBError)?;
 
     let mut relevance_rules = default_rules();
     relevance_rules.push_back("desc(downloads)".to_string());
 
     relevance_index
         .set_settings(&default_settings().with_ranking_rules(relevance_rules.into()))
-        .unwrap();
+        .map_err(SearchError::IndexDBError)?;
     relevance_index
         .add_documents(docs_to_add.clone(), Some("mod_id"))
-        .unwrap();
+        .map_err(SearchError::IndexDBError)?;
 
     //Downloads Index
-    let mut downloads_index = client.get_or_create("downloads_mods").unwrap();
+    let mut downloads_index = client
+        .get_or_create("downloads_mods")
+        .map_err(SearchError::IndexDBError)?;
 
     let mut downloads_rules = default_rules();
     downloads_rules.push_front("desc(downloads)".to_string());
 
     downloads_index
         .set_settings(&default_settings().with_ranking_rules(downloads_rules.into()))
-        .unwrap();
+        .map_err(SearchError::IndexDBError)?;
     downloads_index
         .add_documents(docs_to_add.clone(), Some("mod_id"))
-        .unwrap();
+        .map_err(SearchError::IndexDBError)?;
 
     //Updated Index
-    let mut updated_index = client.get_or_create("updated_mods").unwrap();
+    let mut updated_index = client
+        .get_or_create("updated_mods")
+        .map_err(SearchError::IndexDBError)?;
 
     let mut updated_rules = default_rules();
     updated_rules.push_front("desc(updated)".to_string());
 
     updated_index
         .set_settings(&default_settings().with_ranking_rules(updated_rules.into()))
-        .unwrap();
+        .map_err(SearchError::IndexDBError)?;
     updated_index
         .add_documents(docs_to_add.clone(), Some("mod_id"))
-        .unwrap();
+        .map_err(SearchError::IndexDBError)?;
 
     //Created Index
-    let mut newest_index = client.get_or_create("newest_mods").unwrap();
+    let mut newest_index = client
+        .get_or_create("newest_mods")
+        .map_err(SearchError::IndexDBError)?;
 
     let mut newest_rules = default_rules();
     newest_rules.push_back("desc(created)".to_string());
 
     newest_index
         .set_settings(&default_settings().with_ranking_rules(newest_rules.into()))
-        .unwrap();
+        .map_err(SearchError::IndexDBError)?;
     newest_index
         .add_documents(docs_to_add.clone(), Some("mod_id"))
-        .unwrap();
+        .map_err(SearchError::IndexDBError)?;
 
     Ok(())
 }
@@ -124,8 +132,8 @@ fn default_settings() -> Settings {
     ];
 
     Settings::new()
-        .with_displayed_attributes(displayed_attributes.clone())
-        .with_searchable_attributes(searchable_attributes.clone())
+        .with_displayed_attributes(displayed_attributes)
+        .with_searchable_attributes(searchable_attributes)
         .with_accept_new_fields(true)
         .with_stop_words(vec![])
         .with_synonyms(HashMap::new())

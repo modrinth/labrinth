@@ -17,7 +17,7 @@ async fn main() -> std::io::Result<()> {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
     dotenv::dotenv().ok();
 
-    let client = database::connect().await.unwrap();
+    let client = database::connect().await.expect("Failed to connect to database");
 
     // Get executable path
     let mut exe_path = env::current_exe()?.parent().unwrap().to_path_buf();
@@ -28,11 +28,11 @@ async fn main() -> std::io::Result<()> {
     if env::args().any(|x| x == "regen") {
         // User forced regen of indexing
         info!("Forced regeneration of indexes!");
-        index_mods(client).await.unwrap();
+        index_mods(client).await.expect("Mod indexing failed");
     } else if exe_path.exists() {
         // The indexes were not created, or the version was upgraded
         info!("Indexing of mods for first time...");
-        index_mods(client).await.unwrap();
+        index_mods(client).await.expect("Mod indexing failed");
         // Create the lock file
         File::create(exe_path)?;
     }
