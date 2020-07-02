@@ -1,4 +1,3 @@
-use crate::database::DatabaseError;
 use crate::models::error::ApiError;
 use crate::models::mods::SearchRequest;
 use actix_web::http::StatusCode;
@@ -15,16 +14,10 @@ pub mod indexing;
 pub enum SearchError {
     #[error("Error while connecting to the MeiliSearch database")]
     IndexDBError(meilisearch_sdk::errors::Error),
-    #[error("Error while importing mods from CurseForge")]
-    CurseforgeImportError(reqwest::Error),
     #[error("Error while serializing or deserializing JSON: {0}")]
     SerDeError(#[from] serde_json::Error),
-    #[error("Error while parsing a float: {0}")]
-    FloatParsingError(#[from] std::num::ParseFloatError),
     #[error("Error while parsing an integer: {0}")]
     IntParsingError(#[from] std::num::ParseIntError),
-    #[error("Database Error: {0}")]
-    DatabaseError(#[from] DatabaseError),
     #[error("Environment Error")]
     EnvError(#[from] dotenv::Error),
 }
@@ -33,11 +26,8 @@ impl actix_web::ResponseError for SearchError {
     fn status_code(&self) -> StatusCode {
         match self {
             SearchError::EnvError(..) => StatusCode::INTERNAL_SERVER_ERROR,
-            SearchError::DatabaseError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             SearchError::IndexDBError(..) => StatusCode::INTERNAL_SERVER_ERROR,
-            SearchError::CurseforgeImportError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             SearchError::SerDeError(..) => StatusCode::BAD_REQUEST,
-            SearchError::FloatParsingError(..) => StatusCode::BAD_REQUEST,
             SearchError::IntParsingError(..) => StatusCode::BAD_REQUEST,
         }
     }
@@ -46,11 +36,8 @@ impl actix_web::ResponseError for SearchError {
         HttpResponse::build(self.status_code()).json(ApiError {
             error: match self {
                 SearchError::EnvError(..) => "environment_error",
-                SearchError::DatabaseError(..) => "database_error",
                 SearchError::IndexDBError(..) => "indexdb_error",
-                SearchError::CurseforgeImportError(..) => "curseforge_error",
                 SearchError::SerDeError(..) => "invalid_input",
-                SearchError::FloatParsingError(..) => "invalid_input",
                 SearchError::IntParsingError(..) => "invalid_input",
             },
             description: &self.to_string(),
@@ -87,39 +74,24 @@ impl Document for SearchMod {
 }
 
 pub fn search_for_mod(info: &SearchRequest) -> Result<Vec<SearchMod>, SearchError> {
+    use std::borrow::Cow;
     let address = &*dotenv::var("MEILISEARCH_ADDR")?;
     let client = Client::new(address, "");
 
-    let search_query: &str;
-    let mut filters = String::new();
-    let mut offset = 0;
-    let mut index = "relevance";
+    let filters: Cow<_> = match (info.filters.as_deref(), info.version.as_deref()) {
+        (Some(f), Some(v)) => format!("({}) AND ({})", f, v).into(),
+        (Some(f), None) => f.into(),
+        (None, Some(v)) => v.into(),
+        (None, None) => "".into(),
+    };
 
-    match info.query.as_ref() {
-        Some(q) if q.is_empty() => search_query = "{}{}{}",
-        Some(q) => search_query = q,
-        None => search_query = "{}{}{}",
-    }
-
-    if let Some(f) = info.filters.as_ref() {
-        filters = f.clone();
-    }
-
-    if let Some(v) = info.version.as_ref() {
-        if filters.is_empty() {
-            filters = v.clone();
-        } else {
-            filters = format!("({}) AND ({})", filters, v);
-        }
-    }
-
-    if let Some(o) = info.offset.as_ref() {
-        offset = o.parse()?;
-    }
-
-    if let Some(s) = info.index.as_ref() {
-        index = s;
-    }
+    let offset = info.offset.as_deref().unwrap_or("0").parse()?;
+    let index = info.index.as_deref().unwrap_or("relevance");
+    let search_query: &str = info
+        .query
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("{}{}{}");
 
     let mut query = Query::new(search_query).with_limit(10).with_offset(offset);
 

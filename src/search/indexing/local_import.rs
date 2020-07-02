@@ -5,9 +5,10 @@ use log::info;
 use crate::database::models::Item;
 use crate::database::{DatabaseError, Mod, Version};
 
-use crate::search::{SearchError, SearchMod};
+use super::IndexingError;
+use crate::search::SearchMod;
 
-pub async fn index_local(client: mongodb::Client) -> Result<Vec<SearchMod>, SearchError> {
+pub async fn index_local(client: mongodb::Client) -> Result<Vec<SearchMod>, IndexingError> {
     info!("Indexing local mods!");
 
     let mut docs_to_add: Vec<SearchMod> = vec![];
