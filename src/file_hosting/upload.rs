@@ -4,7 +4,7 @@ use crate::file_hosting::authorization::UploadUrlData;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct UploadData {
+pub struct UploadFileData {
     pub file_id: String,
     pub file_name: String,
     pub account_id: String,
@@ -17,7 +17,7 @@ pub struct UploadData {
 }
 
 //Content Types found here: https://www.backblaze.com/b2/docs/content-types.html
-pub async fn upload_file(url_data: UploadUrlData, content_type: String, file_name: String, file_bytes: Vec<u8>) -> Result<UploadData, FileHostingError> {
+pub async fn upload_file(url_data: UploadUrlData, content_type: String, file_name: String, file_bytes: Vec<u8>) -> Result<UploadFileData, FileHostingError> {
     let req = reqwest::Client::new()
         .post(&url_data.upload_url)
         .header(reqwest::header::AUTHORIZATION, url_data.authorization_token)

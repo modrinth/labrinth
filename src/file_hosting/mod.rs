@@ -10,10 +10,10 @@ pub use authorization::UploadUrlData;
 pub use authorization::AuthorizationData;
 pub use authorization::AuthorizationPermissions;
 
-pub use upload::UploadData;
+pub use upload::UploadFileData;
 pub use upload::upload_file;
 
-pub use delete::DeleteData;
+pub use delete::DeleteFileData;
 pub use delete::delete_file_version;
 
 #[derive(Error, Debug)]
