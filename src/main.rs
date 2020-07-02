@@ -48,7 +48,7 @@ async fn main() -> std::io::Result<()> {
             .service(routes::mod_search)
             .default_service(web::get().to(routes::not_found))
     })
-    .bind("127.0.0.1:".to_string() + &dotenv::var("PORT").unwrap())?
+    .bind(dotenv::var("BIND_ADDR").unwrap())?
     .run()
     .await
 }
