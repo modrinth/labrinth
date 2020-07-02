@@ -45,13 +45,13 @@ impl actix_web::ResponseError for SearchError {
     fn error_response(&self) -> HttpResponse {
         HttpResponse::build(self.status_code()).json(ApiError {
             error: match self {
-                SearchError::EnvError(..) => "Environment Error",
-                SearchError::DatabaseError(..) => "Database Error",
-                SearchError::IndexDBError(..) => "Index Database Error",
-                SearchError::CurseforgeImportError(..) => "Curseforge Import Error",
-                SearchError::SerDeError(..) => "Deserialization Error",
-                SearchError::FloatParsingError(..) => "Float Parsing Error",
-                SearchError::IntParsingError(..) => "Int Parsing Error",
+                SearchError::EnvError(..) => "environment_error",
+                SearchError::DatabaseError(..) => "database_error",
+                SearchError::IndexDBError(..) => "indexdb_error",
+                SearchError::CurseforgeImportError(..) => "curseforge_error",
+                SearchError::SerDeError(..) => "invalid_input",
+                SearchError::FloatParsingError(..) => "invalid_input",
+                SearchError::IntParsingError(..) => "invalid_input",
             },
             description: &self.to_string(),
         })
