@@ -12,7 +12,7 @@ actix-web = "2.0"
 actix-rt = "1.1.1"
 actix-files = "0.2.2"
 
-reqwest = "0.10.6"
+reqwest = {version="0.10.6", features=["json"]}
 
 meilisearch-sdk = "0.1.4"
 

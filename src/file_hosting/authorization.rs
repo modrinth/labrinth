@@ -1,7 +1,7 @@
 use crate::file_hosting::FileHostingError;
+use base64::encode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use base64::encode;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -32,34 +32,42 @@ pub struct UploadUrlData {
     pub authorization_token: String,
 }
 
-pub async fn authorize_account(key_id: String, application_key: String) -> Result<AuthorizationData, FileHostingError> {
+pub async fn authorize_account(
+    key_id: String,
+    application_key: String,
+) -> Result<AuthorizationData, FileHostingError> {
     let combined_key = format!("{}:{}", key_id, application_key);
     let formatted_key = format!("Basic {}", encode(combined_key));
 
-    let req = reqwest::Client::new()
+    Ok(reqwest::Client::new()
         .get("https://api.backblazeb2.com/b2api/v2/b2_authorize_account")
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(reqwest::header::AUTHORIZATION, formatted_key)
         .send()
-        .await?;
-
-    let text = &req.text().await?;
-
-    Ok(serde_json::from_str(text)?)
+        .await?
+        .json()
+        .await?)
 }
 
-pub async fn get_upload_url(authorization_data: AuthorizationData, bucket_id: String) -> Result<UploadUrlData, FileHostingError> {
-    let req = reqwest::Client::new()
+pub async fn get_upload_url(
+    authorization_data: AuthorizationData,
+    bucket_id: String,
+) -> Result<UploadUrlData, FileHostingError> {
+    Ok(reqwest::Client::new()
         .post(&format!("{}/b2api/v2/b2_get_upload_url", authorization_data.api_url).to_string())
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .header(reqwest::header::AUTHORIZATION, authorization_data.authorization_token)
-        .body(json!({
-            "bucketId": bucket_id,
-        }).to_string())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            authorization_data.authorization_token,
+        )
+        .body(
+            json!({
+                "bucketId": bucket_id,
+            })
+            .to_string(),
+        )
         .send()
-        .await?;
-
-    let text = &req.text().await?;
-
-    Ok(serde_json::from_str(text)?)
+        .await?
+        .json()
+        .await?)
 }

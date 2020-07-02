@@ -7,10 +7,10 @@ use std::env;
 use std::fs::File;
 
 mod database;
+mod file_hosting;
 mod models;
 mod routes;
 mod search;
-mod file_hosting;
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
