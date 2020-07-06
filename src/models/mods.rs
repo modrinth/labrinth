@@ -27,8 +27,12 @@ pub struct Mod {
 
     /// The title or name of the mod.
     pub title: String,
+    ///The URL of the icon of the mod
+    pub icon_url: String,
     /// A short description of the mod.
     pub description: String,
+    /// A long description of the mod.
+    pub body_url: String,
     /// The date at which the mod was first published.
     pub published: DateTime<Utc>,
 
@@ -38,10 +42,6 @@ pub struct Mod {
     pub categories: Vec<String>,
     /// A list of ids for versions of the mod.
     pub versions: Vec<VersionId>,
-
-    /// The latest version of the mod.
-    pub latest_version: Version,
-
     /// An optional link to where to submit bugs or issues with the mod.
     pub issues_url: Option<String>,
     /// An optional link to the source code for the mod.
@@ -73,13 +73,13 @@ pub struct Version {
     pub files: Vec<VersionFile>,
     /// A list of mods that this version depends on.
     pub dependencies: Vec<ModId>,
-    /// A list of versions of Minecraft that this version of the mod supports.
-    pub game_versions: Vec<GameVersion>,
 }
 
 /// A single mod file, with a url for the file and the file's hash
 #[derive(Serialize, Deserialize)]
 pub struct VersionFile {
+    /// A list of versions of Minecraft that this version of the mod supports.
+    pub game_versions: Vec<GameVersion>,
     /// A list of hashes of the file
     pub hashes: Vec<FileHash>,
     /// A direct link to the file for downloading it.
