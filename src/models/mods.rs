@@ -96,7 +96,7 @@ pub struct FileHash {
     pub hash: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum VersionType {
     Release,
     Beta,
@@ -104,7 +104,7 @@ pub enum VersionType {
 }
 
 /// A specific version of Minecraft
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(transparent)]
 pub struct GameVersion(pub String);
 

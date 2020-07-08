@@ -1,6 +1,6 @@
 use crate::file_hosting::{upload_file, AuthorizationData, UploadUrlData};
 use crate::models::ids::random_base62;
-use crate::models::mods::{GameVersion, Mod, ModId, VersionType, VersionId};
+use crate::models::mods::{GameVersion, Mod, ModId, VersionType, VersionId, Version, VersionFile, FileHash};
 use crate::models::teams::{Team, TeamId, TeamMember};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
@@ -11,9 +11,11 @@ use mongodb::Client;
 use pulldown_cmark::html::push_html;
 use pulldown_cmark::{Options, Parser};
 use serde::{Deserialize, Serialize};
+use bson::Bson;
 
+#[derive(Serialize, Deserialize, Clone)]
 struct InitialVersionData {
-    pub file_name: String,
+    pub file_names: Vec<String>,
     pub version_slug: String,
     pub version_title: String,
     pub version_description: String,
@@ -22,7 +24,7 @@ struct InitialVersionData {
     pub version_type: VersionType,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ModCreateData {
     /// The title or name of the mod.
     pub mod_name: String,
@@ -74,31 +76,54 @@ pub async fn mod_create(
                 mod_create_data = Some(serde_json::from_slice(&data).unwrap());
             } else {
                 let file_name = content_type.get_filename().expect("Expected Filename");
+                let file_extension = String::from_utf8(content_type.get_filename_ext().expect("Expected icon extension!").clone().value).unwrap();
 
                 if let Some(create_data) = mod_create_data.clone() {
                     if name == "icon" {
-                        let file_extension = content_type.get_filename_ext().expect("Expected icon extension!");
-
-                        file_extension.
                         //TODO: Check file extension if valid -> match to BackBlaze content type, OR reject icon
                         let upload_data = upload_file(
-                            **upload_url,
+                            upload_url.get_ref().clone(),
                             "image/png".to_string(),
                             format!("mods/icons/{}/{}", mod_id.0, file_name),
-                            data.into_vec(),
+                            data.to_vec(),
                         )
                             .await
                             .unwrap();
 
                         icon_url = format!("cdnurl/{}", upload_data.file_name)
-                    } else {
-                        let upload_data = upload_file(
-                            **upload_url,
-                            "application/java-archive".to_string(),
-                            format!(""),
-                            data.into_vec()
-                        ).await.unwrap();
-                        //TODO: Malware scan + file validation
+                    } else if file_extension == "jar".to_string()  {
+                        let initial_version_data = create_data.initial_versions.iter().position(|x| x.file_names.contains(&file_name.to_string()));
+
+                        if let Some(version_data_index) = initial_version_data {
+                            let version_data: InitialVersionData = create_data.initial_versions.get(version_data_index).unwrap().clone();
+
+                            let upload_data = upload_file(
+                                upload_url.get_ref().clone(),
+                                "application/java-archive".to_string(),
+                                format!(""),
+                                (&data).to_owned().to_vec()
+                            ).await.unwrap();
+
+                            let version = Version {
+                                id: VersionId(random_base62(8)),
+                                mod_id,
+                                name: version_data.version_title,
+                                changelog_url: None,
+                                date_published: Utc::now(),
+                                downloads: 0,
+                                version_type: version_data.version_type,
+                                files: vec![VersionFile {
+                                    game_versions: vec![],
+                                    hashes: vec![FileHash {
+                                        algorithm: "sha1".to_string(),
+                                        hash: upload_data.content_sha1
+                                    }],
+                                    url: format!("cdnurl/{}", upload_data.file_name)
+                                }],
+                                dependencies: version_data.dependencies
+                            };
+                            //TODO: Malware scan + file validation
+                        }
                     }
                 }
             }
@@ -125,12 +150,16 @@ pub async fn mod_create(
             published: Utc::now(),
             downloads: 0,
             categories: create_data.categories,
-            versions: create_data.initial_versions,
+            versions: version_ids,
             issues_url: create_data.issues_url,
             source_url: create_data.source_url,
             wiki_url: create_data.wiki_url,
         };
 
+        let serialized_mod = serde_json::to_string(&created_mod).unwrap();
+        let document = Bson::from(serialized_mod).as_document().unwrap().clone();
+
+        mods.insert_one(document, None);
     }
 
     HttpResponse::Ok().into()
