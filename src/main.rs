@@ -35,8 +35,8 @@ async fn main() -> std::io::Result<()> {
     .await
     .unwrap();
 
-    let authorization_data_ref = web::Data::new(authorization_data.clone());
-    let upload_url_data_ref = web::Data::new(upload_url_data.clone());
+    let authorization_data_ref = web::Data::new(authorization_data);
+    let upload_url_data_ref = web::Data::new(upload_url_data);
 
     // Get executable path
     let mut exe_path = env::current_exe()?.parent().unwrap().to_path_buf();
@@ -63,9 +63,9 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
-            .data(client_ref)
-            .data(authorization_data_ref)
-            .data(upload_url_data_ref)
+            .data(client_ref.clone())
+            .data(authorization_data_ref.clone())
+            .data(upload_url_data_ref.clone())
             .service(routes::index_get)
             .service(routes::mod_search)
             .default_service(web::get().to(routes::not_found))

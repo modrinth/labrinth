@@ -24,7 +24,7 @@ pub struct Team {
 }
 
 /// A member of a team
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct TeamMember {
     /// The ID of the user associated with the member
     pub user_id: UserId,
