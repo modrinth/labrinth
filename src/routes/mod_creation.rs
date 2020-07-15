@@ -132,99 +132,95 @@ pub async fn mod_create(
                                 .unwrap()
                                 .clone();
 
-                            let mut created_version_filter = created_versions.iter().filter(|x| x.slug == version_data.version_slug).collect::<Vec<_>>();
+                            let mut created_version_filter = created_versions.iter_mut().filter(|x| x.slug == version_data.version_slug);
 
-                            if created_version_filter.len() > 0 {
-                                //TODO: Make this compile let created_version = created_version_filter.get(0).unwrap();
-                                //
-                                // created_versions.retain(|x| x.id.0 != 0);
-                                //
-                                // let upload_data = upload_file(
-                                //     upload_url.get_ref().clone(),
-                                //     "application/java-archive".to_string(),
-                                //     format!(
-                                //         "{}/{}/{}",
-                                //         create_data.mod_namespace.replace(".", "/"),
-                                //         version_data.version_slug,
-                                //         file_name
-                                //     ),
-                                //     (&data).to_owned().to_vec(),
-                                // )
-                                //     .await
-                                //     .unwrap();
-                                //
-                                // // let mut new_created_version = created_version.clone();
-                                // //
-                                // // new_created_version.files.push(VersionFile {
-                                // //     game_versions: version_data.game_versions,
-                                // //     hashes: vec![FileHash {
-                                // //         algorithm: "sha1".to_string(),
-                                // //         hash: upload_data.content_sha1,
-                                // //     }],
-                                // //     url: format!("{}/{}", cdn_url, upload_data.file_name),
-                                // // });
-                                // // //created_version.files.push()
-                            } else {
-                                let mut version_id = VersionId(random_base62(8));
-                                //Check if ID is unique
-                                loop {
-                                    let filter = doc! { "_id": version_id.0 };
+                            match created_version_filter.nth(0) {
+                                Some(created_version) => {
+                                    let upload_data = upload_file(
+                                        upload_url.get_ref().clone(),
+                                        "application/java-archive".to_string(),
+                                        format!(
+                                            "{}/{}/{}",
+                                            create_data.mod_namespace.replace(".", "/"),
+                                            version_data.version_slug,
+                                            file_name
+                                        ),
+                                        (&data).to_owned().to_vec(),
+                                    )
+                                        .await
+                                        .unwrap();
 
-                                    if versions.find(filter, None).await.unwrap().next().await.is_some() {
-                                        version_id = VersionId(random_base62(8));
-                                    } else {
-                                        break;
-                                    }
-                                }
-
-                                let body_url =
-                                    format!("data/{}/changelogs/{}/body.md", mod_id.0, version_id.0);
-
-                                upload_file(
-                                    upload_url.get_ref().clone(),
-                                    "text/plain".to_string(),
-                                    body_url.clone(),
-                                    version_data.version_body.into_bytes(),
-                                )
-                                    .await
-                                    .unwrap();
-
-                                let upload_data = upload_file(
-                                    upload_url.get_ref().clone(),
-                                    "application/java-archive".to_string(),
-                                    format!(
-                                        "{}/{}/{}",
-                                        create_data.mod_namespace.replace(".", "/"),
-                                        version_data.version_slug,
-                                        file_name
-                                    ),
-                                    (&data).to_owned().to_vec(),
-                                )
-                                    .await
-                                    .unwrap();
-
-                                let mut version = Version {
-                                    id: version_id,
-                                    mod_id,
-                                    name: version_data.version_title,
-                                    slug: version_data.version_slug.clone(),
-                                    changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
-                                    date_published: Utc::now(),
-                                    downloads: 0,
-                                    version_type: version_data.version_type,
-                                    files: vec![VersionFile {
+                                    created_version.files.push(VersionFile {
                                         game_versions: version_data.game_versions,
                                         hashes: vec![FileHash {
                                             algorithm: "sha1".to_string(),
                                             hash: upload_data.content_sha1,
                                         }],
                                         url: format!("{}/{}", cdn_url, upload_data.file_name),
-                                    }],
-                                    dependencies: version_data.dependencies,
-                                };
-                                //TODO: Malware scan + file validation
+                                    });
+                                }
+                                None => {
+                                    let mut version_id = VersionId(random_base62(8));
+                                    //Check if ID is unique
+                                    loop {
+                                        let filter = doc! { "_id": version_id.0 };
 
-                                created_versions.push(version);
+                                        if versions.find(filter, None).await.unwrap().next().await.is_some() {
+                                            version_id = VersionId(random_base62(8));
+                                        } else {
+                                            break;
+                                        }
+                                    }
+
+                                    let body_url =
+                                        format!("data/{}/changelogs/{}/body.md", mod_id.0, version_id.0);
+
+                                    upload_file(
+                                        upload_url.get_ref().clone(),
+                                        "text/plain".to_string(),
+                                        body_url.clone(),
+                                        version_data.version_body.into_bytes(),
+                                    )
+                                        .await
+                                        .unwrap();
+
+                                    let upload_data = upload_file(
+                                        upload_url.get_ref().clone(),
+                                        "application/java-archive".to_string(),
+                                        format!(
+                                            "{}/{}/{}",
+                                            create_data.mod_namespace.replace(".", "/"),
+                                            version_data.version_slug,
+                                            file_name
+                                        ),
+                                        (&data).to_owned().to_vec(),
+                                    )
+                                        .await
+                                        .unwrap();
+
+                                    let mut version = Version {
+                                        id: version_id,
+                                        mod_id,
+                                        name: version_data.version_title,
+                                        slug: version_data.version_slug.clone(),
+                                        changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
+                                        date_published: Utc::now(),
+                                        downloads: 0,
+                                        version_type: version_data.version_type,
+                                        files: vec![VersionFile {
+                                            game_versions: version_data.game_versions,
+                                            hashes: vec![FileHash {
+                                                algorithm: "sha1".to_string(),
+                                                hash: upload_data.content_sha1,
+                                            }],
+                                            url: format!("{}/{}", cdn_url, upload_data.file_name),
+                                        }],
+                                        dependencies: version_data.dependencies,
+                                    };
+                                    //TODO: Malware scan + file validation
+
+                                    created_versions.push(version);
+                                }
                             }
                         }
                     }
@@ -253,7 +249,7 @@ pub async fn mod_create(
             "text/plain".to_string(),
             body_url.clone(),
             create_data.mod_body.into_bytes(),
-        );
+        ).await.unwrap();
 
         let created_mod: Mod = Mod {
             id: mod_id,
