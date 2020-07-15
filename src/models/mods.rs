@@ -75,7 +75,7 @@ pub struct Version {
     /// A list of mods that this version depends on.
     pub dependencies: Vec<ModId>,
     /// The loaders that this version works on
-    pub loaders: Vec<String>
+    pub loaders: Vec<String>,
 }
 
 /// A single mod file, with a url for the file and the file's hash
@@ -112,8 +112,9 @@ impl ToString for VersionType {
             VersionType::Release => "release",
             VersionType::Beta => "beta",
             VersionType::Alpha => "alpha",
-            _ => ""
-        }.to_string()
+            _ => "",
+        }
+        .to_string()
     }
 }
 

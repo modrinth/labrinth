@@ -18,7 +18,7 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
 
     check_env_vars();
- 
+
     //Database Connecter
     let client = database::connect()
         .await

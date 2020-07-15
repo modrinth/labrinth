@@ -1,20 +1,20 @@
-use crate::file_hosting::{upload_file, UploadUrlData, FileHostingError};
+use crate::database::models::{FileHash, Mod, Team, Version, VersionFile};
+use crate::file_hosting::{upload_file, FileHostingError, UploadUrlData};
+use crate::models::error::ApiError;
 use crate::models::ids::random_base62;
-use crate::database::models::{FileHash, Mod, Version, VersionFile, Team};
+use crate::models::mods::{GameVersion, ModId, VersionId, VersionType};
+use crate::models::teams::TeamMember;
 use actix_multipart::{Field, Multipart};
+use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{post, HttpResponse};
-use bson::Bson;
 use bson::doc;
+use bson::Bson;
 use chrono::Utc;
-use futures::stream::{StreamExt};
+use futures::stream::StreamExt;
 use mongodb::Client;
 use serde::{Deserialize, Serialize};
-use actix_web::http::StatusCode;
 use thiserror::Error;
-use crate::models::error::ApiError;
-use crate::models::mods::{ModId, GameVersion, VersionType, VersionId};
-use crate::models::teams::TeamMember;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -63,7 +63,6 @@ impl actix_web::ResponseError for CreateError {
     }
 }
 
-
 #[derive(Serialize, Deserialize, Clone)]
 struct InitialVersionData {
     pub file_indexes: Vec<i32>,
@@ -73,7 +72,7 @@ struct InitialVersionData {
     pub dependencies: Vec<ModId>,
     pub game_versions: Vec<GameVersion>,
     pub version_type: VersionType,
-    pub loaders: Vec<String>
+    pub loaders: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -135,8 +134,17 @@ pub async fn mod_create(
     let mut current_file_index = 0;
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
-        let content_disposition = field.content_disposition().ok_or(CreateError::MissingValueError("Missing content disposition!".to_string()))?;
-        let name = content_disposition.get_name().ok_or(CreateError::MissingValueError("Missing content name!".to_string()))?;
+        let content_disposition =
+            field
+                .content_disposition()
+                .ok_or(CreateError::MissingValueError(
+                    "Missing content disposition!".to_string(),
+                ))?;
+        let name = content_disposition
+            .get_name()
+            .ok_or(CreateError::MissingValueError(
+                "Missing content name!".to_string(),
+            ))?;
 
         while let Some(chunk) = field.next().await {
             let data = &chunk.map_err(CreateError::MultipartError)?;
@@ -144,14 +152,22 @@ pub async fn mod_create(
             if name == "data" {
                 mod_create_data = Some(serde_json::from_slice(&data)?);
             } else {
-                let file_name = content_disposition.get_filename().ok_or(CreateError::MissingValueError("Missing content file name!".to_string()))?;
+                let file_name =
+                    content_disposition
+                        .get_filename()
+                        .ok_or(CreateError::MissingValueError(
+                            "Missing content file name!".to_string(),
+                        ))?;
                 let file_extension = String::from_utf8(
                     content_disposition
-                        .get_filename_ext().ok_or(CreateError::MissingValueError("Missing file extension!".to_string()))?
+                        .get_filename_ext()
+                        .ok_or(CreateError::MissingValueError(
+                            "Missing file extension!".to_string(),
+                        ))?
                         .clone()
                         .value,
-                ).map_err(CreateError::InvalidUtf8Input)
-                ?;
+                )
+                .map_err(CreateError::InvalidUtf8Input)?;
 
                 if let Some(create_data) = &mod_create_data {
                     if name == "icon" {
@@ -162,12 +178,10 @@ pub async fn mod_create(
                                 format!("mods/icons/{}/{}", mod_id.0, file_name),
                                 data.to_vec(),
                             )
-                                .await
-                                ?;
+                            .await?;
 
                             icon_url = format!("{}/{}", cdn_url, upload_data.file_name);
-                        }
-                        else {
+                        } else {
                             panic!("Invalid Icon Format!");
                         }
                     } else if file_extension == "jar".to_string() {
@@ -180,10 +194,14 @@ pub async fn mod_create(
                             let version_data = create_data
                                 .initial_versions
                                 .get(version_data_index)
-                                .ok_or(CreateError::MissingValueError("Missing file extension!".to_string()))?
+                                .ok_or(CreateError::MissingValueError(
+                                    "Missing file extension!".to_string(),
+                                ))?
                                 .clone();
 
-                            let mut created_version_filter = created_versions.iter_mut().filter(|x| x.number == version_data.version_slug);
+                            let mut created_version_filter = created_versions
+                                .iter_mut()
+                                .filter(|x| x.number == version_data.version_slug);
 
                             match created_version_filter.nth(0) {
                                 Some(created_version) => {
@@ -198,11 +216,14 @@ pub async fn mod_create(
                                         ),
                                         (&data).to_owned().to_vec(),
                                     )
-                                        .await
-                                        ?;
+                                    .await?;
 
                                     created_version.files.push(VersionFile {
-                                        game_versions: version_data.game_versions.into_iter().map(|x| x.0).collect(),
+                                        game_versions: version_data
+                                            .game_versions
+                                            .into_iter()
+                                            .map(|x| x.0)
+                                            .collect(),
                                         hashes: vec![FileHash {
                                             algorithm: "sha1".to_string(),
                                             hash: upload_data.content_sha1,
@@ -216,15 +237,18 @@ pub async fn mod_create(
                                     loop {
                                         let filter = doc! { "_id": version_id.0 };
 
-                                        if versions.find(filter, None).await?.next().await.is_some() {
+                                        if versions.find(filter, None).await?.next().await.is_some()
+                                        {
                                             version_id = VersionId(random_base62(8));
                                         } else {
                                             break;
                                         }
                                     }
 
-                                    let body_url =
-                                        format!("data/{}/changelogs/{}/body.md", mod_id.0, version_id.0);
+                                    let body_url = format!(
+                                        "data/{}/changelogs/{}/body.md",
+                                        mod_id.0, version_id.0
+                                    );
 
                                     upload_file(
                                         upload_url.get_ref().clone(),
@@ -232,8 +256,7 @@ pub async fn mod_create(
                                         body_url.clone(),
                                         version_data.version_body.into_bytes(),
                                     )
-                                        .await
-                                        ?;
+                                    .await?;
 
                                     let upload_data = upload_file(
                                         upload_url.get_ref().clone(),
@@ -246,8 +269,7 @@ pub async fn mod_create(
                                         ),
                                         (&data).to_owned().to_vec(),
                                     )
-                                        .await
-                                        ?;
+                                    .await?;
 
                                     let version = Version {
                                         version_id: version_id.0 as i32,
@@ -259,16 +281,24 @@ pub async fn mod_create(
                                         downloads: 0,
                                         version_type: version_data.version_type.to_string(),
                                         files: vec![VersionFile {
-                                            game_versions: version_data.game_versions.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+                                            game_versions: version_data
+                                                .game_versions
+                                                .into_iter()
+                                                .map(|x| x.0)
+                                                .collect::<Vec<_>>(),
                                             hashes: vec![FileHash {
                                                 algorithm: "sha1".to_string(),
                                                 hash: upload_data.content_sha1,
                                             }],
                                             url: format!("{}/{}", cdn_url, upload_data.file_name),
                                         }],
-                                        dependencies: version_data.dependencies.into_iter().map(|x| x.0 as i32).collect::<Vec<_>>(),
+                                        dependencies: version_data
+                                            .dependencies
+                                            .into_iter()
+                                            .map(|x| x.0 as i32)
+                                            .collect::<Vec<_>>(),
                                         game_versions: vec![],
-                                        loaders: vec![]
+                                        loaders: vec![],
                                     };
                                     //TODO: Malware scan + file validation
 
@@ -288,31 +318,38 @@ pub async fn mod_create(
         let serialized_version = serde_json::to_string(&version)?;
         let document = Bson::from(serialized_version)
             .as_document()
-            .ok_or(CreateError::MissingValueError("No document present for database entry!".to_string()))?
+            .ok_or(CreateError::MissingValueError(
+                "No document present for database entry!".to_string(),
+            ))?
             .clone();
 
         versions.insert_one(document, None).await?;
     }
 
     if let Some(create_data) = mod_create_data {
-        let body_url =  format!("data/{}/body.md", mod_id.0);
+        let body_url = format!("data/{}/body.md", mod_id.0);
 
         upload_file(
             upload_url.get_ref().clone(),
             "text/plain".to_string(),
             body_url.clone(),
             create_data.mod_body.into_bytes(),
-        ).await?;
+        )
+        .await?;
 
         let created_mod: Mod = Mod {
             id: mod_id.0 as i32,
             team: Team {
                 id: random_base62(8) as i32,
-                members: create_data.team_members.into_iter().map(|x| crate::database::models::TeamMember {
-                    user_id: x.user_id.0 as i32,
-                    name: x.name,
-                    role: x.role
-                }).collect(),
+                members: create_data
+                    .team_members
+                    .into_iter()
+                    .map(|x| crate::database::models::TeamMember {
+                        user_id: x.user_id.0 as i32,
+                        name: x.name,
+                        role: x.role,
+                    })
+                    .collect(),
             },
             title: create_data.mod_name,
             icon_url: Some(icon_url),
@@ -321,14 +358,22 @@ pub async fn mod_create(
             published: Utc::now().to_rfc2822(),
             downloads: 0,
             categories: create_data.categories,
-            version_ids: created_versions.into_iter().map(|x| x.version_id as i32).collect::<Vec<_>>(),
+            version_ids: created_versions
+                .into_iter()
+                .map(|x| x.version_id as i32)
+                .collect::<Vec<_>>(),
             issues_url: create_data.issues_url,
             source_url: create_data.source_url,
             wiki_url: create_data.wiki_url,
         };
 
         let serialized_mod = serde_json::to_string(&created_mod)?;
-        let document = Bson::from(serialized_mod).as_document().ok_or(CreateError::MissingValueError("No document present for database entry!".to_string()))?.clone();
+        let document = Bson::from(serialized_mod)
+            .as_document()
+            .ok_or(CreateError::MissingValueError(
+                "No document present for database entry!".to_string(),
+            ))?
+            .clone();
 
         mods.insert_one(document, None).await?;
     }
@@ -345,11 +390,11 @@ fn get_image_content_type(extension: String) -> Option<String> {
         "svg" | "svgz" => "image/svg+xml",
         "webp" => "image/webp",
         "rgb" => "image/x-rgb",
-        _ => ""
+        _ => "",
     };
 
     if content_type != "" {
-        return Some(content_type.to_string())
+        return Some(content_type.to_string());
     } else {
         return None;
     }

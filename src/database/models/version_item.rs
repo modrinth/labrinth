@@ -34,7 +34,6 @@ pub struct FileHash {
     pub hash: String,
 }
 
-
 impl Item for Version {
     fn get_collection() -> &'static str {
         "versions"
