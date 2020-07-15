@@ -24,11 +24,8 @@ pub struct Mod {
     // unnecessary info
     /// The team of people that has ownership of this mod.
     pub team: Team,
-
     /// The title or name of the mod.
     pub title: String,
-    ///The URL of the icon of the mod
-    pub icon_url: String,
     /// A short description of the mod.
     pub description: String,
     /// The link to the long description of the mod.
@@ -42,6 +39,8 @@ pub struct Mod {
     pub categories: Vec<String>,
     /// A list of ids for versions of the mod.
     pub versions: Vec<VersionId>,
+    ///The URL of the icon of the mod
+    pub icon_url: Option<String>,
     /// An optional link to where to submit bugs or issues with the mod.
     pub issues_url: Option<String>,
     /// An optional link to the source code for the mod.
@@ -60,8 +59,8 @@ pub struct Version {
 
     /// The name of this version
     pub name: String,
-    /// The slug of this version
-    pub slug: String,
+    /// The version number. Ideally will follow semantic versioning
+    pub number: String,
     /// A link to the changelog for this version of the mod.
     pub changelog_url: Option<String>,
     /// The date that this version was published.
@@ -109,6 +108,11 @@ pub enum VersionType {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(transparent)]
 pub struct GameVersion(pub String);
+
+/// A mod loader
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(transparent)]
+pub struct ModLoader(pub String);
 
 #[derive(Serialize, Deserialize)]
 pub struct SearchRequest {
