@@ -2,18 +2,24 @@ use crate::database::models::Item;
 use crate::database::Result;
 use bson::{Bson, Document};
 use serde::{Deserialize, Serialize};
+use crate::database::models::team_item::Team;
 
 #[derive(Deserialize, Serialize)]
 pub struct Mod {
     pub id: i32,
+    //Todo: Move to own table
+    pub team: Team,
     pub title: String,
     pub description: String,
+    pub body_url: String,
     pub published: String,
-    pub author: String,
     pub downloads: i32,
     pub categories: Vec<String>,
-    pub body_path: String,
-    pub icon_path: String,
+    pub version_ids: Vec<i32>,
+    pub icon_url: Option<String>,
+    pub issues_url: Option<String>,
+    pub source_url: Option<String>,
+    pub wiki_url: Option<String>,
 }
 impl Item for Mod {
     fn get_collection() -> &'static str {

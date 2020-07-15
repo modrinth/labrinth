@@ -1,9 +1,6 @@
 use crate::file_hosting::{upload_file, UploadUrlData, FileHostingError};
 use crate::models::ids::random_base62;
-use crate::models::mods::{
-    FileHash, GameVersion, Mod, ModId, Version, VersionFile, VersionId, VersionType,
-};
-use crate::models::teams::{Team, TeamId, TeamMember};
+use crate::database::models::{FileHash, Mod, Version, VersionFile, Team};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpResponse};
@@ -16,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use actix_web::http::StatusCode;
 use thiserror::Error;
 use crate::models::error::ApiError;
+use crate::models::mods::{ModId, GameVersion, VersionType, VersionId};
+use crate::models::teams::TeamMember;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -74,6 +73,7 @@ struct InitialVersionData {
     pub dependencies: Vec<ModId>,
     pub game_versions: Vec<GameVersion>,
     pub version_type: VersionType,
+    pub loaders: Vec<String>
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -202,7 +202,7 @@ pub async fn mod_create(
                                         ?;
 
                                     created_version.files.push(VersionFile {
-                                        game_versions: version_data.game_versions,
+                                        game_versions: version_data.game_versions.into_iter().map(|x| x.0).collect(),
                                         hashes: vec![FileHash {
                                             algorithm: "sha1".to_string(),
                                             hash: upload_data.content_sha1,
@@ -250,23 +250,25 @@ pub async fn mod_create(
                                         ?;
 
                                     let version = Version {
-                                        id: version_id,
-                                        mod_id,
+                                        version_id: version_id.0 as i32,
+                                        mod_id: mod_id.0 as i32,
                                         name: version_data.version_title,
                                         number: version_data.version_slug.clone(),
                                         changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
-                                        date_published: Utc::now(),
+                                        date_published: Utc::now().to_rfc2822(),
                                         downloads: 0,
-                                        version_type: version_data.version_type,
+                                        version_type: version_data.version_type.to_string(),
                                         files: vec![VersionFile {
-                                            game_versions: version_data.game_versions,
+                                            game_versions: version_data.game_versions.into_iter().map(|x| x.0).collect::<Vec<_>>(),
                                             hashes: vec![FileHash {
                                                 algorithm: "sha1".to_string(),
                                                 hash: upload_data.content_sha1,
                                             }],
                                             url: format!("{}/{}", cdn_url, upload_data.file_name),
                                         }],
-                                        dependencies: version_data.dependencies,
+                                        dependencies: version_data.dependencies.into_iter().map(|x| x.0 as i32).collect::<Vec<_>>(),
+                                        game_versions: vec![],
+                                        loaders: vec![]
                                     };
                                     //TODO: Malware scan + file validation
 
@@ -303,19 +305,23 @@ pub async fn mod_create(
         ).await?;
 
         let created_mod: Mod = Mod {
-            id: mod_id,
+            id: mod_id.0 as i32,
             team: Team {
-                id: TeamId(random_base62(8)),
-                members: create_data.team_members,
+                id: random_base62(8) as i32,
+                members: create_data.team_members.into_iter().map(|x| crate::database::models::TeamMember {
+                    user_id: x.user_id.0 as i32,
+                    name: x.name,
+                    role: x.role
+                }).collect(),
             },
             title: create_data.mod_name,
             icon_url: Some(icon_url),
             description: create_data.mod_description,
             body_url: format!("{}/{}", cdn_url, body_url),
-            published: Utc::now(),
+            published: Utc::now().to_rfc2822(),
             downloads: 0,
             categories: create_data.categories,
-            versions: created_versions.into_iter().map(|x| x.id).collect::<Vec<_>>(),
+            version_ids: created_versions.into_iter().map(|x| x.version_id as i32).collect::<Vec<_>>(),
             issues_url: create_data.issues_url,
             source_url: create_data.source_url,
             wiki_url: create_data.wiki_url,

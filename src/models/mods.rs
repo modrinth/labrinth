@@ -74,6 +74,8 @@ pub struct Version {
     pub files: Vec<VersionFile>,
     /// A list of mods that this version depends on.
     pub dependencies: Vec<ModId>,
+    /// The loaders that this version works on
+    pub loaders: Vec<String>
 }
 
 /// A single mod file, with a url for the file and the file's hash
@@ -102,6 +104,17 @@ pub enum VersionType {
     Release,
     Beta,
     Alpha,
+}
+
+impl ToString for VersionType {
+    fn to_string(&self) -> String {
+        match self {
+            VersionType::Release => "release",
+            VersionType::Beta => "beta",
+            VersionType::Alpha => "alpha",
+            _ => ""
+        }.to_string()
+    }
 }
 
 /// A specific version of Minecraft
