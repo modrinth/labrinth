@@ -73,7 +73,7 @@ pub struct Version {
     /// A list of files available for download for this version.
     pub files: Vec<VersionFile>,
     /// A list of mods that this version depends on.
-    pub dependencies: Vec<ModId>,
+    pub dependencies: Vec<VersionId>,
     /// The loaders that this version works on
     pub loaders: Vec<String>,
 }
