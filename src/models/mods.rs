@@ -31,7 +31,7 @@ pub struct Mod {
     pub icon_url: String,
     /// A short description of the mod.
     pub description: String,
-    /// A long description of the mod.
+    /// The link to the long description of the mod.
     pub body_url: String,
     /// The date at which the mod was first published.
     pub published: DateTime<Utc>,
@@ -60,6 +60,8 @@ pub struct Version {
 
     /// The name of this version
     pub name: String,
+    /// The slug of this version
+    pub slug: String,
     /// A link to the changelog for this version of the mod.
     pub changelog_url: Option<String>,
     /// The date that this version was published.
