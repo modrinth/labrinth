@@ -77,7 +77,7 @@ pub struct Version {
     /// A list of versions of Minecraft that this version of the mod supports.
     pub game_versions: Vec<GameVersion>,
     /// The loaders that this version works on
-    pub loaders: Vec<String>,
+    pub loaders: Vec<ModLoader>,
 }
 
 /// A single mod file, with a url for the file and the file's hash
