@@ -144,17 +144,12 @@ pub async fn mod_create(
     let mut current_file_index = 0;
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
-        let content_disposition =
-            field
-                .content_disposition()
-                .ok_or(CreateError::MissingValueError(
-                    "Missing content disposition!".to_string(),
-                ))?;
+        let content_disposition = field.content_disposition().ok_or_else(|| {
+            CreateError::MissingValueError("Missing content disposition!".to_string())
+        })?;
         let name = content_disposition
             .get_name()
-            .ok_or(CreateError::MissingValueError(
-                "Missing content name!".to_string(),
-            ))?;
+            .ok_or_else(|| CreateError::MissingValueError("Missing content name!".to_string()))?;
 
         while let Some(chunk) = field.next().await {
             let data = &chunk.map_err(CreateError::MultipartError)?;
@@ -162,18 +157,15 @@ pub async fn mod_create(
             if name == "data" {
                 mod_create_data = Some(serde_json::from_slice(&data)?);
             } else {
-                let file_name =
-                    content_disposition
-                        .get_filename()
-                        .ok_or(CreateError::MissingValueError(
-                            "Missing content file name!".to_string(),
-                        ))?;
+                let file_name = content_disposition.get_filename().ok_or_else(|| {
+                    CreateError::MissingValueError("Missing content file name!".to_string())
+                })?;
                 let file_extension = String::from_utf8(
                     content_disposition
                         .get_filename_ext()
-                        .ok_or(CreateError::MissingValueError(
-                            "Missing file extension!".to_string(),
-                        ))?
+                        .ok_or_else(|| {
+                            CreateError::MissingValueError("Missing file extension!".to_string())
+                        })?
                         .clone()
                         .value,
                 )
@@ -194,7 +186,7 @@ pub async fn mod_create(
                         } else {
                             panic!("Invalid Icon Format!");
                         }
-                    } else if file_extension == "jar".to_string() {
+                    } else if &*file_extension == "jar" {
                         let initial_version_data = create_data
                             .initial_versions
                             .iter()
@@ -204,16 +196,18 @@ pub async fn mod_create(
                             let version_data = create_data
                                 .initial_versions
                                 .get(version_data_index)
-                                .ok_or(CreateError::MissingValueError(
-                                    "Missing file extension!".to_string(),
-                                ))?
+                                .ok_or_else(|| {
+                                    CreateError::MissingValueError(
+                                        "Missing file extension!".to_string(),
+                                    )
+                                })?
                                 .clone();
 
                             let mut created_version_filter = created_versions
                                 .iter_mut()
                                 .filter(|x| x.number == version_data.version_number);
 
-                            match created_version_filter.nth(0) {
+                            match created_version_filter.next() {
                                 Some(created_version) => {
                                     let upload_data = upload_file(
                                         upload_url.get_ref().clone(),
@@ -224,7 +218,7 @@ pub async fn mod_create(
                                             version_data.version_number,
                                             file_name
                                         ),
-                                        (&data).to_owned().to_vec(),
+                                        data.to_vec(),
                                     )
                                     .await?;
 
@@ -284,7 +278,7 @@ pub async fn mod_create(
                                             version_data.version_number,
                                             file_name
                                         ),
-                                        (&data).to_owned().to_vec(),
+                                        data.to_vec(),
                                     )
                                     .await?;
 
@@ -335,7 +329,7 @@ pub async fn mod_create(
         let serialized_version = serde_json::to_string(&version)?;
         let document = Bson::from(serialized_version)
             .as_document()
-            .ok_or(CreateError::MissingValueError(
+            .ok_or_else(|| CreateError::MissingValueError(
                 "No document present for database entry!".to_string(),
             ))?
             .clone();
@@ -387,7 +381,7 @@ pub async fn mod_create(
         let serialized_mod = serde_json::to_string(&created_mod)?;
         let document = Bson::from(serialized_mod)
             .as_document()
-            .ok_or(CreateError::MissingValueError(
+            .ok_or_else(|| CreateError::MissingValueError(
                 "No document present for database entry!".to_string(),
             ))?
             .clone();
@@ -411,8 +405,8 @@ fn get_image_content_type(extension: String) -> Option<String> {
     };
 
     if content_type != "" {
-        return Some(content_type.to_string());
+        Some(content_type.to_string())
     } else {
-        return None;
+        None
     }
 }
