@@ -32,6 +32,8 @@ pub enum CreateError {
     InvalidUtf8Input(#[source] std::string::FromUtf8Error),
     #[error("{}", .0)]
     MissingValueError(String),
+    #[error("Error while trying to generate random ID")]
+    RandomIdError,
 }
 
 impl actix_web::ResponseError for CreateError {
@@ -44,6 +46,7 @@ impl actix_web::ResponseError for CreateError {
             CreateError::MultipartError(..) => StatusCode::BAD_REQUEST,
             CreateError::InvalidUtf8Input(..) => StatusCode::BAD_REQUEST,
             CreateError::MissingValueError(..) => StatusCode::BAD_REQUEST,
+            CreateError::RandomIdError => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -57,6 +60,7 @@ impl actix_web::ResponseError for CreateError {
                 CreateError::MultipartError(..) => "invalid_input",
                 CreateError::InvalidUtf8Input(..) => "invalid_input",
                 CreateError::MissingValueError(..) => "invalid_input",
+                CreateError::RandomIdError => "id_generation_error",
             },
             description: &self.to_string(),
         })
@@ -66,10 +70,10 @@ impl actix_web::ResponseError for CreateError {
 #[derive(Serialize, Deserialize, Clone)]
 struct InitialVersionData {
     pub file_indexes: Vec<i32>,
-    pub version_slug: String,
+    pub version_number: String,
     pub version_title: String,
     pub version_body: String,
-    pub dependencies: Vec<ModId>,
+    pub dependencies: Vec<VersionId>,
     pub game_versions: Vec<GameVersion>,
     pub version_type: VersionType,
     pub loaders: Vec<String>,
@@ -114,6 +118,7 @@ pub async fn mod_create(
     let versions = db.collection("versions");
 
     let mut mod_id = ModId(random_base62(8));
+    let mut retry_count = 0;
 
     //Check if ID is unique
     loop {
@@ -123,6 +128,11 @@ pub async fn mod_create(
             mod_id = ModId(random_base62(8));
         } else {
             break;
+        }
+
+        retry_count += 1;
+        if retry_count > 20 {
+            return Err(CreateError::RandomIdError);
         }
     }
 
@@ -201,7 +211,7 @@ pub async fn mod_create(
 
                             let mut created_version_filter = created_versions
                                 .iter_mut()
-                                .filter(|x| x.number == version_data.version_slug);
+                                .filter(|x| x.number == version_data.version_number);
 
                             match created_version_filter.nth(0) {
                                 Some(created_version) => {
@@ -211,7 +221,7 @@ pub async fn mod_create(
                                         format!(
                                             "{}/{}/{}",
                                             create_data.mod_namespace.replace(".", "/"),
-                                            version_data.version_slug,
+                                            version_data.version_number,
                                             file_name
                                         ),
                                         (&data).to_owned().to_vec(),
@@ -232,8 +242,10 @@ pub async fn mod_create(
                                     });
                                 }
                                 None => {
-                                    let mut version_id = VersionId(random_base62(8));
                                     //Check if ID is unique
+                                    let mut version_id = VersionId(random_base62(8));
+                                    retry_count = 0;
+
                                     loop {
                                         let filter = doc! { "_id": version_id.0 };
 
@@ -242,6 +254,11 @@ pub async fn mod_create(
                                             version_id = VersionId(random_base62(8));
                                         } else {
                                             break;
+                                        }
+
+                                        retry_count += 1;
+                                        if retry_count > 20 {
+                                            return Err(CreateError::RandomIdError);
                                         }
                                     }
 
@@ -264,7 +281,7 @@ pub async fn mod_create(
                                         format!(
                                             "{}/{}/{}",
                                             create_data.mod_namespace.replace(".", "/"),
-                                            version_data.version_slug,
+                                            version_data.version_number,
                                             file_name
                                         ),
                                         (&data).to_owned().to_vec(),
@@ -275,7 +292,7 @@ pub async fn mod_create(
                                         version_id: version_id.0 as i32,
                                         mod_id: mod_id.0 as i32,
                                         name: version_data.version_title,
-                                        number: version_data.version_slug.clone(),
+                                        number: version_data.version_number.clone(),
                                         changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
                                         date_published: Utc::now().to_rfc2822(),
                                         downloads: 0,

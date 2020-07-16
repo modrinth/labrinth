@@ -60,7 +60,7 @@ pub struct Version {
     /// The name of this version
     pub name: String,
     /// The version number. Ideally will follow semantic versioning
-    pub number: String,
+    pub version_number: String,
     /// A link to the changelog for this version of the mod.
     pub changelog_url: Option<String>,
     /// The date that this version was published.
@@ -74,6 +74,8 @@ pub struct Version {
     pub files: Vec<VersionFile>,
     /// A list of mods that this version depends on.
     pub dependencies: Vec<VersionId>,
+    /// A list of versions of Minecraft that this version of the mod supports.
+    pub game_versions: Vec<GameVersion>,
     /// The loaders that this version works on
     pub loaders: Vec<String>,
 }
@@ -81,8 +83,6 @@ pub struct Version {
 /// A single mod file, with a url for the file and the file's hash
 #[derive(Serialize, Deserialize)]
 pub struct VersionFile {
-    /// A list of versions of Minecraft that this version of the mod supports.
-    pub game_versions: Vec<GameVersion>,
     /// A list of hashes of the file
     pub hashes: Vec<FileHash>,
     /// A direct link to the file for downloading it.
@@ -112,7 +112,6 @@ impl ToString for VersionType {
             VersionType::Release => "release",
             VersionType::Beta => "beta",
             VersionType::Alpha => "alpha",
-            _ => "",
         }
         .to_string()
     }

@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 //TODO: Files should probably be moved to their own table
 #[derive(Deserialize, Serialize)]
 pub struct Version {
+    ///The unqiue VersionId of this version
     pub version_id: i32,
+    /// The ModId of the mod that this version belongs to
     pub mod_id: i32,
     pub name: String,
     pub number: String,
