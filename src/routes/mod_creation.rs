@@ -329,9 +329,11 @@ pub async fn mod_create(
         let serialized_version = serde_json::to_string(&version)?;
         let document = Bson::from(serialized_version)
             .as_document()
-            .ok_or_else(|| CreateError::MissingValueError(
-                "No document present for database entry!".to_string(),
-            ))?
+            .ok_or_else(|| {
+                CreateError::MissingValueError(
+                    "No document present for database entry!".to_string(),
+                )
+            })?
             .clone();
 
         versions.insert_one(document, None).await?;
@@ -381,9 +383,11 @@ pub async fn mod_create(
         let serialized_mod = serde_json::to_string(&created_mod)?;
         let document = Bson::from(serialized_mod)
             .as_document()
-            .ok_or_else(|| CreateError::MissingValueError(
-                "No document present for database entry!".to_string(),
-            ))?
+            .ok_or_else(|| {
+                CreateError::MissingValueError(
+                    "No document present for database entry!".to_string(),
+                )
+            })?
             .clone();
 
         mods.insert_one(document, None).await?;
