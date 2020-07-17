@@ -22,7 +22,7 @@ pub async fn delete_file_version(
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(
             reqwest::header::AUTHORIZATION,
-            authorization_data.authorization_token,
+            &authorization_data.authorization_token,
         )
         .body(
             serde_json::json!({
