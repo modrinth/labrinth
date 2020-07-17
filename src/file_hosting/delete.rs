@@ -1,6 +1,5 @@
 use crate::file_hosting::{AuthorizationData, FileHostingError};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -9,6 +8,7 @@ pub struct DeleteFileData {
     pub file_name: String,
 }
 
+#[cfg(feature = "backblaze")]
 pub async fn delete_file_version(
     authorization_data: AuthorizationData,
     file_id: String,
@@ -28,7 +28,7 @@ pub async fn delete_file_version(
             authorization_data.authorization_token,
         )
         .body(
-            json!({
+            serde_json::json!({
                 "fileName": file_name,
                 "fileId": file_id
             })
@@ -38,4 +38,16 @@ pub async fn delete_file_version(
         .await?
         .json()
         .await?)
+}
+
+#[cfg(not(feature = "backblaze"))]
+pub async fn delete_file_version(
+    _authorization_data: AuthorizationData,
+    file_id: String,
+    file_name: String,
+) -> Result<DeleteFileData, FileHostingError> {
+    let path = std::path::Path::new(&dotenv::var("MOCK_FILE_PATH").unwrap())
+        .join(file_name.replace("../", ""));
+    std::fs::remove_file(path)?;
+    Ok(DeleteFileData { file_id, file_name })
 }

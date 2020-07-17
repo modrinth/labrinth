@@ -18,8 +18,16 @@ pub use delete::DeleteFileData;
 
 #[derive(Error, Debug)]
 pub enum FileHostingError {
+    #[cfg(feature = "backblaze")]
     #[error("Error while accessing the data from backblaze")]
     BackblazeError(#[from] reqwest::Error),
+
+    #[cfg(not(feature = "backblaze"))]
+    #[error("File system error in file hosting: {}", .0)]
+    FileSystemError(#[from] std::io::Error),
+    #[cfg(not(feature = "backblaze"))]
+    #[error("Invalid Filename")]
+    InvalidFilename,
 }
 
 #[cfg(test)]
