@@ -19,14 +19,17 @@ pub struct UploadFileData {
 #[cfg(feature = "backblaze")]
 //Content Types found here: https://www.backblaze.com/b2/docs/content-types.html
 pub async fn upload_file(
-    url_data: UploadUrlData,
-    content_type: String,
-    file_name: String,
+    url_data: &UploadUrlData,
+    content_type: &str,
+    file_name: &str,
     file_bytes: Vec<u8>,
 ) -> Result<UploadFileData, FileHostingError> {
     let response = reqwest::Client::new()
         .post(&url_data.upload_url)
-        .header(reqwest::header::AUTHORIZATION, url_data.authorization_token)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            &url_data.authorization_token,
+        )
         .header("X-Bz-File-Name", file_name)
         .header(reqwest::header::CONTENT_TYPE, content_type)
         .header(reqwest::header::CONTENT_LENGTH, file_bytes.len())
@@ -47,9 +50,9 @@ pub async fn upload_file(
 
 #[cfg(not(feature = "backblaze"))]
 pub async fn upload_file(
-    _url_data: UploadUrlData,
-    content_type: String,
-    file_name: String,
+    _url_data: &UploadUrlData,
+    content_type: &str,
+    file_name: &str,
     file_bytes: Vec<u8>,
 ) -> Result<UploadFileData, FileHostingError> {
     let path = std::path::Path::new(&dotenv::var("MOCK_FILE_PATH").unwrap())
@@ -60,13 +63,13 @@ pub async fn upload_file(
     std::fs::write(path, &file_bytes)?;
     Ok(UploadFileData {
         file_id: String::from("MOCK_FILE_ID"),
-        file_name,
+        file_name: file_name.to_string(),
         account_id: String::from("MOCK_ACCOUNT_ID"),
         bucket_id: String::from("MOCK_BUCKET_ID"),
         content_length: file_bytes.len() as u32,
         content_sha1,
         content_md5: None,
-        content_type,
+        content_type: content_type.to_string(),
         upload_timestamp: chrono::Utc::now().timestamp_millis() as u64,
     })
 }

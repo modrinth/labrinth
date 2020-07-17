@@ -71,18 +71,18 @@ mod tests {
         .await
         .unwrap();
         let upload_data = upload_file(
-            upload_url_data,
-            "text/plain".to_string(),
-            "test.txt".to_string(),
+            &upload_url_data,
+            "text/plain",
+            "test.txt",
             "test file".to_string().into_bytes(),
         )
         .await
         .unwrap();
 
         delete_file_version(
-            authorization_data,
-            upload_data.file_id,
-            upload_data.file_name,
+            &authorization_data,
+            &upload_data.file_id,
+            &upload_data.file_name,
         )
         .await
         .unwrap();

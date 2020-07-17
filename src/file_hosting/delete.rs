@@ -10,18 +10,15 @@ pub struct DeleteFileData {
 
 #[cfg(feature = "backblaze")]
 pub async fn delete_file_version(
-    authorization_data: AuthorizationData,
-    file_id: String,
-    file_name: String,
+    authorization_data: &AuthorizationData,
+    file_id: &str,
+    file_name: &str,
 ) -> Result<DeleteFileData, FileHostingError> {
     let response = reqwest::Client::new()
-        .post(
-            &format!(
-                "{}/b2api/v2/b2_delete_file_version",
-                authorization_data.api_url
-            )
-            .to_string(),
-        )
+        .post(&format!(
+            "{}/b2api/v2/b2_delete_file_version",
+            authorization_data.api_url
+        ))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(
             reqwest::header::AUTHORIZATION,
@@ -46,12 +43,16 @@ pub async fn delete_file_version(
 
 #[cfg(not(feature = "backblaze"))]
 pub async fn delete_file_version(
-    _authorization_data: AuthorizationData,
-    file_id: String,
-    file_name: String,
+    _authorization_data: &AuthorizationData,
+    file_id: &str,
+    file_name: &str,
 ) -> Result<DeleteFileData, FileHostingError> {
     let path = std::path::Path::new(&dotenv::var("MOCK_FILE_PATH").unwrap())
         .join(file_name.replace("../", ""));
     std::fs::remove_file(path)?;
-    Ok(DeleteFileData { file_id, file_name })
+
+    Ok(DeleteFileData {
+        file_id: file_id.to_string(),
+        file_name: file_name.to_string(),
+    })
 }
