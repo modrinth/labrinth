@@ -1,0 +1,652 @@
+[
+    {
+        "id": 310111,
+        "name": "Roughly Enough Items Fabric (REI)",
+        "authors": [
+            {
+                "name": "shedaniel",
+                "url": "https://www.curseforge.com/members/32851078-shedaniel?username=shedaniel",
+                "projectId": 310111,
+                "id": 211550,
+                "projectTitleId": null,
+                "projectTitleTitle": null,
+                "userId": 32851078,
+                "twitchId": 153893782
+            },
+            {
+                "name": "linkieisbetterthank9",
+                "url": "https://www.curseforge.com/members/101070148-linkieisbetterthank9?username=linkieisbetterthank9",
+                "projectId": 310111,
+                "id": 287759,
+                "projectTitleId": 2,
+                "projectTitleTitle": "Author",
+                "userId": 101070148,
+                "twitchId": 525325663
+            }
+        ],
+        "attachments": [
+            {
+                "id": 263781,
+                "projectId": 310111,
+                "description": "",
+                "isDefault": false,
+                "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/263/781/256/256/637224755782396928.png",
+                "title": "637224755782396928.png",
+                "url": "https://media.forgecdn.net/avatars/263/781/637224755782396928.png",
+                "status": 1
+            },
+            {
+                "id": 263684,
+                "projectId": 310111,
+                "description": "",
+                "isDefault": false,
+                "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/263/684/256/256/637224487806082020.png",
+                "title": "637224487806082020.png",
+                "url": "https://media.forgecdn.net/avatars/263/684/637224487806082020.png",
+                "status": 1
+            },
+            {
+                "id": 263678,
+                "projectId": 310111,
+                "description": "",
+                "isDefault": false,
+                "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/263/678/256/256/637224475117571879.png",
+                "title": "637224475117571879.png",
+                "url": "https://media.forgecdn.net/avatars/263/678/637224475117571879.png",
+                "status": 1
+            },
+            {
+                "id": 282025,
+                "projectId": 310111,
+                "description": "",
+                "isDefault": true,
+                "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/282/25/256/256/637287701215436754.png",
+                "title": "637287701215436754.png",
+                "url": "https://media.forgecdn.net/avatars/282/25/637287701215436754.png",
+                "status": 1
+            },
+            {
+                "id": 183843,
+                "projectId": 310111,
+                "description": "",
+                "isDefault": false,
+                "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/183/843/256/256/636817706099063015.png",
+                "title": "636817706099063015.png",
+                "url": "https://media.forgecdn.net/avatars/183/843/636817706099063015.png",
+                "status": 1
+            },
+            {
+                "id": 263683,
+                "projectId": 310111,
+                "description": "",
+                "isDefault": false,
+                "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/263/683/256/256/637224487501664640.png",
+                "title": "637224487501664640.png",
+                "url": "https://media.forgecdn.net/avatars/263/683/637224487501664640.png",
+                "status": 1
+            }
+        ],
+        "websiteUrl": "https://www.curseforge.com/minecraft/mc-mods/roughly-enough-items",
+        "gameId": 432,
+        "summary": "This is a mod to view items and recipes in Minecraft 1.13 - 1.16",
+        "defaultFileId": 2988210,
+        "downloadCount": 557810.0,
+        "latestFiles": [
+            {
+                "id": 2683546,
+                "displayName": "[Fabric 19w09a] v2.3.2.54",
+                "fileName": "RoughlyEnoughItems-2.3.2.54.jar",
+                "fileDate": "2019-03-05T14:26:17.577Z",
+                "fileLength": 349904,
+                "releaseType": 3,
+                "fileStatus": 4,
+                "downloadUrl": "https://edge.forgecdn.net/files/2683/546/RoughlyEnoughItems-2.3.2.54.jar",
+                "isAlternate": false,
+                "alternateFileId": 0,
+                "dependencies": [
+                    {
+                        "id": 24151764,
+                        "addonId": 306612,
+                        "type": 3,
+                        "fileId": 2683546
+                    },
+                    {
+                        "id": 24151765,
+                        "addonId": 310432,
+                        "type": 2,
+                        "fileId": 2683546
+                    }
+                ],
+                "isAvailable": true,
+                "modules": [
+                    {
+                        "foldername": "fabric.mod.json",
+                        "fingerprint": 1967039113,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "pack.png",
+                        "fingerprint": 308120522,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "assets",
+                        "fingerprint": 3571761127,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "pluginloader.json",
+                        "fingerprint": 2730039174,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "plugins",
+                        "fingerprint": 2580354671,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "roughlyenoughitems.client.json",
+                        "fingerprint": 1354502520,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "pack.mcmeta",
+                        "fingerprint": 1244914454,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "RoughlyEnoughItems-Fabric-refmap.json",
+                        "fingerprint": 3665489238,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "META-INF",
+                        "fingerprint": 2464251221,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "me",
+                        "fingerprint": 1014803595,
+                        "type": 3
+                    }
+                ],
+                "packageFingerprint": 1507488389,
+                "gameVersion": [
+                    "1.14-Snapshot"
+                ],
+                "sortableGameVersion": [
+                    {
+                        "gameVersionPadded": "0000000001.0000000014",
+                        "gameVersion": "1.14",
+                        "gameVersionReleaseDate": "2018-10-24T00:00:00Z",
+                        "gameVersionName": "1.14-Snapshot"
+                    }
+                ],
+                "installMetadata": null,
+                "changelog": null,
+                "hasInstallScript": false,
+                "isCompatibleWithClient": false,
+                "categorySectionPackageType": 6,
+                "restrictProjectFileAccess": 1,
+                "projectStatus": 4,
+                "renderCacheId": 1527149,
+                "fileLegacyMappingId": null,
+                "projectId": 310111,
+                "parentProjectFileId": null,
+                "parentFileLegacyMappingId": null,
+                "fileTypeId": null,
+                "exposeAsAlternative": null,
+                "packageFingerprintId": 298509199,
+                "gameVersionDateReleased": "2008-03-01T06:00:00Z",
+                "gameVersionMappingId": 1766714,
+                "gameVersionId": 4458,
+                "gameId": 432,
+                "isServerPack": false,
+                "serverPackFileId": null,
+                "gameVersionFlavor": null
+            },
+            {
+                "id": 2979231,
+                "displayName": "[Fabric 1.16-pre3] v4.5.1",
+                "fileName": "RoughlyEnoughItems-4.5.1.jar",
+                "fileDate": "2020-06-13T13:14:44.683Z",
+                "fileLength": 1361959,
+                "releaseType": 2,
+                "fileStatus": 4,
+                "downloadUrl": "https://edge.forgecdn.net/files/2979/231/RoughlyEnoughItems-4.5.1.jar",
+                "isAlternate": false,
+                "alternateFileId": 0,
+                "dependencies": [
+                    {
+                        "id": 43504588,
+                        "addonId": 373261,
+                        "type": 1,
+                        "fileId": 2979231
+                    },
+                    {
+                        "id": 43504585,
+                        "addonId": 306612,
+                        "type": 3,
+                        "fileId": 2979231
+                    },
+                    {
+                        "id": 43504586,
+                        "addonId": 317121,
+                        "type": 1,
+                        "fileId": 2979231
+                    },
+                    {
+                        "id": 43504587,
+                        "addonId": 319057,
+                        "type": 1,
+                        "fileId": 2979231
+                    }
+                ],
+                "isAvailable": true,
+                "modules": [
+                    {
+                        "foldername": "LICENSE",
+                        "fingerprint": 2455286801,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "icon.png",
+                        "fingerprint": 900062895,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "fabric.mod.json",
+                        "fingerprint": 397922508,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "rei.aw",
+                        "fingerprint": 4037017492,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "mixin.roughlyenoughitems.json",
+                        "fingerprint": 3161322973,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "assets",
+                        "fingerprint": 3086877447,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "RoughlyEnoughItems-refmap.json",
+                        "fingerprint": 4289870104,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "META-INF",
+                        "fingerprint": 219180583,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "me",
+                        "fingerprint": 4246227979,
+                        "type": 3
+                    }
+                ],
+                "packageFingerprint": 838106596,
+                "gameVersion": [
+                    "1.16-Snapshot",
+                    "Fabric"
+                ],
+                "sortableGameVersion": [
+                    {
+                        "gameVersionPadded": "0000000001.0000000016",
+                        "gameVersion": "1.16",
+                        "gameVersionReleaseDate": "2020-02-06T00:00:00Z",
+                        "gameVersionName": "1.16-Snapshot"
+                    },
+                    {
+                        "gameVersionPadded": "0",
+                        "gameVersion": "",
+                        "gameVersionReleaseDate": "2019-08-01T00:00:00Z",
+                        "gameVersionName": "Fabric"
+                    }
+                ],
+                "installMetadata": null,
+                "changelog": null,
+                "hasInstallScript": false,
+                "isCompatibleWithClient": false,
+                "categorySectionPackageType": 6,
+                "restrictProjectFileAccess": 1,
+                "projectStatus": 4,
+                "renderCacheId": 1891393,
+                "fileLegacyMappingId": null,
+                "projectId": 310111,
+                "parentProjectFileId": null,
+                "parentFileLegacyMappingId": null,
+                "fileTypeId": null,
+                "exposeAsAlternative": null,
+                "packageFingerprintId": 472421184,
+                "gameVersionDateReleased": "2008-03-01T06:00:00Z",
+                "gameVersionMappingId": 2268557,
+                "gameVersionId": 4458,
+                "gameId": 432,
+                "isServerPack": false,
+                "serverPackFileId": null,
+                "gameVersionFlavor": null
+            },
+            {
+                "id": 2988210,
+                "displayName": "[Fabric 1.16.x] v4.5.5",
+                "fileName": "RoughlyEnoughItems-4.5.5.jar",
+                "fileDate": "2020-06-25T07:11:46.873Z",
+                "fileLength": 1366940,
+                "releaseType": 1,
+                "fileStatus": 4,
+                "downloadUrl": "https://edge.forgecdn.net/files/2988/210/RoughlyEnoughItems-4.5.5.jar",
+                "isAlternate": false,
+                "alternateFileId": 0,
+                "dependencies": [
+                    {
+                        "id": 44049033,
+                        "addonId": 373261,
+                        "type": 1,
+                        "fileId": 2988210
+                    },
+                    {
+                        "id": 44049030,
+                        "addonId": 306612,
+                        "type": 3,
+                        "fileId": 2988210
+                    },
+                    {
+                        "id": 44049031,
+                        "addonId": 317121,
+                        "type": 1,
+                        "fileId": 2988210
+                    },
+                    {
+                        "id": 44049032,
+                        "addonId": 319057,
+                        "type": 1,
+                        "fileId": 2988210
+                    }
+                ],
+                "isAvailable": true,
+                "modules": [
+                    {
+                        "foldername": "LICENSE",
+                        "fingerprint": 2455286801,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "assets",
+                        "fingerprint": 1994193315,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "fabric.mod.json",
+                        "fingerprint": 1876512951,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "rei.aw",
+                        "fingerprint": 42359282,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "icon.png",
+                        "fingerprint": 900062895,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "mixin.roughlyenoughitems.json",
+                        "fingerprint": 3161322973,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "RoughlyEnoughItems-refmap.json",
+                        "fingerprint": 4289870104,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "META-INF",
+                        "fingerprint": 1738837263,
+                        "type": 3
+                    },
+                    {
+                        "foldername": "me",
+                        "fingerprint": 3143282636,
+                        "type": 3
+                    }
+                ],
+                "packageFingerprint": 242225872,
+                "gameVersion": [
+                    "1.16-Snapshot",
+                    "Fabric"
+                ],
+                "sortableGameVersion": [
+                    {
+                        "gameVersionPadded": "0000000001.0000000016",
+                        "gameVersion": "1.16",
+                        "gameVersionReleaseDate": "2020-02-06T00:00:00Z",
+                        "gameVersionName": "1.16-Snapshot"
+                    },
+                    {
+                        "gameVersionPadded": "0",
+                        "gameVersion": "",
+                        "gameVersionReleaseDate": "2019-08-01T00:00:00Z",
+                        "gameVersionName": "Fabric"
+                    }
+                ],
+                "installMetadata": null,
+                "changelog": null,
+                "hasInstallScript": false,
+                "isCompatibleWithClient": false,
+                "categorySectionPackageType": 6,
+                "restrictProjectFileAccess": 1,
+                "projectStatus": 4,
+                "renderCacheId": 1902718,
+                "fileLegacyMappingId": null,
+                "projectId": 310111,
+                "parentProjectFileId": null,
+                "parentFileLegacyMappingId": null,
+                "fileTypeId": null,
+                "exposeAsAlternative": null,
+                "packageFingerprintId": 477919175,
+                "gameVersionDateReleased": "2008-03-01T06:00:00Z",
+                "gameVersionMappingId": 2285960,
+                "gameVersionId": 4458,
+                "gameId": 432,
+                "isServerPack": false,
+                "serverPackFileId": null,
+                "gameVersionFlavor": null
+            }
+        ],
+        "categories": [
+            {
+                "categoryId": 4780,
+                "name": "Fabric",
+                "url": "https://www.curseforge.com/minecraft/mc-mods/fabric",
+                "avatarUrl": "https://media.forgecdn.net/avatars/182/502/636808438426582276.png",
+                "parentId": 6,
+                "rootId": 6,
+                "projectId": 310111,
+                "avatarId": 182502,
+                "gameId": 432
+            },
+            {
+                "categoryId": 423,
+                "name": "Map and Information",
+                "url": "https://www.curseforge.com/minecraft/mc-mods/map-information",
+                "avatarUrl": "https://media.forgecdn.net/avatars/6/38/635351497437388438.png",
+                "parentId": 6,
+                "rootId": 6,
+                "projectId": 310111,
+                "avatarId": 6038,
+                "gameId": 432
+            },
+            {
+                "categoryId": 421,
+                "name": "API and Library",
+                "url": "https://www.curseforge.com/minecraft/mc-mods/library-api",
+                "avatarUrl": "https://media.forgecdn.net/avatars/6/36/635351496947765531.png",
+                "parentId": 6,
+                "rootId": 6,
+                "projectId": 310111,
+                "avatarId": 6036,
+                "gameId": 432
+            }
+        ],
+        "status": 4,
+        "primaryCategoryId": 423,
+        "categorySection": {
+            "id": 8,
+            "gameId": 432,
+            "name": "Mods",
+            "packageType": 6,
+            "path": "mods",
+            "initialInclusionPattern": ".",
+            "extraIncludePattern": null,
+            "gameCategoryId": 6
+        },
+        "slug": "roughly-enough-items",
+        "gameVersionLatestFiles": [
+            {
+                "gameVersion": "1.14.3",
+                "projectFileId": 2983578,
+                "projectFileName": "RoughlyEnoughItems-3.3.0.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14.2",
+                "projectFileId": 2983578,
+                "projectFileName": "RoughlyEnoughItems-3.3.0.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14",
+                "projectFileId": 2983578,
+                "projectFileName": "RoughlyEnoughItems-3.3.0.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14.1",
+                "projectFileId": 2983578,
+                "projectFileName": "RoughlyEnoughItems-3.3.0.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14.4",
+                "projectFileId": 2983578,
+                "projectFileName": "RoughlyEnoughItems-3.3.0.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.15",
+                "projectFileId": 2979221,
+                "projectFileName": "RoughlyEnoughItems-3.6.21.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.15.1",
+                "projectFileId": 2979221,
+                "projectFileName": "RoughlyEnoughItems-3.6.21.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.15.2",
+                "projectFileId": 2979221,
+                "projectFileName": "RoughlyEnoughItems-3.6.21.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14.3",
+                "projectFileId": 2765435,
+                "projectFileName": "RoughlyEnoughItems-3.0-pre+build.2.jar",
+                "fileType": 2,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14.2",
+                "projectFileId": 2765435,
+                "projectFileName": "RoughlyEnoughItems-3.0-pre+build.2.jar",
+                "fileType": 2,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14",
+                "projectFileId": 2765435,
+                "projectFileName": "RoughlyEnoughItems-3.0-pre+build.2.jar",
+                "fileType": 2,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14.1",
+                "projectFileId": 2765435,
+                "projectFileName": "RoughlyEnoughItems-3.0-pre+build.2.jar",
+                "fileType": 2,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.14.4",
+                "projectFileId": 2765435,
+                "projectFileName": "RoughlyEnoughItems-3.0-pre+build.2.jar",
+                "fileType": 2,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.13.2",
+                "projectFileId": 2743453,
+                "projectFileName": "RoughlyEnoughItems-2.10.0.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.13.2",
+                "projectFileId": 2679535,
+                "projectFileName": "RoughlyEnoughItems-2.3.0.4+beta.jar",
+                "fileType": 2,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.13.2",
+                "projectFileId": 2676961,
+                "projectFileName": "RoughlyEnoughItems-2.3.0.1+alpha.jar",
+                "fileType": 3,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.13",
+                "projectFileId": 2668537,
+                "projectFileName": "RoughlyEnoughItems-2.2.0.16.jar",
+                "fileType": 1,
+                "gameVersionFlavor": null
+            },
+            {
+                "gameVersion": "1.13",
+                "projectFileId": 2654476,
+                "projectFileName": "RoughlyEnoughItems-1.1a-3.jar",
+                "fileType": 2,
+                "gameVersionFlavor": null
+            }
+        ],
+        "isFeatured": false,
+        "popularityScore": 5795.20166015625,
+        "gamePopularityRank": 1620,
+        "primaryLanguage": "enUS",
+        "gameSlug": "minecraft",
+        "gameName": "Minecraft",
+        "portalName": "www.curseforge.com",
+        "dateModified": "2020-06-25T07:12:34.807Z",
+        "dateCreated": "2018-12-30T12:43:29.877Z",
+        "dateReleased": "2020-06-25T07:11:47.843Z",
+        "isAvailable": true,
+        "isExperiemental": false
+    }
+]

@@ -26,6 +26,8 @@ pub enum CreateError {
     MultipartError(actix_multipart::MultipartError),
     #[error("Error while parsing JSON")]
     SerDeError(#[from] serde_json::Error),
+    #[error("Error while serializing BSON")]
+    BsonError(#[from] bson::ser::Error),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
     #[error("Error while parsing string as UTF-8")]
@@ -42,6 +44,7 @@ impl actix_web::ResponseError for CreateError {
             CreateError::EnvError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::DatabaseError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::FileHostingError(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            CreateError::BsonError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::SerDeError(..) => StatusCode::BAD_REQUEST,
             CreateError::MultipartError(..) => StatusCode::BAD_REQUEST,
             CreateError::InvalidUtf8Input(..) => StatusCode::BAD_REQUEST,
@@ -56,6 +59,7 @@ impl actix_web::ResponseError for CreateError {
                 CreateError::EnvError(..) => "environment_error",
                 CreateError::DatabaseError(..) => "database_error",
                 CreateError::FileHostingError(..) => "file_hosting_error",
+                CreateError::BsonError(..) => "database_error",
                 CreateError::SerDeError(..) => "invalid_input",
                 CreateError::MultipartError(..) => "invalid_input",
                 CreateError::InvalidUtf8Input(..) => "invalid_input",
@@ -380,8 +384,7 @@ pub async fn mod_create(
             wiki_url: create_data.wiki_url,
         };
 
-        let serialized_mod = serde_json::to_string(&created_mod)?;
-        let document = Bson::from(serialized_mod)
+        let document = bson::to_bson(&created_mod)?
             .as_document()
             .ok_or_else(|| {
                 CreateError::MissingValueError(
