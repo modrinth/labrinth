@@ -1,5 +1,4 @@
 use crate::database::models::team_item::Team;
-use crate::database::models::Item;
 use crate::database::Result;
 use bson::{Bson, Document};
 use serde::{Deserialize, Serialize};
@@ -23,14 +22,4 @@ pub struct Mod {
     pub issues_url: Option<String>,
     pub source_url: Option<String>,
     pub wiki_url: Option<String>,
-}
-impl Item for Mod {
-    fn get_collection() -> &'static str {
-        "mods"
-    }
-
-    fn from_doc(elem: Document) -> Result<Box<Mod>> {
-        let result: Mod = bson::from_bson(Bson::from(elem))?;
-        Ok(Box::from(result))
-    }
 }

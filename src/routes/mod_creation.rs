@@ -12,8 +12,8 @@ use bson::doc;
 use bson::Bson;
 use chrono::Utc;
 use futures::stream::StreamExt;
-use mongodb::Client;
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgPool;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -21,13 +21,11 @@ pub enum CreateError {
     #[error("Environment Error")]
     EnvError(#[from] dotenv::Error),
     #[error("Error while adding project to database")]
-    DatabaseError(#[from] mongodb::error::Error),
+    DatabaseError(sqlx::error::Error),
     #[error("Error while parsing multipart payload")]
     MultipartError(actix_multipart::MultipartError),
     #[error("Error while parsing JSON")]
     SerDeError(#[from] serde_json::Error),
-    #[error("Error while serializing BSON")]
-    BsonError(#[from] bson::ser::Error),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
     #[error("{}", .0)]
@@ -44,7 +42,6 @@ impl actix_web::ResponseError for CreateError {
             CreateError::EnvError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::DatabaseError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::FileHostingError(..) => StatusCode::INTERNAL_SERVER_ERROR,
-            CreateError::BsonError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::SerDeError(..) => StatusCode::BAD_REQUEST,
             CreateError::MultipartError(..) => StatusCode::BAD_REQUEST,
             CreateError::MissingValueError(..) => StatusCode::BAD_REQUEST,
@@ -59,7 +56,6 @@ impl actix_web::ResponseError for CreateError {
                 CreateError::EnvError(..) => "environment_error",
                 CreateError::DatabaseError(..) => "database_error",
                 CreateError::FileHostingError(..) => "file_hosting_error",
-                CreateError::BsonError(..) => "database_error",
                 CreateError::SerDeError(..) => "invalid_input",
                 CreateError::MultipartError(..) => "invalid_input",
                 CreateError::MissingValueError(..) => "invalid_input",
@@ -122,23 +118,23 @@ pub async fn mod_create(
     let versions = db.collection("versions");
 
     let mut mod_id = ModId(random_base62(8));
-    let mut retry_count = 0;
+    let mut retry_count: i32 = 0;
 
     //Check if ID is unique
-    loop {
-        let filter = doc! { "_id": mod_id.0 };
+    // loop {
+    //     let filter = doc! { "_id": mod_id.0 };
 
-        if mods.find(filter, None).await?.next().await.is_some() {
-            mod_id = ModId(random_base62(8));
-        } else {
-            break;
-        }
+    //     if mods.find(filter, None).await?.next().await.is_some() {
+    //         mod_id = ModId(random_base62(8));
+    //     } else {
+    //         break;
+    //     }
 
-        retry_count += 1;
-        if retry_count > 20 {
-            return Err(CreateError::RandomIdError);
-        }
-    }
+    //     retry_count += 1;
+    //     if retry_count > 20 {
+    //         return Err(CreateError::RandomIdError);
+    //     }
+    // }
 
     let mut created_versions: Vec<Version> = vec![];
 
@@ -224,11 +220,6 @@ pub async fn mod_create(
                                     .await?;
 
                                     created_version.files.push(VersionFile {
-                                        game_versions: version_data
-                                            .game_versions
-                                            .into_iter()
-                                            .map(|x| x.0)
-                                            .collect(),
                                         hashes: vec![FileHash {
                                             algorithm: "sha1".to_string(),
                                             hash: upload_data.content_sha1,
@@ -241,21 +232,21 @@ pub async fn mod_create(
                                     let mut version_id = VersionId(random_base62(8));
                                     retry_count = 0;
 
-                                    loop {
-                                        let filter = doc! { "_id": version_id.0 };
+                                    // loop {
+                                    //     let filter = doc! { "_id": version_id.0 };
 
-                                        if versions.find(filter, None).await?.next().await.is_some()
-                                        {
-                                            version_id = VersionId(random_base62(8));
-                                        } else {
-                                            break;
-                                        }
+                                    //     if versions.find(filter, None).await?.next().await.is_some()
+                                    //     {
+                                    //         version_id = VersionId(random_base62(8));
+                                    //     } else {
+                                    //         break;
+                                    //     }
 
-                                        retry_count += 1;
-                                        if retry_count > 20 {
-                                            return Err(CreateError::RandomIdError);
-                                        }
-                                    }
+                                    //     retry_count += 1;
+                                    //     if retry_count > 20 {
+                                    //         return Err(CreateError::RandomIdError);
+                                    //     }
+                                    // }
 
                                     let body_url = format!(
                                         "data/{}/changelogs/{}/body.md",
@@ -293,11 +284,6 @@ pub async fn mod_create(
                                         downloads: 0,
                                         version_type: version_data.version_type.to_string(),
                                         files: vec![VersionFile {
-                                            game_versions: version_data
-                                                .game_versions
-                                                .into_iter()
-                                                .map(|x| x.0)
-                                                .collect::<Vec<_>>(),
                                             hashes: vec![FileHash {
                                                 algorithm: "sha1".to_string(),
                                                 hash: upload_data.content_sha1,

@@ -47,7 +47,7 @@ impl actix_web::ResponseError for SearchError {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SearchMod {
-    pub mod_id: i32,
+    pub mod_id: i64,
     pub author: String,
     pub title: String,
     pub description: String,

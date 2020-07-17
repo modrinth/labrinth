@@ -1,4 +1,3 @@
-use crate::database::models::Item;
 use crate::database::Result;
 use bson::{Bson, Document};
 use serde::{Deserialize, Serialize};
@@ -24,7 +23,6 @@ pub struct Version {
 
 #[derive(Serialize, Deserialize)]
 pub struct VersionFile {
-    pub game_versions: Vec<String>,
     pub hashes: Vec<FileHash>,
     pub url: String,
 }
@@ -34,15 +32,4 @@ pub struct VersionFile {
 pub struct FileHash {
     pub algorithm: String,
     pub hash: String,
-}
-
-impl Item for Version {
-    fn get_collection() -> &'static str {
-        "versions"
-    }
-
-    fn from_doc(elem: Document) -> Result<Box<Version>> {
-        let version: Version = bson::from_bson(Bson::from(elem))?;
-        Ok(Box::from(version))
-    }
 }

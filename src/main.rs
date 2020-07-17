@@ -19,11 +19,11 @@ async fn main() -> std::io::Result<()> {
 
     check_env_vars();
 
-    //Database Connecter
-    let client = database::connect()
+    // Database Connector
+    let pool = database::connect()
         .await
         .expect("Database connection failed");
-    let client_ref = client.clone();
+    let client_ref = pool.clone();
 
     //File Hosting Initializer
     let authorization_data = file_hosting::authorize_account(
@@ -44,22 +44,22 @@ async fn main() -> std::io::Result<()> {
     // Create the path to the index lock file
     exe_path.push("index.v1.lock");
 
-    //Indexing mods if not already done
+    // Indexing mods if not already done
     if env::args().any(|x| x == "regen") {
         // User forced regen of indexing
         info!("Forced regeneration of indexes!");
-        index_mods(client).await.expect("Mod indexing failed");
+        index_mods(pool).await.expect("Mod indexing failed");
     } else if !exe_path.exists() {
         // The indexes were not created, or the version was upgraded
         info!("Indexing of mods for first time...");
-        index_mods(client).await.expect("Mod indexing failed");
+        index_mods(pool).await.expect("Mod indexing failed");
         // Create the lock file
         File::create(exe_path)?;
     }
 
     info!("Starting Actix HTTP server!");
 
-    //Init App
+    // Init App
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
@@ -93,7 +93,7 @@ fn check_env_vars() {
         }
     }
     check_var::<bool>("INDEX_CURSEFORGE");
-    check_var::<String>("MONGODB_ADDR");
+    check_var::<String>("DATABASE_URL");
     check_var::<String>("MEILISEARCH_ADDR");
     check_var::<String>("BIND_ADDR");
 
