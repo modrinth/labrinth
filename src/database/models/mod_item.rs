@@ -1,12 +1,10 @@
 use crate::database::models::team_item::Team;
-use crate::database::Result;
-use bson::{Bson, Document};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
 pub struct Mod {
     /// The ID for the mod, must be serializable to base62
-    pub id: i32,
+    pub id: i64,
     //Todo: Move to own table
     /// The team that owns the mod
     pub team: Team,

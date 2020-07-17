@@ -1,8 +1,5 @@
-use bson::doc;
 use futures::StreamExt;
 use log::info;
-
-use crate::database::{Mod, Version};
 
 use super::IndexingError;
 use crate::search::SearchMod;
@@ -25,10 +22,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
 
     let mut results = sqlx::query!(
         "
-        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, c
-        FROM mods m
-            INNER JOIN mods_categories mc ON m.id=mc.joining_mod_id
-            INNER JOIN categories categories ON mc.joining_category_id=c.id
+        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published FROM mods m
         "
     )
     .fetch(&pool);
@@ -54,15 +48,35 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
             }
             */
 
-            let versions = sqlx::query!(
+            let versions: Vec<String> = sqlx::query!(
                 "
-                SELECT * FROM versions
-                WHERE mod_id = $1
+                SELECT gv.version FROM versions
+                    INNER JOIN game_versions_versions gvv ON gvv.joining_version_id=versions.id
+                    INNER JOIN game_versions gv ON gvv.game_version_id=gv.id
+                WHERE versions.mod_id = $1
                 ",
                 result.id
             )
             .fetch_all(&pool)
-            .await?;
+            .await?
+            .into_iter()
+            .map(|c| c.version)
+            .collect::<Vec<String>>();
+
+            let categories = sqlx::query!(
+                "
+                SELECT c.category
+                FROM mods_categories mc
+                    INNER JOIN categories c ON mc.joining_category_id=c.id
+                WHERE mc.joining_mod_id = $1
+                ",
+                result.id
+            )
+            .fetch_all(&pool)
+            .await?
+            .into_iter()
+            .map(|c| c.category)
+            .collect::<Vec<String>>();
 
             let mut icon_url = "".to_string();
 
@@ -75,13 +89,13 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
                 author: "".to_string(),
                 title: result.title,
                 description: result.description,
-                keywords: result.category,
-                versions: versions,
+                keywords: categories,
+                versions,
                 downloads: result.downloads,
-                page_url: "".to_string(),
+                page_url: result.body_url,
                 icon_url,
                 author_url: "".to_string(),
-                date_created: "".to_string(),
+                date_created: result.published.to_string(),
                 created: 0,
                 date_modified: "".to_string(),
                 updated: 0,

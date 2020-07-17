@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub struct Team {
     /// The id of the team
-    pub id: i32,
+    pub id: i64,
     /// A list of the members of the team
     pub members: Vec<TeamMember>,
 }
@@ -13,7 +13,7 @@ pub struct Team {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TeamMember {
     /// The ID of the user associated with the member
-    pub user_id: i32,
+    pub user_id: i64,
     /// The name of the user
     pub name: String,
     pub role: String,

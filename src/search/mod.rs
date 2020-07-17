@@ -66,7 +66,7 @@ pub struct SearchMod {
 }
 
 impl Document for SearchMod {
-    type UIDType = i32;
+    type UIDType = i64;
 
     fn get_uid(&self) -> &Self::UIDType {
         &self.mod_id

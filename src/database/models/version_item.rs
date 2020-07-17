@@ -1,21 +1,19 @@
-use crate::database::Result;
-use bson::{Bson, Document};
 use serde::{Deserialize, Serialize};
 
 //TODO: Files should probably be moved to their own table
 #[derive(Deserialize, Serialize)]
 pub struct Version {
     ///The unqiue VersionId of this version
-    pub version_id: i32,
+    pub version_id: i64,
     /// The ModId of the mod that this version belongs to
-    pub mod_id: i32,
+    pub mod_id: i64,
     pub name: String,
-    pub number: String,
+    pub version_number: String,
     pub changelog_url: Option<String>,
     pub date_published: String,
     pub downloads: i32,
     pub files: Vec<VersionFile>,
-    pub dependencies: Vec<i32>,
+    pub dependencies: Vec<i64>,
     pub game_versions: Vec<String>,
     pub loaders: Vec<String>,
     pub version_type: String,

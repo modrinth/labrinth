@@ -9,7 +9,6 @@ use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{post, HttpResponse};
 use bson::doc;
-use bson::Bson;
 use chrono::Utc;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -21,10 +20,10 @@ pub enum CreateError {
     #[error("Environment Error")]
     EnvError(#[from] dotenv::Error),
     #[error("Error while adding project to database")]
-    DatabaseError(sqlx::error::Error),
+    DatabaseError(#[from] sqlx::error::Error),
     #[error("Error while parsing multipart payload")]
     MultipartError(actix_multipart::MultipartError),
-    #[error("Error while parsing JSON")]
+    #[error("Error while parsing JSON: {0}")]
     SerDeError(#[from] serde_json::Error),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
@@ -106,35 +105,43 @@ struct ModCreateData {
 #[post("api/v1/mod")]
 pub async fn mod_create(
     mut payload: Multipart,
-    client: Data<Client>,
+    client: Data<PgPool>,
     upload_url: Data<UploadUrlData>,
 ) -> Result<HttpResponse, CreateError> {
     //TODO Switch to transactions for safer database and file upload calls (once it is implemented in the APIs)
     let cdn_url = dotenv::var("CDN_URL")?;
 
-    let db = client.database("modrinth");
+    // let db = client.database("modrinth");
 
-    let mods = db.collection("mods");
-    let versions = db.collection("versions");
+    // let mods = db.collection("mods");
+    // let versions = db.collection("versions");
 
     let mut mod_id = ModId(random_base62(8));
     let mut retry_count: i32 = 0;
 
-    //Check if ID is unique
-    // loop {
-    //     let filter = doc! { "_id": mod_id.0 };
+    // Check if ID is unique
+    loop {
+        let results = sqlx::query!(
+            "
+            SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
+            ",
+            mod_id.0 as i64
+        )
+        .fetch_one(client.as_ref())
+        .await
+        .expect("TODO: error handling");
 
-    //     if mods.find(filter, None).await?.next().await.is_some() {
-    //         mod_id = ModId(random_base62(8));
-    //     } else {
-    //         break;
-    //     }
+        if results.exists.expect("TODO: error handling") {
+            mod_id = ModId(random_base62(8));
+        } else {
+            break;
+        }
 
-    //     retry_count += 1;
-    //     if retry_count > 20 {
-    //         return Err(CreateError::RandomIdError);
-    //     }
-    // }
+        retry_count += 1;
+        if retry_count > 20 {
+            return Err(CreateError::RandomIdError);
+        }
+    }
 
     let mut created_versions: Vec<Version> = vec![];
 
@@ -202,7 +209,7 @@ pub async fn mod_create(
 
                             let mut created_version_filter = created_versions
                                 .iter_mut()
-                                .filter(|x| x.number == version_data.version_number);
+                                .filter(|x| x.version_number == version_data.version_number);
 
                             match created_version_filter.next() {
                                 Some(created_version) => {
@@ -232,21 +239,28 @@ pub async fn mod_create(
                                     let mut version_id = VersionId(random_base62(8));
                                     retry_count = 0;
 
-                                    // loop {
-                                    //     let filter = doc! { "_id": version_id.0 };
+                                    loop {
+                                        let results = sqlx::query!(
+                                            "
+                                            SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
+                                            ",
+                                            version_id.0 as i64
+                                        )
+                                        .fetch_one(client.as_ref())
+                                        .await
+                                        .expect("TODO: error handling");
 
-                                    //     if versions.find(filter, None).await?.next().await.is_some()
-                                    //     {
-                                    //         version_id = VersionId(random_base62(8));
-                                    //     } else {
-                                    //         break;
-                                    //     }
+                                        if results.exists.expect("TODO: error handling") {
+                                            version_id = VersionId(random_base62(8));
+                                        } else {
+                                            break;
+                                        }
 
-                                    //     retry_count += 1;
-                                    //     if retry_count > 20 {
-                                    //         return Err(CreateError::RandomIdError);
-                                    //     }
-                                    // }
+                                        retry_count += 1;
+                                        if retry_count > 20 {
+                                            return Err(CreateError::RandomIdError);
+                                        }
+                                    }
 
                                     let body_url = format!(
                                         "data/{}/changelogs/{}/body.md",
@@ -275,10 +289,10 @@ pub async fn mod_create(
                                     .await?;
 
                                     let version = Version {
-                                        version_id: version_id.0 as i32,
-                                        mod_id: mod_id.0 as i32,
+                                        version_id: version_id.0 as i64,
+                                        mod_id: mod_id.0 as i64,
                                         name: version_data.version_title,
-                                        number: version_data.version_number.clone(),
+                                        version_number: version_data.version_number.clone(),
                                         changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
                                         date_published: Utc::now().to_rfc2822(),
                                         downloads: 0,
@@ -293,7 +307,7 @@ pub async fn mod_create(
                                         dependencies: version_data
                                             .dependencies
                                             .into_iter()
-                                            .map(|x| x.0 as i32)
+                                            .map(|x| x.0 as i64)
                                             .collect::<Vec<_>>(),
                                         game_versions: vec![],
                                         loaders: vec![],
@@ -313,17 +327,33 @@ pub async fn mod_create(
     }
 
     for version in &created_versions {
-        let serialized_version = serde_json::to_string(&version)?;
-        let document = Bson::from(serialized_version)
-            .as_document()
-            .ok_or_else(|| {
-                CreateError::MissingValueError(
-                    "No document present for database entry!".to_string(),
-                )
-            })?
-            .clone();
-
-        versions.insert_one(document, None).await?;
+        // TODO: race condition with mod / version ids
+        // let result = sqlx::query!(
+        //     "
+        //     INSERT INTO versions (id, mod_id, name, version_number, changelog_url, release_channel)
+        //     VALUES ($1, $2, $3, $4, $5, $6)
+        //     ",
+        //     version.id.0 as i64,
+        //     version.mod_id.0 as i64,
+        //     version.name,
+        //     version.version_number,
+        //     version.changelog_url,
+        //     0, // TODO
+        // ).execute(client.as_ref());
+        sqlx::query(
+            "
+            INSERT INTO versions (id, mod_id, name, version_number, changelog_url, release_channel)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ",
+        )
+        .bind(version.version_id)
+        .bind(version.mod_id)
+        .bind(&version.name)
+        .bind(&version.version_number)
+        .bind(&version.changelog_url)
+        .bind(0) // TODO: release channel
+        .execute(client.as_ref())
+        .await?;
     }
 
     if let Some(create_data) = mod_create_data {
@@ -338,14 +368,14 @@ pub async fn mod_create(
         .await?;
 
         let created_mod: Mod = Mod {
-            id: mod_id.0 as i32,
+            id: mod_id.0 as i64,
             team: Team {
-                id: random_base62(8) as i32,
+                id: random_base62(8) as i64,
                 members: create_data
                     .team_members
                     .into_iter()
                     .map(|x| crate::database::models::TeamMember {
-                        user_id: x.user_id.0 as i32,
+                        user_id: x.user_id.0 as i64,
                         name: x.name,
                         role: x.role,
                     })
@@ -367,16 +397,33 @@ pub async fn mod_create(
             wiki_url: create_data.wiki_url,
         };
 
-        let document = bson::to_bson(&created_mod)?
-            .as_document()
-            .ok_or_else(|| {
-                CreateError::MissingValueError(
-                    "No document present for database entry!".to_string(),
-                )
-            })?
-            .clone();
+        sqlx::query!(
+            "
+            INSERT INTO teams (id)
+            VALUES ($1)
+            ",
+            created_mod.team.id
+        )
+        .execute(client.as_ref())
+        .await?;
+        // TODO: add team members
 
-        mods.insert_one(document, None).await?;
+        sqlx::query(
+            "
+            INSERT INTO mods (id, team_id, title, description, body_url, icon_url, issues_url, source_url, wiki_url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            "
+        )
+        .bind(created_mod.id)
+        .bind(created_mod.team.id)
+        .bind(created_mod.title)
+        .bind(created_mod.description)
+        .bind(created_mod.body_url)
+        .bind(created_mod.icon_url)
+        .bind(created_mod.issues_url)
+        .bind(created_mod.source_url)
+        .bind(created_mod.wiki_url)
+        .execute(client.as_ref()).await?;
     }
 
     Ok(HttpResponse::Ok().into())
