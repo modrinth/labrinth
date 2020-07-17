@@ -38,14 +38,18 @@ pub async fn authorize_account(
     let combined_key = format!("{}:{}", key_id, application_key);
     let formatted_key = format!("Basic {}", base64::encode(combined_key));
 
-    Ok(reqwest::Client::new()
+    let response = reqwest::Client::new()
         .get("https://api.backblazeb2.com/b2api/v2/b2_authorize_account")
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(reqwest::header::AUTHORIZATION, formatted_key)
         .send()
-        .await?
-        .json()
-        .await?)
+        .await?;
+
+    if response.status().is_success() {
+        Ok(response.json().await?)
+    } else {
+        Err(FileHostingError::BackblazeError(response.json().await?))
+    }
 }
 
 #[cfg(feature = "backblaze")]
@@ -53,7 +57,7 @@ pub async fn get_upload_url(
     authorization_data: AuthorizationData,
     bucket_id: String,
 ) -> Result<UploadUrlData, FileHostingError> {
-    Ok(reqwest::Client::new()
+    let response = reqwest::Client::new()
         .post(&format!("{}/b2api/v2/b2_get_upload_url", authorization_data.api_url).to_string())
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(
@@ -67,9 +71,13 @@ pub async fn get_upload_url(
             .to_string(),
         )
         .send()
-        .await?
-        .json()
-        .await?)
+        .await?;
+
+    if response.status().is_success() {
+        Ok(response.json().await?)
+    } else {
+        Err(FileHostingError::BackblazeError(response.json().await?))
+    }
 }
 
 #[cfg(not(feature = "backblaze"))]

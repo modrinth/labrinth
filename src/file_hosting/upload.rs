@@ -24,7 +24,7 @@ pub async fn upload_file(
     file_name: String,
     file_bytes: Vec<u8>,
 ) -> Result<UploadFileData, FileHostingError> {
-    Ok(reqwest::Client::new()
+    let response = reqwest::Client::new()
         .post(&url_data.upload_url)
         .header(reqwest::header::AUTHORIZATION, url_data.authorization_token)
         .header("X-Bz-File-Name", file_name)
@@ -36,9 +36,13 @@ pub async fn upload_file(
         )
         .body(file_bytes)
         .send()
-        .await?
-        .json()
-        .await?)
+        .await?;
+
+    if response.status().is_success() {
+        Ok(response.json().await?)
+    } else {
+        Err(FileHostingError::BackblazeError(response.json().await?))
+    }
 }
 
 #[cfg(not(feature = "backblaze"))]
