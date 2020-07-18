@@ -1,7 +1,7 @@
 version: '3'
 services:
   postgres_db:
-    image: postgres
+    image: postgres:alpine
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
@@ -9,7 +9,7 @@ services:
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: labrinth
-      POSTGRES_PASSWORD: this_is_really_secret
+      POSTGRES_HOST_AUTH_METHOD: trust
   meilisearch:
     image: getmeili/meilisearch
     restart: on-failure
@@ -22,11 +22,12 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@modrinth.com
       PGADMIN_DEFAULT_PASSWORD: secret
-      PGADMIN_LISTEN_PORT: 80
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
     ports:
       - "8070:80"
-    links:
-      - "postgres_db:pgsql-server"
+    volumes:
+      - ./pgadmin_default_servers.json:/pgadmin4/servers.json
 volumes:
   meilisearch-data:
   db-data:

@@ -2,8 +2,12 @@ name: Unit Tests
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
 
 jobs:
   test:
