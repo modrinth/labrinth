@@ -26,8 +26,6 @@ dotenv = "0.15"
 log = "0.4.8"
 env_logger = "0.7.1"
 
-bson = "1.0.0"
-
 thiserror = "1.0.20"
 async-trait = "0.1.36"
 
