@@ -8,7 +8,6 @@ use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{post, HttpResponse};
-use bson::doc;
 use chrono::Utc;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
