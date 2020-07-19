@@ -1,5 +1,5 @@
 use crate::database::models::{FileHash, Mod, Team, Version, VersionFile};
-use crate::file_hosting::{upload_file, FileHostingError, UploadUrlData};
+use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::ids::random_base62;
 use crate::models::mods::{GameVersion, ModId, VersionId, VersionType};
@@ -105,7 +105,7 @@ struct ModCreateData {
 pub async fn mod_create(
     mut payload: Multipart,
     client: Data<PgPool>,
-    upload_url: Data<UploadUrlData>,
+    file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, CreateError> {
     //TODO Switch to transactions for safer database and file upload calls (once it is implemented in the APIs)
     let cdn_url = dotenv::var("CDN_URL")?;
@@ -177,13 +177,13 @@ pub async fn mod_create(
                 if let Some(create_data) = &mod_create_data {
                     if name == "icon" {
                         if let Some(ext) = get_image_content_type(file_extension) {
-                            let upload_data = upload_file(
-                                upload_url.get_ref(),
-                                ext,
-                                &format!("mods/icons/{}/{}", mod_id, file_name),
-                                data.to_vec(),
-                            )
-                            .await?;
+                            let upload_data = file_host
+                                .upload_file(
+                                    ext,
+                                    &format!("mods/icons/{}/{}", mod_id, file_name),
+                                    data.to_vec(),
+                                )
+                                .await?;
 
                             icon_url = format!("{}/{}", cdn_url, upload_data.file_name);
                         } else {
@@ -212,18 +212,18 @@ pub async fn mod_create(
 
                             match created_version_filter.next() {
                                 Some(created_version) => {
-                                    let upload_data = upload_file(
-                                        upload_url.get_ref(),
-                                        "application/java-archive",
-                                        &format!(
-                                            "{}/{}/{}",
-                                            create_data.mod_namespace.replace(".", "/"),
-                                            version_data.version_number,
-                                            file_name
-                                        ),
-                                        data.to_vec(),
-                                    )
-                                    .await?;
+                                    let upload_data = file_host
+                                        .upload_file(
+                                            "application/java-archive",
+                                            &format!(
+                                                "{}/{}/{}",
+                                                create_data.mod_namespace.replace(".", "/"),
+                                                version_data.version_number,
+                                                file_name
+                                            ),
+                                            data.to_vec(),
+                                        )
+                                        .await?;
 
                                     created_version.files.push(VersionFile {
                                         hashes: vec![FileHash {
@@ -266,26 +266,26 @@ pub async fn mod_create(
                                         mod_id, version_id
                                     );
 
-                                    upload_file(
-                                        upload_url.get_ref(),
-                                        "text/plain",
-                                        &body_url,
-                                        version_data.version_body.into_bytes(),
-                                    )
-                                    .await?;
+                                    file_host
+                                        .upload_file(
+                                            "text/plain",
+                                            &body_url,
+                                            version_data.version_body.into_bytes(),
+                                        )
+                                        .await?;
 
-                                    let upload_data = upload_file(
-                                        upload_url.get_ref(),
-                                        "application/java-archive",
-                                        &format!(
-                                            "{}/{}/{}",
-                                            create_data.mod_namespace.replace(".", "/"),
-                                            version_data.version_number,
-                                            file_name
-                                        ),
-                                        data.to_vec(),
-                                    )
-                                    .await?;
+                                    let upload_data = file_host
+                                        .upload_file(
+                                            "application/java-archive",
+                                            &format!(
+                                                "{}/{}/{}",
+                                                create_data.mod_namespace.replace(".", "/"),
+                                                version_data.version_number,
+                                                file_name
+                                            ),
+                                            data.to_vec(),
+                                        )
+                                        .await?;
 
                                     let version = Version {
                                         version_id: version_id.0 as i64,
@@ -358,13 +358,9 @@ pub async fn mod_create(
     if let Some(create_data) = mod_create_data {
         let body_url = format!("data/{}/body.md", mod_id);
 
-        upload_file(
-            upload_url.get_ref(),
-            "text/plain",
-            &body_url,
-            create_data.mod_body.into_bytes(),
-        )
-        .await?;
+        file_host
+            .upload_file("text/plain", &body_url, create_data.mod_body.into_bytes())
+            .await?;
 
         let created_mod: Mod = Mod {
             id: mod_id.0 as i64,

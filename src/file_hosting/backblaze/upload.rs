@@ -1,4 +1,4 @@
-use crate::file_hosting::authorization::UploadUrlData;
+use super::authorization::UploadUrlData;
 use crate::file_hosting::FileHostingError;
 use serde::{Deserialize, Serialize};
 
