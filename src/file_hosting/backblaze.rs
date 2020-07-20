@@ -45,6 +45,23 @@ impl FileHost for BackblazeHost {
         })
     }
 
+    /*
+        async fn upload_file_streaming(
+            &self,
+            content_type: &str,
+            file_name: &str,
+            stream: reqwest::Body
+        ) -> Result<UploadFileData, FileHostingError> {
+            use futures::stream::StreamExt;
+
+            let mut data = Vec::new();
+            while let Some(chunk) = stream.next().await {
+                data.extend_from_slice(&chunk.map_err(|e| FileHostingError::Other(e))?);
+            }
+            self.upload_file(content_type, file_name, data).await
+        }
+    */
+
     async fn delete_file_version(
         &self,
         file_id: &str,
