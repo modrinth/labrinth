@@ -12,12 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Get the short sha
+        id: short_sha
+        run: echo ::set-output name=SHA::$(echo $GITHUB_REF | cut -c1-8)
       - run: echo $TAG
         env:
-          TAG: ${GITHUB_SHA::8}
+          TAG: ${{ steps.short_sha.outputs.SHA }}
       - name: Build, Tag, Push
         uses: mattdavis0351/actions/docker-gpr@v1
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           image-name: labrinth
-          tag: ${GITHUB_SHA::8}
+          tag: ${{ steps.short_sha.outputs.SHA }}
