@@ -17,4 +17,4 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           image-name: labrinth
-          tag: ${{GITHUB_SHA::8}}
+          tag: ${GITHUB_SHA::8}
