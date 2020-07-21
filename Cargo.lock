@@ -1123,6 +1123,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "labrinth"
+version = "0.1.0"
+dependencies = [
+ "actix-files",
+ "actix-multipart",
+ "actix-rt",
+ "actix-web",
+ "async-trait",
+ "base64 0.12.3",
+ "chrono",
+ "dotenv",
+ "env_logger",
+ "futures",
+ "futures-timer",
+ "log",
+ "meilisearch-sdk",
+ "rand",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sqlx",
+ "thiserror",
+]
+
+[[package]]
 name = "language-tags"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1321,32 +1347,6 @@ dependencies = [
  "net2",
  "winapi 0.2.8",
  "ws2_32-sys",
-]
-
-[[package]]
-name = "modrinth"
-version = "0.1.0"
-dependencies = [
- "actix-files",
- "actix-multipart",
- "actix-rt",
- "actix-web",
- "async-trait",
- "base64 0.12.3",
- "chrono",
- "dotenv",
- "env_logger",
- "futures",
- "futures-timer",
- "log",
- "meilisearch-sdk",
- "rand",
- "reqwest",
- "serde",
- "serde_json",
- "sha1",
- "sqlx",
- "thiserror",
 ]
 
 [[package]]

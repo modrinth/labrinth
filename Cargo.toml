@@ -1,9 +1,13 @@
 [package]
-name = "modrinth"
+name = "labrinth"
 version = "0.1.0"
 #Team members, please add your emails and usernames
 authors = ["geometrically <jai.a@tuta.io>", "Redblueflame <contact@redblueflame.com>", "Aeledfyr <aeledfyr@gmail.com>", "cfanoulis"]
 edition = "2018"
+
+[[bin]]
+name = "labrinth"
+path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
