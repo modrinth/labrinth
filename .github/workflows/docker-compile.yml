@@ -1,0 +1,20 @@
+name: Docker image build
+
+on:
+  push:
+  pull_request:
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build, Tag, Push
+        uses: mattdavis0351/actions/docker-gpr@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          image-name: labrinth
+          tag: ${{GITHUB_SHA::8}}
