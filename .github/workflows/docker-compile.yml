@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - run: echo ${GITHUB_SHA::8}
       - name: Build, Tag, Push
         uses: mattdavis0351/actions/docker-gpr@v1
         with:
