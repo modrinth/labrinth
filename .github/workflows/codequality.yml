@@ -31,3 +31,5 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features
+        env:
+          SQLX_OFFLINE: true

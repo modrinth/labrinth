@@ -38,6 +38,8 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: build
+        env:
+          SQLX_OFFLINE: true
       - uses: actions-rs/cargo@v1
         with:
           command: test
@@ -45,3 +47,4 @@ jobs:
           BACKBLAZE_BUCKET_ID: ${{ secrets.BACKBLAZE_BUCKET_ID }}
           BACKBLAZE_KEY: ${{ secrets.BACKBLAZE_KEY }}
           BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          SQLX_OFFLINE: true

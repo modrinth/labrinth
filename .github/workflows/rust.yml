@@ -26,7 +26,11 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+        env:
+          SQLX_OFFLINE: true
       - uses: actions-rs/cargo@v1
         name: Build program
         with:
           command: build
+        env:
+          SQLX_OFFLINE: true
