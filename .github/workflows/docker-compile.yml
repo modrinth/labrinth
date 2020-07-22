@@ -18,9 +18,12 @@ jobs:
       - run: echo $TAG
         env:
           TAG: ${{ steps.short_sha.outputs.SHA }}
-      - name: Build, Tag, Push
-        uses: mattdavis0351/actions/docker-gpr@v1
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v1
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          image-name: labrinth
-          tag: ${{ steps.short_sha.outputs.SHA }}
+          username: ${{ github.GITHUB_ACTOR }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.pkg.github.com
+          repository: docker.pkg.github.com/modrinth/labrinth/labrinth
+          tag_with_ref: true
+          tag_with_sha: true
