@@ -1350,6 +1350,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "modrinth"
+version = "0.1.0"
+dependencies = [
+ "actix-files",
+ "actix-multipart",
+ "actix-rt",
+ "actix-web",
+ "async-trait",
+ "base64 0.12.3",
+ "chrono",
+ "dotenv",
+ "env_logger",
+ "futures",
+ "futures-timer",
+ "log",
+ "meilisearch-sdk",
+ "rand",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sqlx",
+ "sqlx-macros",
+ "thiserror",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

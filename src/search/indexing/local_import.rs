@@ -1,4 +1,4 @@
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use log::info;
 
 use super::IndexingError;
@@ -9,16 +9,6 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
     info!("Indexing local mods!");
 
     let mut docs_to_add: Vec<SearchMod> = vec![];
-    /*
-    let db = pool.database("modrinth");
-
-    let mods = db.collection("mods");
-    let versions = db.collection("versions");
-    /*let mut results = mods
-    .find(None, None)
-    .await
-    .map_err(DatabaseError::LocalDatabaseError)?;*/
-    */
 
     let mut results = sqlx::query!(
         "
@@ -29,25 +19,6 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
 
     while let Some(result) = results.next().await {
         if let Ok(result) = result {
-            /*
-            let result: Mod =
-                *Mod::from_doc(unparsed_result.map_err(DatabaseError::LocalDatabaseError)?)?;
-
-            let mut mod_versions = versions
-                .find(doc! { "mod_id": result.id }, None)
-                .await
-                .map_err(DatabaseError::LocalDatabaseError)?;
-
-            let mut mod_game_versions = vec![];
-
-            while let Some(unparsed_version) = mod_versions.next().await {
-                let mut version = unparsed_version
-                    .map_err(DatabaseError::LocalDatabaseError)
-                    .and_then(Version::from_doc)?;
-                mod_game_versions.append(&mut version.game_versions);
-            }
-            */
-
             let versions: Vec<String> = sqlx::query!(
                 "
                 SELECT gv.version FROM versions
@@ -57,11 +28,10 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
                 ",
                 result.id
             )
-            .fetch_all(&pool)
-            .await?
-            .into_iter()
-            .map(|c| c.version)
-            .collect::<Vec<String>>();
+            .fetch_many(&pool)
+            .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
+            .try_collect::<Vec<String>>()
+            .await?;
 
             let categories = sqlx::query!(
                 "
@@ -72,11 +42,10 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
                 ",
                 result.id
             )
-            .fetch_all(&pool)
-            .await?
-            .into_iter()
-            .map(|c| c.category)
-            .collect::<Vec<String>>();
+            .fetch_many(&pool)
+            .try_filter_map(|e| async { Ok(e.right().map(|c| c.category)) })
+            .try_collect::<Vec<String>>()
+            .await?;
 
             let mut icon_url = "".to_string();
 

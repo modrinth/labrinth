@@ -1,22 +1,5 @@
 {
   "db": "PostgreSQL",
-  "1818256bd49b2be74d872ed3a2c488c34e2fe5054a8968024107e78f44d96b41": {
-    "query": "\n            INSERT INTO versions (id, mod_id, name, version_number, changelog_url, release_channel)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Varchar",
-          "Varchar",
-          "Varchar",
-          "Int4"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "1ffce9b2d5c9fa6c8b9abce4bad9f9419c44ad6367b7463b979c91b9b5b4fea1": {
     "query": "SELECT EXISTS(SELECT 1 FROM versions WHERE id=$1)",
     "describe": {
@@ -35,18 +18,6 @@
       "nullable": [
         null
       ]
-    }
-  },
-  "4ba8570df966efcdb8568337ad5c4e67fcabd9a06bb40aff878f9170dea57a3f": {
-    "query": "\n        INSERT INTO teams (id)\n        VALUES ($1)\n        ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": []
     }
   },
   "4c99c0840159d18e88cd6094a41117258f2337346c145d926b5b610c76b5125f": {
@@ -89,8 +60,48 @@
       ]
     }
   },
+  "ccd913bb2f3006ffe881ce2fc4ef1e721d18fe2eed6ac62627046c955129610c": {
+    "query": "SELECT EXISTS(SELECT 1 FROM files WHERE id=$1)",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "exists",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        null
+      ]
+    }
+  },
   "d6453e50041b5521fa9e919a9162e533bb9426f8c584d98474c6ad414db715c8": {
     "query": "SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "exists",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        null
+      ]
+    }
+  },
+  "e7d0a64a08df6783c942f2fcadd94dd45f8d96ad3d3736e52ce90f68d396cdab": {
+    "query": "SELECT EXISTS(SELECT 1 FROM team_members WHERE id=$1)",
     "describe": {
       "columns": [
         {
