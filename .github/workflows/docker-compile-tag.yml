@@ -1,0 +1,32 @@
+name: Docker image build
+
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Get the short sha
+        id: short_sha
+        run: echo ::set-output name=SHA::$(echo $GITHUB_SHA | cut -c1-8)
+      - run: echo $TAG
+        env:
+          TAG: ${{ steps.short_sha.outputs.SHA }}
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v1
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.pkg.github.com
+          repository: modrinth/labrinth/labrinth
+          tag_with_ref: true
+          tags: latest
+          tag_with_sha: true

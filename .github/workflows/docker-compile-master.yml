@@ -1,0 +1,31 @@
+name: Docker image build
+
+on:
+  push:
+    branches:
+      - master
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Get the short sha
+        id: short_sha
+        run: echo ::set-output name=SHA::$(echo $GITHUB_SHA | cut -c1-8)
+      - run: echo $TAG
+        env:
+          TAG: ${{ steps.short_sha.outputs.SHA }}
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v1
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.pkg.github.com
+          repository: modrinth/labrinth/labrinth
+          tag_with_ref: false
+          tags: master
+          tag_with_sha: true
