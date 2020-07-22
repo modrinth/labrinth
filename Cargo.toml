@@ -2,7 +2,7 @@
 name = "labrinth"
 version = "0.1.0"
 #Team members, please add your emails and usernames
-authors = ["geometrically <jai.a@tuta.io>", "Redblueflame <contact@redblueflame.com>", "Aeledfyr <aeledfyr@gmail.com>", "cfanoulis"]
+authors = ["geometrically <jai.a@tuta.io>", "Redblueflame <contact@redblueflame.com>", "Aeledfyr <aeledfyr@gmail.com>", "Charalampos Fanoulis <yo@fanoulis.dev>"]
 edition = "2018"
 
 [[bin]]
