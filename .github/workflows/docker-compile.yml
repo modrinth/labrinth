@@ -21,7 +21,7 @@ jobs:
       - name: Build and push Docker images
         uses: docker/build-push-action@v1
         with:
-          username: ${{ github.GITHUB_ACTOR }}
+          username: ${{ env.GITHUB_ACTOR }}
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: docker.pkg.github.com
           repository: docker.pkg.github.com/modrinth/labrinth/labrinth
