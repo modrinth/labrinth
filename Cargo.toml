@@ -40,3 +40,9 @@ git = "https://github.com/launchbadge/sqlx/"
 branch = "master"
 default-features = false
 features = ["runtime-actix", "postgres", "chrono", "offline", "macros"]
+
+[dependencies.sqlx-macros]
+git = "https://github.com/launchbadge/sqlx/"
+branch = "master"
+default-features = false
+features = ["runtime-actix", "postgres", "chrono", "offline"]

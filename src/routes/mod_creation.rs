@@ -1,14 +1,12 @@
-use crate::database::models::{FileHash, Team, Version, VersionFile};
+use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
-use crate::models::ids::random_base62;
 use crate::models::mods::{GameVersion, ModId, VersionId, VersionType};
-use crate::models::teams::{TeamId, TeamMember};
+use crate::models::teams::TeamMember;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{post, HttpResponse};
-use chrono::Utc;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
@@ -18,8 +16,10 @@ use thiserror::Error;
 pub enum CreateError {
     #[error("Environment Error")]
     EnvError(#[from] dotenv::Error),
-    #[error("Error while adding project to database")]
-    DatabaseError(#[from] sqlx::error::Error),
+    #[error("An unknown database error occured")]
+    SqlxDatabaseError(#[from] sqlx::Error),
+    #[error("Database Error: {0}")]
+    DatabaseError(#[from] models::DatabaseError),
     #[error("Error while parsing multipart payload")]
     MultipartError(actix_multipart::MultipartError),
     #[error("Error while parsing JSON: {0}")]
@@ -28,8 +28,6 @@ pub enum CreateError {
     FileHostingError(#[from] FileHostingError),
     #[error("{}", .0)]
     MissingValueError(String),
-    #[error("Error while trying to generate random ID")]
-    RandomIdError,
     #[error("Invalid format for mod icon: {0}")]
     InvalidIconFormat(String),
     #[error("Error with multipart data: {0}")]
@@ -40,6 +38,7 @@ impl actix_web::ResponseError for CreateError {
     fn status_code(&self) -> StatusCode {
         match self {
             CreateError::EnvError(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            CreateError::SqlxDatabaseError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::DatabaseError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::FileHostingError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::SerDeError(..) => StatusCode::BAD_REQUEST,
@@ -47,7 +46,6 @@ impl actix_web::ResponseError for CreateError {
             CreateError::MissingValueError(..) => StatusCode::BAD_REQUEST,
             CreateError::InvalidIconFormat(..) => StatusCode::BAD_REQUEST,
             CreateError::InvalidInput(..) => StatusCode::BAD_REQUEST,
-            CreateError::RandomIdError => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -55,12 +53,12 @@ impl actix_web::ResponseError for CreateError {
         HttpResponse::build(self.status_code()).json(ApiError {
             error: match self {
                 CreateError::EnvError(..) => "environment_error",
+                CreateError::SqlxDatabaseError(..) => "database_error",
                 CreateError::DatabaseError(..) => "database_error",
                 CreateError::FileHostingError(..) => "file_hosting_error",
                 CreateError::SerDeError(..) => "invalid_input",
                 CreateError::MultipartError(..) => "invalid_input",
                 CreateError::MissingValueError(..) => "invalid_input",
-                CreateError::RandomIdError => "id_generation_error",
                 CreateError::InvalidIconFormat(..) => "invalid_input",
                 CreateError::InvalidInput(..) => "invalid_input",
             },
@@ -77,7 +75,7 @@ struct InitialVersionData {
     pub version_body: String,
     pub dependencies: Vec<VersionId>,
     pub game_versions: Vec<GameVersion>,
-    pub version_type: VersionType,
+    pub release_channel: VersionType,
     pub loaders: Vec<String>,
 }
 
@@ -104,62 +102,6 @@ struct ModCreateData {
     /// An optional link to the mod's wiki page or other relevant information.
     pub wiki_url: Option<String>,
 }
-
-const ID_RETRY_COUNT: usize = 20;
-
-macro_rules! generate_ids {
-    ($function_name:ident, $return_type:ty, $id_length:expr, $select_stmnt:literal, $id_function:expr) => {
-        async fn $function_name(
-            con: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        ) -> Result<$return_type, CreateError> {
-            let length = $id_length;
-            let mut id = random_base62(length);
-            let mut retry_count = 0;
-
-            // Check if ID is unique
-            loop {
-                let results = sqlx::query!($select_stmnt, id as i64)
-                    .fetch_one(&mut *con)
-                    .await?;
-
-                if results.exists.unwrap_or(true) {
-                    id = random_base62(length);
-                } else {
-                    break;
-                }
-
-                retry_count += 1;
-                if retry_count > ID_RETRY_COUNT {
-                    return Err(CreateError::RandomIdError);
-                }
-            }
-
-            Ok($id_function(id))
-        }
-    };
-}
-
-generate_ids!(
-    generate_mod_id,
-    ModId,
-    8,
-    "SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)",
-    ModId
-);
-generate_ids!(
-    generate_version_id,
-    VersionId,
-    8,
-    "SELECT EXISTS(SELECT 1 FROM versions WHERE id=$1)",
-    VersionId
-);
-generate_ids!(
-    generate_team_id,
-    TeamId,
-    8,
-    "SELECT EXISTS(SELECT 1 FROM teams WHERE id=$1)",
-    TeamId
-);
 
 struct UploadedFile {
     file_id: String,
@@ -220,9 +162,9 @@ async fn mod_create_inner(
 ) -> Result<HttpResponse, CreateError> {
     let cdn_url = dotenv::var("CDN_URL")?;
 
-    let mod_id = generate_mod_id(transaction).await?;
+    let mod_id = models::generate_mod_id(transaction).await?.into();
 
-    let mut created_versions: Vec<Version> = vec![];
+    let mut created_versions: Vec<models::version_item::VersionBuilder> = vec![];
 
     let mut mod_create_data: Option<ModCreateData> = None;
     let mut icon_url = "".to_string();
@@ -295,7 +237,7 @@ async fn mod_create_inner(
             {
                 created_version
             } else {
-                let version_id = generate_version_id(transaction).await?;
+                let version_id: VersionId = models::generate_version_id(transaction).await?.into();
 
                 let body_url = format!("data/{}/changelogs/{}/body.md", mod_id, version_id);
 
@@ -312,23 +254,29 @@ async fn mod_create_inner(
                     file_name: uploaded_text.file_name.clone(),
                 });
 
-                let version = Version {
-                    version_id: version_id.0 as i64,
-                    mod_id: mod_id.0 as i64,
+                // TODO: do a real lookup for the channels
+                let release_channel = match version_data.release_channel {
+                    VersionType::Release => models::ChannelId(0),
+                    VersionType::Beta => models::ChannelId(2),
+                    VersionType::Alpha => models::ChannelId(4),
+                };
+
+                let version = models::version_item::VersionBuilder {
+                    version_id: version_id.into(),
+                    mod_id: mod_id.into(),
                     name: version_data.version_title.clone(),
                     version_number: version_data.version_number.clone(),
                     changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
-                    date_published: Utc::now().to_rfc2822(),
-                    downloads: 0,
-                    version_type: version_data.version_type.to_string(),
                     files: Vec::with_capacity(1),
                     dependencies: version_data
                         .dependencies
                         .iter()
-                        .map(|x| x.0 as i64)
+                        .map(|x| (*x).into())
                         .collect::<Vec<_>>(),
+                    // TODO: add game_versions and loaders info
                     game_versions: vec![],
                     loaders: vec![],
+                    release_channel,
                 };
 
                 created_versions.push(version);
@@ -363,13 +311,18 @@ async fn mod_create_inner(
             // Add the newly uploaded file to the existing or new version
 
             // TODO: Malware scan + file validation
-            created_version.files.push(VersionFile {
-                hashes: vec![FileHash {
-                    algorithm: "sha1".to_string(),
-                    hash: upload_data.content_sha1,
-                }],
-                url: format!("{}/{}", cdn_url, upload_data.file_name),
-            });
+            created_version
+                .files
+                .push(models::version_item::VersionFileBuilder {
+                    filename: file_name.to_string(),
+                    url: format!("{}/{}", cdn_url, upload_data.file_name),
+                    hashes: vec![models::version_item::HashBuilder {
+                        algorithm: "sha1".to_string(),
+                        // This is an invalid cast - the database expects the hash's
+                        // bytes, but this is the string version.
+                        hash: upload_data.content_sha1.into_bytes(),
+                    }],
+                });
         }
     }
 
@@ -392,77 +345,41 @@ async fn mod_create_inner(
         file_name: upload_data.file_name.clone(),
     });
 
-    // TODO: add team members to the database
-
-    let team_id = generate_team_id(&mut *transaction).await?;
-
-    let team = Team {
-        id: team_id.0 as i64,
+    let team = models::team_item::TeamBuilder {
         members: create_data
             .team_members
             .into_iter()
-            .map(|x| crate::database::models::TeamMember {
-                user_id: x.user_id.0 as i64,
-                name: x.name,
-                role: x.role,
+            .map(|member| models::team_item::TeamMemberBuilder {
+                user_id: member.user_id.into(),
+                name: member.name,
+                role: member.role,
             })
             .collect(),
     };
 
-    sqlx::query!(
-        "
-        INSERT INTO teams (id)
-        VALUES ($1)
-        ",
-        team.id
-    )
-    .execute(&mut *transaction)
-    .await?;
+    let team_id = team.insert(&mut *transaction).await?;
 
     // Insert the new mod into the database
 
-    sqlx::query(
-        "
-        INSERT INTO mods (id, team_id, title, description, body_url, icon_url, issues_url, source_url, wiki_url)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        "
-    )
-    .bind(mod_id.0 as i64)
-    .bind(team.id)
-    .bind(create_data.mod_name)
-    .bind(create_data.mod_description)
-    .bind(format!("{}/{}", cdn_url, body_url))
-    .bind(icon_url)
-    .bind(create_data.issues_url)
-    .bind(create_data.source_url)
-    .bind(create_data.wiki_url)
-    .execute(&mut *transaction).await?;
+    let mod_builder = models::mod_item::ModBuilder {
+        mod_id: mod_id.into(),
+        team_id,
+        title: create_data.mod_name,
+        description: create_data.mod_description,
+        body_url: format!("{}/{}", cdn_url, body_url),
+        icon_url: Some(icon_url),
+        issues_url: create_data.issues_url,
+        source_url: create_data.source_url,
+        wiki_url: create_data.wiki_url,
 
-    // TODO: insert categories into the database
+        // TODO: convert `create_data.categories` from Vec<String> to Vec<CategoryId>
+        categories: Vec::new(),
+        initial_versions: created_versions,
+    };
 
-    // Insert each created version into the database
-    for version in &created_versions {
-        sqlx::query!(
-            "
-            INSERT INTO versions (id, mod_id, name, version_number, changelog_url, release_channel)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ",
-            version.version_id as i64,
-            version.mod_id as i64,
-            version.name,
-            version.version_number,
-            version.changelog_url,
-            0, // TODO: add default release channels, and match them here
-        )
-        .execute(&mut *transaction)
-        .await?;
+    let _mod_id = mod_builder.insert(&mut *transaction).await?;
 
-        // TODO: insert dependencies
-        // TODO: insert game versions
-        // TODO: insert loaders
-        // TODO: insert version files and file hashes
-    }
-
+    // TODO: respond with the new mod info, or with just the new mod id.
     Ok(HttpResponse::Ok().into())
 }
 

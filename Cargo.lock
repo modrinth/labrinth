@@ -1346,6 +1346,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sqlx",
+ "sqlx-macros",
  "thiserror",
 ]
 
