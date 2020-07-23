@@ -13,16 +13,11 @@ jobs:
   test:
     name: ${{ matrix.os }}-rust-${{ matrix.rust }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.error-continue }}
+    continue-on-error: ${{ matrix.rust != 'stable' }}
     strategy:
       matrix:
         os: [ubuntu-latest]
-        rust: [beta, nightly]
-        error-continue: [true]
-        include:
-          - os: ubuntu-latest
-          - rust: stable
-          - error-continue: false
+        rust: [beta, nightly, stable]
 
     steps:
       - uses: actions/checkout@v2
