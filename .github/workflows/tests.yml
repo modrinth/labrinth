@@ -2,7 +2,7 @@ name: Unit Tests
 
 on:
   push:
-    branches: [master]
+    # branches: [master]
   pull_request:
 
 env:
@@ -13,16 +13,16 @@ jobs:
   test:
     name: ${{ matrix.os }}-rust-${{ matrix.rust }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.continue-on-error }}
+    continue-on-error: ${{ matrix.error-continue }}
     strategy:
       matrix:
         os: [ubuntu-latest]
         rust: [beta, nightly]
-        continue-on-error: [true]
+        error-continue: [true]
         include:
           - os: ubuntu-latest
           - rust: stable
-          - continue-on-error: false
+          - error-continue: false
 
     steps:
       - uses: actions/checkout@v2
