@@ -18,11 +18,11 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         rust: [beta, nightly]
-        continue-on-error: [false]
+        continue-on-error: [true]
         include:
           - os: ubuntu-latest
           - rust: stable
-          - continue-on-error: true
+          - continue-on-error: false
 
     steps:
       - uses: actions/checkout@v2
