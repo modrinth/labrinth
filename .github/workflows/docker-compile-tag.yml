@@ -14,12 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Get the short sha
-        id: short_sha
-        run: echo ::set-output name=SHA::$(echo $GITHUB_SHA | cut -c1-8)
-      - run: echo $TAG
-        env:
-          TAG: ${{ steps.short_sha.outputs.SHA }}
       - name: Build and push Docker images
         uses: docker/build-push-action@v1
         with:
