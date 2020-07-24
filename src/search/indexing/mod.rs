@@ -32,20 +32,41 @@ pub enum IndexingError {
 // assumes a max average size of 1KiB per mod to avoid this cap.
 const MEILISEARCH_CHUNK_SIZE: usize = 10000;
 
-pub async fn index_mods(pool: PgPool) -> Result<(), IndexingError> {
+#[derive(Debug)]
+pub struct IndexingSettings {
+    pub index_external: bool,
+    pub index_local: bool,
+}
+
+impl IndexingSettings {
+    pub fn from_env() -> Self {
+        let index_local = true;
+        let index_external = dotenv::var("INDEX_CURSEFORGE")
+            .ok()
+            .and_then(|b| b.parse::<bool>().ok())
+            .unwrap_or(false);
+
+        Self {
+            index_external,
+            index_local,
+        }
+    }
+}
+
+pub async fn index_mods(pool: PgPool, settings: IndexingSettings) -> Result<(), IndexingError> {
     // Check if the index exists
     let address = &*dotenv::var("MEILISEARCH_ADDR")?;
     let client = Client::new(address, "");
 
     let mut docs_to_add: Vec<SearchMod> = vec![];
 
-    docs_to_add.append(&mut index_local(pool.clone()).await?);
-    if dotenv::var("INDEX_CURSEFORGE")?
-        .parse()
-        .expect("`INDEX_CURSEFORGE` is not a boolean.")
-    {
+    if settings.index_local {
+        docs_to_add.append(&mut index_local(pool.clone()).await?);
+    }
+    if settings.index_external {
         docs_to_add.append(&mut index_curseforge(1, 400_000).await?);
     }
+
     //Write Indexes
     //Relevance Index
 

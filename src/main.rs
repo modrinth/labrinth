@@ -1,16 +1,16 @@
-use crate::search::indexing::index_mods;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpServer};
 use env_logger::Env;
 use log::info;
-use std::env;
-use std::fs::File;
+use search::indexing::index_mods;
+use search::indexing::IndexingSettings;
 use std::sync::Arc;
 
 mod database;
 mod file_hosting;
 mod models;
 mod routes;
+mod scheduler;
 mod search;
 
 #[actix_rt::main]
@@ -24,7 +24,6 @@ async fn main() -> std::io::Result<()> {
     let pool = database::connect()
         .await
         .expect("Database connection failed");
-    let client_ref = pool.clone();
 
     let backblaze_enabled = dotenv::var("BACKBLAZE_ENABLED")
         .ok()
@@ -44,22 +43,93 @@ async fn main() -> std::io::Result<()> {
         Arc::new(file_hosting::MockHost::new())
     };
 
-    // Get executable path
-    let mut exe_path = env::current_exe()?.parent().unwrap().to_path_buf();
-    // Create the path to the index lock file
-    exe_path.push("index.v1.lock");
+    // Currently removed to prevent double indexing:
+    // We may still want something similar, where it doesn't index
+    // on startup so that starting doesn't take a long time when
+    // it's being run frequently.
 
-    // Indexing mods if not already done
-    if env::args().any(|x| x == "regen") {
-        // User forced regen of indexing
-        info!("Forced regeneration of indexes!");
-        index_mods(pool).await.expect("Mod indexing failed");
-    } else if !exe_path.exists() {
-        // The indexes were not created, or the version was upgraded
-        info!("Indexing of mods for first time...");
-        index_mods(pool).await.expect("Mod indexing failed");
-        // Create the lock file
-        File::create(exe_path)?;
+    // // Get executable path
+    // let mut exe_path = env::current_exe()?.parent().unwrap().to_path_buf();
+    // // Create the path to the index lock file
+    // exe_path.push("index.v1.lock");
+
+    // let indexing_settings = IndexingSettings::from_env();
+
+    // // Indexing mods if not already done
+    // if env::args().any(|x| x == "regen") {
+    //     // User forced regen of indexing
+    //     info!("Forced regeneration of indexes!");
+    //     index_mods(pool.clone(), indexing_settings)
+    //         .await
+    //         .expect("Mod indexing failed");
+    // } else if !exe_path.exists() {
+    //     // The indexes were not created, or the version was upgraded
+    //     info!("Indexing of mods for first time...");
+    //     index_mods(pool.clone(), indexing_settings)
+    //         .await
+    //         .expect("Mod indexing failed");
+    //     // Create the lock file
+    //     File::create(exe_path)?;
+    // }
+
+    let mut scheduler = scheduler::Scheduler::new();
+
+    // The interval in seconds at which the local database is indexed
+    // for searching.  Defaults to 1 hour if unset.
+    let local_index_interval = std::time::Duration::from_secs(
+        dotenv::var("LOCAL_INDEX_INTERVAL")
+            .ok()
+            .map(|i| i.parse().unwrap())
+            .unwrap_or(3600),
+    );
+
+    let pool_ref = pool.clone();
+    scheduler.run(local_index_interval, move || {
+        info!("Indexing local database");
+        let pool_ref = pool_ref.clone();
+        async move {
+            let settings = IndexingSettings {
+                index_local: true,
+                index_external: false,
+            };
+            let result = index_mods(pool_ref, settings).await;
+            if let Err(e) = result {
+                log::warn!("External mod indexing failed: {}", e);
+            }
+            info!("Done indexing local database");
+        }
+    });
+
+    if dotenv::var("INDEX_CURSEFORGE")
+        .ok()
+        .and_then(|b| b.parse::<bool>().ok())
+        .unwrap_or(false)
+    {
+        // The interval in seconds at which curseforge is indexed for
+        // searching.  Defaults to 4 hours if unset.
+        let external_index_interval = std::time::Duration::from_secs(
+            dotenv::var("EXTERNAL_INDEX_INTERVAL")
+                .ok()
+                .map(|i| i.parse().unwrap())
+                .unwrap_or(3600 * 4),
+        );
+
+        let pool_ref = pool.clone();
+        scheduler.run(external_index_interval, move || {
+            info!("Indexing curseforge");
+            let pool_ref = pool_ref.clone();
+            async move {
+                let settings = IndexingSettings {
+                    index_local: false,
+                    index_external: true,
+                };
+                let result = index_mods(pool_ref, settings).await;
+                if let Err(e) = result {
+                    log::warn!("External mod indexing failed: {}", e);
+                }
+                info!("Done indexing curseforge");
+            }
+        });
     }
 
     info!("Starting Actix HTTP server!");
@@ -69,7 +139,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
-            .data(client_ref.clone())
+            .data(pool.clone())
             .data(file_host.clone())
             .service(routes::index_get)
             .service(routes::mod_search)
@@ -96,7 +166,7 @@ fn check_env_vars() {
             )
         }
     }
-    check_var::<bool>("INDEX_CURSEFORGE");
+    check_var::<String>("CDN_URL");
     check_var::<String>("DATABASE_URL");
     check_var::<String>("MEILISEARCH_ADDR");
     check_var::<String>("BIND_ADDR");
@@ -109,5 +179,18 @@ fn check_env_vars() {
         check_var::<String>("BACKBLAZE_KEY_ID");
         check_var::<String>("BACKBLAZE_KEY");
         check_var::<String>("BACKBLAZE_BUCKET_ID");
+    } else {
+        check_var::<String>("MOCK_FILE_PATH");
     }
+
+    check_var::<bool>("INDEX_CURSEFORGE");
+    if dotenv::var("INDEX_CURSEFORGE")
+        .ok()
+        .and_then(|s| s.parse::<bool>().ok())
+        .unwrap_or(false)
+    {
+        check_var::<usize>("EXTERNAL_INDEX_INTERVAL");
+    }
+
+    check_var::<usize>("LOCAL_INDEX_INTERVAL");
 }
