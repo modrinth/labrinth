@@ -54,7 +54,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
             }
 
             docs_to_add.push(SearchMod {
-                mod_id: format!("local-{}", result.id),
+                mod_id: format!("local-{}", crate::models::ids::ModId(result.id as u64)),
                 author: "".to_string(),
                 title: result.title,
                 description: result.description,

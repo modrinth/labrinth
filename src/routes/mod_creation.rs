@@ -3,6 +3,7 @@ use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::mods::{GameVersion, ModId, VersionId, VersionType};
 use crate::models::teams::TeamMember;
+use crate::search::indexing::queue::CreationQueue;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
@@ -10,6 +11,7 @@ use actix_web::{post, HttpResponse};
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -124,7 +126,8 @@ async fn undo_uploads(
 pub async fn mod_create(
     payload: Multipart,
     client: Data<PgPool>,
-    file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
+    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
+    indexing_queue: Data<Arc<CreationQueue>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -134,6 +137,7 @@ pub async fn mod_create(
         &mut transaction,
         &***file_host,
         &mut uploaded_files,
+        &***indexing_queue,
     )
     .await;
 
@@ -159,6 +163,7 @@ async fn mod_create_inner(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
+    indexing_queue: &CreationQueue,
 ) -> Result<HttpResponse, CreateError> {
     let cdn_url = dotenv::var("CDN_URL")?;
 
@@ -376,6 +381,39 @@ async fn mod_create_inner(
         categories: Vec::new(),
         initial_versions: created_versions,
     };
+
+    let versions_list = mod_builder
+        .initial_versions
+        .iter()
+        .flat_map(|v| {
+            v.game_versions.iter().map(|id| id.0.to_string())
+            // TODO: proper version identifiers, once game versions
+            // have been implemented
+        })
+        .collect::<std::collections::HashSet<String>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let index_mod = crate::search::SearchMod {
+        mod_id: format!("local-{}", mod_id),
+        author: String::new(),
+        title: mod_builder.title.clone(),
+        description: mod_builder.description.clone(),
+        keywords: create_data.categories.clone(),
+        versions: versions_list,
+        page_url: mod_builder.body_url.clone(),
+        icon_url: mod_builder.icon_url.clone().unwrap(),
+        author_url: String::new(),
+        date_created: chrono::Utc::now().to_string(),
+        date_modified: chrono::Utc::now().to_string(),
+        latest_version: String::new(),
+        downloads: 0,
+        created: 0,
+        updated: 0,
+        empty: String::from("{}{}{}"),
+    };
+
+    indexing_queue.add(index_mod);
 
     let _mod_id = mod_builder.insert(&mut *transaction).await?;
 

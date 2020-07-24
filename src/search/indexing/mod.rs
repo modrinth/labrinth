@@ -1,11 +1,13 @@
 /// This module is used for the indexing from any source.
 pub mod curseforge_import;
 pub mod local_import;
+pub mod queue;
 
-use crate::search::indexing::curseforge_import::index_curseforge;
-use crate::search::indexing::local_import::index_local;
 use crate::search::SearchMod;
+use curseforge_import::index_curseforge;
+use local_import::index_local;
 use meilisearch_sdk::client::Client;
+use meilisearch_sdk::indexes::Index;
 use meilisearch_sdk::settings::Settings;
 use sqlx::postgres::PgPool;
 use std::collections::{HashMap, VecDeque};
@@ -54,10 +56,6 @@ impl IndexingSettings {
 }
 
 pub async fn index_mods(pool: PgPool, settings: IndexingSettings) -> Result<(), IndexingError> {
-    // Check if the index exists
-    let address = &*dotenv::var("MEILISEARCH_ADDR")?;
-    let client = Client::new(address, "");
-
     let mut docs_to_add: Vec<SearchMod> = vec![];
 
     if settings.index_local {
@@ -67,81 +65,82 @@ pub async fn index_mods(pool: PgPool, settings: IndexingSettings) -> Result<(), 
         docs_to_add.append(&mut index_curseforge(1, 400_000).await?);
     }
 
-    //Write Indexes
-    //Relevance Index
+    // Write Indices
 
-    let mut relevance_index = client
-        .get_or_create("relevance_mods")
-        .map_err(IndexingError::IndexDBError)?;
+    add_mods(docs_to_add)?;
 
-    let mut relevance_rules = default_rules();
-    relevance_rules.push_back("desc(downloads)".to_string());
+    Ok(())
+}
 
-    relevance_index
-        .set_settings(&default_settings().with_ranking_rules(relevance_rules.into()))
-        .map_err(IndexingError::IndexDBError)?;
+fn create_index<'a>(
+    client: &'a Client,
+    name: &'a str,
+    rules: impl FnOnce() -> Vec<String>,
+) -> Result<Index<'a>, IndexingError> {
+    match client.get_index(name) {
+        Ok(index) => Ok(index),
+        Err(meilisearch_sdk::errors::Error::IndexNotFound) => {
+            // Only create index and set settings if the index doesn't already exist
+            let mut index = client
+                .create_index("relevance_mods", Some("mod_id"))
+                .map_err(IndexingError::IndexDBError)?;
 
-    for chunk in docs_to_add.chunks(MEILISEARCH_CHUNK_SIZE) {
-        // TODO: get meilisearch sdk to not require cloning (ie take a reference to docs_to_add)
+            index
+                .set_settings(&default_settings().with_ranking_rules(rules()))
+                .map_err(IndexingError::IndexDBError)?;
+
+            Ok(index)
+        }
+        Err(e) => Err(IndexingError::IndexDBError(e)),
+    }
+}
+
+fn add_to_index(mut index: Index, mods: &[SearchMod]) -> Result<(), IndexingError> {
+    for chunk in mods.chunks(MEILISEARCH_CHUNK_SIZE) {
+        // TODO: get meilisearch sdk to not require cloning (ie. take a reference to docs_to_add)
         // This may require making our own fork of it.
-        relevance_index
+        index
             .add_documents(Vec::from(chunk), Some("mod_id"))
             .map_err(IndexingError::IndexDBError)?;
     }
+    Ok(())
+}
 
-    //Downloads Index
-    let mut downloads_index = client
-        .get_or_create("downloads_mods")
-        .map_err(IndexingError::IndexDBError)?;
+pub fn add_mods(mods: Vec<SearchMod>) -> Result<(), IndexingError> {
+    let address = &*dotenv::var("MEILISEARCH_ADDR")?;
+    let client = Client::new(address, "");
 
-    let mut downloads_rules = default_rules();
-    downloads_rules.push_front("desc(downloads)".to_string());
+    // Relevance Index
+    let relevance_index = create_index(&client, "relevance_mods", || {
+        let mut relevance_rules = default_rules();
+        relevance_rules.push_back("desc(downloads)".to_string());
+        relevance_rules.into()
+    })?;
+    add_to_index(relevance_index, &mods)?;
 
-    downloads_index
-        .set_settings(&default_settings().with_ranking_rules(downloads_rules.into()))
-        .map_err(IndexingError::IndexDBError)?;
+    // Downloads Index
+    let downloads_index = create_index(&client, "downloads_mods", || {
+        let mut downloads_rules = default_rules();
+        downloads_rules.push_front("desc(downloads)".to_string());
+        downloads_rules.into()
+    })?;
+    add_to_index(downloads_index, &mods)?;
 
-    for chunk in docs_to_add.chunks(MEILISEARCH_CHUNK_SIZE) {
-        downloads_index
-            .add_documents(Vec::from(chunk), Some("mod_id"))
-            .map_err(IndexingError::IndexDBError)?;
-    }
+    // Updated Index
+    let updated_index = create_index(&client, "updated_mods", || {
+        let mut updated_rules = default_rules();
+        updated_rules.push_front("desc(updated)".to_string());
+        updated_rules.into()
+    })?;
+    add_to_index(updated_index, &mods)?;
 
-    //Updated Index
-    let mut updated_index = client
-        .get_or_create("updated_mods")
-        .map_err(IndexingError::IndexDBError)?;
-
-    let mut updated_rules = default_rules();
-    updated_rules.push_front("desc(updated)".to_string());
-
-    updated_index
-        .set_settings(&default_settings().with_ranking_rules(updated_rules.into()))
-        .map_err(IndexingError::IndexDBError)?;
-
-    for chunk in docs_to_add.chunks(MEILISEARCH_CHUNK_SIZE) {
-        updated_index
-            .add_documents(Vec::from(chunk), Some("mod_id"))
-            .map_err(IndexingError::IndexDBError)?;
-    }
-
-    //Created Index
-    let mut newest_index = client
-        .get_or_create("newest_mods")
-        .map_err(IndexingError::IndexDBError)?;
-
-    let mut newest_rules = default_rules();
-    newest_rules.push_back("desc(created)".to_string());
-
-    newest_index
-        .set_settings(&default_settings().with_ranking_rules(newest_rules.into()))
-        .map_err(IndexingError::IndexDBError)?;
-
-    for chunk in docs_to_add.chunks(MEILISEARCH_CHUNK_SIZE) {
-        newest_index
-            .add_documents(Vec::from(chunk), Some("mod_id"))
-            .map_err(IndexingError::IndexDBError)?;
-    }
+    // Created Index
+    let newest_index = create_index(&client, "newest_mods", || {
+        let mut newest_rules = default_rules();
+        newest_rules.push_front("desc(created)".to_string());
+        newest_rules.into()
+    })?;
+    add_to_index(newest_index, &mods)?;
 
     Ok(())
 }

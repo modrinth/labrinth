@@ -94,9 +94,24 @@ async fn main() -> std::io::Result<()> {
             };
             let result = index_mods(pool_ref, settings).await;
             if let Err(e) = result {
-                log::warn!("External mod indexing failed: {}", e);
+                log::warn!("Local mod indexing failed: {}", e);
             }
             info!("Done indexing local database");
+        }
+    });
+
+    let indexing_queue = Arc::new(search::indexing::queue::CreationQueue::new());
+
+    let queue_ref = indexing_queue.clone();
+    scheduler.run(std::time::Duration::from_secs(15 * 60), move || {
+        info!("Indexing created mod queue");
+        let queue = queue_ref.clone();
+        async move {
+            let result = search::indexing::queue::index_queue(&*queue);
+            if let Err(e) = result {
+                log::warn!("Indexing created mods failed: {}", e);
+            }
+            info!("Done indexing created mod queue");
         }
     });
 
