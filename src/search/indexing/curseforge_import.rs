@@ -178,7 +178,7 @@ pub async fn index_curseforge(
             .replace("/256/256/", "/64/64/");
 
         docs_to_add.push(SearchMod {
-            mod_id: -curseforge_mod.id as i64,
+            mod_id: format!("curse-{}", curseforge_mod.id),
             author: (&curseforge_mod.authors[0].name).to_string(),
             title: curseforge_mod.name,
             description: curseforge_mod.summary.chars().take(150).collect(),
@@ -203,6 +203,5 @@ pub async fn index_curseforge(
         })
     }
 
-    //TODO Reindex every hour for new mods.
     Ok(docs_to_add)
 }
