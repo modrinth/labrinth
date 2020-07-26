@@ -394,23 +394,27 @@ async fn mod_create_inner(
         .into_iter()
         .collect::<Vec<_>>();
 
-    let index_mod = crate::search::SearchMod {
+    let now = chrono::Utc::now();
+    let timestamp = now.timestamp();
+    let formatted = now.to_string();
+
+    let index_mod = crate::search::UploadSearchMod {
         mod_id: format!("local-{}", mod_id),
         author: String::new(),
         title: mod_builder.title.clone(),
         description: mod_builder.description.clone(),
-        keywords: create_data.categories.clone(),
+        categories: create_data.categories.clone(),
         versions: versions_list,
         page_url: mod_builder.body_url.clone(),
         icon_url: mod_builder.icon_url.clone().unwrap(),
         author_url: String::new(),
-        date_created: chrono::Utc::now().to_string(),
-        date_modified: chrono::Utc::now().to_string(),
         latest_version: String::new(),
         downloads: 0,
-        created: 0,
-        updated: 0,
-        empty: String::from("{}{}{}"),
+        date_created: formatted.clone(),
+        date_modified: formatted,
+        created_timestamp: timestamp,
+        modified_timestamp: timestamp,
+        empty: std::borrow::Cow::Borrowed("{}{}{}"),
     };
 
     indexing_queue.add(index_mod);

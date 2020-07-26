@@ -1,4 +1,4 @@
-use super::{add_mods, IndexingError, SearchMod};
+use super::{add_mods, IndexingError, UploadSearchMod};
 use std::sync::Mutex;
 
 pub struct CreationQueue {
@@ -6,7 +6,7 @@ pub struct CreationQueue {
     // and I don't think this can deadlock.  This queue requires fast
     // writes and then a single potentially slower read/write that
     // empties the queue.
-    queue: Mutex<Vec<SearchMod>>,
+    queue: Mutex<Vec<UploadSearchMod>>,
 }
 
 impl CreationQueue {
@@ -16,16 +16,16 @@ impl CreationQueue {
         }
     }
 
-    pub fn add(&self, search_mod: SearchMod) {
+    pub fn add(&self, search_mod: UploadSearchMod) {
         // Can only panic if mutex is poisoned
         self.queue.lock().unwrap().push(search_mod);
     }
-    pub fn take(&self) -> Vec<SearchMod> {
+    pub fn take(&self) -> Vec<UploadSearchMod> {
         std::mem::replace(&mut *self.queue.lock().unwrap(), Vec::with_capacity(10))
     }
 }
 
-pub fn index_queue(queue: &CreationQueue) -> Result<(), IndexingError> {
+pub async fn index_queue(queue: &CreationQueue) -> Result<(), IndexingError> {
     let queue = queue.take();
-    add_mods(queue)
+    add_mods(queue).await
 }

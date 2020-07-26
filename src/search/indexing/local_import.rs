@@ -2,13 +2,13 @@ use futures::{StreamExt, TryStreamExt};
 use log::info;
 
 use super::IndexingError;
-use crate::search::SearchMod;
+use crate::search::UploadSearchMod;
 use sqlx::postgres::PgPool;
 
-pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> {
+pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingError> {
     info!("Indexing local mods!");
 
-    let mut docs_to_add: Vec<SearchMod> = vec![];
+    let mut docs_to_add: Vec<UploadSearchMod> = vec![];
 
     let mut results = sqlx::query!(
         "
@@ -53,23 +53,23 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<SearchMod>, IndexingError> 
                 icon_url = url;
             }
 
-            docs_to_add.push(SearchMod {
+            docs_to_add.push(UploadSearchMod {
                 mod_id: format!("local-{}", crate::models::ids::ModId(result.id as u64)),
                 author: "".to_string(),
                 title: result.title,
                 description: result.description,
-                keywords: categories,
+                categories,
                 versions,
                 downloads: result.downloads,
                 page_url: result.body_url,
                 icon_url,
                 author_url: "".to_string(),
                 date_created: result.published.to_string(),
-                created: 0,
+                created_timestamp: 0,
                 date_modified: "".to_string(),
-                updated: 0,
+                modified_timestamp: 0,
                 latest_version: "".to_string(),
-                empty: String::from("{}{}{}"),
+                empty: std::borrow::Cow::Borrowed("{}{}{}"),
             });
         }
     }

@@ -1,7 +1,7 @@
 use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpServer};
 use env_logger::Env;
-use log::info;
+use log::{info, warn};
 use search::indexing::index_mods;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
@@ -94,7 +94,7 @@ async fn main() -> std::io::Result<()> {
             };
             let result = index_mods(pool_ref, settings).await;
             if let Err(e) = result {
-                log::warn!("Local mod indexing failed: {}", e);
+                warn!("Local mod indexing failed: {:?}", e);
             }
             info!("Done indexing local database");
         }
@@ -107,9 +107,9 @@ async fn main() -> std::io::Result<()> {
         info!("Indexing created mod queue");
         let queue = queue_ref.clone();
         async move {
-            let result = search::indexing::queue::index_queue(&*queue);
+            let result = search::indexing::queue::index_queue(&*queue).await;
             if let Err(e) = result {
-                log::warn!("Indexing created mods failed: {}", e);
+                warn!("Indexing created mods failed: {:?}", e);
             }
             info!("Done indexing created mod queue");
         }
@@ -140,7 +140,7 @@ async fn main() -> std::io::Result<()> {
                 };
                 let result = index_mods(pool_ref, settings).await;
                 if let Err(e) = result {
-                    log::warn!("External mod indexing failed: {}", e);
+                    warn!("External mod indexing failed: {:?}", e);
                 }
                 info!("Done indexing curseforge");
             }
@@ -174,7 +174,7 @@ fn check_env_vars() {
             .and_then(|s| s.parse::<T>().ok())
             .is_none()
         {
-            log::warn!(
+            warn!(
                 "Variable `{}` missing in dotenv or not of type `{}`",
                 var,
                 std::any::type_name::<T>()
