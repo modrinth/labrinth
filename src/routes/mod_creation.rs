@@ -400,19 +400,21 @@ async fn mod_create_inner(
 
     let index_mod = crate::search::UploadSearchMod {
         mod_id: format!("local-{}", mod_id),
-        author: String::new(),
         title: mod_builder.title.clone(),
         description: mod_builder.description.clone(),
         categories: create_data.categories.clone(),
         versions: versions_list,
         page_url: mod_builder.body_url.clone(),
         icon_url: mod_builder.icon_url.clone().unwrap(),
+        // TODO: Author/team info, latest version info
+        author: String::new(),
         author_url: String::new(),
         latest_version: String::new(),
         downloads: 0,
         date_created: formatted.clone(),
-        date_modified: formatted,
         created_timestamp: timestamp,
+        // TODO: store and return modified time
+        date_modified: formatted,
         modified_timestamp: timestamp,
         empty: std::borrow::Cow::Borrowed("{}{}{}"),
     };

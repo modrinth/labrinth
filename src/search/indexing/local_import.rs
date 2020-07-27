@@ -53,9 +53,10 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 icon_url = url;
             }
 
+            let formatted = result.published.to_string();
+            let timestamp = result.published.timestamp();
             docs_to_add.push(UploadSearchMod {
                 mod_id: format!("local-{}", crate::models::ids::ModId(result.id as u64)),
-                author: "".to_string(),
                 title: result.title,
                 description: result.description,
                 categories,
@@ -63,12 +64,13 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 downloads: result.downloads,
                 page_url: result.body_url,
                 icon_url,
+                author: "".to_string(), // TODO: author/team info
                 author_url: "".to_string(),
-                date_created: result.published.to_string(),
-                created_timestamp: 0,
-                date_modified: "".to_string(),
-                modified_timestamp: 0,
-                latest_version: "".to_string(),
+                date_created: formatted.clone(),
+                created_timestamp: timestamp,
+                date_modified: formatted,
+                modified_timestamp: timestamp,
+                latest_version: "".to_string(), // TODO: Info about latest version
                 empty: std::borrow::Cow::Borrowed("{}{}{}"),
             });
         }

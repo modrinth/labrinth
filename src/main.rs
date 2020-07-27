@@ -43,34 +43,13 @@ async fn main() -> std::io::Result<()> {
         Arc::new(file_hosting::MockHost::new())
     };
 
-    // Currently removed to prevent double indexing:
-    // We may still want something similar, where it doesn't index
-    // on startup so that starting doesn't take a long time when
-    // it's being run frequently.
-
-    // // Get executable path
-    // let mut exe_path = env::current_exe()?.parent().unwrap().to_path_buf();
-    // // Create the path to the index lock file
-    // exe_path.push("index.v1.lock");
-
-    // let indexing_settings = IndexingSettings::from_env();
-
-    // // Indexing mods if not already done
-    // if env::args().any(|x| x == "regen") {
-    //     // User forced regen of indexing
-    //     info!("Forced regeneration of indexes!");
-    //     index_mods(pool.clone(), indexing_settings)
-    //         .await
-    //         .expect("Mod indexing failed");
-    // } else if !exe_path.exists() {
-    //     // The indexes were not created, or the version was upgraded
-    //     info!("Indexing of mods for first time...");
-    //     index_mods(pool.clone(), indexing_settings)
-    //         .await
-    //         .expect("Mod indexing failed");
-    //     // Create the lock file
-    //     File::create(exe_path)?;
-    // }
+    // TODO: use a real arg parsing library
+    let skip_initial = std::env::args().any(|x| x == "skip");
+    // Allow manually skipping the initial indexing for quicker iteration
+    // and startup times.
+    if skip_initial {
+        info!("Skipping initial indexing");
+    }
 
     let mut scheduler = scheduler::Scheduler::new();
 
@@ -84,10 +63,15 @@ async fn main() -> std::io::Result<()> {
     );
 
     let pool_ref = pool.clone();
+    let mut skip = skip_initial;
     scheduler.run(local_index_interval, move || {
-        info!("Indexing local database");
         let pool_ref = pool_ref.clone();
         async move {
+            if skip {
+                skip = false;
+                return;
+            }
+            info!("Indexing local database");
             let settings = IndexingSettings {
                 index_local: true,
                 index_external: false,
@@ -103,10 +87,15 @@ async fn main() -> std::io::Result<()> {
     let indexing_queue = Arc::new(search::indexing::queue::CreationQueue::new());
 
     let queue_ref = indexing_queue.clone();
+    let mut skip = skip_initial;
     scheduler.run(std::time::Duration::from_secs(15 * 60), move || {
-        info!("Indexing created mod queue");
         let queue = queue_ref.clone();
         async move {
+            if skip {
+                skip = false;
+                return;
+            }
+            info!("Indexing created mod queue");
             let result = search::indexing::queue::index_queue(&*queue).await;
             if let Err(e) = result {
                 warn!("Indexing created mods failed: {:?}", e);
