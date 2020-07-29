@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 use thiserror::Error;
+use crate::routes::version_creation::InitialVersionData;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -70,18 +71,6 @@ impl actix_web::ResponseError for CreateError {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-struct InitialVersionData {
-    pub file_parts: Vec<String>,
-    pub version_number: String,
-    pub version_title: String,
-    pub version_body: String,
-    pub dependencies: Vec<VersionId>,
-    pub game_versions: Vec<GameVersion>,
-    pub release_channel: VersionType,
-    pub loaders: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
 struct ModCreateData {
     /// The title or name of the mod.
     pub mod_name: String,
@@ -105,9 +94,9 @@ struct ModCreateData {
     pub wiki_url: Option<String>,
 }
 
-struct UploadedFile {
-    file_id: String,
-    file_name: String,
+pub struct UploadedFile {
+    pub file_id: String,
+    pub file_name: String,
 }
 
 async fn undo_uploads(

@@ -1,7 +1,8 @@
 mod index;
-mod mod_creation;
 mod mods;
 mod not_found;
+mod mod_creation;
+mod version_creation;
 
 pub use self::index::index_get;
 pub use self::mod_creation::mod_create;
