@@ -1,15 +1,14 @@
+use crate::database::models;
+use crate::database::models::version_item::VersionBuilder;
+use crate::file_hosting::FileHost;
+use crate::models::mods::{GameVersion, ModId, VersionId, VersionType};
+use crate::routes::mod_creation::{CreateError, UploadedFile};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpResponse};
 use futures::stream::StreamExt;
-use sqlx::postgres::PgPool;
-use crate::routes::mod_creation::{CreateError, UploadedFile};
-use crate::file_hosting::{FileHost};
-use crate::database::models::version_item::VersionBuilder;
-use crate::database::models;
-use crate::models::mods::{ModId, GameVersion, VersionId, VersionType};
 use serde::{Deserialize, Serialize};
-
+use sqlx::postgres::PgPool;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct InitialVersionData {
@@ -24,18 +23,48 @@ pub struct InitialVersionData {
     pub loaders: Vec<String>,
 }
 
-#[post("api/v1/mod")]
+#[post("api/v1/version")]
 pub async fn version_create(
-    mut payload: Multipart,
+    payload: Multipart,
     client: Data<PgPool>,
     file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
 
+    let result = version_create_inner(
+        payload,
+        &mut transaction,
+        &***file_host,
+        &mut uploaded_files,
+    )
+    .await;
 
+    if result.is_err() {
+        let undo_result = super::mod_creation::undo_uploads(&***file_host, &uploaded_files).await;
+        let rollback_result = transaction.rollback().await;
+
+        if let Err(e) = undo_result {
+            return Err(e);
+        }
+        if let Err(e) = rollback_result {
+            return Err(e.into());
+        }
+    } else {
+        transaction.commit().await?;
+    }
+
+    result
+}
+
+
+async fn version_create_inner(
+    mut payload: Multipart,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    file_host: &dyn FileHost,
+    uploaded_files: &mut Vec<UploadedFile>,
+) -> Result<HttpResponse, CreateError> {
     let cdn_url = dotenv::var("CDN_URL")?;
-    let mod_id : ModId = version_create_data.mod_id.ok_or_else(|| CreateError::InvalidInput("Mod id is required for version data".to_string()))?;
 
     let mut version_builder: Option<VersionBuilder> = None;
 
@@ -54,49 +83,52 @@ pub async fn version_create(
                 data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
             }
 
-            let version_create_data: InitialVersionData =  serde_json::from_slice(&data)?;
+            let version_create_data: InitialVersionData = serde_json::from_slice(&data)?;
 
-            let version_id: VersionId = models::generate_version_id(&mut transaction).await?.into();
+            let mod_id: ModId = version_create_data.mod_id.ok_or_else(|| {
+                CreateError::InvalidInput("Mod id is required for version data".to_string())
+            })?;
+
+            let version_id: VersionId = models::generate_version_id(transaction).await?.into();
             let body_url = format!("data/{}/changelogs/{}/body.md", mod_id, version_id);
 
-                let uploaded_text = file_host
-                    .upload_file(
-                        "text/plain",
-                        &body_url,
-                        version_create_data.version_body.clone().into_bytes(),
-                    )
-                    .await?;
+            let uploaded_text = file_host
+                .upload_file(
+                    "text/plain",
+                    &body_url,
+                    version_create_data.version_body.clone().into_bytes(),
+                )
+                .await?;
 
-                uploaded_files.push(UploadedFile {
-                    file_id: uploaded_text.file_id.clone(),
-                    file_name: uploaded_text.file_name.clone(),
-                });
+            uploaded_files.push(UploadedFile {
+                file_id: uploaded_text.file_id.clone(),
+                file_name: uploaded_text.file_name.clone(),
+            });
 
-                // TODO: do a real lookup for the channels
-                let release_channel = match version_create_data.release_channel {
-                    VersionType::Release => models::ChannelId(0),
-                    VersionType::Beta => models::ChannelId(2),
-                    VersionType::Alpha => models::ChannelId(4),
-                };
+            // TODO: do a real lookup for the channels
+            let release_channel = match version_create_data.release_channel {
+                VersionType::Release => models::ChannelId(0),
+                VersionType::Beta => models::ChannelId(2),
+                VersionType::Alpha => models::ChannelId(4),
+            };
 
-               version_builder = Some(VersionBuilder {
-                    version_id: version_id.into(),
-                    mod_id: models::ModId(mod_id.0 as i64),
-                    name: version_create_data.version_title.clone(),
-                    version_number: version_create_data.version_number.clone(),
-                    changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
-                    files: Vec::with_capacity(1),
-                    dependencies: version_create_data
-                        .dependencies
-                        .iter()
-                        .map(|x| (*x).into())
-                        .collect::<Vec<_>>(),
-                    // TODO: add game_versions and loaders info
-                    game_versions: vec![],
-                    loaders: vec![],
-                    release_channel,
-                });
-
+            version_builder = Some(VersionBuilder {
+                version_id: version_id.into(),
+                mod_id: models::ModId(mod_id.0 as i64),
+                name: version_create_data.version_title.clone(),
+                version_number: version_create_data.version_number.clone(),
+                changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
+                files: Vec::with_capacity(1),
+                dependencies: version_create_data
+                    .dependencies
+                    .iter()
+                    .map(|x| (*x).into())
+                    .collect::<Vec<_>>(),
+                // TODO: add game_versions and loaders info
+                game_versions: vec![],
+                loaders: vec![],
+                release_channel,
+            });
 
             continue;
         }
@@ -113,7 +145,7 @@ pub async fn version_create(
         };
 
         if &*file_extension == "jar" {
-            let version = version_builder.as_ref().ok_or_else(|| {
+            let version = version_builder.as_mut().ok_or_else(|| {
                 CreateError::InvalidInput(String::from("`data` field must come before file fields"))
             })?;
 
@@ -127,9 +159,7 @@ pub async fn version_create(
                     "application/java-archive",
                     &format!(
                         "{}/{}/{}",
-                        version.mod_id,
-                        version.version_number,
-                        file_name
+                        version.mod_id.0, version.version_number, file_name
                     ),
                     data.to_vec(),
                 )
@@ -158,8 +188,10 @@ pub async fn version_create(
         }
     }
 
-    version_builder.ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?.insert(&mut transaction).await?;
-    
+    version_builder
+        .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?
+        .insert(transaction)
+        .await?;
 
     Ok(HttpResponse::Ok().into())
 }

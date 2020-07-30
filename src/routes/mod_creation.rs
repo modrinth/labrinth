@@ -1,8 +1,9 @@
 use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
-use crate::models::mods::{GameVersion, ModId, VersionId, VersionType};
+use crate::models::mods::{ModId, VersionId, VersionType};
 use crate::models::teams::TeamMember;
+use crate::routes::version_creation::InitialVersionData;
 use crate::search::indexing::queue::CreationQueue;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
@@ -13,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 use thiserror::Error;
-use crate::routes::version_creation::InitialVersionData;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -99,7 +99,7 @@ pub struct UploadedFile {
     pub file_name: String,
 }
 
-async fn undo_uploads(
+pub async fn undo_uploads(
     file_host: &dyn FileHost,
     uploaded_files: &[UploadedFile],
 ) -> Result<(), CreateError> {
