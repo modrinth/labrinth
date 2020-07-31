@@ -419,7 +419,11 @@ async fn mod_create_inner(
         published: now,
         downloads: 0,
         categories: create_data.categories.clone(),
-        versions: mod_builder.initial_versions.iter().map(|v| crate::models::ids::VersionId(v.version_id.0 as u64)).collect::<Vec<_>>(),
+        versions: mod_builder
+            .initial_versions
+            .iter()
+            .map(|v| crate::models::ids::VersionId(v.version_id.0 as u64))
+            .collect::<Vec<_>>(),
         icon_url: mod_builder.icon_url.clone(),
         issues_url: mod_builder.issues_url.clone(),
         source_url: mod_builder.source_url.clone(),
@@ -429,7 +433,7 @@ async fn mod_create_inner(
     let _mod_id = mod_builder.insert(&mut *transaction).await?;
 
     // TODO: respond with the new mod info, or with just the new mod id.
-    Ok(HttpResponse::Ok().json(response).into())
+    Ok(HttpResponse::Ok().json(response))
 }
 
 async fn process_icon_upload(

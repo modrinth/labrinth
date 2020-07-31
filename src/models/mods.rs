@@ -1,5 +1,5 @@
-use super::ids::{Base62Id};
-use super::teams::{TeamId};
+use super::ids::Base62Id;
+use super::teams::TeamId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

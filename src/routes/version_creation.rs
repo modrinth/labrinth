@@ -1,7 +1,9 @@
 use crate::database::models;
 use crate::database::models::version_item::VersionBuilder;
 use crate::file_hosting::FileHost;
-use crate::models::mods::{Version, GameVersion, ModId, VersionId, VersionType, VersionFile, ModLoader};
+use crate::models::mods::{
+    GameVersion, ModId, ModLoader, Version, VersionFile, VersionId, VersionType,
+};
 use crate::routes::mod_creation::{CreateError, UploadedFile};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
@@ -57,7 +59,6 @@ pub async fn version_create(
     result
 }
 
-
 async fn version_create_inner(
     mut payload: Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -92,10 +93,17 @@ async fn version_create_inner(
                 CreateError::InvalidInput("Mod id is required for version data".to_string())
             })?;
 
-            let results = sqlx::query!("SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)", mod_id.0 as i64).fetch_one(&mut *transaction).await?;
+            let results = sqlx::query!(
+                "SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)",
+                mod_id.0 as i64
+            )
+            .fetch_one(&mut *transaction)
+            .await?;
 
             if !results.exists.unwrap_or(true) {
-                return Err(CreateError::InvalidInput("An invalid mod id was supplied".to_string()));
+                return Err(CreateError::InvalidInput(
+                    "An invalid mod id was supplied".to_string(),
+                ));
             }
 
             let version_id: VersionId = models::generate_version_id(transaction).await?.into();
@@ -202,7 +210,6 @@ async fn version_create_inner(
     let version_builder_safe = version_builder
         .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
 
-
     let response = Version {
         id: VersionId(version_builder_safe.version_id.0 as u64),
         mod_id: ModId(version_builder_safe.mod_id.0 as u64),
@@ -212,18 +219,21 @@ async fn version_create_inner(
         date_published: chrono::Utc::now(),
         downloads: 0,
         version_type: version_data_safe.release_channel,
-        files: version_builder_safe.files.iter().map(|x| VersionFile {
-            // TODO: Put real data here
-            hashes: vec![],
-            url: String::new(),
-        }).collect::<Vec<_>>(),
+        files: version_builder_safe
+            .files
+            .iter()
+            .map(|_x| VersionFile {
+                // TODO: Put real data here
+                hashes: vec![],
+                url: String::new(),
+            })
+            .collect::<Vec<_>>(),
         dependencies: version_data_safe.dependencies,
         game_versions: version_data_safe.game_versions,
         loaders: version_data_safe.loaders,
-        
     };
-    
+
     version_builder_safe.insert(transaction).await?;
 
-    Ok(HttpResponse::Ok().json(response).into())
+    Ok(HttpResponse::Ok().json(response))
 }
