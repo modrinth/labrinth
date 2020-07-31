@@ -410,10 +410,26 @@ async fn mod_create_inner(
 
     indexing_queue.add(index_mod);
 
+    let response = crate::models::mods::Mod {
+        id: mod_id,
+        team: crate::models::ids::TeamId(team_id.0 as u64),
+        title: mod_builder.title.clone(),
+        description: mod_builder.description.clone(),
+        body_url: mod_builder.body_url.clone(),
+        published: now,
+        downloads: 0,
+        categories: create_data.categories.clone(),
+        versions: mod_builder.initial_versions.iter().map(|v| crate::models::ids::VersionId(v.version_id.0 as u64)).collect::<Vec<_>>(),
+        icon_url: mod_builder.icon_url.clone(),
+        issues_url: mod_builder.issues_url.clone(),
+        source_url: mod_builder.source_url.clone(),
+        wiki_url: mod_builder.wiki_url.clone(),
+    };
+
     let _mod_id = mod_builder.insert(&mut *transaction).await?;
 
     // TODO: respond with the new mod info, or with just the new mod id.
-    Ok(HttpResponse::Ok().into())
+    Ok(HttpResponse::Ok().json(response).into())
 }
 
 async fn process_icon_upload(

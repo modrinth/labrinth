@@ -1,7 +1,7 @@
 use crate::database::models;
 use crate::database::models::version_item::VersionBuilder;
 use crate::file_hosting::FileHost;
-use crate::models::mods::{GameVersion, ModId, VersionId, VersionType};
+use crate::models::mods::{Version, GameVersion, ModId, VersionId, VersionType, VersionFile, ModLoader};
 use crate::routes::mod_creation::{CreateError, UploadedFile};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
@@ -20,7 +20,7 @@ pub struct InitialVersionData {
     pub dependencies: Vec<VersionId>,
     pub game_versions: Vec<GameVersion>,
     pub release_channel: VersionType,
-    pub loaders: Vec<String>,
+    pub loaders: Vec<ModLoader>,
 }
 
 #[post("api/v1/version")]
@@ -64,9 +64,11 @@ async fn version_create_inner(
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
 ) -> Result<HttpResponse, CreateError> {
+    //TODO: Check if mod exists, check if version number is unique
     let cdn_url = dotenv::var("CDN_URL")?;
 
-    let mut version_builder: Option<VersionBuilder> = None;
+    let mut initial_version_data = None;
+    let mut version_builder = None;
 
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
@@ -84,10 +86,17 @@ async fn version_create_inner(
             }
 
             let version_create_data: InitialVersionData = serde_json::from_slice(&data)?;
+            initial_version_data = Some(version_create_data.clone());
 
             let mod_id: ModId = version_create_data.mod_id.ok_or_else(|| {
                 CreateError::InvalidInput("Mod id is required for version data".to_string())
             })?;
+
+            let results = sqlx::query!("SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)", mod_id.0 as i64).fetch_one(&mut *transaction).await?;
+
+            if !results.exists.unwrap_or(true) {
+                return Err(CreateError::InvalidInput("An invalid mod id was supplied".to_string()));
+            }
 
             let version_id: VersionId = models::generate_version_id(transaction).await?.into();
             let body_url = format!("data/{}/changelogs/{}/body.md", mod_id, version_id);
@@ -188,10 +197,33 @@ async fn version_create_inner(
         }
     }
 
-    version_builder
-        .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?
-        .insert(transaction)
-        .await?;
+    let version_data_safe = initial_version_data
+        .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
+    let version_builder_safe = version_builder
+        .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
 
-    Ok(HttpResponse::Ok().into())
+
+    let response = Version {
+        id: VersionId(version_builder_safe.version_id.0 as u64),
+        mod_id: ModId(version_builder_safe.mod_id.0 as u64),
+        name: version_builder_safe.name.clone(),
+        version_number: version_builder_safe.version_number.clone(),
+        changelog_url: version_builder_safe.changelog_url.clone(),
+        date_published: chrono::Utc::now(),
+        downloads: 0,
+        version_type: version_data_safe.release_channel,
+        files: version_builder_safe.files.iter().map(|x| VersionFile {
+            // TODO: Put real data here
+            hashes: vec![],
+            url: String::new(),
+        }).collect::<Vec<_>>(),
+        dependencies: version_data_safe.dependencies,
+        game_versions: version_data_safe.game_versions,
+        loaders: version_data_safe.loaders,
+        
+    };
+    
+    version_builder_safe.insert(transaction).await?;
+
+    Ok(HttpResponse::Ok().json(response).into())
 }
