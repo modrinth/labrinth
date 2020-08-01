@@ -47,6 +47,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
             .try_filter_map(|e| async { Ok(e.right().map(|c| c.category)) })
             .try_collect::<Vec<String>>()
             .await?;
+            // TODO: loaders
 
             let mut icon_url = "".to_string();
 

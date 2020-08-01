@@ -246,16 +246,19 @@ async fn version_create_inner(
                 hashes: file
                     .hashes
                     .iter()
-                    .map(|hash| crate::models::mods::FileHash {
-                        algorithm: hash.algorithm.clone(),
-                        // This is a hack since the hashes are currently stored as ASCII
-                        // in the database, but represented here as a Vec<u8>.  At some
-                        // point we need to change the hash to be the real bytes  in the
-                        // database and add more processing here.
-                        hash: String::from_utf8(hash.hash.clone()).unwrap(),
+                    .map(|hash| {
+                        (
+                            hash.algorithm.clone(),
+                            // This is a hack since the hashes are currently stored as ASCII
+                            // in the database, but represented here as a Vec<u8>.  At some
+                            // point we need to change the hash to be the real bytes  in the
+                            // database and add more processing here.
+                            String::from_utf8(hash.hash.clone()).unwrap(),
+                        )
                     })
                     .collect(),
                 url: file.url.clone(),
+                filename: file.filename.clone(),
             })
             .collect::<Vec<_>>(),
         dependencies: version_data_safe.dependencies,

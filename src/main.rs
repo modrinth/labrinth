@@ -177,6 +177,8 @@ async fn main() -> std::io::Result<()> {
             .data(indexing_queue.clone())
             .service(routes::index_get)
             .service(routes::mod_search)
+            .service(routes::mods::mod_get)
+            .service(routes::versions::version_get)
             .service(routes::mod_create)
             .service(routes::version_create)
             .service(routes::upload_file_to_version)
