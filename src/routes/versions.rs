@@ -1,8 +1,45 @@
 use super::ApiError;
 use crate::database;
 use crate::models;
-use actix_web::{get, web, HttpResponse};
+use actix_web::{delete, get, web, HttpResponse};
 use sqlx::PgPool;
+
+// TODO: this needs filtering, and a better response type
+// Currently it only gives a list of ids, which have to be
+// requested manually.  This route could give a list of the
+// ids as well as the supported versions and loaders, or
+// other info that is needed for selecting the right version.
+#[get("api/v1/mod/{mod_id}/version")]
+pub async fn version_list(
+    info: web::Path<(models::ids::ModId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let id = info.0.into();
+
+    let mod_exists = sqlx::query!(
+        "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)",
+        id as database::models::ModId,
+    )
+    .fetch_one(&**pool)
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?
+    .exists;
+
+    if mod_exists.unwrap_or(false) {
+        let mod_data = database::models::Version::get_mod_versions(id, &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        let response = mod_data
+            .into_iter()
+            .map(|v| v.into())
+            .collect::<Vec<models::ids::VersionId>>();
+
+        Ok(HttpResponse::Ok().json(response))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
 
 #[get("api/v1/mod/{mod_id}/version/{version_id}")]
 pub async fn version_get(
@@ -10,11 +47,11 @@ pub async fn version_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.1;
-    let mod_data = database::models::Version::get_full(id.into(), &**pool)
+    let version_data = database::models::Version::get_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    if let Some(data) = mod_data {
+    if let Some(data) = version_data {
         use models::mods::VersionType;
 
         if models::ids::ModId::from(data.mod_id) != info.0 {
@@ -69,6 +106,25 @@ pub async fn version_get(
                 .collect(),
         };
         Ok(HttpResponse::Ok().json(response))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+// TODO: This really needs auth
+#[delete("api/v1/mod/{mod_id}/version/{version_id}")]
+pub async fn version_delete(
+    info: web::Path<(models::ids::ModId, models::ids::VersionId)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    // TODO: check if the mod exists and matches the version id
+    let id = info.1;
+    let result = database::models::Version::remove_full(id.into(), &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    if result.is_some() {
+        Ok(HttpResponse::Ok().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

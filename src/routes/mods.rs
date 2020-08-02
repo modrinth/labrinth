@@ -3,7 +3,7 @@ use crate::database;
 use crate::models;
 use crate::models::mods::SearchRequest;
 use crate::search::{search_for_mod, SearchError};
-use actix_web::{get, web, HttpResponse};
+use actix_web::{delete, get, web, HttpResponse};
 use sqlx::PgPool;
 
 #[get("api/v1/mod")]
@@ -43,6 +43,25 @@ pub async fn mod_get(
             wiki_url: m.wiki_url,
         };
         Ok(HttpResponse::Ok().json(response))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+// TODO: This really needs auth
+// TODO: The mod remains in meilisearch's index until the index is deleted
+#[delete("api/v1/mod/{id}")]
+pub async fn mod_delete(
+    info: web::Path<(models::ids::ModId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let id = info.0;
+    let result = database::models::Mod::remove_full(id.into(), &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    if result.is_some() {
+        Ok(HttpResponse::Ok().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

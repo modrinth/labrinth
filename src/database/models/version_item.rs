@@ -1,3 +1,4 @@
+use super::categories::{GameVersion, Loader};
 use super::ids::*;
 use super::DatabaseError;
 
@@ -173,7 +174,118 @@ impl Version {
         Ok(())
     }
 
-    pub async fn get_dependencies<'a, E>(&self, exec: E) -> Result<Vec<VersionId>, sqlx::Error>
+    // TODO: someone verify this
+    pub async fn remove_full<'a, E>(id: VersionId, exec: E) -> Result<Option<()>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use sqlx::Done;
+
+        let result = sqlx::query!(
+            "
+            SELECT EXISTS(SELECT 1 FROM versions WHERE id = $1)
+            ",
+            id as VersionId,
+        )
+        .fetch_one(exec)
+        .await?;
+
+        if !result.exists.unwrap_or(false) {
+            return Ok(None);
+        }
+
+        sqlx::query!(
+            "
+            DELETE FROM game_versions_versions gvv
+            WHERE gvv.joining_version_id = $1
+            ",
+            id as VersionId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM loaders_versions
+            WHERE loaders_versions.version_id = $1
+            ",
+            id as VersionId,
+        )
+        .execute(exec)
+        .await?;
+
+        use futures::TryStreamExt;
+
+        let mut files = sqlx::query!(
+            "
+            SELECT files.id, files.url, files.filename FROM files
+            WHERE files.version_id = $1
+            ",
+            id as VersionId,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|c| VersionFile {
+                id: FileId(c.id),
+                version_id: id,
+                url: c.url,
+                filename: c.filename,
+            }))
+        })
+        .try_collect::<Vec<VersionFile>>()
+        .await?;
+
+        for file in files {
+            // TODO: store backblaze id in database so that we can delete the files here
+            // For now, we can't delete the files since we don't have the backblaze id
+            log::warn!(
+                "Can't delete version file id: {} (url: {}, name: {})",
+                file.id.0,
+                file.url,
+                file.filename
+            )
+        }
+
+        sqlx::query!(
+            "
+            DELETE FROM hashes
+            WHERE EXISTS(
+                SELECT 1 FROM files WHERE
+                    (files.version_id = $1) AND
+                    (hashes.file_id = files.id)
+            )
+            ",
+            id as VersionId
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM files
+            WHERE files.version_id = $1
+            ",
+            id as VersionId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM versions WHERE id = $1
+            ",
+            id as VersionId,
+        )
+        .execute(exec)
+        .await?;
+
+        Ok(Some(()))
+    }
+
+    pub async fn get_dependencies<'a, E>(
+        id: VersionId,
+        exec: E,
+    ) -> Result<Vec<VersionId>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -184,7 +296,31 @@ impl Version {
             SELECT dependency_id id FROM dependencies
             WHERE dependent_id = $1
             ",
-            self.id as VersionId,
+            id as VersionId,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|v| VersionId(v.id))) })
+        .try_collect::<Vec<VersionId>>()
+        .await?;
+
+        Ok(vec)
+    }
+
+    pub async fn get_mod_versions<'a, E>(
+        mod_id: ModId,
+        exec: E,
+    ) -> Result<Vec<VersionId>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        use futures::stream::TryStreamExt;
+
+        let vec = sqlx::query!(
+            "
+            SELECT id FROM versions
+            WHERE mod_id = $1
+            ",
+            mod_id as ModId,
         )
         .fetch_many(exec)
         .try_filter_map(|e| async { Ok(e.right().map(|v| VersionId(v.id))) })
@@ -340,14 +476,6 @@ pub struct ReleaseChannel {
     pub id: ChannelId,
     pub channel: String,
 }
-pub struct Loader {
-    pub id: LoaderId,
-    pub loader: String,
-}
-pub struct GameVersion {
-    pub id: GameVersionId,
-    pub version: String,
-}
 
 pub struct VersionFile {
     pub id: FileId,
@@ -360,11 +488,6 @@ pub struct FileHash {
     pub file_id: FileId,
     pub algorithm: String,
     pub hash: Vec<u8>,
-}
-
-pub struct Category {
-    pub id: CategoryId,
-    pub category: String,
 }
 
 pub struct QueryVersion {

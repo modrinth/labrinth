@@ -143,6 +143,88 @@ impl Mod {
         }
     }
 
+    pub async fn remove_full<'a, 'b, E>(
+        id: ModId,
+        exec: E,
+    ) -> Result<Option<()>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT team_id FROM mods WHERE id = $1
+            ",
+            id as ModId,
+        )
+        .fetch_optional(exec)
+        .await?;
+
+        let team_id: TeamId = if let Some(id) = result {
+            TeamId(id.team_id)
+        } else {
+            return Ok(None);
+        };
+
+        sqlx::query!(
+            "
+            DELETE FROM mods_categories
+            WHERE joining_mod_id = $1
+            ",
+            id as ModId,
+        )
+        .execute(exec)
+        .await?;
+
+        use futures::TryStreamExt;
+        let versions: Vec<VersionId> = sqlx::query!(
+            "
+            SELECT id FROM versions
+            WHERE mod_id = $1
+            ",
+            id as ModId,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|c| VersionId(c.id))) })
+        .try_collect::<Vec<VersionId>>()
+        .await?;
+
+        for version in versions {
+            super::Version::remove_full(version, exec).await?;
+        }
+
+        sqlx::query!(
+            "
+            DELETE FROM mods
+            WHERE id = $1
+            ",
+            id as ModId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM team_members
+            WHERE team_id = $1
+            ",
+            team_id as TeamId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM teams
+            WHERE id = $1
+            ",
+            team_id as TeamId,
+        )
+        .execute(exec)
+        .await?;
+
+        Ok(Some(()))
+    }
+
     pub async fn get_full<'a, 'b, E>(
         id: ModId,
         executor: E,
