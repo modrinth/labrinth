@@ -10,7 +10,7 @@ use actix_web::web::Data;
 use actix_web::{post, HttpResponse};
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgPool;
+use sqlx::postgres::{PgPool, PgRow};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct InitialVersionData {
@@ -23,6 +23,11 @@ pub struct InitialVersionData {
     pub game_versions: Vec<GameVersion>,
     pub release_channel: VersionType,
     pub loaders: Vec<ModLoader>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct InitialFileData {
+    pub version_id: VersionId,
 }
 
 #[post("api/v1/version")]
@@ -236,4 +241,109 @@ async fn version_create_inner(
     version_builder_safe.insert(transaction).await?;
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+#[post("api/v1/file")]
+pub async fn upload_file_to_version(
+    payload: Multipart,
+    client: Data<PgPool>,
+    file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
+) -> Result<HttpResponse, CreateError> {
+    let mut transaction = client.begin().await?;
+
+    let cdn_url = dotenv::var("CDN_URL")?;
+
+    let mut initial_file_data: Option<InitialFileData> = None;
+    let mut version_builder: Option<VersionBuilder> = None;
+    
+    while let Some(item) = payload.next().await {
+        let mut field: Field = item.map_err(CreateError::MultipartError)?;
+        let content_disposition = field.content_disposition().ok_or_else(|| {
+            CreateError::MissingValueError("Missing content disposition".to_string())
+        })?;
+        let name = content_disposition
+            .get_name()
+            .ok_or_else(|| CreateError::MissingValueError("Missing content name".to_string()))?;
+
+        if name == "data" {
+            let mut data = Vec::new();
+            while let Some(chunk) = field.next().await {
+                data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
+            }
+
+            let file_data: InitialFileData = serde_json::from_slice(&data)?;
+
+            let result = sqlx::query!(
+                "
+                SELECT *
+                FROM versions
+                WHERE id = $1
+                ",
+                file_data.version_id as VersionId,
+            )
+            .fetch(&mut *transaction)
+            .await?;
+        
+            if !result.exists.unwrap_or(true) {
+                return Err(CreateError::InvalidInput(
+                    "An invalid version id was supplied".to_string(),
+                ));
+            }
+
+            version_builder = Some(VersionBuilder {
+                version_id: result.id,
+                mod_id: result.mod_id,
+                name: result.name,
+                version_number: result.version_number,
+                changelog_url: result.changelog_url,
+                files: result.files,
+                dependencies: result.dependencies,
+                game_versions: result.game_versions,
+                loaders: result.loaders,
+                release_channel: result.release_channel,
+
+            });
+        }
+
+        let file_name = content_disposition.get_filename().ok_or_else(|| {
+            CreateError::MissingValueError("Missing content file name".to_string())
+        })?;
+        let file_extension = if let Some(last_period) = file_name.rfind('.') {
+            file_name.get((last_period + 1)..).unwrap_or("")
+        } else {
+            return Err(CreateError::MissingValueError(
+                "Missing content file extension".to_string(),
+            ));
+        };
+
+        if &*file_extension == "jar" {
+            let mut file_data = initial_file_data.ok_or_else(|| {
+                CreateError::InvalidInput(String::from("`data` field must come before file fields"))
+            })?;
+
+            let mut version = version_builder.ok_or_else(|| {
+                CreateError::InvalidInput(String::from("`data` field must come before file fields"))
+            })?;
+
+            let mut data = Vec::new();
+            while let Some(chunk) = field.next().await {
+                data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
+            }
+
+            let upload_data = file_host
+                .upload_file(
+                    "application/java-archive",
+                    &format!(
+                        "{}/{}/{}",
+                        version.mod_id.0, version.version_number, file_name
+                    ),
+                    data.to_vec(),
+                )
+                .await?;
+
+            break;
+        }
+    }
+
+    Ok(HttpResponse::Ok().into())
 }
