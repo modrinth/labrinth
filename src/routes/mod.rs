@@ -1,19 +1,42 @@
+use actix_web::web;
+
 mod index;
 mod mod_creation;
-pub mod mods;
+mod mods;
 mod not_found;
 mod tags;
 mod version_creation;
-pub mod versions;
+mod versions;
 
 pub use tags::config as tags_config;
 
 pub use self::index::index_get;
-pub use self::mod_creation::mod_create;
-pub use self::mods::mod_search;
 pub use self::not_found::not_found;
-pub use self::version_creation::upload_file_to_version;
-pub use self::version_creation::version_create;
+
+pub fn mods_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(mods::mod_search);
+    cfg.service(mod_creation::mod_create);
+
+    cfg.service(
+        web::scope("mod")
+            .service(mods::mod_get)
+            .service(mods::mod_delete)
+            .service(web::scope("{mod_id}").configure(versions_config)),
+    );
+}
+
+pub fn versions_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(versions::version_list)
+        .service(version_creation::version_create)
+        .service(
+            web::scope("version")
+                .service(versions::version_get)
+                .service(versions::version_delete)
+                .service(
+                    web::scope("{version_id}").service(version_creation::upload_file_to_version),
+                ),
+        );
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {

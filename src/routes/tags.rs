@@ -29,6 +29,7 @@ pub async fn category_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiE
 
 // At some point this may take more info, but it should be able to
 // remain idempotent
+// TODO: don't fail if category already exists
 #[put("category/{name}")]
 pub async fn category_create(
     pool: web::Data<PgPool>,
@@ -71,6 +72,7 @@ pub async fn loader_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiErr
 
 // At some point this may take more info, but it should be able to
 // remain idempotent
+// TODO: don't fail if loader already exists
 #[put("loader/{name}")]
 pub async fn loader_create(
     pool: web::Data<PgPool>,

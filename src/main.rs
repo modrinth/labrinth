@@ -179,15 +179,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api/v1/")
                     .configure(routes::tags_config)
-                    .service(routes::mod_search)
-                    .service(routes::mods::mod_get)
-                    .service(routes::mods::mod_delete)
-                    .service(routes::mod_create)
-                    .service(routes::versions::version_get)
-                    .service(routes::versions::version_list)
-                    .service(routes::versions::version_delete)
-                    .service(routes::version_create)
-                    .service(routes::upload_file_to_version),
+                    .configure(routes::mods_config),
             )
             .default_service(web::get().to(routes::not_found))
     })

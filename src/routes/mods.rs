@@ -14,7 +14,7 @@ pub async fn mod_search(
     Ok(HttpResponse::Ok().json(results))
 }
 
-#[get("mod/{id}")]
+#[get("{id}")]
 pub async fn mod_get(
     info: web::Path<(models::ids::ModId,)>,
     pool: web::Data<PgPool>,
@@ -50,7 +50,7 @@ pub async fn mod_get(
 
 // TODO: This really needs auth
 // TODO: The mod remains in meilisearch's index until the index is deleted
-#[delete("mod/{id}")]
+#[delete("{id}")]
 pub async fn mod_delete(
     info: web::Path<(models::ids::ModId,)>,
     pool: web::Data<PgPool>,
