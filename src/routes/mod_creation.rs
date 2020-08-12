@@ -412,7 +412,7 @@ async fn mod_create_inner(
 
     let response = crate::models::mods::Mod {
         id: mod_id,
-        team: crate::models::ids::TeamId(team_id.0 as u64),
+        team: team_id.into(),
         title: mod_builder.title.clone(),
         description: mod_builder.description.clone(),
         body_url: mod_builder.body_url.clone(),
@@ -422,7 +422,7 @@ async fn mod_create_inner(
         versions: mod_builder
             .initial_versions
             .iter()
-            .map(|v| crate::models::ids::VersionId(v.version_id.0 as u64))
+            .map(|v| v.version_id.into())
             .collect::<Vec<_>>(),
         icon_url: mod_builder.icon_url.clone(),
         issues_url: mod_builder.issues_url.clone(),

@@ -1,5 +1,5 @@
 use crate::database::models;
-use crate::database::models::version_item::VersionBuilder;
+use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder};
 use crate::file_hosting::FileHost;
 use crate::models::mods::{
     GameVersion, ModId, ModLoader, Version, VersionFile, VersionId, VersionType,
@@ -10,11 +10,11 @@ use actix_web::web::Data;
 use actix_web::{post, HttpResponse};
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::{PgPool, PgRow};
+use sqlx::postgres::PgPool;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct InitialVersionData {
-    pub mod_id: Option<ModId>,
+    pub mod_id: ModId,
     pub file_parts: Vec<String>,
     pub version_number: String,
     pub version_title: String,
@@ -27,7 +27,7 @@ pub struct InitialVersionData {
 
 #[derive(Serialize, Deserialize, Clone)]
 struct InitialFileData {
-    pub version_id: VersionId,
+    // TODO: hashes?
 }
 
 #[post("api/v1/version")]
@@ -70,7 +70,6 @@ async fn version_create_inner(
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
 ) -> Result<HttpResponse, CreateError> {
-    //TODO: Check if mod exists, check if version number is unique
     let cdn_url = dotenv::var("CDN_URL")?;
 
     let mut initial_version_data = None;
@@ -92,22 +91,36 @@ async fn version_create_inner(
             }
 
             let version_create_data: InitialVersionData = serde_json::from_slice(&data)?;
-            initial_version_data = Some(version_create_data.clone());
+            initial_version_data = Some(version_create_data);
+            let version_create_data = initial_version_data.as_ref().unwrap();
 
-            let mod_id: ModId = version_create_data.mod_id.ok_or_else(|| {
-                CreateError::InvalidInput("Mod id is required for version data".to_string())
-            })?;
+            // TODO: get mod_id from path (POST `/api/v1/mod/{mod_id}/version`)
+            let mod_id: ModId = version_create_data.mod_id;
 
             let results = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)",
-                mod_id.0 as i64
+                models::ModId::from(mod_id) as models::ModId
             )
             .fetch_one(&mut *transaction)
             .await?;
 
-            if !results.exists.unwrap_or(true) {
+            if !results.exists.unwrap_or(false) {
                 return Err(CreateError::InvalidInput(
                     "An invalid mod id was supplied".to_string(),
+                ));
+            }
+
+            let results = sqlx::query!(
+                "SELECT EXISTS(SELECT 1 FROM versions WHERE (version_number=$1) AND (mod_id=$2))",
+                version_create_data.version_number,
+                models::ModId::from(mod_id) as models::ModId,
+            )
+            .fetch_one(&mut *transaction)
+            .await?;
+
+            if results.exists.unwrap_or(true) {
+                return Err(CreateError::InvalidInput(
+                    "A version with that version_number already exists".to_string(),
                 ));
             }
 
@@ -129,14 +142,14 @@ async fn version_create_inner(
 
             // TODO: do a real lookup for the channels
             let release_channel = match version_create_data.release_channel {
-                VersionType::Release => models::ChannelId(0),
-                VersionType::Beta => models::ChannelId(2),
-                VersionType::Alpha => models::ChannelId(4),
+                VersionType::Release => models::ChannelId(1),
+                VersionType::Beta => models::ChannelId(3),
+                VersionType::Alpha => models::ChannelId(5),
             };
 
             version_builder = Some(VersionBuilder {
                 version_id: version_id.into(),
-                mod_id: models::ModId(mod_id.0 as i64),
+                mod_id: mod_id.into(),
                 name: version_create_data.version_title.clone(),
                 version_number: version_create_data.version_number.clone(),
                 changelog_url: Some(format!("{}/{}", cdn_url, body_url)),
@@ -181,7 +194,9 @@ async fn version_create_inner(
                     "application/java-archive",
                     &format!(
                         "{}/{}/{}",
-                        version.mod_id.0, version.version_number, file_name
+                        ModId::from(version.mod_id),
+                        version.version_number,
+                        file_name
                     ),
                     data.to_vec(),
                 )
@@ -216,8 +231,8 @@ async fn version_create_inner(
         .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
 
     let response = Version {
-        id: VersionId(version_builder_safe.version_id.0 as u64),
-        mod_id: ModId(version_builder_safe.mod_id.0 as u64),
+        id: version_builder_safe.version_id.into(),
+        mod_id: version_builder_safe.mod_id.into(),
         name: version_builder_safe.name.clone(),
         version_number: version_builder_safe.version_number.clone(),
         changelog_url: version_builder_safe.changelog_url.clone(),
@@ -227,10 +242,20 @@ async fn version_create_inner(
         files: version_builder_safe
             .files
             .iter()
-            .map(|_x| VersionFile {
-                // TODO: Put real data here
-                hashes: vec![],
-                url: String::new(),
+            .map(|file| VersionFile {
+                hashes: file
+                    .hashes
+                    .iter()
+                    .map(|hash| crate::models::mods::FileHash {
+                        algorithm: hash.algorithm.clone(),
+                        // This is a hack since the hashes are currently stored as ASCII
+                        // in the database, but represented here as a Vec<u8>.  At some
+                        // point we need to change the hash to be the real bytes  in the
+                        // database and add more processing here.
+                        hash: String::from_utf8(hash.hash.clone()).unwrap(),
+                    })
+                    .collect(),
+                url: file.url.clone(),
             })
             .collect::<Vec<_>>(),
         dependencies: version_data_safe.dependencies,
@@ -243,19 +268,80 @@ async fn version_create_inner(
     Ok(HttpResponse::Ok().json(response))
 }
 
-#[post("api/v1/file")]
+// TODO: file deletion, listing, etc
+
+#[post("api/v1/version/{version_id}/file")]
 pub async fn upload_file_to_version(
+    url_data: actix_web::web::Path<(VersionId,)>,
     payload: Multipart,
     client: Data<PgPool>,
     file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
+    let mut uploaded_files = Vec::new();
 
+    let version_id = models::VersionId::from(url_data.into_inner().0);
+
+    let result = upload_file_to_version_inner(
+        payload,
+        &mut transaction,
+        &***file_host,
+        &mut uploaded_files,
+        version_id,
+    )
+    .await;
+
+    if result.is_err() {
+        let undo_result = super::mod_creation::undo_uploads(&***file_host, &uploaded_files).await;
+        let rollback_result = transaction.rollback().await;
+
+        if let Err(e) = undo_result {
+            return Err(e);
+        }
+        if let Err(e) = rollback_result {
+            return Err(e.into());
+        }
+    } else {
+        transaction.commit().await?;
+    }
+
+    result
+}
+
+async fn upload_file_to_version_inner(
+    mut payload: Multipart,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    file_host: &dyn FileHost,
+    uploaded_files: &mut Vec<UploadedFile>,
+    version_id: models::VersionId,
+) -> Result<HttpResponse, CreateError> {
     let cdn_url = dotenv::var("CDN_URL")?;
 
     let mut initial_file_data: Option<InitialFileData> = None;
-    let mut version_builder: Option<VersionBuilder> = None;
-    
+    let mut file_builder: Option<VersionFileBuilder> = None;
+
+    let result = sqlx::query!(
+        "
+        SELECT mod_id, version_number
+        FROM versions
+        WHERE id = $1
+        ",
+        version_id as models::VersionId,
+    )
+    .fetch_optional(&mut *transaction)
+    .await?;
+
+    let version = match result {
+        Some(v) => v,
+        None => {
+            return Err(CreateError::InvalidInput(
+                "An invalid version id was supplied".to_string(),
+            ));
+        }
+    };
+    let mod_id = ModId(version.mod_id as u64);
+    let version_number = version.version_number;
+
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
         let content_disposition = field.content_disposition().ok_or_else(|| {
@@ -270,39 +356,10 @@ pub async fn upload_file_to_version(
             while let Some(chunk) = field.next().await {
                 data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
             }
-
             let file_data: InitialFileData = serde_json::from_slice(&data)?;
+            // TODO: currently no data here, but still required
 
-            let result = sqlx::query!(
-                "
-                SELECT *
-                FROM versions
-                WHERE id = $1
-                ",
-                file_data.version_id as VersionId,
-            )
-            .fetch(&mut *transaction)
-            .await?;
-        
-            if !result.exists.unwrap_or(true) {
-                return Err(CreateError::InvalidInput(
-                    "An invalid version id was supplied".to_string(),
-                ));
-            }
-
-            version_builder = Some(VersionBuilder {
-                version_id: result.id,
-                mod_id: result.mod_id,
-                name: result.name,
-                version_number: result.version_number,
-                changelog_url: result.changelog_url,
-                files: result.files,
-                dependencies: result.dependencies,
-                game_versions: result.game_versions,
-                loaders: result.loaders,
-                release_channel: result.release_channel,
-
-            });
+            initial_file_data = Some(file_data);
         }
 
         let file_name = content_disposition.get_filename().ok_or_else(|| {
@@ -317,11 +374,7 @@ pub async fn upload_file_to_version(
         };
 
         if &*file_extension == "jar" {
-            let mut file_data = initial_file_data.ok_or_else(|| {
-                CreateError::InvalidInput(String::from("`data` field must come before file fields"))
-            })?;
-
-            let mut version = version_builder.ok_or_else(|| {
+            let _file_data = initial_file_data.as_ref().ok_or_else(|| {
                 CreateError::InvalidInput(String::from("`data` field must come before file fields"))
             })?;
 
@@ -333,16 +386,37 @@ pub async fn upload_file_to_version(
             let upload_data = file_host
                 .upload_file(
                     "application/java-archive",
-                    &format!(
-                        "{}/{}/{}",
-                        version.mod_id.0, version.version_number, file_name
-                    ),
+                    &format!("{}/{}/{}", mod_id, version_number, file_name),
                     data.to_vec(),
                 )
                 .await?;
 
+            uploaded_files.push(UploadedFile {
+                file_id: upload_data.file_id.clone(),
+                file_name: upload_data.file_name.clone(),
+            });
+
+            // TODO: Malware scan + file validation
+            file_builder = Some(models::version_item::VersionFileBuilder {
+                filename: file_name.to_string(),
+                url: format!("{}/{}", cdn_url, upload_data.file_name),
+                hashes: vec![models::version_item::HashBuilder {
+                    algorithm: "sha1".to_string(),
+                    // This is an invalid cast - the database expects the hash's
+                    // bytes, but this is the string version.
+                    hash: upload_data.content_sha1.into_bytes(),
+                }],
+            });
             break;
         }
+    }
+
+    if let Some(file_builder) = file_builder {
+        file_builder.insert(version_id, &mut *transaction).await?;
+    } else {
+        return Err(CreateError::InvalidInput(
+            "A file must be specified".to_string(),
+        ));
     }
 
     Ok(HttpResponse::Ok().into())

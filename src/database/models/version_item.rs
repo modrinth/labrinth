@@ -27,7 +27,7 @@ impl VersionFileBuilder {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<FileId, DatabaseError> {
         let file_id = generate_file_id(&mut *transaction).await?;
-        
+
         sqlx::query!(
             "
             INSERT INTO files (id, version_id, url, filename)
