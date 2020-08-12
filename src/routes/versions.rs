@@ -9,7 +9,7 @@ use sqlx::PgPool;
 // requested manually.  This route could give a list of the
 // ids as well as the supported versions and loaders, or
 // other info that is needed for selecting the right version.
-#[get("api/v1/mod/{mod_id}/version")]
+#[get("mod/{mod_id}/version")]
 pub async fn version_list(
     info: web::Path<(models::ids::ModId,)>,
     pool: web::Data<PgPool>,
@@ -41,7 +41,7 @@ pub async fn version_list(
     }
 }
 
-#[get("api/v1/mod/{mod_id}/version/{version_id}")]
+#[get("mod/{mod_id}/version/{version_id}")]
 pub async fn version_get(
     info: web::Path<(models::ids::ModId, models::ids::VersionId)>,
     pool: web::Data<PgPool>,
@@ -112,7 +112,7 @@ pub async fn version_get(
 }
 
 // TODO: This really needs auth
-#[delete("api/v1/mod/{mod_id}/version/{version_id}")]
+#[delete("mod/{mod_id}/version/{version_id}")]
 pub async fn version_delete(
     info: web::Path<(models::ids::ModId, models::ids::VersionId)>,
     pool: web::Data<PgPool>,

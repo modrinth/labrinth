@@ -6,7 +6,7 @@ use crate::search::{search_for_mod, SearchError};
 use actix_web::{delete, get, web, HttpResponse};
 use sqlx::PgPool;
 
-#[get("api/v1/mod")]
+#[get("mod")]
 pub async fn mod_search(
     web::Query(info): web::Query<SearchRequest>,
 ) -> Result<HttpResponse, SearchError> {
@@ -14,7 +14,7 @@ pub async fn mod_search(
     Ok(HttpResponse::Ok().json(results))
 }
 
-#[get("api/v1/mod/{id}")]
+#[get("mod/{id}")]
 pub async fn mod_get(
     info: web::Path<(models::ids::ModId,)>,
     pool: web::Data<PgPool>,
@@ -50,7 +50,7 @@ pub async fn mod_get(
 
 // TODO: This really needs auth
 // TODO: The mod remains in meilisearch's index until the index is deleted
-#[delete("api/v1/mod/{id}")]
+#[delete("mod/{id}")]
 pub async fn mod_delete(
     info: web::Path<(models::ids::ModId,)>,
     pool: web::Data<PgPool>,

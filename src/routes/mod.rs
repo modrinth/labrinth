@@ -2,8 +2,11 @@ mod index;
 mod mod_creation;
 pub mod mods;
 mod not_found;
+mod tags;
 mod version_creation;
 pub mod versions;
+
+pub use tags::config as tags_config;
 
 pub use self::index::index_get;
 pub use self::mod_creation::mod_create;
@@ -15,7 +18,7 @@ pub use self::version_creation::version_create;
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
     #[error("Internal server error")]
-    DatabaseError(crate::database::models::DatabaseError),
+    DatabaseError(#[from] crate::database::models::DatabaseError),
 }
 
 impl actix_web::ResponseError for ApiError {

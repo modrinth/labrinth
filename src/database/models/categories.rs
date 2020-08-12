@@ -28,7 +28,7 @@ impl Category {
 
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<CategoryId>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         if !name
             .chars()
@@ -52,7 +52,7 @@ impl Category {
 
     pub async fn get_name<'a, E>(id: CategoryId, exec: E) -> Result<String, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -69,7 +69,7 @@ impl Category {
 
     pub async fn list<'a, E>(exec: E) -> Result<Vec<String>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -82,6 +82,30 @@ impl Category {
         .await?;
 
         Ok(result)
+    }
+
+    pub async fn remove<'a, E>(name: &str, exec: E) -> Result<Option<()>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        use sqlx::Done;
+
+        let result = sqlx::query!(
+            "
+            DELETE FROM categories
+            WHERE category = $1
+            ",
+            name
+        )
+        .execute(exec)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            // Nothing was deleted
+            Ok(None)
+        } else {
+            Ok(Some(()))
+        }
     }
 }
 
@@ -100,7 +124,7 @@ impl<'a> CategoryBuilder<'a> {
 
     pub async fn insert<'b, E>(self, exec: E) -> Result<CategoryId, DatabaseError>
     where
-        E: sqlx::Executor<'b, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -128,7 +152,7 @@ impl Loader {
 
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<LoaderId>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         if !name
             .chars()
@@ -152,7 +176,7 @@ impl Loader {
 
     pub async fn get_name<'a, E>(id: LoaderId, exec: E) -> Result<String, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -169,7 +193,7 @@ impl Loader {
 
     pub async fn list<'a, E>(exec: E) -> Result<Vec<String>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -182,6 +206,30 @@ impl Loader {
         .await?;
 
         Ok(result)
+    }
+
+    pub async fn remove<'a, E>(name: &str, exec: E) -> Result<Option<()>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        use sqlx::Done;
+
+        let result = sqlx::query!(
+            "
+            DELETE FROM loaders
+            WHERE loader = $1
+            ",
+            name
+        )
+        .execute(exec)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            // Nothing was deleted
+            Ok(None)
+        } else {
+            Ok(Some(()))
+        }
     }
 }
 
@@ -200,7 +248,7 @@ impl<'a> LoaderBuilder<'a> {
 
     pub async fn insert<'b, E>(self, exec: E) -> Result<LoaderId, DatabaseError>
     where
-        E: sqlx::Executor<'b, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -231,11 +279,11 @@ impl GameVersion {
         exec: E,
     ) -> Result<Option<GameVersionId>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         if !version
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
         {
             return Err(DatabaseError::InvalidIdentifier(version.to_string()));
         }
@@ -255,7 +303,7 @@ impl GameVersion {
 
     pub async fn get_name<'a, E>(id: VersionId, exec: E) -> Result<String, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -272,7 +320,7 @@ impl GameVersion {
 
     pub async fn list<'a, E>(exec: E) -> Result<Vec<String>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -286,6 +334,30 @@ impl GameVersion {
 
         Ok(result)
     }
+
+    pub async fn remove<'a, E>(name: &str, exec: E) -> Result<Option<()>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        use sqlx::Done;
+
+        let result = sqlx::query!(
+            "
+            DELETE FROM game_versions
+            WHERE version = $1
+            ",
+            name
+        )
+        .execute(exec)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            // Nothing was deleted
+            Ok(None)
+        } else {
+            Ok(Some(()))
+        }
+    }
 }
 
 impl<'a> GameVersionBuilder<'a> {
@@ -293,7 +365,7 @@ impl<'a> GameVersionBuilder<'a> {
     pub fn version(mut self, version: &'a str) -> Result<GameVersionBuilder<'a>, DatabaseError> {
         if version
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
         {
             Ok(Self {
                 version: Some(version),
@@ -305,11 +377,11 @@ impl<'a> GameVersionBuilder<'a> {
 
     pub async fn insert<'b, E>(self, exec: E) -> Result<GameVersionId, DatabaseError>
     where
-        E: sqlx::Executor<'b, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
-            INSERT INTO loaders (loader)
+            INSERT INTO game_versions (version)
             VALUES ($1)
             RETURNING id
             ",
