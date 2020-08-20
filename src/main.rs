@@ -7,6 +7,7 @@ use search::indexing::index_mods;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
 
+mod auth;
 mod database;
 mod file_hosting;
 mod models;
