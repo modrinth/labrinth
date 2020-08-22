@@ -10,7 +10,7 @@ pub struct CredentialsType(pub String);
 #[derive(Serialize, Deserialize)]
 pub struct Id(pub i32);
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Uuid(pub String);
 
 #[derive(Serialize, Deserialize)]
@@ -129,25 +129,6 @@ pub struct FormField {
     pub typez: String,
     /// Value is the equivalent of <input value="{{.Value}}">
     pub value: Value,
-}
-
-/// Error response
-#[derive(Serialize, Deserialize)]
-pub struct GenericError {
-    pub error: Option<GenericErrorPayload>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct GenericErrorPayload {
-    /// Code represents the error status code (404, 403, 401, ...).
-    pub code: Option<i64>,
-    /// Debug contains debug information. This is usually not available and has to be enabled.
-    pub debug: Option<String>,
-    pub details: Option<Value>,
-    pub message: Option<String>,
-    pub reason: Option<String>,
-    pub request: Option<String>,
-    pub status: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -311,8 +292,6 @@ pub struct VerificationRequest {
     /// address, a new request has to be initiated.
     pub expires_at: Option<DateTime<Utc>>,
     ///HTMLForm represents a HTML Form. The container can work with both HTTP Form and JSON requests
-    pub form: Option<Form>,
-    #[derive(Serialize, Deserialize)]
     pub id: Option<Uuid>,
     /// IssuedAt is the time (UTC) when the request occurred.
     pub issued_at: Option<DateTime<Utc>>,
