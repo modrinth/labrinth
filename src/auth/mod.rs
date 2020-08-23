@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
+pub mod administrative;
+pub mod common;
 pub mod health;
 pub mod schemas;
-pub mod administrative;
-
 
 #[derive(Error, Debug)]
 pub enum KratosError {

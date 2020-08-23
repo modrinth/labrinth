@@ -23,7 +23,7 @@ pub struct Identity {
     /// SchemaURL is the URL of the endpoint where the identity's traits schema can be fetched from.
     /// format: url
     pub schema_url: Option<String>,
-    pub traits: Traits,
+    pub traits: Value,
     /// VerifiableAddresses contains all the addresses that can be verified by the user.
     pub verifiable_addresses: Option<Vec<VerifiableAddress>>,
 }
@@ -68,9 +68,6 @@ pub struct RequestMethodConfig {
 pub struct State(pub String);
 
 #[derive(Serialize, Deserialize)]
-pub struct Traits {}
-
-#[derive(Serialize, Deserialize)]
 pub struct Type(pub String);
 
 #[derive(Serialize, Deserialize)]
@@ -85,14 +82,6 @@ pub struct VerifiableAddress {
 
 #[derive(Serialize, Deserialize)]
 pub struct VerifiableAddressType(pub String);
-
-#[derive(Serialize, Deserialize)]
-pub struct CompleteSelfServiceBrowserSettingsStrategyProfileFlowPayload {
-    /// RequestID is request ID. in: query
-    pub request_id: Option<String>,
-    /// Traits contains all of the identity's traits. type: string format: binary
-    pub traits: Traits,
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct ErrorContainer {

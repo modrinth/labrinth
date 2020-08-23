@@ -1,4 +1,4 @@
-use crate::auth::schemas::{HealthStatus, HealthNotReadyStatus};
+use crate::auth::schemas::{HealthNotReadyStatus, HealthStatus, Version};
 use crate::auth::KratosError;
 
 pub async fn check_alive_status(api_url: String) -> Result<HealthStatus, KratosError> {
@@ -25,4 +25,13 @@ pub async fn check_readiness_status(api_url: String) -> Result<HealthStatus, Kra
     } else {
         Err(KratosError::AuthenticationError(response.json().await?))
     }
+}
+
+pub async fn get_service_version(api_url: String) -> Result<Version, KratosError> {
+    let response = reqwest::Client::new()
+        .get(&format!("{}/version", api_url))
+        .send()
+        .await?;
+
+    Ok(response.json().await?)
 }
