@@ -130,10 +130,11 @@ async fn update_index<'a>(
     let index = match client.get_index(name).await {
         Ok(index) => index,
         Err(meilisearch_sdk::errors::Error::MeiliSearchError {
-                message, error_code: meilisearch_sdk::errors::ErrorCode::IndexNotFound, error_type, error_link
-            }) => {
-            client.create_index(name, Some("mod_id")).await?
-        }
+            message,
+            error_code: meilisearch_sdk::errors::ErrorCode::IndexNotFound,
+            error_type,
+            error_link,
+        }) => client.create_index(name, Some("mod_id")).await?,
         Err(e) => {
             return Err(IndexingError::IndexDBError(e));
         }
@@ -153,8 +154,11 @@ async fn create_index<'a>(
         // TODO: update index settings on startup (or delete old indices on startup)
         Ok(index) => Ok(index),
         Err(meilisearch_sdk::errors::Error::MeiliSearchError {
-                message, error_code: meilisearch_sdk::errors::ErrorCode::IndexNotFound, error_type, error_link
-            }) => {
+            message,
+            error_code: meilisearch_sdk::errors::ErrorCode::IndexNotFound,
+            error_type,
+            error_link,
+        }) => {
             // Only create index and set settings if the index doesn't already exist
             let index = client.create_index(name, Some("mod_id")).await?;
 
