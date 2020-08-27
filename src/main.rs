@@ -1,5 +1,6 @@
 use actix_web::middleware::Logger;
-use actix_web::{web, App, HttpServer};
+use actix_cors::Cors;
+use actix_web::{web, App, HttpServer, http};
 use env_logger::Env;
 use gumdrop::Options;
 use log::{info, warn};
