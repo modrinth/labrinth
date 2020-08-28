@@ -21,6 +21,7 @@ RUN cargo build --release
 
 
 FROM gcr.io/distroless/cc-debian10
+RUN mkdir /opt
 RUN mkdir /opt/labrinth
 COPY --from=build /usr/src/labrinth/target/release/labrinth /opt/labrinth/labrinth
 COPY --from=build /usr/src/labrinth/target/release/migrations/* /opt/labrinth/migrations/
