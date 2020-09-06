@@ -4,11 +4,11 @@ use actix_web::http::StatusCode;
 use actix_web::web::HttpResponse;
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::document::Document;
-use meilisearch_sdk::search::{Query};
+use meilisearch_sdk::search::Query;
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 use std::borrow::Cow;
 use thiserror::Error;
-use serde::ser::SerializeStruct;
 
 pub mod indexing;
 
@@ -173,6 +173,6 @@ pub async fn search_for_mod(info: &SearchRequest) -> Result<SearchResults, Searc
         nb_hits: results.nb_hits,
         exhaustive_nb_hits: results.exhaustive_nb_hits,
         processing_time_ms: results.processing_time_ms,
-        query: results.query
+        query: results.query,
     })
 }
