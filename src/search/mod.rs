@@ -171,9 +171,6 @@ pub async fn search_for_mod(info: &SearchRequest) -> Result<SearchResults, Searc
         hits: results.hits,
         offset: results.offset,
         limit: results.limit,
-        nb_hits: results.nb_hits,
-        exhaustive_nb_hits: results.exhaustive_nb_hits,
-        processing_time_ms: results.processing_time_ms,
-        query: results.query,
+        total_hits: results.nb_hits,
     })
 }
