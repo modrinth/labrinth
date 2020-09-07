@@ -87,10 +87,7 @@ pub struct SearchResults {
     pub hits: Vec<ResultSearchMod>,
     pub offset: usize,
     pub limit: usize,
-    pub nb_hits: usize,
-    pub exhaustive_nb_hits: bool,
-    pub processing_time_ms: usize,
-    pub query: String,
+    pub total_hits: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
