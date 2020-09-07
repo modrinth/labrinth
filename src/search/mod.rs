@@ -8,6 +8,7 @@ use meilisearch_sdk::search::Query;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 use std::borrow::Cow;
+use std::cmp::min;
 use thiserror::Error;
 
 pub mod indexing;
@@ -144,13 +145,16 @@ pub async fn search_for_mod(info: &SearchRequest) -> Result<SearchResults, Searc
 
     let offset = info.offset.as_deref().unwrap_or("0").parse()?;
     let index = info.index.as_deref().unwrap_or("relevance");
+    let limit = info.limit.unwrap_or(10);
     let search_query: &str = info
         .query
         .as_deref()
         .filter(|s| !s.is_empty())
         .unwrap_or("{}{}{}");
 
-    let mut query = Query::new(search_query).with_limit(10).with_offset(offset);
+    let mut query = Query::new(search_query)
+        .with_limit(min(100, limit))
+        .with_offset(offset);
 
     if !filters.is_empty() {
         query = query.with_filters(&filters);
