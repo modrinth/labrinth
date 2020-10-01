@@ -1,12 +1,13 @@
 
 # Routes
 
-CORS allowed origins: `http://localhost:3000`, `https://modrinth.com`
+CORS allowed origins: `http://localhost:3000`, `https://modrinth.com` 
+
 Prefix: `https://api.modrinth.com/`
 
-Types:
-`datetime`: A RFC 3339 formatted datetime
-`id`s: All id types are random base 62 numbers.  They are stored as strings in JSON.
+Types:  
+`datetime`: A RFC 3339 formatted datetime  
+`id`s: All id types are random base 62 numbers.  They are stored as strings in JSON.  
 `?`: The field is optional
 
 ## Mods
@@ -29,18 +30,18 @@ GET `/api/v1/mod`
 
 `filters` and `version` are parts of the filter for MeiliSearch.  `filters` should be a set of conditions relating to the `categories` or other fields, and `version` should be a set of conditions relating to versions.  The syntax is specified in [MeiliSearch's documentation](https://docs.meilisearch.com/guides/advanced_guides/filtering.html).
 
-Ex:
-filters = `categories="fabric" AND (categories="technology" OR categories="utility")`
+Ex:  
+filters = `categories="fabric" AND (categories="technology" OR categories="utility")`  
 versions = `version="1.16.3" OR version="1.16.2" OR version="1.16.1"`
 
 `facets` is a 2 deep json array used to specify which categories the search should use; This follows the format documented [here](https://docs.meilisearch.com/guides/advanced_guides/faceted_search.html#usage), except that single elements are represented with an array of one element.
 
 The allowed categories for `facets` are:
-- `"categories:{category-name}"`
+- `"categories:{category-name}"`  
   Where category name is one of `worldgen`, `technology`, `food`, `magic`, `storage`, `library`, `adventure`, `utility`, `decoration`, `misc`, `equipment`, `cursed`, `fabric`, or `forge`
-- `"host:{host-name}"`
+- `"host:{host-name}"`  
   Where host is one of `modrinth`, `curseforge`
-- `"versions:{version}"`
+- `"versions:{version}"`  
   Where version is a valid Minecraft version, like `1.16.3` or `20w08a`
 
 #### Response:
@@ -84,7 +85,7 @@ DELETE `/api/v1/mod/{id}`
 Deletes the mod with the given id; TODO: permissions documentation
 
 #### Response
-HTTP 200 with empty body if successful
+HTTP 200 with empty body if successful  
 HTTP 404 if mod does not exist (Note: DELETE should be idempotent; is this still fine?)
 
 ### Mod Create
@@ -123,8 +124,8 @@ TODO: add mod license and other metadata
 | `loaders` | array of mod loaders | An array of the mod loaders that this mod supports |
 
 game versions: string, versions of minecraft  
-mod loaders: string, name of a modloader (`forge`, `fabric`)
-`VersionType`: string, `release`, `beta`, or `alpha`
+mod loaders: string, name of a modloader (`forge`, `fabric`)  
+`VersionType`: string, `release`, `beta`, or `alpha`  
 TODO: changelog URL?  What is `version_body` meant for?
 
 `TeamMember`:
@@ -176,9 +177,9 @@ Must start with a field named `data` with these contents (in JSON)
 | `loaders` | array of mod loaders | An array of the mod loaders that this mod supports |
 
 game versions: string, versions of minecraft  
-mod loaders: string, name of a modloader (`forge`, `fabric`)
-`VersionType`: string, `release`, `beta`, or `alpha`
-TODO: changelog URL?  What is `version_body` meant for?
+mod loaders: string, name of a modloader (`forge`, `fabric`)  
+`VersionType`: string, `release`, `beta`, or `alpha`  
+TODO: changelog URL?  What is `version_body` meant for?  
 
 Mod jars are then uploaded; any file with a `jar` file extension is checked against the `file_parts` array to make sure the name matches and is uploaded.
 
@@ -196,12 +197,12 @@ Mod jars are then uploaded; any file with a `jar` file extension is uploaded and
 
 ### Categories
 #### List Categories
-GET `/api/v1/tag/category`
-Lists the defined categories
+GET `/api/v1/tag/category`  
+Lists the defined categories  
 Response: an array of category names
 #### Create Category
-PUT `/api/v1/tag/category/{name}`
-Creates a new category with the given name
+PUT `/api/v1/tag/category/{name}`  
+Creates a new category with the given name  
 Requires admin?
 #### Delete Category
 DELETE `/api/v1/tag/category/{name}`
@@ -210,30 +211,30 @@ Requires admin?
 
 ### Loaders
 #### List Loaders
-GET `/api/v1/tag/loader`
-Lists the defined mod loaders
+GET `/api/v1/tag/loader`  
+Lists the defined mod loaders  
 Response: an array of mod loader names
 #### Create Loader
-PUT `/api/v1/tag/loader/{name}`
-Creates a new loader with the given name
+PUT `/api/v1/tag/loader/{name}`  
+Creates a new loader with the given name  
 Requires admin?
 #### Delete Loader
-DELETE `/api/v1/tag/loader/{name}`
-Deletes the loader with the given name
+DELETE `/api/v1/tag/loader/{name}`  
+Deletes the loader with the given name  
 Requires admin?
 
 ### Game Versions
 #### List Game Versions
-GET `/api/v1/tag/game_version`
-Lists the defined game versions
+GET `/api/v1/tag/game_version`  
+Lists the defined game versions  
 Response: an array of game versions
 #### Create Game Version
-PUT `/api/v1/tag/game_version/{version}`
-Creates a new game version
+PUT `/api/v1/tag/game_version/{version}`  
+Creates a new game version  
 Requires admin?
 #### Delete Game Version
-DELETE `/api/v1/tag/game_version/{version}`
-Deletes the given game version
+DELETE `/api/v1/tag/game_version/{version}`  
+Deletes the given game version  
 Requires admin?
 
 ## Auth
@@ -259,15 +260,15 @@ Query parameters:
 
 ## Users
 ### Current User
-GET `/api/v1/user`
-Gets the currently logged in user
+GET `/api/v1/user`  
+Gets the currently logged in user  
 Response: [`User` struct](#user)
 ### User Get
-GET `/api/v1/user/{id}`
-Gets the user with the given id
+GET `/api/v1/user/{id}`  
+Gets the user with the given id  
 Response: [`User` struct](#user)
 ### User Delete
-DELETE `/api/v1/user/{id}`
+DELETE `/api/v1/user/{id}`  
 Currently does nothing, but in the future will delete the user with the given id
 
 TODO: let users delete their own accounts? GDPR compliance?
