@@ -2,4 +2,4 @@
 
 ## Modrinth's labratory for its backend service & API!
 
-Documentation coming soon™.
+[Current basic documentation](docs/readme.md)
