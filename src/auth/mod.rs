@@ -25,6 +25,7 @@ pub struct GitHubUser {
     pub avatar_url: String,
     pub name: String,
     pub email: Option<String>,
+    #[serde(default = "Lost in a labrinth.")]
     pub bio: String,
 }
 
