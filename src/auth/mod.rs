@@ -23,9 +23,9 @@ pub struct GitHubUser {
     pub login: String,
     pub id: u64,
     pub avatar_url: String,
-    pub name: String,
+    pub name: Option<String>,
     pub email: Option<String>,
-    pub bio: String,
+    pub bio: Option<String>,
 }
 
 pub async fn get_github_user_from_token(
@@ -78,7 +78,7 @@ where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
     let token = headers
-        .get("Authentication")
+        .get("Authorization")
         .ok_or(AuthenticationError::InvalidCredentialsError)?
         .to_str()
         .map_err(|_| AuthenticationError::InvalidCredentialsError)?;
