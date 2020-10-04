@@ -5,8 +5,8 @@ use crate::models;
 use crate::models::mods::SearchRequest;
 use crate::search::{search_for_mod, SearchError};
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
-use sqlx::PgPool;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 
 #[get("mod")]
 pub async fn mod_search(
@@ -18,7 +18,7 @@ pub async fn mod_search(
 
 #[derive(Serialize, Deserialize)]
 pub struct ModIds {
-    pub ids: String
+    pub ids: String,
 }
 
 #[get("mods")]
@@ -54,7 +54,10 @@ pub async fn mod_get(
     }
 }
 
-async fn get_mod_from_id(id: models::ids::ModId, pool: &PgPool) -> Result<Option<models::mods::Mod>, ApiError>{
+async fn get_mod_from_id(
+    id: models::ids::ModId,
+    pool: &PgPool,
+) -> Result<Option<models::mods::Mod>, ApiError> {
     let mod_data = database::models::Mod::get_full(id.into(), &*pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;

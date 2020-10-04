@@ -21,23 +21,26 @@ pub fn mods_config(cfg: &mut web::ServiceConfig) {
     cfg.service(mods::mods_get);
     cfg.service(mod_creation::mod_create);
 
-    cfg.service(versions::versions_get);
-    cfg.service(web::scope("version")
-        .service(versions::version_get)
-        .service(versions::version_delete)
-        .service(version_creation::upload_file_to_version));
-
     cfg.service(
         web::scope("mod")
             .service(mods::mod_get)
             .service(mods::mod_delete)
-            .service(web::scope("{mod_id}").configure(versions_config)),
+            .service(
+                web::scope("{mod_id}")
+                    .service(versions::version_list)
+                    .service(version_creation::version_create),
+            ),
     );
 }
 
 pub fn versions_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(versions::version_list)
-        .service(version_creation::version_create);
+    cfg.service(versions::versions_get);
+    cfg.service(
+        web::scope("version")
+            .service(versions::version_get)
+            .service(versions::version_delete)
+            .service(version_creation::upload_file_to_version),
+    );
 }
 
 pub fn users_config(cfg: &mut web::ServiceConfig) {

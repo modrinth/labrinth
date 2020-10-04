@@ -1,10 +1,10 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
+use crate::database::models::User;
 use crate::models::users::{Role, UserId};
 use crate::routes::ApiError;
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
-use sqlx::PgPool;
-use crate::database::models::User;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 
 #[get("user")]
 pub async fn user_auth_get(
@@ -26,7 +26,7 @@ pub async fn user_auth_get(
 
 #[derive(Serialize, Deserialize)]
 pub struct UserIds {
-    pub ids: String
+    pub ids: String,
 }
 
 #[get("users")]
@@ -55,14 +55,17 @@ pub async fn user_get(
     let id = info.0;
     let user_data = get_user_from_id(id, &*pool).await?;
 
-    if let Some(data)= user_data {
+    if let Some(data) = user_data {
         Ok(HttpResponse::Ok().json(data))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
 }
 
-async fn get_user_from_id(id: UserId, pool: &PgPool) -> Result<Option<crate::models::users::User>, ApiError> {
+async fn get_user_from_id(
+    id: UserId,
+    pool: &PgPool,
+) -> Result<Option<crate::models::users::User>, ApiError> {
     let user_data = crate::database::models::User::get(id.into(), &*pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
@@ -96,10 +99,10 @@ pub async fn mods_list(
         "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
         id as crate::database::models::UserId,
     )
-        .fetch_one(&**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?
-        .exists;
+    .fetch_one(&**pool)
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?
+    .exists;
 
     if user_exists.unwrap_or(false) {
         let mod_data = User::get_mods(id, &**pool)

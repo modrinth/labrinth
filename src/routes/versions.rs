@@ -3,8 +3,8 @@ use crate::auth::check_is_moderator_from_headers;
 use crate::database;
 use crate::models;
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
-use sqlx::PgPool;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 
 // TODO: this needs filtering, and a better response type
 // Currently it only gives a list of ids, which have to be
@@ -45,7 +45,7 @@ pub async fn version_list(
 
 #[derive(Serialize, Deserialize)]
 pub struct VersionIds {
-    pub ids: String
+    pub ids: String,
 }
 
 #[get("versions")]
@@ -81,7 +81,10 @@ pub async fn version_get(
     }
 }
 
-async fn get_version_from_id(id: models::ids::VersionId, pool: &PgPool) -> Result<Option<models::mods::Version>, ApiError> {
+async fn get_version_from_id(
+    id: models::ids::VersionId,
+    pool: &PgPool,
+) -> Result<Option<models::mods::Version>, ApiError> {
     let version_data = database::models::Version::get_full(id.into(), &*pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
