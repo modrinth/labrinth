@@ -272,7 +272,7 @@ async fn version_create_inner(
 #[post("{version_id}/file")]
 pub async fn upload_file_to_version(
     req: HttpRequest,
-    url_data: actix_web::web::Path<(ModId, VersionId)>,
+    url_data: actix_web::web::Path<(VersionId,)>,
     payload: Multipart,
     client: Data<PgPool>,
     file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
@@ -280,9 +280,7 @@ pub async fn upload_file_to_version(
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
 
-    let data = url_data.into_inner();
-    let mod_id = models::ModId::from(data.0);
-    let version_id = models::VersionId::from(data.1);
+    let version_id = models::VersionId::from(url_data.0);
 
     let result = upload_file_to_version_inner(
         req,
@@ -291,7 +289,6 @@ pub async fn upload_file_to_version(
         &***file_host,
         &mut uploaded_files,
         version_id,
-        mod_id,
     )
     .await;
 
@@ -319,7 +316,6 @@ async fn upload_file_to_version_inner(
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     version_id: models::VersionId,
-    mod_id: models::ModId,
 ) -> Result<HttpResponse, CreateError> {
     let cdn_url = dotenv::var("CDN_URL")?;
 
@@ -347,11 +343,6 @@ async fn upload_file_to_version_inner(
             ));
         }
     };
-    if version.mod_id as u64 != mod_id.0 as u64 {
-        return Err(CreateError::InvalidInput(
-            "An invalid version id was supplied".to_string(),
-        ));
-    }
 
     if version.author_id as u64 != user.id.0 {
         return Err(CreateError::InvalidInput("Unauthorized".to_string()));

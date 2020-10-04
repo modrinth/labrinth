@@ -1,4 +1,5 @@
 use super::ids::UserId;
+use crate::database::models::{ModId, TeamId};
 
 pub struct User {
     pub id: UserId,
@@ -111,5 +112,46 @@ impl User {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn get_mods<'a, E>(
+        user_id: UserId,
+        exec: E,
+    ) -> Result<Vec<ModId>, sqlx::Error>
+     where E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let team_ids = sqlx::query!(
+            "
+            SELECT team_id FROM team_members
+            WHERE user_id = $1
+            ",
+            user_id as UserId,
+        ).fetch_many(exec)
+            .try_filter_map(|e| async { Ok(e.right().map(|v| TeamId(v.team_id))) })
+            .try_collect::<Vec<TeamId>>()
+            .await?;
+
+        let mut mods : Vec<ModId> = vec![];
+
+        for team_id in team_ids {
+            let mut vec = sqlx::query!(
+                "
+                SELECT id FROM mods
+                WHERE team_id = $1
+                ",
+                team_id as TeamId,
+            )
+                .fetch_many(exec)
+                .try_filter_map(|e| async { Ok(e.right().map(|v| ModId(v.id))) })
+                .try_collect::<Vec<ModId>>()
+                .await?;
+
+            mods.append(&mut vec);
+        }
+
+
+        Ok(mods)
     }
 }

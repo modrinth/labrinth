@@ -4,6 +4,7 @@ use crate::database;
 use crate::models;
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
 use sqlx::PgPool;
+use serde::{Deserialize, Serialize};
 
 // TODO: this needs filtering, and a better response type
 // Currently it only gives a list of ids, which have to be
@@ -42,23 +43,51 @@ pub async fn version_list(
     }
 }
 
-#[get("{version_id}")]
-pub async fn version_get(
-    info: web::Path<(models::ids::ModId, models::ids::VersionId)>,
+#[derive(Serialize, Deserialize)]
+pub struct VersionIds {
+    pub ids: String
+}
+
+#[get("versions")]
+pub async fn versions_get(
+    web::Query(ids): web::Query<VersionIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id = info.1;
-    let version_data = database::models::Version::get_full(id.into(), &**pool)
+    let mut versions = vec![];
+
+    for id in serde_json::from_str::<Vec<models::ids::VersionId>>(&*ids.ids)? {
+        let mod_data = get_version_from_id(id, &*pool).await?;
+
+        if let Some(data) = mod_data {
+            versions.push(data)
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(versions))
+}
+
+#[get("{version_id}")]
+pub async fn version_get(
+    info: web::Path<(models::ids::VersionId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let id = info.0;
+    let version_data = get_version_from_id(id, &*pool).await?;
+
+    if let Some(data) = version_data {
+        Ok(HttpResponse::Ok().json(data))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+async fn get_version_from_id(id: models::ids::VersionId, pool: &PgPool) -> Result<Option<models::mods::Version>, ApiError> {
+    let version_data = database::models::Version::get_full(id.into(), &*pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(data) = version_data {
         use models::mods::VersionType;
-
-        if models::ids::ModId::from(data.mod_id) != info.0 {
-            // Version doesn't belong to that mod
-            return Ok(HttpResponse::NotFound().body(""));
-        }
 
         let response = models::mods::Version {
             id: data.id.into(),
@@ -107,9 +136,9 @@ pub async fn version_get(
                 .map(models::mods::ModLoader)
                 .collect(),
         };
-        Ok(HttpResponse::Ok().json(response))
+        Ok(Some(response))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Ok(None)
     }
 }
 
