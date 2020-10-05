@@ -372,7 +372,7 @@ impl Version {
     }
 
     pub async fn get_many<'a, E>(
-        version_ids: Vec<i64>,
+        version_ids: Vec<VersionId>,
         exec: E,
     ) -> Result<Vec<Version>, sqlx::Error>
     where
@@ -380,6 +380,7 @@ impl Version {
     {
         use futures::stream::TryStreamExt;
 
+        let version_ids_parsed: Vec<i64> = version_ids.into_iter().map(|x| x.0).collect();
         let versions = sqlx::query!(
             "
             SELECT v.id, v.mod_id, v.author_id, v.name, v.version_number,
@@ -388,7 +389,7 @@ impl Version {
             FROM versions v
             WHERE v.id IN (SELECT * FROM UNNEST($1::bigint[]))
             ",
-            &version_ids
+            &version_ids_parsed
         )
         .fetch_many(exec)
         .try_filter_map(|e| async {

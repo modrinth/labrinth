@@ -143,12 +143,13 @@ impl Mod {
         }
     }
 
-    pub async fn get_many<'a, E>(mod_ids: Vec<i64>, exec: E) -> Result<Vec<Mod>, sqlx::Error>
+    pub async fn get_many<'a, E>(mod_ids: Vec<ModId>, exec: E) -> Result<Vec<Mod>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
+        let mod_ids_parsed: Vec<i64> = mod_ids.into_iter().map(|x| x.0).collect();
         let mods = sqlx::query!(
             "
             SELECT id, title, description, downloads,
@@ -158,7 +159,7 @@ impl Mod {
             FROM mods
             WHERE id IN (SELECT * FROM UNNEST($1::bigint[]))
             ",
-            &mod_ids
+            &mod_ids_parsed
         )
         .fetch_many(exec)
         .try_filter_map(|e| async {

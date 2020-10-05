@@ -27,10 +27,14 @@ pub async fn mods_get(
     web::Query(ids): web::Query<ModIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let mods_data =
-        database::models::Mod::get_many(serde_json::from_str::<Vec<i64>>(&*ids.ids)?, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let mod_ids = serde_json::from_str::<Vec<models::ids::ModId>>(&*ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect();
+
+    let mods_data = database::models::Mod::get_many(mod_ids, &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     let mods: Vec<models::mods::Mod> = mods_data
         .into_iter()

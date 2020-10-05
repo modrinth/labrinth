@@ -54,10 +54,13 @@ pub async fn versions_get(
     web::Query(ids): web::Query<VersionIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let versions_data =
-        database::models::Version::get_many(serde_json::from_str::<Vec<i64>>(&*ids.ids)?, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let version_ids = serde_json::from_str::<Vec<models::ids::VersionId>>(&*ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect();
+    let versions_data = database::models::Version::get_many(version_ids, &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     use models::mods::VersionType;
     let versions: Vec<models::mods::Version> = versions_data

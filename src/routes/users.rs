@@ -34,7 +34,12 @@ pub async fn users_get(
     web::Query(ids): web::Query<UserIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let users_data = User::get_many(serde_json::from_str::<Vec<i64>>(&*ids.ids)?, &**pool)
+    let user_ids = serde_json::from_str::<Vec<UserId>>(&*ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect();
+
+    let users_data = User::get_many(user_ids, &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
@@ -84,7 +89,7 @@ pub async fn user_get(
     }
 }
 
-#[get("{id}/mods")]
+#[get("{user_id}/mods")]
 pub async fn mods_list(
     info: web::Path<(UserId,)>,
     pool: web::Data<PgPool>,

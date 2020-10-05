@@ -113,12 +113,13 @@ impl User {
         }
     }
 
-    pub async fn get_many<'a, E>(user_ids: Vec<i64>, exec: E) -> Result<Vec<User>, sqlx::Error>
+    pub async fn get_many<'a, E>(user_ids: Vec<UserId>, exec: E) -> Result<Vec<User>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
+        let user_ids_parsed: Vec<i64> = user_ids.into_iter().map(|x| x.0).collect();
         let users = sqlx::query!(
             "
             SELECT u.id, u.github_id, u.name, u.email,
@@ -126,7 +127,7 @@ impl User {
                 u.created, u.role FROM users u
             WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))
             ",
-            &user_ids
+            &user_ids_parsed
         )
         .fetch_many(exec)
         .try_filter_map(|e| async {

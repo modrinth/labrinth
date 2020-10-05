@@ -757,88 +757,6 @@
       "nullable": []
     }
   },
-  "7b5f4a6f6103f0370ee93300c27764f3e7587277d2813974f4f6af696f8adfbe": {
-    "query": "\n            SELECT u.id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role FROM users u\n            WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "name",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "email",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "avatar_url",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 4,
-          "name": "username",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 5,
-          "name": "bio",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 6,
-          "name": "created",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 7,
-          "name": "role",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      },
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false
-      ]
-    }
-  },
-  "7dfad54e8e6dcb69863f6f930ced4fc4cfa43b0175eca1faba42b46f33b6350c": {
-    "query": "\n            SELECT m.id FROM users m\n            WHERE m.id IN ($1)\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
   "89fbff6249b248d3e150879aaea1662140bcb10d5104992c784285322c8b3b94": {
     "query": "\n            SELECT version FROM game_versions\n            ",
     "describe": {
@@ -939,24 +857,6 @@
         true,
         true,
         true,
-        false
-      ]
-    }
-  },
-  "980d6171495fd012c351bde7cee963429c3abe8f370719ecf4d8f4ceca9b407b": {
-    "query": "\n            SELECT m.id FROM users m\n            WHERE m.id IN (SELECT * FROM UNNEST(ARRAY[1,2]))\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": [
         false
       ]
     }
@@ -1089,26 +989,6 @@
         ]
       },
       "nullable": []
-    }
-  },
-  "b26c416cddd2dc92f4577c38cafc27b2c76a38f2962dd5d3bf3d10c4411c0d50": {
-    "query": "\n            SELECT m.id FROM users m\n            WHERE m.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      },
-      "nullable": [
-        false
-      ]
     }
   },
   "b903ac4e686ef85ba28d698c668da07860e7f276b261d8f2cebb74e73b094970": {
