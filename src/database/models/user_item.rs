@@ -1,5 +1,4 @@
-use super::ids::UserId;
-use crate::database::models::{ModId, TeamId};
+use super::ids::{ModId, UserId};
 
 pub struct User {
     pub id: UserId,
@@ -120,35 +119,18 @@ impl User {
     {
         use futures::stream::TryStreamExt;
 
-        let team_ids = sqlx::query!(
+        let mods = sqlx::query!(
             "
-            SELECT team_id FROM team_members
-            WHERE user_id = $1
+            SELECT m.id FROM mods m
+            INNER JOIN team_members tm ON tm.team_id = m.team_id
+            WHERE tm.user_id = $1
             ",
             user_id as UserId,
         )
         .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|v| TeamId(v.team_id))) })
-        .try_collect::<Vec<TeamId>>()
+        .try_filter_map(|e| async { Ok(e.right().map(|m| ModId(m.id))) })
+        .try_collect::<Vec<ModId>>()
         .await?;
-
-        let mut mods: Vec<ModId> = vec![];
-
-        for team_id in team_ids {
-            let mut vec = sqlx::query!(
-                "
-                SELECT id FROM mods
-                WHERE team_id = $1
-                ",
-                team_id as TeamId,
-            )
-            .fetch_many(exec)
-            .try_filter_map(|e| async { Ok(e.right().map(|v| ModId(v.id))) })
-            .try_collect::<Vec<ModId>>()
-            .await?;
-
-            mods.append(&mut vec);
-        }
 
         Ok(mods)
     }
