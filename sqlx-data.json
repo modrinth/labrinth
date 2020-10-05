@@ -81,6 +81,26 @@
       ]
     }
   },
+  "1220d15a56dbf823eaa452fbafa17442ab0568bc81a31fa38e16e3df3278e5f9": {
+    "query": "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "exists",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        null
+      ]
+    }
+  },
   "1524c0462be70077736ac70fcd037fbf75651456b692e2ce40fa2e3fc8123984": {
     "query": "\n                    SELECT hashes.algorithm, hashes.hash FROM hashes\n                    WHERE hashes.file_id = $1\n                    ",
     "describe": {
@@ -587,6 +607,66 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "76bcdb4b219384447b91ed607645934a3fbb284910172b652964209d5df3799c": {
+    "query": "\n            SELECT team_id FROM team_members\n            WHERE user_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "team_id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "7ebc7741c6ab71adab4f037a3b0e8c71af31f77bbde569754f3fddbfa7e8a6fd": {
+    "query": "\n            SELECT id FROM team_members\n            WHERE user_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "7f227f6dda23b8811db41b6ea296b29d44dd67b83b067f9b0b572d140f951346": {
+    "query": "\n                SELECT id FROM mods\n                WHERE team_id = $1\n                ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
+      ]
     }
   },
   "89fbff6249b248d3e150879aaea1662140bcb10d5104992c784285322c8b3b94": {
@@ -1535,6 +1615,26 @@
       },
       "nullable": [
         null
+      ]
+    }
+  },
+  "fdb2a6ea649bb23c69af5c756d6137e216603708ffccd4e9162fb1c9765a56aa": {
+    "query": "\n            SELECT m.id FROM mods m\n            INNER JOIN team_members tm ON tm.team_id = m.team_id\n            WHERE tm.user_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
       ]
     }
   }
