@@ -21,20 +21,36 @@ pub struct ModIds {
     pub ids: String,
 }
 
+// TODO: Make this return the full mod struct
 #[get("mods")]
 pub async fn mods_get(
     web::Query(ids): web::Query<ModIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let mut mods = vec![];
+    let mods_data =
+        database::models::Mod::get_many(serde_json::from_str::<Vec<i64>>(&*ids.ids)?, &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    for id in serde_json::from_str::<Vec<models::ids::ModId>>(&*ids.ids)? {
-        let mod_data = get_mod_from_id(id, &*pool).await?;
+    let mods: Vec<models::mods::Mod> = mods_data
+        .into_iter()
+        .map(|m| models::mods::Mod {
+            id: m.id.into(),
+            team: m.team_id.into(),
+            title: m.title,
+            description: m.description,
+            body_url: m.body_url,
+            published: m.published,
 
-        if let Some(data) = mod_data {
-            mods.push(data)
-        }
-    }
+            downloads: m.downloads as u32,
+            categories: vec![],
+            versions: vec![],
+            icon_url: m.icon_url,
+            issues_url: m.issues_url,
+            source_url: m.source_url,
+            wiki_url: m.wiki_url,
+        })
+        .collect();
 
     Ok(HttpResponse::Ok().json(mods))
 }
@@ -45,20 +61,7 @@ pub async fn mod_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.0;
-    let mod_data = get_mod_from_id(id, &*pool).await?;
-
-    if let Some(data) = mod_data {
-        Ok(HttpResponse::Ok().json(data))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
-}
-
-async fn get_mod_from_id(
-    id: models::ids::ModId,
-    pool: &PgPool,
-) -> Result<Option<models::mods::Mod>, ApiError> {
-    let mod_data = database::models::Mod::get_full(id.into(), &*pool)
+    let mod_data = database::models::Mod::get_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
@@ -80,12 +83,11 @@ async fn get_mod_from_id(
             source_url: m.source_url,
             wiki_url: m.wiki_url,
         };
-        Ok(Some(response))
+        Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(None)
+        Ok(HttpResponse::NotFound().body(""))
     }
 }
-
 // TODO: The mod remains in meilisearch's index until the index is deleted
 #[delete("{id}")]
 pub async fn mod_delete(

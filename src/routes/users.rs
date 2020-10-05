@@ -34,15 +34,24 @@ pub async fn users_get(
     web::Query(ids): web::Query<UserIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let mut users = vec![];
+    let users_data = User::get_many(serde_json::from_str::<Vec<i64>>(&*ids.ids)?, &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    for id in serde_json::from_str::<Vec<UserId>>(&*ids.ids)? {
-        let mod_data = get_user_from_id(id, &*pool).await?;
-
-        if let Some(data) = mod_data {
-            users.push(data)
-        }
-    }
+    let users: Vec<crate::models::users::User> = users_data
+        .into_iter()
+        .map(|data| crate::models::users::User {
+            id: data.id.into(),
+            github_id: data.github_id.map(|i| i as u64),
+            username: data.username,
+            name: data.name,
+            email: None,
+            avatar_url: data.avatar_url,
+            bio: data.bio,
+            created: data.created,
+            role: Role::from_string(&*data.role),
+        })
+        .collect();
 
     Ok(HttpResponse::Ok().json(users))
 }
@@ -53,20 +62,7 @@ pub async fn user_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.0;
-    let user_data = get_user_from_id(id, &*pool).await?;
-
-    if let Some(data) = user_data {
-        Ok(HttpResponse::Ok().json(data))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
-}
-
-async fn get_user_from_id(
-    id: UserId,
-    pool: &PgPool,
-) -> Result<Option<crate::models::users::User>, ApiError> {
-    let user_data = crate::database::models::User::get(id.into(), &*pool)
+    let user_data = User::get(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
@@ -82,9 +78,9 @@ async fn get_user_from_id(
             created: data.created,
             role: Role::from_string(&*data.role),
         };
-        Ok(Some(response))
+        Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(None)
+        Ok(HttpResponse::NotFound().body(""))
     }
 }
 

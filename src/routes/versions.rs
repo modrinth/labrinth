@@ -48,20 +48,38 @@ pub struct VersionIds {
     pub ids: String,
 }
 
+// TODO: Make this return the versions mod struct
 #[get("versions")]
 pub async fn versions_get(
     web::Query(ids): web::Query<VersionIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let mut versions = vec![];
+    let versions_data =
+        database::models::Version::get_many(serde_json::from_str::<Vec<i64>>(&*ids.ids)?, &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    for id in serde_json::from_str::<Vec<models::ids::VersionId>>(&*ids.ids)? {
-        let mod_data = get_version_from_id(id, &*pool).await?;
+    use models::mods::VersionType;
+    let versions: Vec<models::mods::Version> = versions_data
+        .into_iter()
+        .map(|data| models::mods::Version {
+            id: data.id.into(),
+            mod_id: data.mod_id.into(),
+            author_id: data.author_id.into(),
 
-        if let Some(data) = mod_data {
-            versions.push(data)
-        }
-    }
+            name: data.name,
+            version_number: data.version_number,
+            changelog_url: data.changelog_url,
+            date_published: data.date_published,
+            downloads: data.downloads as u32,
+            version_type: VersionType::Release,
+
+            files: vec![],
+            dependencies: Vec::new(), // TODO: dependencies
+            game_versions: vec![],
+            loaders: vec![],
+        })
+        .collect();
 
     Ok(HttpResponse::Ok().json(versions))
 }
@@ -72,20 +90,7 @@ pub async fn version_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.0;
-    let version_data = get_version_from_id(id, &*pool).await?;
-
-    if let Some(data) = version_data {
-        Ok(HttpResponse::Ok().json(data))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
-}
-
-async fn get_version_from_id(
-    id: models::ids::VersionId,
-    pool: &PgPool,
-) -> Result<Option<models::mods::Version>, ApiError> {
-    let version_data = database::models::Version::get_full(id.into(), &*pool)
+    let version_data = database::models::Version::get_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
@@ -139,9 +144,9 @@ async fn get_version_from_id(
                 .map(models::mods::ModLoader)
                 .collect(),
         };
-        Ok(Some(response))
+        Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(None)
+        Ok(HttpResponse::NotFound().body(""))
     }
 }
 

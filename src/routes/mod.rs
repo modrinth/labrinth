@@ -25,11 +25,7 @@ pub fn mods_config(cfg: &mut web::ServiceConfig) {
         web::scope("mod")
             .service(mods::mod_get)
             .service(mods::mod_delete)
-            .service(
-                web::scope("{mod_id}")
-                    .service(versions::version_list)
-                    .service(version_creation::version_create),
-            ),
+            .service(web::scope("{mod_id}").service(versions::version_list)),
     );
 }
 
@@ -38,6 +34,7 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("version")
             .service(versions::version_get)
+            .service(version_creation::version_create)
             .service(versions::version_delete)
             .service(version_creation::upload_file_to_version),
     );

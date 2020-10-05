@@ -371,6 +371,45 @@ impl Version {
         }
     }
 
+    pub async fn get_many<'a, E>(
+        version_ids: Vec<i64>,
+        exec: E,
+    ) -> Result<Vec<Version>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let versions = sqlx::query!(
+            "
+            SELECT v.id, v.mod_id, v.author_id, v.name, v.version_number,
+                v.changelog_url, v.date_published, v.downloads,
+                v.release_channel
+            FROM versions v
+            WHERE v.id IN (SELECT * FROM UNNEST($1::bigint[]))
+            ",
+            &version_ids
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|v| Version {
+                id: VersionId(v.id),
+                mod_id: ModId(v.mod_id),
+                author_id: UserId(v.author_id),
+                name: v.name,
+                version_number: v.version_number,
+                changelog_url: v.changelog_url,
+                date_published: v.date_published,
+                downloads: v.downloads,
+                release_channel: ChannelId(v.release_channel),
+            }))
+        })
+        .try_collect::<Vec<Version>>()
+        .await?;
+
+        Ok(versions)
+    }
+
     pub async fn get_full<'a, 'b, E>(
         id: VersionId,
         executor: E,

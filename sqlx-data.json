@@ -143,6 +143,74 @@
       "nullable": []
     }
   },
+  "17e6d30c3693e9bd9f772f3dc4e2eafe75fdeecfdcf2746eac641f77ced6b8a8": {
+    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role FROM users u\n            WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "github_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "email",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "avatar_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "username",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "bio",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 7,
+          "name": "created",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 8,
+          "name": "role",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      },
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false
+      ]
+    }
+  },
   "1b74bdb59773ffd2a78a56e4d920bb83c322e180e6174c741d4bb722c353de43": {
     "query": "\n            INSERT INTO loaders (loader)\n            VALUES ($1)\n            RETURNING id\n            ",
     "describe": {
@@ -219,6 +287,86 @@
         ]
       },
       "nullable": [
+        false
+      ]
+    }
+  },
+  "268efd8c8145bbb2bc70bd5ae0a5e6f90c5917ffd18575afcdeaf78b4f895d1e": {
+    "query": "\n            SELECT id, title, description, downloads,\n                   icon_url, body_url, published,\n                   issues_url, source_url, wiki_url,\n                   team_id\n            FROM mods\n            WHERE id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "title",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "description",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "downloads",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 4,
+          "name": "icon_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "body_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "published",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 7,
+          "name": "issues_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 8,
+          "name": "source_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 9,
+          "name": "wiki_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 10,
+          "name": "team_id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
         false
       ]
     }
@@ -609,48 +757,70 @@
       "nullable": []
     }
   },
-  "76bcdb4b219384447b91ed607645934a3fbb284910172b652964209d5df3799c": {
-    "query": "\n            SELECT team_id FROM team_members\n            WHERE user_id = $1\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "team_id",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
-  "7ebc7741c6ab71adab4f037a3b0e8c71af31f77bbde569754f3fddbfa7e8a6fd": {
-    "query": "\n            SELECT id FROM team_members\n            WHERE user_id = $1\n            ",
+  "7b5f4a6f6103f0370ee93300c27764f3e7587277d2813974f4f6af696f8adfbe": {
+    "query": "\n            SELECT u.id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role FROM users u\n            WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
     "describe": {
       "columns": [
         {
           "ordinal": 0,
           "name": "id",
           "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "email",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "avatar_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "username",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "bio",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "created",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 7,
+          "name": "role",
+          "type_info": "Varchar"
         }
       ],
       "parameters": {
         "Left": [
-          "Int8"
+          "Int8Array"
         ]
       },
       "nullable": [
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
         false
       ]
     }
   },
-  "7f227f6dda23b8811db41b6ea296b29d44dd67b83b067f9b0b572d140f951346": {
-    "query": "\n                SELECT id FROM mods\n                WHERE team_id = $1\n                ",
+  "7dfad54e8e6dcb69863f6f930ced4fc4cfa43b0175eca1faba42b46f33b6350c": {
+    "query": "\n            SELECT m.id FROM users m\n            WHERE m.id IN ($1)\n            ",
     "describe": {
       "columns": [
         {
@@ -769,6 +939,24 @@
         true,
         true,
         true,
+        false
+      ]
+    }
+  },
+  "980d6171495fd012c351bde7cee963429c3abe8f370719ecf4d8f4ceca9b407b": {
+    "query": "\n            SELECT m.id FROM users m\n            WHERE m.id IN (SELECT * FROM UNNEST(ARRAY[1,2]))\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
         false
       ]
     }
@@ -901,6 +1089,26 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "b26c416cddd2dc92f4577c38cafc27b2c76a38f2962dd5d3bf3d10c4411c0d50": {
+    "query": "\n            SELECT m.id FROM users m\n            WHERE m.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      },
+      "nullable": [
+        false
+      ]
     }
   },
   "b903ac4e686ef85ba28d698c668da07860e7f276b261d8f2cebb74e73b094970": {
@@ -1261,6 +1469,74 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "d98f0713c6bd3463f851644c88a2cf91601a499494ef1e2ad92a49d6798f5b2f": {
+    "query": "\n            SELECT v.id, v.mod_id, v.author_id, v.name, v.version_number,\n                v.changelog_url, v.date_published, v.downloads,\n                v.release_channel\n            FROM versions v\n            WHERE v.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "mod_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "author_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 3,
+          "name": "name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "version_number",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "changelog_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "date_published",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 7,
+          "name": "downloads",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 8,
+          "name": "release_channel",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false
+      ]
     }
   },
   "deb81673526789bca38d39e64303f61d2a63febfdfb68136e58517af9f7792bc": {
