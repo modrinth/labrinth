@@ -1,5 +1,4 @@
 CREATE TABLE users (
-    -- TODO
     id bigint PRIMARY KEY
 );
 

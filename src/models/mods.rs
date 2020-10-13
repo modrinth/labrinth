@@ -31,6 +31,10 @@ pub struct Mod {
     pub body_url: String,
     /// The date at which the mod was first published.
     pub published: DateTime<Utc>,
+    /// The date at which the mod was first published.
+    pub updated: DateTime<Utc>,
+    /// The status of the mod
+    pub status: ModStatus,
 
     /// The total number of downloads the mod has had.
     pub downloads: u32,
@@ -47,6 +51,27 @@ pub struct Mod {
     /// An optional link to the mod's wiki page or other relevant information.
     pub wiki_url: Option<String>,
 }
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ModStatus {
+    Approved,
+    Rejected,
+    Draft,
+    Unlisted,
+}
+
+impl std::fmt::Display for ModStatus {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ModStatus::Approved => write!(fmt, "release"),
+            ModStatus::Rejected => write!(fmt, "beta"),
+            ModStatus::Draft => write!(fmt, "alpha"),
+            ModStatus::Unlisted => write!(fmt, "unlisted"),
+        }
+    }
+}
+
 
 /// A specific version of a mod
 #[derive(Serialize, Deserialize)]
@@ -128,7 +153,7 @@ pub struct SearchRequest {
     pub query: Option<String>,
     /// Must match a json 2 deep array of strings `[["categories:misc"]]`
     // TODO: We may want to have a better representation of this, so that
-    // we are less likely to break backwards compatability
+    // we are less likely to break backwards compatibility
     pub facets: Option<String>,
     pub filters: Option<String>,
     pub version: Option<String>,

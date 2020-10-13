@@ -167,12 +167,27 @@ async fn version_create_inner(
                 file_name: uploaded_text.file_name.clone(),
             });
 
-            // TODO: do a real lookup for the channels
             let release_channel = match version_create_data.release_channel {
                 VersionType::Release => models::ChannelId(1),
                 VersionType::Beta => models::ChannelId(3),
                 VersionType::Alpha => models::ChannelId(5),
             };
+
+            let mut game_versions = Vec::with_capacity(version_create_data.game_versions.len());
+            for v in &version_create_data.game_versions {
+                let id = models::categories::GameVersion::get_id(&v.0, &mut *transaction)
+                    .await?
+                    .ok_or_else(|| CreateError::InvalidGameVersion(v.0.clone()))?;
+                game_versions.push(id);
+            }
+
+            let mut loaders = Vec::with_capacity(version_create_data.loaders.len());
+            for l in &version_create_data.loaders {
+                let id = models::categories::Loader::get_id(&l.0, &mut *transaction)
+                    .await?
+                    .ok_or_else(|| CreateError::InvalidLoader(l.0.clone()))?;
+                loaders.push(id);
+            }
 
             version_builder = Some(VersionBuilder {
                 version_id: version_id.into(),
@@ -187,9 +202,8 @@ async fn version_create_inner(
                     .iter()
                     .map(|x| (*x).into())
                     .collect::<Vec<_>>(),
-                // TODO: add game_versions and loaders info
-                game_versions: vec![],
-                loaders: vec![],
+                game_versions,
+                loaders,
                 release_channel,
             });
 

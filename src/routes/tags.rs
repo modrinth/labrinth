@@ -20,17 +20,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-// TODO: searching / filtering? Could be used to implement a live
-// searching category list
 #[get("category")]
 pub async fn category_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
     let results = Category::list(&**pool).await?;
     Ok(HttpResponse::Ok().json(results))
 }
 
-// At some point this may take more info, but it should be able to
-// remain idempotent
-// TODO: don't fail if category already exists
 #[put("category/{name}")]
 pub async fn category_create(
     req: HttpRequest,
@@ -93,9 +88,6 @@ pub async fn loader_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiErr
     Ok(HttpResponse::Ok().json(results))
 }
 
-// At some point this may take more info, but it should be able to
-// remain idempotent
-// TODO: don't fail if loader already exists
 #[put("loader/{name}")]
 pub async fn loader_create(
     req: HttpRequest,
@@ -158,8 +150,6 @@ pub async fn game_version_list(pool: web::Data<PgPool>) -> Result<HttpResponse, 
     Ok(HttpResponse::Ok().json(results))
 }
 
-// At some point this may take more info, but it should be able to
-// remain idempotent
 #[put("game_version/{name}")]
 pub async fn game_version_create(
     req: HttpRequest,

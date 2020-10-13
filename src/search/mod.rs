@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::min;
 use thiserror::Error;
+use chrono::{DateTime, Utc};
 
 pub mod indexing;
 
@@ -64,11 +65,11 @@ pub struct UploadSearchMod {
     pub latest_version: String,
 
     /// RFC 3339 formatted creation date of the mod
-    pub date_created: String,
+    pub date_created: DateTime<Utc>,
     /// Unix timestamp of the creation date of the mod
     pub created_timestamp: i64,
     /// RFC 3339 formatted date/time of last major modification (update)
-    pub date_modified: String,
+    pub date_modified: DateTime<Utc>,
     /// Unix timestamp of the last major modification
     pub modified_timestamp: i64,
 
