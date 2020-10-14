@@ -6,6 +6,7 @@ use crate::search::UploadSearchMod;
 use sqlx::postgres::PgPool;
 use std::borrow::Cow;
 
+// TODO: only loaders for recent versions? For mods that have moved from forge to fabric
 pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingError> {
     info!("Indexing local mods!");
 
@@ -28,10 +29,10 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 ",
                 result.id
             )
-                .fetch_many(&pool)
-                .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
-                .try_collect::<Vec<String>>()
-                .await?;
+            .fetch_many(&pool)
+            .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
+            .try_collect::<Vec<String>>()
+            .await?;
 
             let loaders: Vec<String> = sqlx::query!(
                 "
@@ -42,10 +43,10 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 ",
                 result.id
             )
-                .fetch_many(&pool)
-                .try_filter_map(|e| async { Ok(e.right().map(|c| c.loader)) })
-                .try_collect::<Vec<String>>()
-                .await?;
+            .fetch_many(&pool)
+            .try_filter_map(|e| async { Ok(e.right().map(|c| c.loader)) })
+            .try_collect::<Vec<String>>()
+            .await?;
 
             let mut categories = sqlx::query!(
                 "
@@ -56,10 +57,10 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 ",
                 result.id
             )
-                .fetch_many(&pool)
-                .try_filter_map(|e| async { Ok(e.right().map(|c| c.category)) })
-                .try_collect::<Vec<String>>()
-                .await?;
+            .fetch_many(&pool)
+            .try_filter_map(|e| async { Ok(e.right().map(|c| c.category)) })
+            .try_collect::<Vec<String>>()
+            .await?;
 
             categories.extend(loaders);
 
@@ -71,8 +72,8 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 ",
                 result.team_id,
             )
-                .fetch_one(&pool)
-                .await?;
+            .fetch_one(&pool)
+            .await?;
 
             let mut icon_url = "".to_string();
 
@@ -80,7 +81,6 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 icon_url = url;
             }
 
-            let timestamp = result.published.timestamp();
             docs_to_add.push(UploadSearchMod {
                 mod_id: format!("local-{}", crate::models::ids::ModId(result.id as u64)),
                 title: result.title,

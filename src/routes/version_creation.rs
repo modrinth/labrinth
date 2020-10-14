@@ -68,6 +68,7 @@ pub async fn version_create(
     result
 }
 
+/// TODO: Update mod timestamp when new version is created
 async fn version_create_inner(
     req: HttpRequest,
     mut payload: Multipart,
@@ -167,11 +168,19 @@ async fn version_create_inner(
                 file_name: uploaded_text.file_name.clone(),
             });
 
-            let release_channel = match version_create_data.release_channel {
-                VersionType::Release => models::ChannelId(1),
-                VersionType::Beta => models::ChannelId(3),
-                VersionType::Alpha => models::ChannelId(5),
-            };
+            let release_channel = models::ChannelId(
+                sqlx::query!(
+                    "
+                SELECT id
+                FROM release_channels
+                WHERE channel = $1
+                ",
+                    version_create_data.release_channel.to_string()
+                )
+                .fetch_one(&mut *transaction)
+                .await?
+                .id,
+            );
 
             let mut game_versions = Vec::with_capacity(version_create_data.game_versions.len());
             for v in &version_create_data.game_versions {

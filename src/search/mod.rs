@@ -2,6 +2,7 @@ use crate::models::error::ApiError;
 use crate::models::mods::SearchRequest;
 use actix_web::http::StatusCode;
 use actix_web::web::HttpResponse;
+use chrono::{DateTime, Utc};
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::document::Document;
 use meilisearch_sdk::search::Query;
@@ -9,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::min;
 use thiserror::Error;
-use chrono::{DateTime, Utc};
 
 pub mod indexing;
 

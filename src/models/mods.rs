@@ -52,6 +52,12 @@ pub struct Mod {
     pub wiki_url: Option<String>,
 }
 
+/// A status decides the visbility of a mod in search, URLs, and the whole site itself.
+/// Approved - Mod is displayed on search, and accessible by URL
+/// Rejected - Mod is not displayed on search, and not accessible by URL (Temporary state, mod can reapply)
+/// Draft - Mod is not displayed on search, and not accessible by URL
+/// Unlisted - Mod is not displayed on search, but accessible by URL
+/// Processing - Mod is not displayed on search, and not accessible by URL (Temporary state, mod under review)
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ModStatus {
@@ -59,6 +65,7 @@ pub enum ModStatus {
     Rejected,
     Draft,
     Unlisted,
+    Processing,
 }
 
 impl std::fmt::Display for ModStatus {
@@ -68,10 +75,10 @@ impl std::fmt::Display for ModStatus {
             ModStatus::Rejected => write!(fmt, "beta"),
             ModStatus::Draft => write!(fmt, "alpha"),
             ModStatus::Unlisted => write!(fmt, "unlisted"),
+            ModStatus::Processing => write!(fmt, "Processing"),
         }
     }
 }
-
 
 /// A specific version of a mod
 #[derive(Serialize, Deserialize)]

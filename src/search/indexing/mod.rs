@@ -155,13 +155,8 @@ async fn create_index<'a>(
     rules: impl FnOnce() -> Vec<String>,
 ) -> Result<Index<'a>, IndexingError> {
     match client.get_index(name).await {
-        Ok(index) => {
-            index
-                .set_settings(&default_settings().with_ranking_rules(rules()))
-                .await?;
-
-            Ok(index)
-        },
+        // TODO: update index settings on startup (or delete old indices on startup)
+        Ok(index) => Ok(index),
         Err(meilisearch_sdk::errors::Error::MeiliSearchError {
             error_code: meilisearch_sdk::errors::ErrorCode::IndexNotFound,
             ..

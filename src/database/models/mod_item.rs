@@ -12,7 +12,7 @@ pub struct ModBuilder {
     pub wiki_url: Option<String>,
     pub categories: Vec<CategoryId>,
     pub initial_versions: Vec<super::version_item::VersionBuilder>,
-    pub status: StatusId,
+    pub status: i32,
 }
 
 impl ModBuilder {
@@ -67,7 +67,7 @@ pub struct Mod {
     pub body_url: String,
     pub published: chrono::DateTime<chrono::Utc>,
     pub updated: chrono::DateTime<chrono::Utc>,
-    pub status: StatusId,
+    pub status: i32,
     pub downloads: i32,
     pub icon_url: Option<String>,
     pub issues_url: Option<String>,
@@ -144,7 +144,7 @@ impl Mod {
                 issues_url: row.issues_url,
                 source_url: row.source_url,
                 wiki_url: row.wiki_url,
-                status: StatusId(row.status)
+                status: row.status,
             }))
         } else {
             Ok(None)
@@ -185,7 +185,7 @@ impl Mod {
                 issues_url: m.issues_url,
                 source_url: m.source_url,
                 wiki_url: m.wiki_url,
-                status: StatusId(m.status)
+                status: m.status,
             }))
         })
         .try_collect::<Vec<Mod>>()

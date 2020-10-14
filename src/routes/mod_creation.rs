@@ -2,7 +2,7 @@ use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
-use crate::models::mods::{ModId, VersionId, VersionType, ModStatus};
+use crate::models::mods::{ModId, ModStatus, VersionId};
 use crate::models::teams::TeamMember;
 use crate::models::users::UserId;
 use crate::routes::version_creation::InitialVersionData;
@@ -210,8 +210,8 @@ async fn mod_create_inner(
             CreateError::InvalidInput(String::from("`data` field must come before file fields"))
         })?;
 
-        check_length(3, 255, &*create_data.mod_name)?;
-        check_length(3, 2048, &*create_data.mod_description)?;
+        check_length("mod_name", 3, 255, &*create_data.mod_name)?;
+        check_length("mod_description", 3, 2048, &*create_data.mod_description)?;
 
         let (file_name, file_extension) =
             super::version_creation::get_name_ext(&content_disposition)?;
@@ -268,11 +268,19 @@ async fn mod_create_inner(
                 file_name: uploaded_text.file_name.clone(),
             });
 
-            let release_channel = match version_data.release_channel {
-                VersionType::Release => models::ChannelId(1),
-                VersionType::Beta => models::ChannelId(3),
-                VersionType::Alpha => models::ChannelId(5),
-            };
+            let release_channel = models::ChannelId(
+                sqlx::query!(
+                    "
+                SELECT id
+                FROM release_channels
+                WHERE channel = $1
+                ",
+                    version_data.release_channel.to_string()
+                )
+                .fetch_one(&mut *transaction)
+                .await?
+                .id,
+            );
 
             let mut game_versions = Vec::with_capacity(version_data.game_versions.len());
             for v in &version_data.game_versions {
@@ -379,7 +387,18 @@ async fn mod_create_inner(
 
     let team_id = team.insert(&mut *transaction).await?;
 
-    // Insert the new mod into the database
+    let status = ModStatus::Processing;
+    let status_id = sqlx::query!(
+        "
+                SELECT id
+                FROM statuses
+                WHERE status = $1
+                ",
+        status.to_string()
+    )
+    .fetch_one(&mut *transaction)
+    .await?
+    .id;
 
     let mod_builder = models::mod_item::ModBuilder {
         mod_id: mod_id.into(),
@@ -394,7 +413,7 @@ async fn mod_create_inner(
 
         categories,
         initial_versions: created_versions,
-        status: models::ids::StatusId(1)
+        status: status_id,
     };
 
     let versions_list = mod_builder
@@ -413,7 +432,7 @@ async fn mod_create_inner(
     let timestamp = now.timestamp();
 
     let index_mod = crate::search::UploadSearchMod {
-        mod_id: format!("local-{}", &mod_id),
+        mod_id: format!("local-{}", mod_id),
         title: mod_builder.title.clone(),
         description: mod_builder.description.clone(),
         categories: create_data.categories.clone(),
@@ -443,7 +462,7 @@ async fn mod_create_inner(
         body_url: mod_builder.body_url.clone(),
         published: now,
         updated: now,
-        status: ModStatus::Approved,
+        status,
         downloads: 0,
         categories: create_data.categories.clone(),
         versions: mod_builder
@@ -516,9 +535,17 @@ fn get_image_content_type(extension: &str) -> Option<&'static str> {
     }
 }
 
-fn check_length(min_length: usize, max_length: usize, string: &str) -> Result<(), CreateError> {
+fn check_length(
+    var_name: &str,
+    min_length: usize,
+    max_length: usize,
+    string: &str,
+) -> Result<(), CreateError> {
     if string.len() > max_length || string.len() < min_length {
-        Err(CreateError::InvalidInput(format!("String {} is too long! It must fit between {} and {}", string, min_length, max_length)))
+        Err(CreateError::InvalidInput(format!(
+            "The {} must be between {} and {} characters; got {}.",
+            var_name, string, min_length, max_length
+        )))
     } else {
         Ok(())
     }

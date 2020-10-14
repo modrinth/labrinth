@@ -2,7 +2,7 @@ use super::ApiError;
 use crate::auth::check_is_moderator_from_headers;
 use crate::database;
 use crate::models;
-use crate::models::mods::{SearchRequest, ModStatus};
+use crate::models::mods::{ModStatus, SearchRequest};
 use crate::search::{search_for_mod, SearchError};
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -46,7 +46,7 @@ pub async fn mods_get(
             body_url: m.body_url,
             published: m.published,
             updated: m.updated,
-            status: match m.status.0 {
+            status: match m.status {
                 1 => ModStatus::Approved,
                 2 => ModStatus::Rejected,
                 3 => ModStatus::Draft,
@@ -87,7 +87,7 @@ pub async fn mod_get(
             body_url: m.body_url,
             published: m.published,
             updated: m.updated,
-            status: match m.status.0 {
+            status: match m.status {
                 1 => ModStatus::Approved,
                 2 => ModStatus::Rejected,
                 3 => ModStatus::Draft,
