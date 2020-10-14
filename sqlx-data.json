@@ -1,5 +1,25 @@
 {
   "db": "PostgreSQL",
+  "01858339ec93e444b83c5d8793285d7b03982344770221c8a5a9bab9958d78ff": {
+    "query": "\n                    SELECT id\n                    FROM release_channels\n                    WHERE channel = $1\n                    ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "02d8895627dfe108735a6e10ad63239348b71b3322b4734526a2646f17aedf05": {
     "query": "\n            SELECT status FROM statuses\n            WHERE id = $1\n            ",
     "describe": {
@@ -645,26 +665,6 @@
       ]
     }
   },
-  "648d8fb93d4f576640ffa10d77ab8ee4bdee4486cc5e83d6a72c9d4ad0cf1434": {
-    "query": "\n                SELECT id\n                FROM statuses\n                WHERE status = $1\n                ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
   "6562c876826ad3091a14eb50fa1f961a971c1d1bb158fc3dcb55d469a73facc6": {
     "query": "\n            SELECT v.mod_id, v.author_id, v.name, v.version_number,\n                v.changelog_url, v.date_published, v.downloads,\n                v.release_channel\n            FROM versions v\n            WHERE v.id = $1\n            ",
     "describe": {
@@ -1059,6 +1059,26 @@
         false,
         true,
         false,
+        false
+      ]
+    }
+  },
+  "adecffb1c41f9ddddf60c7c3c5a6be129aa8c49c53a698c6f4c2ee9ba15d6347": {
+    "query": "\n        SELECT id\n        FROM statuses\n        WHERE status = $1\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
         false
       ]
     }
