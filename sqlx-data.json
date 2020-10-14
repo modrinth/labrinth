@@ -1550,32 +1550,6 @@
       ]
     }
   },
-  "e3c6fea53388aa1e24c9c1483bbcd6477e53d2c93bfe443c4a6d19b2fe6dc9aa": {
-    "query": "\n                SELECT u.id, u.username FROM users u\n                INNER JOIN team_members tm ON tm.role = 'Owner'\n                WHERE tm.team_id = $1\n                ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "username",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false,
-        false
-      ]
-    }
-  },
   "e673006d1355fa91ba5739d7cf569eec5e1ec501f7b1dc2b431f0b1c25ac07d5": {
     "query": "\n            DELETE FROM game_versions\n            WHERE version = $1\n            ",
     "describe": {
@@ -1792,7 +1766,7 @@
         {
           "ordinal": 7,
           "name": "status",
-          "type_info": "Int8"
+          "type_info": "Int4"
         },
         {
           "ordinal": 8,
