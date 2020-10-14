@@ -67,9 +67,10 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
             let user = sqlx::query!(
                 "
                 SELECT u.id, u.username FROM users u
-                INNER JOIN team_members tm ON tm.role = 'Owner'
-                WHERE tm.team_id = $1
+                INNER JOIN team_members tm ON tm.role = $1
+                WHERE tm.team_id = $2
                 ",
+                crate::models::teams::OWNER_ROLE,
                 result.team_id,
             )
             .fetch_one(&pool)

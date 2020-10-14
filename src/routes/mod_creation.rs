@@ -1,5 +1,6 @@
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
+use crate::database::models::StatusId;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::mods::{ModId, ModStatus, VersionId};
@@ -413,7 +414,7 @@ async fn mod_create_inner(
 
         categories,
         initial_versions: created_versions,
-        status: status_id,
+        status: StatusId(status_id),
     };
 
     let versions_list = mod_builder

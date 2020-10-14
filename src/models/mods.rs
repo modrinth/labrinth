@@ -66,6 +66,7 @@ pub enum ModStatus {
     Draft,
     Unlisted,
     Processing,
+    Unknown,
 }
 
 impl std::fmt::Display for ModStatus {
@@ -76,6 +77,20 @@ impl std::fmt::Display for ModStatus {
             ModStatus::Draft => write!(fmt, "alpha"),
             ModStatus::Unlisted => write!(fmt, "unlisted"),
             ModStatus::Processing => write!(fmt, "Processing"),
+            ModStatus::Unknown => write!(fmt, "Unknown"),
+        }
+    }
+}
+
+impl ModStatus {
+    pub fn from_str(string: &str) -> ModStatus {
+        match string {
+            "processing" => ModStatus::Processing,
+            "rejected" => ModStatus::Processing,
+            "approved" => ModStatus::Processing,
+            "draft" => ModStatus::Processing,
+            "unlisted" => ModStatus::Processing,
+            _ => ModStatus::Unknown,
         }
     }
 }

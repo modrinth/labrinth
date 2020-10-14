@@ -408,6 +408,26 @@
       ]
     }
   },
+  "3135db1c5309dac7580a731b2829397ae7bdd6c9a67b21e813f26a4f5aa251a9": {
+    "query": "\n                SELECT status FROM statuses\n                WHERE id = $1\n                ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "status",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
   "33fc96ac71cfa382991cfb153e89da1e9f43ebf5367c28b30c336b758222307b": {
     "query": "\n            DELETE FROM loaders_versions\n            WHERE loaders_versions.version_id = $1\n            ",
     "describe": {
@@ -430,6 +450,26 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "40597b84607e77809c13ffa9c6b0b1674bd6378a4737a8f6118e91ae2ede7e4a": {
+    "query": "\n                SELECT id\n                FROM release_channels\n                WHERE channel = $1\n                ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
     }
   },
   "4411f2aefd43881450da34db81e826110ac86c3a6cef9fd6a3e9e341508d1f09": {
@@ -581,6 +621,26 @@
       "nullable": [
         false,
         false,
+        false
+      ]
+    }
+  },
+  "648d8fb93d4f576640ffa10d77ab8ee4bdee4486cc5e83d6a72c9d4ad0cf1434": {
+    "query": "\n                SELECT id\n                FROM statuses\n                WHERE status = $1\n                ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
         false
       ]
     }
@@ -820,7 +880,7 @@
         {
           "ordinal": 8,
           "name": "status",
-          "type_info": "Int8"
+          "type_info": "Int4"
         },
         {
           "ordinal": 9,
@@ -1182,6 +1242,33 @@
         ]
       },
       "nullable": [
+        false
+      ]
+    }
+  },
+  "c7ee59f31b20790b6e865b2ec14ecd9985cacb0a84e40f087d0f908033566166": {
+    "query": "\n                SELECT u.id, u.username FROM users u\n                INNER JOIN team_members tm ON tm.role = $1\n                WHERE tm.team_id = $2\n                ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "username",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
         false
       ]
     }
