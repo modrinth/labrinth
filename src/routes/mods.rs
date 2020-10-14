@@ -39,16 +39,16 @@ pub async fn mods_get(
     let mut mods: Vec<models::mods::Mod> = Vec::new();
     for m in mods_data {
         let status = sqlx::query!(
-                "
+            "
                 SELECT status FROM statuses
                 WHERE id = $1
                 ",
-                m.status.0,
-            )
-            .fetch_one(&**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .status;
+            m.status.0,
+        )
+        .fetch_one(&**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .status;
 
         mods.push(models::mods::Mod {
             id: m.id.into(),
@@ -95,7 +95,7 @@ pub async fn mod_get(
         )
         .fetch_one(&**pool)
         .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .map_err(|e| ApiError::DatabaseError(e.into()))?
         .status;
 
         let response = models::mods::Mod {

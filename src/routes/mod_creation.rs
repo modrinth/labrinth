@@ -272,10 +272,10 @@ async fn mod_create_inner(
             let release_channel = models::ChannelId(
                 sqlx::query!(
                     "
-                SELECT id
-                FROM release_channels
-                WHERE channel = $1
-                ",
+                    SELECT id
+                    FROM release_channels
+                    WHERE channel = $1
+                    ",
                     version_data.release_channel.to_string()
                 )
                 .fetch_one(&mut *transaction)
@@ -391,10 +391,10 @@ async fn mod_create_inner(
     let status = ModStatus::Processing;
     let status_id = sqlx::query!(
         "
-                SELECT id
-                FROM statuses
-                WHERE status = $1
-                ",
+        SELECT id
+        FROM statuses
+        WHERE status = $1
+        ",
         status.to_string()
     )
     .fetch_one(&mut *transaction)
