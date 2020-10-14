@@ -2,7 +2,7 @@ use super::ApiError;
 use crate::auth::check_is_moderator_from_headers;
 use crate::database;
 use crate::models;
-use crate::models::mods::{ModStatus, SearchRequest};
+use crate::models::mods::SearchRequest;
 use crate::search::{search_for_mod, SearchError};
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -48,8 +48,7 @@ pub async fn mods_get(
             .fetch_one(&**pool)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .status
-            .unwrap_or(ModStatus::Unknown.to_string());
+            .status;
 
         mods.push(models::mods::Mod {
             id: m.id.into(),
@@ -89,16 +88,16 @@ pub async fn mod_get(
 
         let status = sqlx::query!(
             "
-                SELECT status FROM statuses
-                WHERE id = $1
-                ",
+            SELECT status FROM statuses
+            WHERE id = $1
+            ",
             m.status.0,
         )
         .fetch_one(&**pool)
         .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?
-        .status
-        .unwrap_or(ModStatus::Unknown.to_string());
+            .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .status;
+
         let response = models::mods::Mod {
             id: m.id.into(),
             team: m.team_id.into(),

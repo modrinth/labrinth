@@ -1,6 +1,6 @@
 CREATE TABLE statuses (
     id serial PRIMARY KEY UNIQUE NOT NULL,
-    status varchar(64)
+    status varchar(64) UNIQUE NOT NULL
 );
 
 ALTER TABLE mods

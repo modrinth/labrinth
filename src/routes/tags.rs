@@ -87,9 +87,6 @@ pub async fn category_delete(
     }
 }
 
-// At some point this may take more info, but it should be able to
-// remain idempotent
-// TODO: don't fail if loader already exists
 #[get("loader")]
 pub async fn loader_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
     let results = Loader::list(&**pool).await?;
@@ -98,6 +95,7 @@ pub async fn loader_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiErr
 
 // At some point this may take more info, but it should be able to
 // remain idempotent
+// TODO: don't fail if loader already exists
 #[put("loader/{name}")]
 pub async fn loader_create(
     req: HttpRequest,

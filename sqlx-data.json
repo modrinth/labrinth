@@ -1,5 +1,25 @@
 {
   "db": "PostgreSQL",
+  "02d8895627dfe108735a6e10ad63239348b71b3322b4734526a2646f17aedf05": {
+    "query": "\n            SELECT status FROM statuses\n            WHERE id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "status",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "03209c5bda2d704e688439919a7b3903db6ad7caebf7ddafb3ea52d312d47bfb": {
     "query": "\n            INSERT INTO users (\n                id, github_id, username, name, email,\n                avatar_url, bio, created\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8\n            )\n            ",
     "describe": {
@@ -424,7 +444,7 @@
         ]
       },
       "nullable": [
-        true
+        false
       ]
     }
   },
