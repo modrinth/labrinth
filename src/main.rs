@@ -65,9 +65,8 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Database connection failed");
 
-    let storage_backend = &*dotenv::var("STORAGE_BACKEND")
-        .ok()
-        .unwrap_or("local".to_string());
+    let storage_backend = dotenv::var("STORAGE_BACKEND")
+        .unwrap_or_else(|_| "local".to_string());
 
     let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> = if storage_backend == "backblaze"
     {
@@ -90,8 +89,10 @@ async fn main() -> std::io::Result<()> {
             )
             .unwrap(),
         )
-    } else {
+    } else if storage_backend == "local" {
         Arc::new(file_hosting::MockHost::new())
+    } else {
+        panic!("Invalid storage backend specified. Aborting startup!")
     };
 
     let mut scheduler = scheduler::Scheduler::new();
@@ -255,22 +256,24 @@ fn check_env_vars() {
     check_var::<String>("MEILISEARCH_ADDR");
     check_var::<String>("BIND_ADDR");
 
-    let storage_backend = &*dotenv::var("STORAGE_BACKEND")
-        .ok()
-        .unwrap_or("local".to_string());
+    check_var::<String>("STORAGE_BACKEND");
 
-    if storage_backend == "backblaze" {
+    let storage_backend = dotenv::var("STORAGE_BACKEND").ok();
+
+    if storage_backend == Some("backblaze".to_string()) {
         check_var::<String>("BACKBLAZE_KEY_ID");
         check_var::<String>("BACKBLAZE_KEY");
         check_var::<String>("BACKBLAZE_BUCKET_ID");
-    } else if storage_backend == "s3" {
+    } else if storage_backend == Some("s3".to_string()) {
         check_var::<String>("S3_ACCESS_TOKEN");
         check_var::<String>("S3_SECRET");
         check_var::<String>("S3_URL");
         check_var::<String>("S3_REGION");
         check_var::<String>("S3_BUCKET_NAME");
-    } else {
+    } else if storage_backend == Some("local".to_string()) {
         check_var::<String>("MOCK_FILE_PATH");
+    } else if let Some(backend) = storage_backend {
+        warn!("Variable `STORAGE_BACKEND` contains an invalid value: {}. Expected \"backblaze\", \"s3\", or \"local\".", backend);
     }
 
     check_var::<bool>("INDEX_CURSEFORGE");
