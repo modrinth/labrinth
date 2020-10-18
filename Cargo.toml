@@ -36,11 +36,7 @@ thiserror = "1.0.21"
 
 futures = "0.3.6"
 futures-timer = "3.0.2"
-
-base64 = "0.12.3"
-sha1 = {version="0.6.0", features=["std"]}
 rust-s3 = "0.26.1"
-
 async-trait = "0.1.41"
 
 [dependencies.sqlx]
