@@ -1,9 +1,40 @@
 use crate::file_hosting::{DeleteFileData, FileHost, FileHostingError, UploadFileData};
 use async_trait::async_trait;
 use s3::bucket::Bucket;
+use s3::creds::Credentials;
+use s3::region::Region;
 
 pub struct S3Host {
-    pub bucket: Bucket,
+    bucket: Bucket,
+}
+
+impl S3Host {
+    pub fn new(
+        bucket_name: &str,
+        bucket_region: &str,
+        url: &str,
+        access_token: &str,
+        secret: &str,
+    ) -> Result<S3Host, FileHostingError> {
+        let mut bucket = Bucket::new(
+            bucket_name,
+            Region::Custom {
+                region: bucket_region.to_string(),
+                endpoint: url.to_string(),
+            },
+            Credentials::new(
+                Some(access_token),
+                Some(secret),
+                None,
+                None,
+                None,
+            )?,
+        )?;
+
+        bucket.add_header("x-amz-acl", "public-read");
+
+        Ok(S3Host { bucket })
+    }
 }
 
 #[async_trait]
@@ -29,7 +60,7 @@ impl FileHost for S3Host {
             file_name: file_name.to_string(),
             content_length: file_bytes.len() as u32,
             content_sha1,
-            content_md5: Some("".to_string()),
+            content_md5: None,
             content_type: content_type.to_string(),
             upload_timestamp: chrono::Utc::now().timestamp_millis() as u64,
         })
@@ -40,7 +71,7 @@ impl FileHost for S3Host {
         file_id: &str,
         file_name: &str,
     ) -> Result<DeleteFileData, FileHostingError> {
-        self.bucket.delete_object(file_name).await?;
+        self.bucket.delete_object(format!("/{}", file_name)).await?;
 
         Ok(DeleteFileData {
             file_id: file_id.to_string(),
@@ -53,32 +84,17 @@ impl FileHost for S3Host {
 mod tests {
     use crate::file_hosting::s3_host::S3Host;
     use crate::file_hosting::FileHost;
-    use s3::bucket::Bucket;
-    use s3::creds::Credentials;
-    use s3::region::Region;
 
     #[actix_rt::test]
     async fn test_file_management() {
-        let mut bucket = Bucket::new(
+        let s3_host = S3Host::new(
             &*dotenv::var("S3_BUCKET_NAME").unwrap(),
-            Region::Custom {
-                region: dotenv::var("S3_REGION").unwrap(),
-                endpoint: dotenv::var("S3_URL").unwrap(),
-            },
-            Credentials::new(
-                Some(&*dotenv::var("S3_ACCESS_TOKEN").unwrap()),
-                Some(&*(dotenv::var("S3_SECRET")).unwrap()),
-                None,
-                None,
-                None,
-            )
-            .unwrap(),
+            &*dotenv::var("S3_REGION").unwrap(),
+            &*dotenv::var("S3_URL").unwrap(),
+            &*dotenv::var("S3_ACCESS_TOKEN").unwrap(),
+            &*dotenv::var("S3_SECRET").unwrap(),
         )
         .unwrap();
-
-        bucket.add_header("x-amz-acl", "public-read");
-
-        let s3_host = S3Host { bucket };
 
         s3_host
             .upload_file(

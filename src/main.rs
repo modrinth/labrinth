@@ -1,12 +1,10 @@
+use crate::file_hosting::S3Host;
 use actix_cors::Cors;
 use actix_web::middleware::Logger;
 use actix_web::{http, web, App, HttpServer};
 use env_logger::Env;
 use gumdrop::Options;
 use log::{info, warn};
-use s3::bucket::Bucket;
-use s3::creds::Credentials;
-use s3::region::Region;
 use search::indexing::index_mods;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
@@ -67,17 +65,12 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Database connection failed");
 
-    let backblaze_enabled = dotenv::var("BACKBLAZE_ENABLED")
+    let storage_backend = &*dotenv::var("STORAGE_BACKEND")
         .ok()
-        .and_then(|s| s.parse::<bool>().ok())
-        .unwrap_or(false);
+        .unwrap_or("local".to_string());
 
-    let s3_enabled = dotenv::var("S3_ENABLED")
-        .ok()
-        .and_then(|s| s.parse::<bool>().ok())
-        .unwrap_or(false);
-
-    let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> = if backblaze_enabled {
+    let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> = if storage_backend == "backblaze"
+    {
         Arc::new(
             file_hosting::BackblazeHost::new(
                 &dotenv::var("BACKBLAZE_KEY_ID").unwrap(),
@@ -86,27 +79,17 @@ async fn main() -> std::io::Result<()> {
             )
             .await,
         )
-    } else if s3_enabled {
-        let mut bucket = Bucket::new(
-            &*dotenv::var("S3_BUCKET_NAME").unwrap(),
-            Region::Custom {
-                region: dotenv::var("S3_REGION").unwrap(),
-                endpoint: dotenv::var("S3_URL").unwrap(),
-            },
-            Credentials::new(
-                Some(&*dotenv::var("S3_ACCESS_TOKEN").unwrap()),
-                Some(&*(dotenv::var("S3_SECRET")).unwrap()),
-                None,
-                None,
-                None,
+    } else if storage_backend == "s3" {
+        Arc::new(
+            S3Host::new(
+                &*dotenv::var("S3_BUCKET_NAME").unwrap(),
+                &*dotenv::var("S3_REGION").unwrap(),
+                &*dotenv::var("S3_URL").unwrap(),
+                &*dotenv::var("S3_ACCESS_TOKEN").unwrap(),
+                &*dotenv::var("S3_SECRET").unwrap(),
             )
             .unwrap(),
         )
-        .unwrap();
-
-        bucket.add_header("x-amz-acl", "public-read");
-
-        Arc::new(file_hosting::S3Host { bucket })
     } else {
         Arc::new(file_hosting::MockHost::new())
     };
@@ -272,24 +255,20 @@ fn check_env_vars() {
     check_var::<String>("MEILISEARCH_ADDR");
     check_var::<String>("BIND_ADDR");
 
-    if dotenv::var("BACKBLAZE_ENABLED")
+    let storage_backend = &*dotenv::var("STORAGE_BACKEND")
         .ok()
-        .and_then(|s| s.parse::<bool>().ok())
-        .unwrap_or(false)
-    {
+        .unwrap_or("local".to_string());
+
+    if storage_backend == "backblaze" {
         check_var::<String>("BACKBLAZE_KEY_ID");
         check_var::<String>("BACKBLAZE_KEY");
         check_var::<String>("BACKBLAZE_BUCKET_ID");
-    } else if dotenv::var("S3_ENABLED")
-        .ok()
-        .and_then(|s| s.parse::<bool>().ok())
-        .unwrap_or(false)
-    {
+    } else if storage_backend == "s3" {
         check_var::<String>("S3_ACCESS_TOKEN");
         check_var::<String>("S3_SECRET");
         check_var::<String>("S3_URL");
         check_var::<String>("S3_REGION");
-        check_var::<String>("S3_BUCKET_URL");
+        check_var::<String>("S3_BUCKET_NAME");
     } else {
         check_var::<String>("MOCK_FILE_PATH");
     }
