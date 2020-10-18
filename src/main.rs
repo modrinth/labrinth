@@ -65,8 +65,7 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Database connection failed");
 
-    let storage_backend = dotenv::var("STORAGE_BACKEND")
-        .unwrap_or_else(|_| "local".to_string());
+    let storage_backend = dotenv::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
 
     let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> = if storage_backend == "backblaze"
     {

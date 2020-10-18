@@ -7,9 +7,9 @@ mod s3_host;
 
 pub use backblaze::BackblazeHost;
 pub use mock::MockHost;
+use s3::creds::AwsCredsError;
 use s3::S3Error;
 pub use s3_host::S3Host;
-use s3::creds::AwsCredsError;
 
 #[derive(Error, Debug)]
 pub enum FileHostingError {

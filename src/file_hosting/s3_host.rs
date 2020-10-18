@@ -22,13 +22,7 @@ impl S3Host {
                 region: bucket_region.to_string(),
                 endpoint: url.to_string(),
             },
-            Credentials::new(
-                Some(access_token),
-                Some(secret),
-                None,
-                None,
-                None,
-            )?,
+            Credentials::new(Some(access_token), Some(secret), None, None, None)?,
         )?;
 
         bucket.add_header("x-amz-acl", "public-read");
