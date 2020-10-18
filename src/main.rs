@@ -7,6 +7,9 @@ use log::{info, warn};
 use search::indexing::index_mods;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
+use s3::bucket::Bucket;
+use s3::region::Region;
+use s3::creds::Credentials;
 
 mod auth;
 mod database;
@@ -69,6 +72,11 @@ async fn main() -> std::io::Result<()> {
         .and_then(|s| s.parse::<bool>().ok())
         .unwrap_or(false);
 
+    let s3_enabled = dotenv::var("S3_ENABLED")
+        .ok()
+        .and_then(|s| s.parse::<bool>().ok())
+        .unwrap_or(false);
+
     let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> = if backblaze_enabled {
         Arc::new(
             file_hosting::BackblazeHost::new(
@@ -78,6 +86,24 @@ async fn main() -> std::io::Result<()> {
             )
             .await,
         )
+    } else if s3_enabled {
+        Arc::new(file_hosting::S3Host {
+            bucket: Bucket::new(
+                &*dotenv::var("S3_BUCKET_NAME").unwrap(),
+                Region::Custom {
+                    region: dotenv::var("S3_REGION").unwrap(),
+                    endpoint: dotenv::var("S3_URL").unwrap(),
+                },
+                Credentials::new(
+                    Some(&*dotenv::var("S3_ACCESS_TOKEN").unwrap()),
+                    Some(&*(dotenv::var("S3_SECRET")).unwrap()),
+                    None,
+                    None,
+                    None,
+                ).unwrap(),
+            )
+                .unwrap(),
+        })
     } else {
         Arc::new(file_hosting::MockHost::new())
     };
@@ -251,6 +277,16 @@ fn check_env_vars() {
         check_var::<String>("BACKBLAZE_KEY_ID");
         check_var::<String>("BACKBLAZE_KEY");
         check_var::<String>("BACKBLAZE_BUCKET_ID");
+    } else if dotenv::var("S3_ENABLED")
+        .ok()
+        .and_then(|s| s.parse::<bool>().ok())
+        .unwrap_or(false)
+    {
+        check_var::<String>("S3_ACCESS_TOKEN");
+        check_var::<String>("S3_SECRET");
+        check_var::<String>("S3_URL");
+        check_var::<String>("S3_REGION");
+        check_var::<String>("S3_BUCKET_URL");
     } else {
         check_var::<String>("MOCK_FILE_PATH");
     }

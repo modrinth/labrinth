@@ -3,9 +3,12 @@ use thiserror::Error;
 
 mod backblaze;
 mod mock;
+mod s3_host;
 
 pub use backblaze::BackblazeHost;
 pub use mock::MockHost;
+pub use s3_host::S3Host;
+use s3::S3Error;
 
 #[derive(Error, Debug)]
 pub enum FileHostingError {
@@ -13,6 +16,8 @@ pub enum FileHostingError {
     HttpError(#[from] reqwest::Error),
     #[error("Backblaze error: {0}")]
     BackblazeError(serde_json::Value),
+    #[error("S3 error")]
+    S3Error(#[from] S3Error),
     #[error("File system error in file hosting: {0}")]
     FileSystemError(#[from] std::io::Error),
     #[error("Invalid Filename")]

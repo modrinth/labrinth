@@ -40,6 +40,7 @@ futures-timer = "3.0.2"
 
 base64 = "0.12.3"
 sha1 = {version="0.6.0", features=["std"]}
+rust-s3 = "0.26.1"
 
 [dependencies.sqlx]
 git = "https://github.com/launchbadge/sqlx/"
