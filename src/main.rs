@@ -259,17 +259,17 @@ fn check_env_vars() {
 
     let storage_backend = dotenv::var("STORAGE_BACKEND").ok();
 
-    if storage_backend == Some("backblaze".to_string()) {
+    if storage_backend.as_deref() == Some("backblaze") {
         check_var::<String>("BACKBLAZE_KEY_ID");
         check_var::<String>("BACKBLAZE_KEY");
         check_var::<String>("BACKBLAZE_BUCKET_ID");
-    } else if storage_backend == Some("s3".to_string()) {
+    } else if storage_backend.as_deref() == Some("s3") {
         check_var::<String>("S3_ACCESS_TOKEN");
         check_var::<String>("S3_SECRET");
         check_var::<String>("S3_URL");
         check_var::<String>("S3_REGION");
         check_var::<String>("S3_BUCKET_NAME");
-    } else if storage_backend == Some("local".to_string()) {
+    } else if storage_backend.as_deref() == Some("local") {
         check_var::<String>("MOCK_FILE_PATH");
     } else if let Some(backend) = storage_backend {
         warn!("Variable `STORAGE_BACKEND` contains an invalid value: {}. Expected \"backblaze\", \"s3\", or \"local\".", backend);
