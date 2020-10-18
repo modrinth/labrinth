@@ -4,12 +4,12 @@ use actix_web::{http, web, App, HttpServer};
 use env_logger::Env;
 use gumdrop::Options;
 use log::{info, warn};
+use s3::bucket::Bucket;
+use s3::creds::Credentials;
+use s3::region::Region;
 use search::indexing::index_mods;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
-use s3::bucket::Bucket;
-use s3::region::Region;
-use s3::creds::Credentials;
 
 mod auth;
 mod database;
@@ -87,23 +87,26 @@ async fn main() -> std::io::Result<()> {
             .await,
         )
     } else if s3_enabled {
-        Arc::new(file_hosting::S3Host {
-            bucket: Bucket::new(
-                &*dotenv::var("S3_BUCKET_NAME").unwrap(),
-                Region::Custom {
-                    region: dotenv::var("S3_REGION").unwrap(),
-                    endpoint: dotenv::var("S3_URL").unwrap(),
-                },
-                Credentials::new(
-                    Some(&*dotenv::var("S3_ACCESS_TOKEN").unwrap()),
-                    Some(&*(dotenv::var("S3_SECRET")).unwrap()),
-                    None,
-                    None,
-                    None,
-                ).unwrap(),
+        let mut bucket = Bucket::new(
+            &*dotenv::var("S3_BUCKET_NAME").unwrap(),
+            Region::Custom {
+                region: dotenv::var("S3_REGION").unwrap(),
+                endpoint: dotenv::var("S3_URL").unwrap(),
+            },
+            Credentials::new(
+                Some(&*dotenv::var("S3_ACCESS_TOKEN").unwrap()),
+                Some(&*(dotenv::var("S3_SECRET")).unwrap()),
+                None,
+                None,
+                None,
             )
-                .unwrap(),
-        })
+            .unwrap(),
+        )
+        .unwrap();
+
+        bucket.add_header("x-amz-acl", "public-read");
+
+        Arc::new(file_hosting::S3Host { bucket })
     } else {
         Arc::new(file_hosting::MockHost::new())
     };
