@@ -135,7 +135,8 @@ impl Document for ResultSearchMod {
 
 pub async fn search_for_mod(info: &SearchRequest) -> Result<SearchResults, SearchError> {
     let address = &*dotenv::var("MEILISEARCH_ADDR")?;
-    let client = Client::new(address, "");
+    let key = &*dotenv::var("MEILISEARCH_KEY")?;
+    let client = Client::new(address, key);
 
     let filters: Cow<_> = match (info.filters.as_deref(), info.version.as_deref()) {
         (Some(f), Some(v)) => format!("({}) AND ({})", f, v).into(),

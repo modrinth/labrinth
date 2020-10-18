@@ -253,6 +253,7 @@ fn check_env_vars() {
     check_var::<String>("CDN_URL");
     check_var::<String>("DATABASE_URL");
     check_var::<String>("MEILISEARCH_ADDR");
+    check_var::<String>("MEILISEARCH_KEY");
     check_var::<String>("BIND_ADDR");
 
     check_var::<String>("STORAGE_BACKEND");

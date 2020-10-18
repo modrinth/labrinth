@@ -186,7 +186,8 @@ async fn add_to_index(index: Index<'_>, mods: &[UploadSearchMod]) -> Result<(), 
 
 pub async fn add_mods(mods: Vec<UploadSearchMod>) -> Result<(), IndexingError> {
     let address = &*dotenv::var("MEILISEARCH_ADDR")?;
-    let client = Client::new(address, "");
+    let key = &*dotenv::var("MEILISEARCH_KEY")?;
+    let client = Client::new(address, key);
 
     // Relevance Index
     let relevance_index = create_index(&client, "relevance_mods", || {
