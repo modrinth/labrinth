@@ -1,6 +1,6 @@
 use crate::auth::get_user_from_headers;
 use crate::database::models;
-use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder};
+use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder, HashBuilder};
 use crate::file_hosting::FileHost;
 use crate::models::mods::{
     GameVersion, ModId, ModLoader, Version, VersionFile, VersionId, VersionType,
@@ -209,7 +209,7 @@ async fn version_create_inner(
 
             if let Some(body) = &version_create_data.version_body {
                 let path = format!(
-                    "data/{}/changelogs/{}/body.md",
+                    "data/{}/versions/{}/changelog.md",
                     version_create_data.mod_id.unwrap(),
                     version_id
                 );
@@ -219,8 +219,12 @@ async fn version_create_inner(
                     .await?;
 
                 uploaded_files.push(UploadedFile {
-                    file_id: uploaded_text.file_id.clone(),
-                    file_name: uploaded_text.file_name.clone(),
+                    part_name: None,
+                    file_id: uploaded_text.file_id,
+                    file_path: uploaded_text.file_name.clone(),
+                    file_name: "changelog.md".to_string(),
+                    content_sha1: uploaded_text.content_sha1,
+                    content_md5: uploaded_text.content_md5,
                 });
                 body_path = Some(path);
             } else {
@@ -250,6 +254,36 @@ async fn version_create_inner(
                 loaders.push(id);
             }
 
+            let mut files = Vec::new();
+
+            for part in &version_create_data.file_parts {
+                for file in &mut *uploaded_files {
+                    if let Some(part_name) = &file.part_name {
+                        if part != part_name {continue}
+
+                        let mut hashes = vec![
+                            HashBuilder {
+                                algorithm: "sha1".to_string(),
+                                hash: file.content_sha1.clone().into_bytes()
+                            }
+                        ];
+
+                        if let Some(md5) = &file.content_md5 {
+                            hashes.push(HashBuilder {
+                                algorithm: "md5".to_string(),
+                                hash: md5.clone().into_bytes()
+                            })
+                        }
+
+                        files.push(VersionFileBuilder {
+                            url: format!("{}/{}", cdn_url, file.file_path),
+                            filename: file.file_name.clone(),
+                            hashes
+                        })
+                    }
+                }
+            }
+
             version_builder = Some(VersionBuilder {
                 version_id: version_id.into(),
                 mod_id: version_create_data.mod_id.unwrap().into(),
@@ -257,7 +291,7 @@ async fn version_create_inner(
                 name: version_create_data.version_title.clone(),
                 version_number: version_create_data.version_number.clone(),
                 changelog_url: body_path.map(|path| format!("{}/{}", cdn_url, path)),
-                files: Vec::new(),
+                files,
                 dependencies: version_create_data
                     .dependencies
                     .iter()
@@ -277,6 +311,7 @@ async fn version_create_inner(
 
         let file_builder = upload_file(
             &mut field,
+            name,
             file_host,
             uploaded_files,
             &cdn_url,
@@ -449,6 +484,7 @@ async fn upload_file_to_version_inner(
 
         let file_builder = upload_file(
             &mut field,
+            name,
             file_host,
             uploaded_files,
             &cdn_url,
@@ -479,6 +515,7 @@ async fn upload_file_to_version_inner(
 // files for a version, and for uploading the initial version files for a mod
 pub async fn upload_file(
     field: &mut Field,
+    field_name: &str,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     cdn_url: &str,
@@ -509,14 +546,18 @@ pub async fn upload_file(
     let upload_data = file_host
         .upload_file(
             content_type,
-            &format!("{}/{}/{}", mod_id, version_number, file_name),
+            &format!("data/{}/versions/{}/{}", mod_id, version_number, file_name),
             data.to_vec(),
         )
         .await?;
 
     uploaded_files.push(UploadedFile {
-        file_id: upload_data.file_id.clone(),
-        file_name: upload_data.file_name.clone(),
+        part_name: Some(field_name.to_string()),
+        file_id: upload_data.file_id,
+        file_path: upload_data.file_name.clone(),
+        file_name: file_name.to_string(),
+        content_sha1: upload_data.content_sha1.clone(),
+        content_md5: upload_data.content_md5,
     });
 
     // TODO: Malware scan + file validation
