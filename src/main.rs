@@ -115,11 +115,11 @@ async fn main() -> std::io::Result<()> {
     );
 
     let pool_ref = pool.clone();
-    let search_config_ref = search_config.clone();
+    let thread_search_config = search_config.clone();
     let mut skip = skip_initial;
     scheduler.run(local_index_interval, move || {
         let pool_ref = pool_ref.clone();
-        let search_config_ref = search_config_ref.clone();
+        let thread_search_config = thread_search_config.clone();
         let local_skip = skip;
         if skip {
             skip = false;
@@ -133,7 +133,7 @@ async fn main() -> std::io::Result<()> {
                 index_local: true,
                 index_external: false,
             };
-            let result = index_mods(pool_ref, settings, &search_config_ref).await;
+            let result = index_mods(pool_ref, settings, &thread_search_config).await;
             if let Err(e) = result {
                 warn!("Local mod indexing failed: {:?}", e);
             }
@@ -144,11 +144,11 @@ async fn main() -> std::io::Result<()> {
     let indexing_queue = Arc::new(search::indexing::queue::CreationQueue::new());
 
     let queue_ref = indexing_queue.clone();
-    let search_config_ref = search_config.clone();
+    let thread_search_config = search_config.clone();
     let mut skip = skip_initial;
     scheduler.run(std::time::Duration::from_secs(15 * 60), move || {
         let queue = queue_ref.clone();
-        let search_config_ref = search_config_ref.clone();
+        let thread_search_config = thread_search_config.clone();
         let local_skip = skip;
         if skip {
             skip = false;
@@ -158,7 +158,7 @@ async fn main() -> std::io::Result<()> {
                 return;
             }
             info!("Indexing created mod queue");
-            let result = search::indexing::queue::index_queue(&*queue, &search_config_ref).await;
+            let result = search::indexing::queue::index_queue(&*queue, &thread_search_config).await;
             if let Err(e) = result {
                 warn!("Indexing created mods failed: {:?}", e);
             }
@@ -181,17 +181,17 @@ async fn main() -> std::io::Result<()> {
         );
 
         let pool_ref = pool.clone();
-        let search_config_ref = search_config.clone();
+        let thread_search_config = search_config.clone();
         scheduler.run(external_index_interval, move || {
             info!("Indexing curseforge");
             let pool_ref = pool_ref.clone();
-            let search_config_ref = search_config_ref.clone();
+            let thread_search_config = thread_search_config.clone();
             async move {
                 let settings = IndexingSettings {
                     index_local: false,
                     index_external: true,
                 };
-                let result = index_mods(pool_ref, settings, &search_config_ref).await;
+                let result = index_mods(pool_ref, settings, &thread_search_config).await;
                 if let Err(e) = result {
                     warn!("External mod indexing failed: {:?}", e);
                 }
