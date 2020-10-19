@@ -3,7 +3,7 @@ use crate::auth::check_is_moderator_from_headers;
 use crate::database;
 use crate::models;
 use crate::models::mods::SearchRequest;
-use crate::search::{search_for_mod, SearchError, SearchConfig};
+use crate::search::{search_for_mod, SearchConfig, SearchError};
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -11,7 +11,7 @@ use sqlx::PgPool;
 #[get("mod")]
 pub async fn mod_search(
     web::Query(info): web::Query<SearchRequest>,
-    config: web::Data<SearchConfig>
+    config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
     let results = search_for_mod(&info, &**config).await?;
     Ok(HttpResponse::Ok().json(results))
@@ -147,7 +147,7 @@ pub async fn mod_delete(
 
     let client = meilisearch_sdk::client::Client::new(&*config.key, &*config.address);
 
-    let indexes : Vec<meilisearch_sdk::indexes::Index> = client.get_indexes().await?;
+    let indexes: Vec<meilisearch_sdk::indexes::Index> = client.get_indexes().await?;
     for index in indexes {
         index.delete_document(format!("local-{}", id)).await?;
     }

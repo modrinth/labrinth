@@ -1,6 +1,6 @@
 use crate::auth::get_user_from_headers;
 use crate::database::models;
-use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder, HashBuilder};
+use crate::database::models::version_item::{HashBuilder, VersionBuilder, VersionFileBuilder};
 use crate::file_hosting::FileHost;
 use crate::models::mods::{
     GameVersion, ModId, ModLoader, Version, VersionFile, VersionId, VersionType,
@@ -211,7 +211,7 @@ async fn version_create_inner(
                 let path = format!(
                     "data/{}/versions/{}/changelog.md",
                     version_create_data.mod_id.unwrap(),
-                    version_id
+                    version_create_data.version_number
                 );
 
                 let uploaded_text = file_host
@@ -259,26 +259,26 @@ async fn version_create_inner(
             for part in &version_create_data.file_parts {
                 for file in &mut *uploaded_files {
                     if let Some(part_name) = &file.part_name {
-                        if part != part_name {continue}
+                        if part != part_name {
+                            continue;
+                        }
 
-                        let mut hashes = vec![
-                            HashBuilder {
-                                algorithm: "sha1".to_string(),
-                                hash: file.content_sha1.clone().into_bytes()
-                            }
-                        ];
+                        let mut hashes = vec![HashBuilder {
+                            algorithm: "sha1".to_string(),
+                            hash: file.content_sha1.clone().into_bytes(),
+                        }];
 
                         if let Some(md5) = &file.content_md5 {
                             hashes.push(HashBuilder {
                                 algorithm: "md5".to_string(),
-                                hash: md5.clone().into_bytes()
+                                hash: md5.clone().into_bytes(),
                             })
                         }
 
                         files.push(VersionFileBuilder {
                             url: format!("{}/{}", cdn_url, file.file_path),
                             filename: file.file_name.clone(),
-                            hashes
+                            hashes,
                         })
                     }
                 }

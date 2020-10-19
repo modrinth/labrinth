@@ -139,7 +139,10 @@ impl Document for ResultSearchMod {
     }
 }
 
-pub async fn search_for_mod(info: &SearchRequest, config: &SearchConfig) -> Result<SearchResults, SearchError> {
+pub async fn search_for_mod(
+    info: &SearchRequest,
+    config: &SearchConfig,
+) -> Result<SearchResults, SearchError> {
     let client = Client::new(&*config.key, &*config.address);
 
     let filters: Cow<_> = match (info.filters.as_deref(), info.version.as_deref()) {

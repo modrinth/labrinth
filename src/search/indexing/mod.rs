@@ -3,7 +3,7 @@ pub mod curseforge_import;
 pub mod local_import;
 pub mod queue;
 
-use crate::search::{UploadSearchMod, SearchConfig};
+use crate::search::{SearchConfig, UploadSearchMod};
 use curseforge_import::index_curseforge;
 use local_import::index_local;
 use meilisearch_sdk::client::Client;
@@ -56,7 +56,11 @@ impl IndexingSettings {
     }
 }
 
-pub async fn index_mods(pool: PgPool, settings: IndexingSettings, config: &SearchConfig) -> Result<(), IndexingError> {
+pub async fn index_mods(
+    pool: PgPool,
+    settings: IndexingSettings,
+    config: &SearchConfig,
+) -> Result<(), IndexingError> {
     let mut docs_to_add: Vec<UploadSearchMod> = vec![];
 
     if settings.index_local {
@@ -182,7 +186,10 @@ async fn add_to_index(index: Index<'_>, mods: &[UploadSearchMod]) -> Result<(), 
     Ok(())
 }
 
-pub async fn add_mods(mods: Vec<UploadSearchMod>, config: &SearchConfig) -> Result<(), IndexingError> {
+pub async fn add_mods(
+    mods: Vec<UploadSearchMod>,
+    config: &SearchConfig,
+) -> Result<(), IndexingError> {
     let client = Client::new(&*config.address, &*config.key);
 
     // Relevance Index

@@ -41,16 +41,20 @@ async fn main() -> std::io::Result<()> {
 
     let search_config = search::SearchConfig {
         address: dotenv::var("MEILISEARCH_ADDR").unwrap(),
-        key: dotenv::var("MEILISEARCH_KEY").unwrap()
+        key: dotenv::var("MEILISEARCH_KEY").unwrap(),
     };
 
     if config.reset_indices {
         info!("Resetting indices");
-        search::indexing::reset_indices(&search_config).await.unwrap();
+        search::indexing::reset_indices(&search_config)
+            .await
+            .unwrap();
         return Ok(());
     } else if config.reconfigure_indices {
         info!("Reconfiguring indices");
-        search::indexing::reconfigure_indices(&search_config).await.unwrap();
+        search::indexing::reconfigure_indices(&search_config)
+            .await
+            .unwrap();
         return Ok(());
     }
 

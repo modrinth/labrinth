@@ -70,7 +70,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::DatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::AuthenticationError => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::JsonError(..) => actix_web::http::StatusCode::BAD_REQUEST,
-            ApiError::SearchError(..) => actix_web::http::StatusCode::FAILED_DEPENDENCY
+            ApiError::SearchError(..) => actix_web::http::StatusCode::FAILED_DEPENDENCY,
         }
     }
 

@@ -1,5 +1,6 @@
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
+use crate::database::models::version_item::{HashBuilder, VersionFileBuilder};
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::mods::{ModId, ModStatus, VersionId};
@@ -16,7 +17,6 @@ use sqlx::postgres::PgPool;
 use std::borrow::Cow;
 use std::sync::Arc;
 use thiserror::Error;
-use crate::database::models::version_item::{VersionFileBuilder, HashBuilder};
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -435,7 +435,7 @@ async fn mod_create_inner(
                 file_path: body_path.clone(),
                 file_name: "body.md".to_string(),
                 content_sha1: upload_data.content_sha1,
-                content_md5: upload_data.content_md5
+                content_md5: upload_data.content_md5,
             });
         }
 
@@ -556,7 +556,10 @@ async fn create_initial_version(
 
     // Upload the version's changelog to the CDN
     let changelog_path = if let Some(changelog) = &version_data.version_body {
-        let changelog_path = format!("data/{}/versions/{}/changelog.md", mod_id, version_data.version_number);
+        let changelog_path = format!(
+            "data/{}/versions/{}/changelog.md",
+            mod_id, version_data.version_number
+        );
 
         let uploaded_text = file_host
             .upload_file(
@@ -572,7 +575,7 @@ async fn create_initial_version(
             file_path: uploaded_text.file_name,
             file_name: "changelog.md".to_string(),
             content_sha1: uploaded_text.content_sha1,
-            content_md5: uploaded_text.content_md5
+            content_md5: uploaded_text.content_md5,
         });
         Some(changelog_path)
     } else {
@@ -611,26 +614,26 @@ async fn create_initial_version(
     for part in &version_data.file_parts {
         for file in &mut *uploaded_files {
             if let Some(part_name) = &file.part_name {
-                if part != part_name {continue}
+                if part != part_name {
+                    continue;
+                }
 
-                let mut hashes = vec![
-                    HashBuilder {
-                        algorithm: "sha1".to_string(),
-                        hash: file.content_sha1.clone().into_bytes()
-                    }
-                ];
+                let mut hashes = vec![HashBuilder {
+                    algorithm: "sha1".to_string(),
+                    hash: file.content_sha1.clone().into_bytes(),
+                }];
 
                 if let Some(md5) = &file.content_md5 {
                     hashes.push(HashBuilder {
                         algorithm: "md5".to_string(),
-                        hash: md5.clone().into_bytes()
+                        hash: md5.clone().into_bytes(),
                     })
                 }
 
                 files.push(VersionFileBuilder {
                     url: format!("{}/{}", cdn_url, file.file_path),
                     filename: file.file_name.clone(),
-                    hashes
+                    hashes,
                 })
             }
         }
@@ -687,7 +690,7 @@ async fn process_icon_upload(
             file_path: upload_data.file_name.clone(),
             file_name: format!("icon.{}", file_extension),
             content_sha1: upload_data.content_sha1,
-            content_md5: upload_data.content_md5
+            content_md5: upload_data.content_md5,
         });
 
         Ok(format!("{}/{}", cdn_url, upload_data.file_name))
