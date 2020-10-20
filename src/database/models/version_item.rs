@@ -28,6 +28,8 @@ impl VersionFileBuilder {
         version_id: VersionId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<FileId, DatabaseError> {
+        log::info!("dwafwfgggagaf");
+
         let file_id = generate_file_id(&mut *transaction).await?;
 
         sqlx::query!(
@@ -86,7 +88,7 @@ impl VersionBuilder {
         version.insert(&mut *transaction).await?;
 
         for file in self.files {
-            file.insert(self.version_id, transaction);
+            file.insert(self.version_id, transaction).await?;
         }
 
         for dependency in self.dependencies {

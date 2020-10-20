@@ -1,6 +1,5 @@
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
-use crate::database::models::version_item::{HashBuilder, VersionFileBuilder};
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::mods::{ModId, ModStatus, VersionId};
@@ -114,12 +113,8 @@ struct ModCreateData {
 }
 
 pub struct UploadedFile {
-    pub part_name: Option<String>,
     pub file_id: String,
-    pub file_path: String,
     pub file_name: String,
-    pub content_sha1: String,
-    pub content_md5: Option<String>,
 }
 
 pub async fn undo_uploads(
@@ -128,7 +123,7 @@ pub async fn undo_uploads(
 ) -> Result<(), CreateError> {
     for file in uploaded_files {
         file_host
-            .delete_file_version(&file.file_id, &file.file_path)
+            .delete_file_version(&file.file_id, &file.file_name)
             .await?;
     }
     Ok(())
@@ -210,7 +205,7 @@ async fn mod_create_inner(
     uploaded_files: &mut Vec<UploadedFile>,
     indexing_queue: &CreationQueue,
 ) -> Result<HttpResponse, CreateError> {
-    // The base URL for files uploaded to backblaze
+    // The base URL for files uploaded to backblazehttps://github.com/modrinth/labrinth/pull/86
     let cdn_url = dotenv::var("CDN_URL")?;
 
     // The currently logged in user
@@ -383,7 +378,6 @@ async fn mod_create_inner(
         // Upload the new jar file
         let file_builder = super::version_creation::upload_file(
             &mut field,
-            file_name,
             file_host,
             uploaded_files,
             &cdn_url,
@@ -430,12 +424,8 @@ async fn mod_create_inner(
                 .await?;
 
             uploaded_files.push(UploadedFile {
-                part_name: None,
                 file_id: upload_data.file_id,
-                file_path: body_path.clone(),
-                file_name: "body.md".to_string(),
-                content_sha1: upload_data.content_sha1,
-                content_md5: upload_data.content_md5,
+                file_name: body_path.clone(),
             });
         }
 
@@ -570,12 +560,8 @@ async fn create_initial_version(
             .await?;
 
         uploaded_files.push(UploadedFile {
-            part_name: None,
             file_id: uploaded_text.file_id,
-            file_path: uploaded_text.file_name,
-            file_name: "changelog.md".to_string(),
-            content_sha1: uploaded_text.content_sha1,
-            content_md5: uploaded_text.content_md5,
+            file_name: uploaded_text.file_name,
         });
         Some(changelog_path)
     } else {
@@ -609,36 +595,6 @@ async fn create_initial_version(
         .map(|x| (*x).into())
         .collect::<Vec<_>>();
 
-    let mut files = Vec::new();
-
-    for part in &version_data.file_parts {
-        for file in &mut *uploaded_files {
-            if let Some(part_name) = &file.part_name {
-                if part != part_name {
-                    continue;
-                }
-
-                let mut hashes = vec![HashBuilder {
-                    algorithm: "sha1".to_string(),
-                    hash: file.content_sha1.clone().into_bytes(),
-                }];
-
-                if let Some(md5) = &file.content_md5 {
-                    hashes.push(HashBuilder {
-                        algorithm: "md5".to_string(),
-                        hash: md5.clone().into_bytes(),
-                    })
-                }
-
-                files.push(VersionFileBuilder {
-                    url: format!("{}/{}", cdn_url, file.file_path),
-                    filename: file.file_name.clone(),
-                    hashes,
-                })
-            }
-        }
-    }
-
     let version = models::version_item::VersionBuilder {
         version_id: version_id.into(),
         mod_id: mod_id.into(),
@@ -646,7 +602,7 @@ async fn create_initial_version(
         name: version_data.version_title.clone(),
         version_number: version_data.version_number.clone(),
         changelog_url: changelog_path.map(|path| format!("{}/{}", cdn_url, path)),
-        files,
+        files: Vec::new(),
         dependencies,
         game_versions,
         loaders,
@@ -685,12 +641,8 @@ async fn process_icon_upload(
             .await?;
 
         uploaded_files.push(UploadedFile {
-            part_name: None,
             file_id: upload_data.file_id,
-            file_path: upload_data.file_name.clone(),
-            file_name: format!("icon.{}", file_extension),
-            content_sha1: upload_data.content_sha1,
-            content_md5: upload_data.content_md5,
+            file_name: upload_data.file_name.clone(),
         });
 
         Ok(format!("{}/{}", cdn_url, upload_data.file_name))
