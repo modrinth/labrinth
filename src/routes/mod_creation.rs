@@ -205,7 +205,7 @@ async fn mod_create_inner(
     uploaded_files: &mut Vec<UploadedFile>,
     indexing_queue: &CreationQueue,
 ) -> Result<HttpResponse, CreateError> {
-    // The base URL for files uploaded to backblazehttps://github.com/modrinth/labrinth/pull/86
+    // The base URL for files uploaded to backblaze
     let cdn_url = dotenv::var("CDN_URL")?;
 
     // The currently logged in user
@@ -425,7 +425,7 @@ async fn mod_create_inner(
 
             uploaded_files.push(UploadedFile {
                 file_id: upload_data.file_id,
-                file_name: body_path.clone(),
+                file_name: upload_data.file_name,
             });
         }
 
