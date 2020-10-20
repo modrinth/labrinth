@@ -413,7 +413,7 @@ async fn mod_create_inner(
 
         // Upload the mod desciption markdown to the CDN
         // TODO: Should we also process and upload an html version here for SSR?
-        let body_path = format!("data/{}/body.md", mod_id);
+        let body_path = format!("data/{}/description.md", mod_id);
         {
             let upload_data = file_host
                 .upload_file(
