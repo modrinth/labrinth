@@ -1,8 +1,8 @@
-use actix_web::{get, web, HttpResponse};
-use sqlx::PgPool;
+use crate::database::models::TeamMember;
 use crate::models::teams::TeamId;
 use crate::routes::ApiError;
-use crate::database::models::TeamMember;
+use actix_web::{get, web, HttpResponse};
+use sqlx::PgPool;
 
 #[get("{id}/members")]
 pub async fn team_members_get(
@@ -19,7 +19,7 @@ pub async fn team_members_get(
         .map(|data| crate::models::teams::TeamMember {
             user_id: data.user_id.into(),
             name: data.name,
-            role: data.role
+            role: data.role,
         })
         .collect();
 
