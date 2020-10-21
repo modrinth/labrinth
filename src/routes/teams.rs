@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{get, web, HttpResponse};
 use sqlx::PgPool;
 use crate::models::teams::TeamId;
 use crate::routes::ApiError;
@@ -9,7 +9,8 @@ pub async fn team_members_get(
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let members_data = TeamMember::get_from_team(info.0.into(), &**pool)
+    let id = info.into_inner().0;
+    let members_data = TeamMember::get_from_team(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 

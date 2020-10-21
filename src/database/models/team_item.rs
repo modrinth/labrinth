@@ -76,20 +76,22 @@ pub struct TeamMember {
 
 impl TeamMember {
     pub async fn get_from_team<'a, 'b, E>(id: TeamId,  executor: E) -> Result<Vec<TeamMember>, super::DatabaseError> where E: sqlx::Executor<'a, Database = sqlx::Postgres>,{
+        use futures::stream::TryStreamExt;
+
         let team_members = sqlx::query!(
             "
-            SELECT id, user_id, name, role
+            SELECT id, user_id, member_name, role
             FROM team_members
             WHERE team_id = $1
             ",
             id as TeamId,
-        ).fetch_many(exec)
+        ).fetch_many(executor)
             .try_filter_map(|e| async {
                 Ok(e.right().map(|m| TeamMember {
                     id: TeamMemberId(m.id),
                     team_id: id,
                     user_id: UserId(m.user_id),
-                    name: m.name,
+                    name: m.member_name,
                     role: m.role,
                 }))
             })
