@@ -10,9 +10,7 @@ pub async fn team_members_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let members_data = TeamMember::get_from_team(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let members_data = TeamMember::get_from_team(id.into(), &**pool).await?;
 
     let team_members: Vec<crate::models::teams::TeamMember> = members_data
         .into_iter()
