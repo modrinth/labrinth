@@ -9,6 +9,7 @@ mod tags;
 mod users;
 mod version_creation;
 mod versions;
+mod teams;
 
 pub use auth::config as auth_config;
 pub use tags::config as tags_config;
@@ -49,6 +50,13 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
             .service(users::user_get)
             .service(users::mods_list)
             .service(users::user_delete),
+    );
+}
+
+pub fn teams_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("team")
+            .service(teams::team_members_get)
     );
 }
 
