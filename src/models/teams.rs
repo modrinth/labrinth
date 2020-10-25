@@ -29,4 +29,6 @@ pub struct TeamMember {
     pub name: String,
     /// The role of the user in the team
     pub role: String,
+    /// A bitflag containing the user's permissions in this team
+    pub permissions: u64,
 }

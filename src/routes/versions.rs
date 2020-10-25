@@ -156,7 +156,7 @@ pub async fn version_get(
 #[delete("{version_id}")]
 pub async fn version_delete(
     req: HttpRequest,
-    info: web::Path<(models::ids::ModId, models::ids::VersionId)>,
+    info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(
@@ -170,7 +170,7 @@ pub async fn version_delete(
     .map_err(|_| ApiError::AuthenticationError)?;
 
     // TODO: check if the mod exists and matches the version id
-    let id = info.1;
+    let id = info.into_inner().0;
     let result = database::models::Version::remove_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;

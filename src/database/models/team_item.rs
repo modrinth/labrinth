@@ -7,6 +7,8 @@ pub struct TeamMemberBuilder {
     pub user_id: UserId,
     pub name: String,
     pub role: String,
+    pub permissions: u64,
+    pub accepted: bool,
 }
 
 impl TeamBuilder {
@@ -36,11 +38,13 @@ impl TeamBuilder {
                 user_id: member.user_id,
                 name: member.name,
                 role: member.role,
+                permissions: member.permissions,
+                accepted: member.accepted
             };
 
             sqlx::query!(
                 "
-                INSERT INTO team_members (id, team_id, user_id, member_name, role)
+                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions, accepted)
                 VALUES ($1, $2, $3, $4, $5)
                 ",
                 team_member.id as TeamMemberId,
@@ -72,6 +76,8 @@ pub struct TeamMember {
     /// The name of the user
     pub name: String,
     pub role: String,
+    pub permissions: u64,
+    pub accepted: bool,
 }
 
 impl TeamMember {
@@ -100,6 +106,8 @@ impl TeamMember {
                 user_id: UserId(m.user_id),
                 name: m.member_name,
                 role: m.role,
+                permissions: m.permissions,
+                accepted: m.accept
             }))
         })
         .try_collect::<Vec<TeamMember>>()

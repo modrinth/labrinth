@@ -1,8 +1,9 @@
 use crate::database::models::TeamMember;
 use crate::models::teams::TeamId;
 use crate::routes::ApiError;
-use actix_web::{get, web, HttpResponse};
+use actix_web::{get, delete, post, patch, web, HttpResponse};
 use sqlx::PgPool;
+use crate::models::users::UserId;
 
 #[get("{id}/members")]
 pub async fn team_members_get(
@@ -22,4 +23,28 @@ pub async fn team_members_get(
         .collect();
 
     Ok(HttpResponse::Ok().json(team_members))
+}
+
+#[post("{id}/members")]
+pub async fn add_team_member(
+    info: web::Path<(TeamId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+
+}
+
+#[patch("{id}/members/{user_id}")]
+pub async fn edit_team_member(
+    info: web::Path<(TeamId, UserId)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+
+}
+
+#[delete("{id}/members/{user_id}")]
+pub async fn remove_team_member(
+    info: web::Path<(TeamId, UserId)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+
 }
