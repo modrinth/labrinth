@@ -171,7 +171,7 @@ dependencies = [
 [[package]]
 name = "actix-ratelimit"
 version = "0.2.1"
-source = "git+https://github.com/TerminalWitchcraft/actix-ratelimit?branch=master#870822067dfeae7cc0304352d81c4cb79ee27f5a"
+source = "git+https://github.com/TerminalWitchcraft/actix-ratelimit?rev=870822067dfeae7cc0304352d81c4cb79ee27f5a#870822067dfeae7cc0304352d81c4cb79ee27f5a"
 dependencies = [
  "actix",
  "actix-http",
