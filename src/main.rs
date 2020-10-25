@@ -8,6 +8,7 @@ use log::{info, warn};
 use search::indexing::index_mods;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
+use actix_ratelimit::{MemoryStore, RateLimiter, MemoryStoreActor};
 
 mod auth;
 mod database;
@@ -205,6 +206,8 @@ async fn main() -> std::io::Result<()> {
         .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
         .unwrap_or_else(|| vec![String::from("http://localhost")]);
 
+    let store = MemoryStore::new();
+
     info!("Starting Actix HTTP server!");
 
     // Init App
@@ -222,6 +225,12 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors.finish())
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
+            .wrap(
+                RateLimiter::new(
+                    MemoryStoreActor::from(store.clone()).start())
+                    .with_interval(std::time::Duration::from_secs(60))
+                    .with_max_requests(100)
+            )
             .data(pool.clone())
             .data(file_host.clone())
             .data(indexing_queue.clone())
