@@ -85,15 +85,15 @@ impl VersionBuilder {
         version.insert(&mut *transaction).await?;
 
         sqlx::query!(
-                "
-                UPDATE mods
-                SET updated = NOW()
-                WHERE id = $1
-                ",
-                self.mod_id as ModId,
-            )
-            .execute(&mut *transaction)
-            .await?;
+            "
+            UPDATE mods
+            SET updated = NOW()
+            WHERE id = $1
+            ",
+            self.mod_id as ModId,
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         for file in self.files {
             file.insert(self.version_id, transaction).await?;

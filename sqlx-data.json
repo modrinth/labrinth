@@ -672,8 +672,8 @@
       ]
     }
   },
-  "602cc310f66054dd960e83c78c71c6c0c96c202447f1a4ee2eac0a1072e70178": {
-    "query": "\n                UPDATE mods\n                SET updated = NOW()\n                WHERE id = $1\n                ",
+  "5d7425cfa91e332bf7cc14aa5c300b997e941c49757606f6b906cb5e060d3179": {
+    "query": "\n            UPDATE mods\n            SET updated = NOW()\n            WHERE id = $1\n            ",
     "describe": {
       "columns": [],
       "parameters": {
