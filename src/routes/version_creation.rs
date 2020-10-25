@@ -71,7 +71,7 @@ pub fn check_version(version: &InitialVersionData) -> Result<(), CreateError> {
 }
 
 // under `/api/v1/version`
-#[post("")]
+#[post("version")]
 pub async fn version_create(
     req: HttpRequest,
     payload: Multipart,
