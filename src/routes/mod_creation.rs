@@ -434,6 +434,8 @@ async fn mod_create_inner(
                 user_id: current_user.id.into(),
                 name: current_user.username.clone(),
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
+                permissions: 0x1 | 0x2,
+                accepted: true
             }],
         };
 

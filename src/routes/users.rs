@@ -121,6 +121,38 @@ pub async fn mods_list(
     }
 }
 
+#[get("invites")]
+pub async fn remove_team_member(
+    req: HttpRequest,
+    info: web::Path<(UserId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let id: crate::database::models::UserId = info.into_inner().0.into();
+
+    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+
+    let mut results = Vec::new();
+
+    let id_int = id.0 as u64;
+    if current_user.id.0 == id_int{
+        results = crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;
+    } else {
+        results = crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;
+    }
+
+    let team_members: Vec<crate::models::teams::TeamMember> = results
+        .into_iter()
+        .map(|data| crate::models::teams::TeamMember {
+            user_id: data.user_id.into(),
+            name: data.name,
+            role: data.role,
+            permissions: data.permissions as u64
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(team_members))
+}
+
 // TODO: Make this actually do stuff
 #[delete("{id}")]
 pub async fn user_delete(

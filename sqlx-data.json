@@ -1,5 +1,22 @@
 {
   "db": "PostgreSQL",
+  "02633984cfda09c9ffc298bb4293d3c3402b1602813197b913542684561912cc": {
+    "query": "\n                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions)\n                VALUES ($1, $2, $3, $4, $5, $6)\n                ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "02d8895627dfe108735a6e10ad63239348b71b3322b4734526a2646f17aedf05": {
     "query": "\n            SELECT status FROM statuses\n            WHERE id = $1\n            ",
     "describe": {
@@ -404,6 +421,56 @@
       ]
     }
   },
+  "21d268dbad5ffd34d476998aea4475cdb071e8cfbb245c4853ee5f4c44b0c8ae": {
+    "query": "\n            SELECT id, user_id, member_name, role, permissions, accepted\n            FROM team_members\n            WHERE (team_id = $1 AND accepted = TRUE)\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "user_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "member_name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "permissions",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 5,
+          "name": "accepted",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  },
   "25131559cb73a088000ab6379a769233440ade6c7511542da410065190d203fc": {
     "query": "\n            SELECT id FROM loaders\n            WHERE loader = $1\n            ",
     "describe": {
@@ -672,6 +739,18 @@
       ]
     }
   },
+  "5d7425cfa91e332bf7cc14aa5c300b997e941c49757606f6b906cb5e060d3179": {
+    "query": "\n            UPDATE mods\n            SET updated = NOW()\n            WHERE id = $1\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "6562c876826ad3091a14eb50fa1f961a971c1d1bb158fc3dcb55d469a73facc6": {
     "query": "\n            SELECT v.mod_id, v.author_id, v.name, v.version_number,\n                v.changelog_url, v.date_published, v.downloads,\n                v.release_channel\n            FROM versions v\n            WHERE v.id = $1\n            ",
     "describe": {
@@ -798,6 +877,56 @@
       ]
     }
   },
+  "733a9569fef2aa48d1d3b1b02d7fa893174d523adc57fb22995b1ea8897f3abf": {
+    "query": "\n            SELECT id, team_id, member_name, role, permissions, accepted\n            FROM team_members\n            WHERE (user_id = $1 AND accepted = TRUE)\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "team_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "member_name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "permissions",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 5,
+          "name": "accepted",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  },
   "73bdd6c9e7cd8c1ed582261aebdee0f8fd2734e712ef288a2608564c918009cb": {
     "query": "\n            DELETE FROM versions WHERE id = $1\n            ",
     "describe": {
@@ -830,6 +959,57 @@
       "nullable": []
     }
   },
+  "7bbbeecf3246a8e07ad073a07f7d057e0990a810d69ae18cec41de60b704b174": {
+    "query": "\n            SELECT id, user_id, member_name, role, permissions, accepted\n            FROM team_members\n            WHERE (team_id = $1 AND user_id = $2 AND accepted = TRUE)\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "user_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "member_name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "permissions",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 5,
+          "name": "accepted",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  },
   "89fbff6249b248d3e150879aaea1662140bcb10d5104992c784285322c8b3b94": {
     "query": "\n            SELECT version FROM game_versions\n            ",
     "describe": {
@@ -846,6 +1026,20 @@
       "nullable": [
         false
       ]
+    }
+  },
+  "8ba2b2c38958f1c542e514fc62ab4682f58b0b442ac1842d20625420698e34ec": {
+    "query": "\n            DELETE FROM team_members\n            WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Text"
+        ]
+      },
+      "nullable": []
     }
   },
   "8f706d78ac4235ea04c59e2c220a4791e1d08fdf287b783b4aaef36fd2445467": {
@@ -1141,6 +1335,56 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "b4f5683f289281e2a92123cadca5f5cd86b69ef882c51ca2437c31914581ee16": {
+    "query": "\n            SELECT id, user_id, member_name, role, permissions, accepted\n            FROM team_members\n            WHERE team_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "user_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "member_name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "permissions",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 5,
+          "name": "accepted",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     }
   },
   "b903ac4e686ef85ba28d698c668da07860e7f276b261d8f2cebb74e73b094970": {
@@ -1543,6 +1787,73 @@
         false,
         false,
         true,
+        false,
+        false,
+        false
+      ]
+    }
+  },
+  "d99c8f5a2d8f73f6c91ac7e72e352e03e608522142aab1b569ef5eced5ec18f8": {
+    "query": "\n            INSERT INTO team_members (\n                id, user_id, member_name, role, permissions, accepted\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6\n            )\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Int8",
+          "Bool"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "dd16be7b85d2a4bd77eccc780d27031b964d4d346d8899b4dd0e2f47ba86d5fd": {
+    "query": "\n            SELECT id, team_id, member_name, role, permissions, accepted\n            FROM team_members\n            WHERE user_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "team_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "member_name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "permissions",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 5,
+          "name": "accepted",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
         false,
         false,
         false

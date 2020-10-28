@@ -7,7 +7,7 @@ pub struct TeamMemberBuilder {
     pub user_id: UserId,
     pub name: String,
     pub role: String,
-    pub permissions: u64,
+    pub permissions: i64,
     pub accepted: bool,
 }
 
@@ -44,14 +44,15 @@ impl TeamBuilder {
 
             sqlx::query!(
                 "
-                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions, accepted)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 ",
                 team_member.id as TeamMemberId,
                 team_member.team_id as TeamId,
                 team_member.user_id as UserId,
                 team_member.name,
                 team_member.role,
+                team_member.permissions
             )
             .execute(&mut *transaction)
             .await?;
@@ -76,7 +77,7 @@ pub struct TeamMember {
     /// The name of the user
     pub name: String,
     pub role: String,
-    pub permissions: u64,
+    pub permissions: i64,
     pub accepted: bool,
 }
 
@@ -92,9 +93,9 @@ impl TeamMember {
 
         let team_members = sqlx::query!(
             "
-            SELECT id, user_id, member_name, role
+            SELECT id, user_id, member_name, role, permissions, accepted
             FROM team_members
-            WHERE team_id = $1
+            WHERE (team_id = $1 AND accepted = TRUE)
             ",
             id as TeamId,
         )
@@ -107,12 +108,168 @@ impl TeamMember {
                 name: m.member_name,
                 role: m.role,
                 permissions: m.permissions,
-                accepted: m.accept
+                accepted: m.accepted
             }))
         })
         .try_collect::<Vec<TeamMember>>()
         .await?;
 
         Ok(team_members)
+    }
+
+    pub async fn get_from_user_public<'a, 'b, E>(
+        id: UserId,
+        executor: E,
+    ) -> Result<Vec<TeamMember>, super::DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        use futures::stream::TryStreamExt;
+
+        let team_members = sqlx::query!(
+            "
+            SELECT id, team_id, member_name, role, permissions, accepted
+            FROM team_members
+            WHERE (user_id = $1 AND accepted = TRUE)
+            ",
+            id as UserId,
+        )
+            .fetch_many(executor)
+            .try_filter_map(|e| async {
+                Ok(e.right().map(|m| TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: TeamId(m.team_id),
+                    user_id: id,
+                    name: m.member_name,
+                    role: m.role,
+                    permissions: m.permissions,
+                    accepted: m.accepted
+                }))
+            })
+            .try_collect::<Vec<TeamMember>>()
+            .await?;
+
+        Ok(team_members)
+    }
+
+    pub async fn get_from_user_private<'a, 'b, E>(
+        id: UserId,
+        executor: E,
+    ) -> Result<Vec<TeamMember>, super::DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        use futures::stream::TryStreamExt;
+
+        let team_members = sqlx::query!(
+            "
+            SELECT id, team_id, member_name, role, permissions, accepted
+            FROM team_members
+            WHERE user_id = $1
+            ",
+            id as UserId,
+        )
+            .fetch_many(executor)
+            .try_filter_map(|e| async {
+                Ok(e.right().map(|m| TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: TeamId(m.team_id),
+                    user_id: id,
+                    name: m.member_name,
+                    role: m.role,
+                    permissions: m.permissions,
+                    accepted: m.accepted
+                }))
+            })
+            .try_collect::<Vec<TeamMember>>()
+            .await?;
+
+        Ok(team_members)
+    }
+
+    pub async fn get_from_user_id<'a, 'b, E>(
+        id: TeamId,
+        user_id: UserId,
+        executor: E,
+    ) -> Result<Option<Self>, super::DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+
+        let result = sqlx::query!(
+            "
+            SELECT id, user_id, member_name, role, permissions, accepted
+            FROM team_members
+            WHERE (team_id = $1 AND user_id = $2 AND accepted = TRUE)
+            ",
+            id as TeamId,
+            user_id as UserId
+        )
+            .fetch_optional(executor)
+            .await?;
+
+        if let Some(m) = result {
+            Ok(Some(TeamMember {
+                id: TeamMemberId(m.id),
+                team_id: id,
+                user_id,
+                name: m.member_name,
+                role: m.role,
+                permissions: m.permissions,
+                accepted: m.accepted
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn insert(
+        &self,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), sqlx::error::Error> {
+        sqlx::query!(
+            "
+            INSERT INTO team_members (
+                id, user_id, member_name, role, permissions, accepted
+            )
+            VALUES (
+                $1, $2, $3, $4, $5,
+                $6
+            )
+            ",
+            self.id as TeamMemberId,
+            self.user_id as UserId,
+            self.name,
+            self.role,
+            self.permissions,
+            self.accepted
+        )
+            .execute(&mut *transaction)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete<'a, 'b, E>(
+        id: TeamId,
+        user_id: UserId,
+        executor: E,
+    ) -> Result<(), super::DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        sqlx::query!(
+            "
+            DELETE FROM team_members
+            WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
+            ",
+            id as TeamId,
+            user_id as UserId,
+            crate::models::teams::OWNER_ROLE
+        )
+            .execute(executor)
+            .await?;
+
+        Ok(())
     }
 }

@@ -1,9 +1,10 @@
 use crate::database::models::TeamMember;
 use crate::models::teams::TeamId;
 use crate::routes::ApiError;
-use actix_web::{get, delete, post, patch, web, HttpResponse};
+use actix_web::{get, delete, post, patch, web, HttpResponse, HttpRequest};
 use sqlx::PgPool;
 use crate::models::users::UserId;
+use crate::auth::get_user_from_headers;
 
 #[get("{id}/members")]
 pub async fn team_members_get(
@@ -19,6 +20,7 @@ pub async fn team_members_get(
             user_id: data.user_id.into(),
             name: data.name,
             role: data.role,
+            permissions: data.permissions as u64
         })
         .collect();
 
@@ -27,10 +29,41 @@ pub async fn team_members_get(
 
 #[post("{id}/members")]
 pub async fn add_team_member(
+    req: HttpRequest,
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
+    new_member: web::Json<crate::models::teams::TeamMember>,
 ) -> Result<HttpResponse, ApiError> {
+    let team_id = info.into_inner().0.into();
 
+    let mut transaction = pool.begin().await.map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+    let team_member = TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
+
+    if let Some(member) = team_member {
+        if (member.permissions & (1 << 4)) != 0 {
+            // TODO: Prevent user from giving another user permissions they do not have
+            let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
+            TeamMember {
+                id: new_id,
+                team_id,
+                user_id: new_member.user_id.into(),
+                name: new_member.name.clone(),
+                role: new_member.role.clone(),
+                permissions: new_member.permissions as i64,
+                accepted: false
+            }.insert(&mut transaction).await.map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+            transaction.commit().await.map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+            Ok(HttpResponse::Ok().body(""))
+        } else {
+            Err(ApiError::AuthenticationError)
+        }
+    } else {
+        Err(ApiError::AuthenticationError)
+    }
 }
 
 #[patch("{id}/members/{user_id}")]
@@ -38,13 +71,45 @@ pub async fn edit_team_member(
     info: web::Path<(TeamId, UserId)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-
+    Ok(HttpResponse::Ok().body(""))
 }
 
 #[delete("{id}/members/{user_id}")]
 pub async fn remove_team_member(
+    req: HttpRequest,
     info: web::Path<(TeamId, UserId)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
+    let ids = info.into_inner();
+    let id = ids.0.into();
+    let user_id = ids.1.into();
 
+    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+    let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
+
+    if let Some(member) = team_member {
+        let delete_member_option = TeamMember::get_from_user_id(id, user_id, &**pool).await?;
+
+        if let Some(delete_member) = delete_member_option {
+            if delete_member.accepted {
+                if (member.permissions & (1 << 5)) != 0 {
+                    TeamMember::delete(id, user_id, &**pool).await?;
+                    Ok(HttpResponse::Ok().body(""))
+                } else {
+                    Err(ApiError::AuthenticationError)
+                }
+            } else {
+                if (member.permissions & (1 << 4)) != 0 {
+                    TeamMember::delete(id, user_id, &**pool).await?;
+                    Ok(HttpResponse::Ok().body(""))
+                } else {
+                    Err(ApiError::AuthenticationError)
+                }
+            }
+        } else {
+            Ok(HttpResponse::NotFound().body(""))
+        }
+    } else {
+        Err(ApiError::AuthenticationError)
+    }
 }
