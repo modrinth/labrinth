@@ -272,4 +272,62 @@ impl TeamMember {
 
         Ok(())
     }
+
+    pub async fn edit_team_member<'a, 'b, E>(
+        &self,
+        id: TeamId,
+        user_id: UserId,
+        new_permissions: Option<i64>,
+        new_role: Option<String>,
+        executor: E,
+    ) -> Result<(), super::DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let query = "UPDATE team_members";
+
+        if let Some(permissions) = new_permissions {
+
+        }
+
+        let query = sqlx::query_as(query)
+        sqlx::query!(
+            "
+            UPDATE team_members
+            SET accepted = TRUE
+            WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
+            ",
+            id as TeamId,
+            user_id as UserId,
+            crate::models::teams::OWNER_ROLE
+        )
+            .execute(executor)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn accept_invite<'a, 'b, E>(
+        id: TeamId,
+        user_id: UserId,
+        executor: E,
+    ) -> Result<(), super::DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        sqlx::query!(
+            "
+            UPDATE team_members
+            SET accepted = TRUE
+            WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
+            ",
+            id as TeamId,
+            user_id as UserId,
+            crate::models::teams::OWNER_ROLE
+        )
+            .execute(executor)
+            .await?;
+
+        Ok(())
+    }
 }

@@ -27,6 +27,20 @@ pub async fn team_members_get(
     Ok(HttpResponse::Ok().json(team_members))
 }
 
+#[post("{id}/join")]
+pub async fn join_team(
+    req: HttpRequest,
+    info: web::Path<(TeamId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let team_id = info.into_inner().0.into();
+    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+
+    TeamMember::accept_invite(team_id, current_user.id.into(), &**pool).await?;
+
+    Ok(HttpResponse::Ok().body(""))
+}
+
 #[post("{id}/members")]
 pub async fn add_team_member(
     req: HttpRequest,
