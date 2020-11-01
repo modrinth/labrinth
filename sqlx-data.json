@@ -211,22 +211,6 @@
       ]
     }
   },
-  "15b2a2f1bbbbab4f1d99e5e428b2ffba77c83814b936fa6e10e2703b207f6e9a": {
-    "query": "\n                INSERT INTO team_members (id, team_id, user_id, member_name, role)\n                VALUES ($1, $2, $3, $4, $5)\n                ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Int8",
-          "Varchar",
-          "Varchar"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "17e6d30c3693e9bd9f772f3dc4e2eafe75fdeecfdcf2746eac641f77ced6b8a8": {
     "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role FROM users u\n            WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
     "describe": {
@@ -739,18 +723,6 @@
       ]
     }
   },
-  "5d7425cfa91e332bf7cc14aa5c300b997e941c49757606f6b906cb5e060d3179": {
-    "query": "\n            UPDATE mods\n            SET updated = NOW()\n            WHERE id = $1\n            ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "6562c876826ad3091a14eb50fa1f961a971c1d1bb158fc3dcb55d469a73facc6": {
     "query": "\n            SELECT v.mod_id, v.author_id, v.name, v.version_number,\n                v.changelog_url, v.date_published, v.downloads,\n                v.release_channel\n            FROM versions v\n            WHERE v.id = $1\n            ",
     "describe": {
@@ -1054,44 +1026,6 @@
       "nullable": []
     }
   },
-  "91d7e437c6dfb9b95e68aca92154bd2af4de13eeb9611e08dcad2717d0c41ed9": {
-    "query": "\n            SELECT id, user_id, member_name, role\n            FROM team_members\n            WHERE team_id = $1\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "user_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 2,
-          "name": "member_name",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "role",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false
-      ]
-    }
-  },
   "9a41d6c1d5c250df6114157edf5621a88bc336c5c628ba89182ba999e0af3ba8": {
     "query": "\n            SELECT id, title, description, downloads,\n                   icon_url, body_url, published,\n                   updated, status,\n                   issues_url, source_url, wiki_url,\n                   team_id\n            FROM mods\n            WHERE id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
     "describe": {
@@ -1335,56 +1269,6 @@
         ]
       },
       "nullable": []
-    }
-  },
-  "b4f5683f289281e2a92123cadca5f5cd86b69ef882c51ca2437c31914581ee16": {
-    "query": "\n            SELECT id, user_id, member_name, role, permissions, accepted\n            FROM team_members\n            WHERE team_id = $1\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "user_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 2,
-          "name": "member_name",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "role",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 4,
-          "name": "permissions",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 5,
-          "name": "accepted",
-          "type_info": "Bool"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ]
     }
   },
   "b903ac4e686ef85ba28d698c668da07860e7f276b261d8f2cebb74e73b094970": {

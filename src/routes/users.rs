@@ -134,7 +134,7 @@ pub async fn remove_team_member(
     let mut results = Vec::new();
 
     let id_int = id.0 as u64;
-    if current_user.id.0 == id_int{
+    if current_user.id.0 == id_int {
         results = crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;
     } else {
         results = crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;

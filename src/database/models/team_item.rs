@@ -274,59 +274,54 @@ impl TeamMember {
     }
 
     pub async fn edit_team_member<'a, 'b, E>(
-        &self,
         id: TeamId,
         user_id: UserId,
         new_permissions: Option<i64>,
         new_role: Option<String>,
+        new_accepted: Option<bool>,
         executor: E,
     ) -> Result<(), super::DatabaseError>
         where
             E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let query = "UPDATE team_members";
+        let mut query = "UPDATE team_members".to_string();
+        let mut current_index : i16 = 3;
 
-        if let Some(permissions) = new_permissions {
-
+        if new_permissions.is_some() {
+            current_index += 1;
+            query.push_str(&format!("\nSET permissions = ${}", current_index));
         }
 
-        let query = sqlx::query_as(query)
-        sqlx::query!(
-            "
-            UPDATE team_members
-            SET accepted = TRUE
-            WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
-            ",
-            id as TeamId,
-            user_id as UserId,
-            crate::models::teams::OWNER_ROLE
-        )
-            .execute(executor)
-            .await?;
+        if new_role.is_some() {
+            current_index += 1;
+            query.push_str(&format!("\nSET role = ${}", current_index));
+        }
 
-        Ok(())
-    }
+        if new_accepted.is_some() {
+            current_index += 1;
+            query.push_str(&format!("\nSET accepted = ${}", current_index));
+        }
 
-    pub async fn accept_invite<'a, 'b, E>(
-        id: TeamId,
-        user_id: UserId,
-        executor: E,
-    ) -> Result<(), super::DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        sqlx::query!(
-            "
-            UPDATE team_members
-            SET accepted = TRUE
-            WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
-            ",
-            id as TeamId,
-            user_id as UserId,
-            crate::models::teams::OWNER_ROLE
-        )
-            .execute(executor)
-            .await?;
+        query += "\nWHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)";
+
+        let mut query = sqlx::query(&*query)
+            .bind(id as TeamId)
+            .bind(user_id as UserId)
+            .bind::<String>(crate::models::teams::OWNER_ROLE.to_string());
+
+        if let Some(permissions) = new_permissions {
+            query = query.bind(permissions);
+        }
+
+        if let Some(role) = new_role {
+            query = query.bind(role);
+        }
+
+        if let Some(accepted) = new_accepted {
+            query = query.bind::<bool>(accepted);
+        }
+
+        query.execute(executor).await?;
 
         Ok(())
     }

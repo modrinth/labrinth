@@ -5,6 +5,7 @@ use actix_web::{get, delete, post, patch, web, HttpResponse, HttpRequest};
 use sqlx::PgPool;
 use crate::models::users::UserId;
 use crate::auth::get_user_from_headers;
+use serde::{Deserialize, Serialize};
 
 #[get("{id}/members")]
 pub async fn team_members_get(
@@ -36,7 +37,7 @@ pub async fn join_team(
     let team_id = info.into_inner().0.into();
     let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
 
-    TeamMember::accept_invite(team_id, current_user.id.into(), &**pool).await?;
+    TeamMember::edit_team_member(team_id, current_user.id.into(), None, None, Some(true), &**pool).await?;
 
     Ok(HttpResponse::Ok().body(""))
 }
@@ -56,7 +57,7 @@ pub async fn add_team_member(
     let team_member = TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
 
     if let Some(member) = team_member {
-        if (member.permissions & (1 << 4)) != 0 {
+        if (member.permissions & (1 << 4)) != 0 && new_member.role != crate::models::teams::OWNER_ROLE {
             // TODO: Prevent user from giving another user permissions they do not have
             let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
             TeamMember {
@@ -80,12 +81,38 @@ pub async fn add_team_member(
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EditTeamMember {
+    pub permissions: Option<u64>,
+    pub role: Option<String>,
+}
+
 #[patch("{id}/members/{user_id}")]
 pub async fn edit_team_member(
+    req: HttpRequest,
     info: web::Path<(TeamId, UserId)>,
     pool: web::Data<PgPool>,
+    edit_member: web::Json<EditTeamMember>,
 ) -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().body(""))
+    let ids = info.into_inner();
+    let id = ids.0.into();
+    let user_id = ids.1.into();
+
+    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+    let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
+
+    if let Some(member) = team_member {
+        if (member.permissions & (1 << 6)) != 0 && edit_member.role.clone().unwrap_or("".to_string()) != "Owner".to_string() {
+            // TODO: Prevent user from giving another user permissions they do not have
+            TeamMember::edit_team_member(id, user_id, edit_member.permissions.map(|x| x as i64), edit_member.role.clone(), None, &**pool).await?;
+
+            Ok(HttpResponse::Ok().body(""))
+        } else {
+            Err(ApiError::AuthenticationError)
+        }
+    } else {
+        Err(ApiError::AuthenticationError)
+    }
 }
 
 #[delete("{id}/members/{user_id}")]
