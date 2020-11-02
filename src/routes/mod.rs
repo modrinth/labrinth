@@ -50,7 +50,7 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
             .service(users::user_get)
             .service(users::mods_list)
             .service(users::user_delete)
-            .service(users::invites),
+            .service(users::teams),
     );
 }
 

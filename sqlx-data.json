@@ -1,22 +1,5 @@
 {
   "db": "PostgreSQL",
-  "02633984cfda09c9ffc298bb4293d3c3402b1602813197b913542684561912cc": {
-    "query": "\n                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions)\n                VALUES ($1, $2, $3, $4, $5, $6)\n                ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Int8",
-          "Varchar",
-          "Varchar",
-          "Int8"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "02d8895627dfe108735a6e10ad63239348b71b3322b4734526a2646f17aedf05": {
     "query": "\n            SELECT status FROM statuses\n            WHERE id = $1\n            ",
     "describe": {
@@ -980,6 +963,23 @@
         false,
         false
       ]
+    }
+  },
+  "8194b6b434cfff9989fcc6ee15481f61cb3b420b5ee4f3a8fae1d9f2c446475e": {
+    "query": "\n                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions, accepted)\n                VALUES ($1, $2, $3, $4, $5, $6, TRUE)\n                ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Int8"
+        ]
+      },
+      "nullable": []
     }
   },
   "89fbff6249b248d3e150879aaea1662140bcb10d5104992c784285322c8b3b94": {

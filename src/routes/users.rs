@@ -122,8 +122,8 @@ pub async fn mods_list(
     }
 }
 
-#[get("invites")]
-pub async fn invites(
+#[get("teams")]
+pub async fn teams(
     req: HttpRequest,
     info: web::Path<(UserId,)>,
     pool: web::Data<PgPool>,
