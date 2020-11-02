@@ -1,5 +1,6 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database::models::User;
+use crate::models::teams::Permissions;
 use crate::models::users::{Role, UserId};
 use crate::routes::ApiError;
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
@@ -122,22 +123,27 @@ pub async fn mods_list(
 }
 
 #[get("invites")]
-pub async fn remove_team_member(
+pub async fn invites(
     req: HttpRequest,
     info: web::Path<(UserId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id: crate::database::models::UserId = info.into_inner().0.into();
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+    let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    let mut results = Vec::new();
+    let results;
 
-    let id_int = id.0 as u64;
-    if current_user.id.0 == id_int {
-        results = crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;
+    if let Some(user) = current_user {
+        if user.id.0 == id.0 as u64 {
+            results =
+                crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;
+        } else {
+            results =
+                crate::database::models::TeamMember::get_from_user_public(id, &**pool).await?;
+        }
     } else {
-        results = crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;
+        results = crate::database::models::TeamMember::get_from_user_public(id, &**pool).await?;
     }
 
     let team_members: Vec<crate::models::teams::TeamMember> = results
@@ -146,7 +152,7 @@ pub async fn remove_team_member(
             user_id: data.user_id.into(),
             name: data.name,
             role: data.role,
-            permissions: data.permissions as u64
+            permissions: Permissions::from_bits_truncate(data.permissions as u64),
         })
         .collect();
 

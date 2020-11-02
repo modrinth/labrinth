@@ -39,13 +39,13 @@ impl TeamBuilder {
                 name: member.name,
                 role: member.role,
                 permissions: member.permissions,
-                accepted: member.accepted
+                accepted: member.accepted,
             };
 
             sqlx::query!(
                 "
-                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions, accepted)
+                VALUES ($1, $2, $3, $4, $5, $6, TRUE)
                 ",
                 team_member.id as TeamMemberId,
                 team_member.team_id as TeamId,
@@ -108,7 +108,7 @@ impl TeamMember {
                 name: m.member_name,
                 role: m.role,
                 permissions: m.permissions,
-                accepted: m.accepted
+                accepted: m.accepted,
             }))
         })
         .try_collect::<Vec<TeamMember>>()
@@ -121,8 +121,8 @@ impl TeamMember {
         id: UserId,
         executor: E,
     ) -> Result<Vec<TeamMember>, super::DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         use futures::stream::TryStreamExt;
 
@@ -134,20 +134,20 @@ impl TeamMember {
             ",
             id as UserId,
         )
-            .fetch_many(executor)
-            .try_filter_map(|e| async {
-                Ok(e.right().map(|m| TeamMember {
-                    id: TeamMemberId(m.id),
-                    team_id: TeamId(m.team_id),
-                    user_id: id,
-                    name: m.member_name,
-                    role: m.role,
-                    permissions: m.permissions,
-                    accepted: m.accepted
-                }))
-            })
-            .try_collect::<Vec<TeamMember>>()
-            .await?;
+        .fetch_many(executor)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|m| TeamMember {
+                id: TeamMemberId(m.id),
+                team_id: TeamId(m.team_id),
+                user_id: id,
+                name: m.member_name,
+                role: m.role,
+                permissions: m.permissions,
+                accepted: m.accepted,
+            }))
+        })
+        .try_collect::<Vec<TeamMember>>()
+        .await?;
 
         Ok(team_members)
     }
@@ -156,8 +156,8 @@ impl TeamMember {
         id: UserId,
         executor: E,
     ) -> Result<Vec<TeamMember>, super::DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         use futures::stream::TryStreamExt;
 
@@ -169,20 +169,20 @@ impl TeamMember {
             ",
             id as UserId,
         )
-            .fetch_many(executor)
-            .try_filter_map(|e| async {
-                Ok(e.right().map(|m| TeamMember {
-                    id: TeamMemberId(m.id),
-                    team_id: TeamId(m.team_id),
-                    user_id: id,
-                    name: m.member_name,
-                    role: m.role,
-                    permissions: m.permissions,
-                    accepted: m.accepted
-                }))
-            })
-            .try_collect::<Vec<TeamMember>>()
-            .await?;
+        .fetch_many(executor)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|m| TeamMember {
+                id: TeamMemberId(m.id),
+                team_id: TeamId(m.team_id),
+                user_id: id,
+                name: m.member_name,
+                role: m.role,
+                permissions: m.permissions,
+                accepted: m.accepted,
+            }))
+        })
+        .try_collect::<Vec<TeamMember>>()
+        .await?;
 
         Ok(team_members)
     }
@@ -192,10 +192,9 @@ impl TeamMember {
         user_id: UserId,
         executor: E,
     ) -> Result<Option<Self>, super::DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-
         let result = sqlx::query!(
             "
             SELECT id, user_id, member_name, role, permissions, accepted
@@ -205,8 +204,8 @@ impl TeamMember {
             id as TeamId,
             user_id as UserId
         )
-            .fetch_optional(executor)
-            .await?;
+        .fetch_optional(executor)
+        .await?;
 
         if let Some(m) = result {
             Ok(Some(TeamMember {
@@ -216,7 +215,7 @@ impl TeamMember {
                 name: m.member_name,
                 role: m.role,
                 permissions: m.permissions,
-                accepted: m.accepted
+                accepted: m.accepted,
             }))
         } else {
             Ok(None)
@@ -244,8 +243,8 @@ impl TeamMember {
             self.permissions,
             self.accepted
         )
-            .execute(&mut *transaction)
-            .await?;
+        .execute(&mut *transaction)
+        .await?;
 
         Ok(())
     }
@@ -255,8 +254,8 @@ impl TeamMember {
         user_id: UserId,
         executor: E,
     ) -> Result<(), super::DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         sqlx::query!(
             "
@@ -267,8 +266,8 @@ impl TeamMember {
             user_id as UserId,
             crate::models::teams::OWNER_ROLE
         )
-            .execute(executor)
-            .await?;
+        .execute(executor)
+        .await?;
 
         Ok(())
     }
@@ -281,11 +280,11 @@ impl TeamMember {
         new_accepted: Option<bool>,
         executor: E,
     ) -> Result<(), super::DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let mut query = "UPDATE team_members".to_string();
-        let mut current_index : i16 = 3;
+        let mut current_index: i16 = 3;
 
         if new_permissions.is_some() {
             current_index += 1;

@@ -1504,6 +1504,7 @@ dependencies = [
  "actix-web",
  "async-trait",
  "base64 0.13.0",
+ "bitflags",
  "chrono",
  "dotenv",
  "env_logger",

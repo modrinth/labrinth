@@ -1,11 +1,11 @@
-use crate::database::models::TeamMember;
-use crate::models::teams::TeamId;
-use crate::routes::ApiError;
-use actix_web::{get, delete, post, patch, web, HttpResponse, HttpRequest};
-use sqlx::PgPool;
-use crate::models::users::UserId;
 use crate::auth::get_user_from_headers;
+use crate::database::models::TeamMember;
+use crate::models::teams::{Permissions, TeamId};
+use crate::models::users::UserId;
+use crate::routes::ApiError;
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 
 #[get("{id}/members")]
 pub async fn team_members_get(
@@ -21,7 +21,7 @@ pub async fn team_members_get(
             user_id: data.user_id.into(),
             name: data.name,
             role: data.role,
-            permissions: data.permissions as u64
+            permissions: Permissions::from_bits_truncate(data.permissions as u64),
         })
         .collect();
 
@@ -35,9 +35,20 @@ pub async fn join_team(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
-    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+    let current_user = get_user_from_headers(req.headers(), &**pool)
+        .await
+        .map_err(|_| ApiError::AuthenticationError)?;
 
-    TeamMember::edit_team_member(team_id, current_user.id.into(), None, None, Some(true), &**pool).await?;
+    // Edit Team Member to set Accepted to True
+    TeamMember::edit_team_member(
+        team_id,
+        current_user.id.into(),
+        None,
+        None,
+        Some(true),
+        &**pool,
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().body(""))
 }
@@ -51,26 +62,46 @@ pub async fn add_team_member(
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
 
-    let mut transaction = pool.begin().await.map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
-    let team_member = TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
+    let current_user = get_user_from_headers(req.headers(), &**pool)
+        .await
+        .map_err(|_| ApiError::AuthenticationError)?;
+    let team_member =
+        TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
 
     if let Some(member) = team_member {
-        if (member.permissions & (1 << 4)) != 0 && new_member.role != crate::models::teams::OWNER_ROLE {
-            // TODO: Prevent user from giving another user permissions they do not have
-            let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
+        let permissions = Permissions::from_bits_truncate(member.permissions as u64);
+
+        if permissions & Permissions::MANAGE_INVITES == Permissions::MANAGE_INVITES
+            && new_member.role != crate::models::teams::OWNER_ROLE
+        {
+            if !permissions.contains(new_member.permissions) {
+                return Err(ApiError::AuthenticationError);
+            }
+
+            let new_id =
+                crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
             TeamMember {
                 id: new_id,
                 team_id,
                 user_id: new_member.user_id.into(),
                 name: new_member.name.clone(),
                 role: new_member.role.clone(),
-                permissions: new_member.permissions as i64,
-                accepted: false
-            }.insert(&mut transaction).await.map_err(|e| ApiError::DatabaseError(e.into()))?;
+                permissions: new_member.permissions.bits() as i64,
+                accepted: false,
+            }
+            .insert(&mut transaction)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-            transaction.commit().await.map_err(|e| ApiError::DatabaseError(e.into()))?;
+            transaction
+                .commit()
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
             Ok(HttpResponse::Ok().body(""))
         } else {
@@ -83,7 +114,7 @@ pub async fn add_team_member(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct EditTeamMember {
-    pub permissions: Option<u64>,
+    pub permissions: Option<Permissions>,
     pub role: Option<String>,
 }
 
@@ -98,13 +129,34 @@ pub async fn edit_team_member(
     let id = ids.0.into();
     let user_id = ids.1.into();
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+    let current_user = get_user_from_headers(req.headers(), &**pool)
+        .await
+        .map_err(|_| ApiError::AuthenticationError)?;
     let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
     if let Some(member) = team_member {
-        if (member.permissions & (1 << 6)) != 0 && edit_member.role.clone().unwrap_or("".to_string()) != "Owner".to_string() {
+        let permissions = Permissions::from_bits_truncate(member.permissions as u64);
+
+        if permissions & Permissions::EDIT_MEMBER == Permissions::EDIT_MEMBER
+            && edit_member.role.clone().unwrap_or("".to_string())
+                != crate::models::teams::OWNER_ROLE.to_string()
+        {
             // TODO: Prevent user from giving another user permissions they do not have
-            TeamMember::edit_team_member(id, user_id, edit_member.permissions.map(|x| x as i64), edit_member.role.clone(), None, &**pool).await?;
+            if let Some(new_permissions) = edit_member.permissions {
+                if !permissions.contains(new_permissions) {
+                    return Err(ApiError::AuthenticationError);
+                }
+            }
+
+            TeamMember::edit_team_member(
+                id,
+                user_id,
+                edit_member.permissions.map(|x| x.bits() as i64),
+                edit_member.role.clone(),
+                None,
+                &**pool,
+            )
+            .await?;
 
             Ok(HttpResponse::Ok().body(""))
         } else {
@@ -125,7 +177,9 @@ pub async fn remove_team_member(
     let id = ids.0.into();
     let user_id = ids.1.into();
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await.map_err(|_| ApiError::AuthenticationError)?;
+    let current_user = get_user_from_headers(req.headers(), &**pool)
+        .await
+        .map_err(|_| ApiError::AuthenticationError)?;
     let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
     if let Some(member) = team_member {
