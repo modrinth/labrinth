@@ -18,7 +18,7 @@ pub enum IndexingError {
     #[error("Error while connecting to the MeiliSearch database")]
     IndexDBError(#[from] meilisearch_sdk::errors::Error),
     #[error("Error while importing mods from CurseForge")]
-    CurseforgeImportError(reqwest::Error),
+    CurseforgeImportError(#[from] reqwest::Error),
     #[error("Error while serializing or deserializing JSON: {0}")]
     SerDeError(#[from] serde_json::Error),
     #[error("Error while parsing a timestamp: {0}")]
@@ -284,3 +284,60 @@ fn default_settings() -> Settings {
 }
 
 //endregion
+
+// This shouldn't be relied on for proper sorting, but it makes an
+// attempt at getting proper sorting for mojang's versions.
+// This isn't currenly used, but I wrote it and it works, so I'm
+// keeping this mess in case someone needs it in the future.
+#[allow(dead_code)]
+pub fn sort_mods(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    let cmp = a.contains('.').cmp(&b.contains('.'));
+    if cmp != Ordering::Equal {
+        return cmp;
+    }
+    let mut a = a.split(&['.', '-'] as &[char]);
+    let mut b = b.split(&['.', '-'] as &[char]);
+    let a = (a.next(), a.next(), a.next(), a.next());
+    let b = (b.next(), b.next(), b.next(), b.next());
+    if a.0 == b.0 {
+        let cmp =
+            a.1.map(|s| s.chars().all(|c| c.is_ascii_digit()))
+                .cmp(&b.1.map(|s| s.chars().all(|c| c.is_ascii_digit())));
+        if cmp != Ordering::Equal {
+            return cmp;
+        }
+        if a.1 == b.1 {
+            let cmp =
+                a.2.map(|s| s.chars().all(|c| c.is_ascii_digit()))
+                    .unwrap_or(true)
+                    .cmp(
+                        &b.2.map(|s| s.chars().all(|c| c.is_ascii_digit()))
+                            .unwrap_or(true),
+                    );
+            if cmp != Ordering::Equal {
+                return cmp;
+            }
+            if a.2 == b.2 {
+                match (a.3.is_some(), b.3.is_some()) {
+                    (false, false) => Ordering::Equal,
+                    (false, true) => Ordering::Greater,
+                    (true, false) => Ordering::Less,
+                    (true, true) => a.3.cmp(&b.3),
+                }
+            } else {
+                a.2.cmp(&b.2)
+            }
+        } else {
+            a.1.cmp(&b.1)
+        }
+    } else {
+        match (a.0 == Some("1"), b.0 == Some("1")) {
+            (false, false) => a.0.cmp(&b.0),
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (true, true) => Ordering::Equal, // unreachable
+        }
+    }
+}
