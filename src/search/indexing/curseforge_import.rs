@@ -119,20 +119,35 @@ lazy_static::lazy_static! {
 pub async fn index_curseforge(
     start_index: u32,
     end_index: u32,
+    cache_path: &std::path::Path,
 ) -> Result<Vec<UploadSearchMod>, IndexingError> {
     info!("Indexing curseforge mods!");
+    let start = std::time::Instant::now();
 
     let mut docs_to_add: Vec<UploadSearchMod> = vec![];
 
-    // This ends up being around 3 MiB
-    // Serde json is better than using debug formatting since it doesn't
-    // include spaces after commas, removing a lot of the extra size
-    let body = serde_json::to_string(&(start_index..end_index).collect::<Vec<_>>())?;
+    let cache = std::fs::File::open(cache_path)
+        .map(std::io::BufReader::new)
+        .map(serde_json::from_reader::<_, Vec<u32>>);
+
+    let requested_ids;
+
+    // This caching system can't handle segmented indexing
+    if let Ok(Ok(mut cache)) = cache {
+        let end = cache.last().copied().unwrap_or(start_index);
+        cache.extend(end..end_index);
+        requested_ids = serde_json::to_string(&cache)?;
+    } else {
+        // This ends up being around 3 MiB
+        // Serde json is better than using debug formatting since it doesn't
+        // include spaces after commas, removing a lot of the extra size
+        requested_ids = serde_json::to_string(&(start_index..end_index).collect::<Vec<_>>())?;
+    }
 
     let res = reqwest::Client::new()
         .post("https://addons-ecs.forgesvc.net/api/v2/addon")
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(body)
+        .body(requested_ids)
         .send()
         .await?;
 
@@ -141,12 +156,24 @@ pub async fn index_curseforge(
     // borrowed data should avoid copying it, but it may take a bit more
     // memory.  To do this efficiently, we would have to get serde_json
     // to skip deserializing mods with category_section.id != 8
-
+    // It's only 100MiB when using the cached ids, since that eliminates
+    // all "addons" that aren't minecraft mods
     let buffer = res.bytes().await?;
 
     let mut curseforge_mods: Vec<CurseForgeMod> = serde_json::from_slice(&buffer)?;
     // This should remove many of the mods from the list before processing
     curseforge_mods.retain(|m| m.category_section.id == 8);
+
+    // Only write to the cache if this doesn't skip mods at the start
+    // The caching system iterates through all ids normally past the last
+    // id in the cache, so the end_index shouldn't matter.
+    if start_index <= 1 {
+        let mut ids = curseforge_mods.iter().map(|m| m.id).collect::<Vec<_>>();
+        ids.sort_unstable();
+        if let Err(e) = std::fs::write(cache_path, serde_json::to_string(&ids)?) {
+            log::warn!("Error writing to index id cache: {}", e);
+        }
+    }
 
     for mut curseforge_mod in curseforge_mods {
         // The gameId of minecraft is 432
@@ -154,9 +181,9 @@ pub async fn index_curseforge(
         // The categorySection.id 8 appears to be unique to minecraft mods
         // if curseforge_mod.game_slug != "minecraft"
         //     || !curseforge_mod.website_url.contains("/mc-mods/")
-        if curseforge_mod.category_section.id != 8 {
-            continue;
-        }
+        // if curseforge_mod.category_section.id != 8 {
+        //     continue;
+        // }
 
         let mut mod_game_versions = vec![];
 
@@ -285,6 +312,12 @@ pub async fn index_curseforge(
             empty: Cow::Borrowed("{}{}{}"),
         })
     }
+
+    let duration = start.elapsed();
+    info!(
+        "Finished indexing curseforge; Took {:5.2}s",
+        duration.as_secs_f32()
+    );
 
     Ok(docs_to_add)
 }
