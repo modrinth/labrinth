@@ -313,7 +313,6 @@ pub async fn index_curseforge(
             modified_timestamp: curseforge_mod.date_modified.timestamp(),
             latest_version,
             host: Cow::Borrowed("curseforge"),
-            empty: Cow::Borrowed("{}{}{}"),
         })
     }
 

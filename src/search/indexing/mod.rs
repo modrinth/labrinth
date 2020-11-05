@@ -270,7 +270,6 @@ fn default_settings() -> Settings {
         "categories".to_string(),
         "versions".to_string(),
         "author".to_string(),
-        "empty".to_string(),
     ];
 
     Settings::new()
