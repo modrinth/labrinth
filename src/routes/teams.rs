@@ -97,9 +97,9 @@ pub async fn add_team_member(
         TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
 
     if let Some(member) = team_member {
-        let permissions = Permissions::from_bits_truncate(member.permissions as u64);
+        let permissions = Permissions::from_bits(member.permissions as u64).ok_or_else(|| ApiError::InvalidInputError("Specified permissions bitflag is invalid!".to_string()))?;
 
-        if permissions & Permissions::MANAGE_INVITES == Permissions::MANAGE_INVITES
+        if permissions.contains(Permissions::MANAGE_INVITES)
             && new_member.role != crate::models::teams::OWNER_ROLE
         {
             if !permissions.contains(new_member.permissions) {
@@ -158,13 +158,11 @@ pub async fn edit_team_member(
     let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
     if let Some(member) = team_member {
-        let permissions = Permissions::from_bits_truncate(member.permissions as u64);
+        let permissions = Permissions::from_bits(member.permissions as u64).ok_or_else(|| ApiError::InvalidInputError("Specified permissions bitflag is invalid!".to_string()))?;
 
-        if permissions & Permissions::EDIT_MEMBER == Permissions::EDIT_MEMBER
-            && edit_member.role.clone().unwrap_or("".to_string())
-                != crate::models::teams::OWNER_ROLE.to_string()
+        if permissions.contains(Permissions::EDIT_MEMBER)
+            && edit_member.role.as_deref() != Some(crate::models::teams::OWNER_ROLE)
         {
-            // TODO: Prevent user from giving another user permissions they do not have
             if let Some(new_permissions) = edit_member.permissions {
                 if !permissions.contains(new_permissions) {
                     return Err(ApiError::AuthenticationError);

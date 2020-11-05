@@ -152,7 +152,8 @@ pub async fn teams(
             user_id: data.user_id.into(),
             name: data.name,
             role: data.role,
-            permissions: Permissions::from_bits_truncate(data.permissions as u64),
+            // TODO: Return permissions if user is the logged in user
+            permissions: Permissions::default(),
         })
         .collect();
 
