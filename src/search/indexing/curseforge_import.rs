@@ -196,8 +196,8 @@ pub async fn index_curseforge(
         for file in curseforge_mod.latest_files {
             for version in file.game_version {
                 match &*version {
-                    "Fabric" => loaders.forge = true,
-                    "Forge" => loaders.fabric = true,
+                    "Fabric" => loaders.fabric = true,
+                    "Forge" => loaders.forge = true,
                     "Rift" => loaders.rift = true,
                     _ => (),
                 }
