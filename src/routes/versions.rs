@@ -188,7 +188,10 @@ pub async fn version_delete(
         .map_err(|e| ApiError::DatabaseError(e.into()))?
         .ok_or_else(|| ApiError::InvalidInputError("Invalid Version ID specified!".to_string()))?;
 
-        if Permissions::from_bits_truncate(team_member.permissions as u64).contains(Permissions::DELETE_VERSION) {
+        if team_member
+            .permissions
+            .contains(Permissions::DELETE_VERSION)
+        {
             return Err(ApiError::AuthenticationError);
         }
     }

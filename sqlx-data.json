@@ -39,6 +39,21 @@
       "nullable": []
     }
   },
+  "0739834cfbef869855ed4e1aea7e1f7601f6519867ee48c573ee901c4498e04c": {
+    "query": "\n                UPDATE team_members\n                SET permissions = $1\n                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)\n                ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
+          "Text"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "0ca11a32b2860e4f5c3d20892a5be3cb419e084f42ba0f98e09b9995027fcc4e": {
     "query": "\n            SELECT id FROM statuses\n            WHERE status = $1\n            ",
     "describe": {
@@ -775,6 +790,36 @@
       "parameters": {
         "Left": [
           "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "6c2299a7b7ab22f83049bc41fb5dd380adea3579e7b00df7d16fb6747a0a7313": {
+    "query": "\n                UPDATE team_members\n                SET role = $1\n                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)\n                ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8",
+          "Int8",
+          "Text"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "7176e8907b3898ab135d4915158089275cb62d43e26e2053e3485e6b03dc5712": {
+    "query": "\n                UPDATE team_members\n                SET accepted = $1\n                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)\n                ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Bool",
+          "Int8",
+          "Int8",
+          "Text"
         ]
       },
       "nullable": []

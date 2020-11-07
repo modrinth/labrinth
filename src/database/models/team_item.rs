@@ -1,4 +1,5 @@
 use super::ids::*;
+use crate::models::teams::Permissions;
 
 pub struct TeamBuilder {
     pub members: Vec<TeamMemberBuilder>,
@@ -7,7 +8,7 @@ pub struct TeamMemberBuilder {
     pub user_id: UserId,
     pub name: String,
     pub role: String,
-    pub permissions: i64,
+    pub permissions: Permissions,
     pub accepted: bool,
 }
 
@@ -52,7 +53,7 @@ impl TeamBuilder {
                 team_member.user_id as UserId,
                 team_member.name,
                 team_member.role,
-                team_member.permissions
+                team_member.permissions.bits() as i64
             )
             .execute(&mut *transaction)
             .await?;
@@ -77,7 +78,7 @@ pub struct TeamMember {
     /// The name of the user
     pub name: String,
     pub role: String,
-    pub permissions: i64,
+    pub permissions: Permissions,
     pub accepted: bool,
 }
 
@@ -107,7 +108,7 @@ impl TeamMember {
                 user_id: UserId(m.user_id),
                 name: m.member_name,
                 role: m.role,
-                permissions: m.permissions,
+                permissions: Permissions::from_bits_truncate(m.permissions as u64),
                 accepted: m.accepted,
             }))
         })
@@ -142,7 +143,7 @@ impl TeamMember {
                 user_id: id,
                 name: m.member_name,
                 role: m.role,
-                permissions: m.permissions,
+                permissions: Permissions::from_bits_truncate(m.permissions as u64),
                 accepted: m.accepted,
             }))
         })
@@ -177,7 +178,7 @@ impl TeamMember {
                 user_id: id,
                 name: m.member_name,
                 role: m.role,
-                permissions: m.permissions,
+                permissions: Permissions::from_bits_truncate(m.permissions as u64),
                 accepted: m.accepted,
             }))
         })
@@ -214,7 +215,7 @@ impl TeamMember {
                 user_id,
                 name: m.member_name,
                 role: m.role,
-                permissions: m.permissions,
+                permissions: Permissions::from_bits_truncate(m.permissions as u64),
                 accepted: m.accepted,
             }))
         } else {
@@ -240,7 +241,7 @@ impl TeamMember {
             self.user_id as UserId,
             self.name,
             self.role,
-            self.permissions,
+            self.permissions.bits() as i64,
             self.accepted
         )
         .execute(&mut *transaction)
@@ -281,46 +282,55 @@ impl TeamMember {
         executor: E,
     ) -> Result<(), super::DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let mut query = "UPDATE team_members".to_string();
-        let mut current_index: i16 = 3;
-
-        if new_permissions.is_some() {
-            current_index += 1;
-            query.push_str(&format!("\nSET permissions = ${}", current_index));
-        }
-
-        if new_role.is_some() {
-            current_index += 1;
-            query.push_str(&format!("\nSET role = ${}", current_index));
-        }
-
-        if new_accepted.is_some() {
-            current_index += 1;
-            query.push_str(&format!("\nSET accepted = ${}", current_index));
-        }
-
-        query += "\nWHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)";
-
-        let mut query = sqlx::query(&*query)
-            .bind(id as TeamId)
-            .bind(user_id as UserId)
-            .bind::<String>(crate::models::teams::OWNER_ROLE.to_string());
-
         if let Some(permissions) = new_permissions {
-            query = query.bind(permissions);
+            sqlx::query!(
+                "
+                UPDATE team_members
+                SET permissions = $1
+                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)
+                ",
+                permissions,
+                id as TeamId,
+                user_id as UserId,
+                crate::models::teams::OWNER_ROLE.to_string(),
+            )
+            .execute(executor)
+            .await?;
         }
 
         if let Some(role) = new_role {
-            query = query.bind(role);
+            sqlx::query!(
+                "
+                UPDATE team_members
+                SET role = $1
+                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)
+                ",
+                role,
+                id as TeamId,
+                user_id as UserId,
+                crate::models::teams::OWNER_ROLE.to_string(),
+            )
+            .execute(executor)
+            .await?;
         }
 
         if let Some(accepted) = new_accepted {
-            query = query.bind::<bool>(accepted);
+            sqlx::query!(
+                "
+                UPDATE team_members
+                SET accepted = $1
+                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)
+                ",
+                accepted,
+                id as TeamId,
+                user_id as UserId,
+                crate::models::teams::OWNER_ROLE.to_string(),
+            )
+            .execute(executor)
+            .await?;
         }
-
-        query.execute(executor).await?;
 
         Ok(())
     }

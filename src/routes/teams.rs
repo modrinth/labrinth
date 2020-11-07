@@ -30,7 +30,7 @@ pub async fn team_members_get(
                     user_id: data.user_id.into(),
                     name: data.name,
                     role: data.role,
-                    permissions: Permissions::from_bits_truncate(data.permissions as u64),
+                    permissions: data.permissions,
                 })
                 .collect();
 
@@ -97,12 +97,10 @@ pub async fn add_team_member(
         TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
 
     if let Some(member) = team_member {
-        let permissions = Permissions::from_bits(member.permissions as u64).ok_or_else(|| ApiError::InvalidInputError("Specified permissions bitflag is invalid!".to_string()))?;
-
-        if permissions.contains(Permissions::MANAGE_INVITES)
+        if member.permissions.contains(Permissions::MANAGE_INVITES)
             && new_member.role != crate::models::teams::OWNER_ROLE
         {
-            if !permissions.contains(new_member.permissions) {
+            if !member.permissions.contains(new_member.permissions) {
                 return Err(ApiError::AuthenticationError);
             }
 
@@ -114,7 +112,7 @@ pub async fn add_team_member(
                 user_id: new_member.user_id.into(),
                 name: new_member.name.clone(),
                 role: new_member.role.clone(),
-                permissions: new_member.permissions.bits() as i64,
+                permissions: new_member.permissions,
                 accepted: false,
             }
             .insert(&mut transaction)
@@ -158,13 +156,11 @@ pub async fn edit_team_member(
     let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
     if let Some(member) = team_member {
-        let permissions = Permissions::from_bits(member.permissions as u64).ok_or_else(|| ApiError::InvalidInputError("Specified permissions bitflag is invalid!".to_string()))?;
-
-        if permissions.contains(Permissions::EDIT_MEMBER)
+        if member.permissions.contains(Permissions::EDIT_MEMBER)
             && edit_member.role.as_deref() != Some(crate::models::teams::OWNER_ROLE)
         {
             if let Some(new_permissions) = edit_member.permissions {
-                if !permissions.contains(new_permissions) {
+                if !member.permissions.contains(new_permissions) {
                     return Err(ApiError::AuthenticationError);
                 }
             }
@@ -208,14 +204,14 @@ pub async fn remove_team_member(
 
         if let Some(delete_member) = delete_member_option {
             if delete_member.accepted {
-                if (member.permissions & (1 << 5)) != 0 {
+                if member.permissions.contains(Permissions::DELETE_MOD) {
                     TeamMember::delete(id, user_id, &**pool).await?;
                     Ok(HttpResponse::Ok().body(""))
                 } else {
                     Err(ApiError::AuthenticationError)
                 }
             } else {
-                if (member.permissions & (1 << 4)) != 0 {
+                if member.permissions.contains(Permissions::MANAGE_INVITES) {
                     TeamMember::delete(id, user_id, &**pool).await?;
                     Ok(HttpResponse::Ok().body(""))
                 } else {
