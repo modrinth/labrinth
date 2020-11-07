@@ -287,7 +287,7 @@ impl TeamMember {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        sqlx::query!(
+        let rows_affected = sqlx::query!(
             "
             DELETE FROM team_members
             WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
@@ -337,7 +337,7 @@ impl TeamMember {
                 role,
                 id as TeamId,
                 user_id as UserId,
-                crate::models::teams::OWNER_ROLE.to_string(),
+                crate::models::teams::OWNER_ROLE,
             )
             .execute(&mut *transaction)
             .await?;
@@ -370,7 +370,7 @@ impl TeamMember {
                 name,
                 id as TeamId,
                 user_id as UserId,
-                crate::models::teams::OWNER_ROLE.to_string(),
+                crate::models::teams::OWNER_ROLE,
             )
             .execute(&mut *transaction)
             .await?;
