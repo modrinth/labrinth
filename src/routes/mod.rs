@@ -71,8 +71,10 @@ pub enum ApiError {
     DatabaseError(#[from] crate::database::models::DatabaseError),
     #[error("Deserialization error: {0}")]
     JsonError(#[from] serde_json::Error),
-    #[error("Authentication Error")]
-    AuthenticationError,
+    #[error("Authentication Error: {0}")]
+    AuthenticationError(#[from] crate::auth::AuthenticationError),
+    #[error("Authentication Error: {0}")]
+    CustomAuthenticationError(String),
     #[error("Invalid Input: {0}")]
     InvalidInputError(String),
     #[error("Search Error: {0}")]
@@ -83,7 +85,8 @@ impl actix_web::ResponseError for ApiError {
     fn status_code(&self) -> actix_web::http::StatusCode {
         match self {
             ApiError::DatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::AuthenticationError => actix_web::http::StatusCode::UNAUTHORIZED,
+            ApiError::AuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
+            ApiError::CustomAuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::JsonError(..) => actix_web::http::StatusCode::BAD_REQUEST,
             ApiError::SearchError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::InvalidInputError(..) => actix_web::http::StatusCode::BAD_REQUEST,
@@ -95,7 +98,8 @@ impl actix_web::ResponseError for ApiError {
             crate::models::error::ApiError {
                 error: match self {
                     ApiError::DatabaseError(..) => "database_error",
-                    ApiError::AuthenticationError => "unauthorized",
+                    ApiError::AuthenticationError(..) => "unauthorized",
+                    ApiError::CustomAuthenticationError(..) => "unauthorized",
                     ApiError::JsonError(..) => "json_error",
                     ApiError::SearchError(..) => "search_error",
                     ApiError::InvalidInputError(..) => "invalid_input",

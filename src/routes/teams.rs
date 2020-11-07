@@ -21,7 +21,7 @@ pub async fn team_members_get(
     if let Some(user) = current_user {
         let team_member = TeamMember::get_from_user_id(id.into(), user.id.into(), &**pool)
             .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            .map_err(ApiError::DatabaseError)?;
 
         if team_member.is_some() {
             let team_members: Vec<crate::models::teams::TeamMember> = members_data
@@ -58,31 +58,43 @@ pub async fn join_team(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
-    let current_user = get_user_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    let mut transaction = pool
-        .begin()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let member =
+        TeamMember::get_from_user_id_pending(team_id, current_user.id.into(), &**pool).await?;
 
-    // Edit Team Member to set Accepted to True
-    TeamMember::edit_team_member(
-        team_id,
-        current_user.id.into(),
-        None,
-        None,
-        Some(true),
-        None,
-        &mut transaction,
-    )
-    .await?;
+    if let Some(member) = member {
+        if member.accepted {
+            return Err(ApiError::InvalidInputError(
+                "You are already a member of this team".to_string(),
+            ));
+        }
+        let mut transaction = pool
+            .begin()
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    transaction
-        .commit()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        // Edit Team Member to set Accepted to True
+        TeamMember::edit_team_member(
+            team_id,
+            current_user.id.into(),
+            None,
+            None,
+            Some(true),
+            None,
+            &mut transaction,
+        )
+        .await?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    } else {
+        return Err(ApiError::InvalidInputError(
+            "There is no pending request from this team".to_string(),
+        ));
+    }
 
     Ok(HttpResponse::Ok().body(""))
 }
@@ -114,56 +126,79 @@ pub async fn add_team_member(
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    let current_user = get_user_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
     let team_member =
         TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
 
-    if let Some(member) = team_member {
-        if member.permissions.contains(Permissions::MANAGE_INVITES)
-            && member.accepted
-            && new_member.role != crate::models::teams::OWNER_ROLE
-        {
-            let new_user = crate::database::models::User::get(member.user_id, &**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?
-                .ok_or_else(|| {
-                    ApiError::InvalidInputError("Invalid User ID specified!".to_string())
-                })?;
-            if !member.permissions.contains(new_member.permissions) {
-                return Err(ApiError::InvalidInputError(
-                    "New member permissions are not contained in your permissions.".to_string(),
-                ));
-            }
-
-            let new_id =
-                crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
-            TeamMember {
-                id: new_id,
-                team_id,
-                user_id: new_member.user_id.into(),
-                name: new_user.username,
-                role: new_member.role.clone(),
-                permissions: new_member.permissions,
-                accepted: false,
-            }
-            .insert(&mut transaction)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-            transaction
-                .commit()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-            Ok(HttpResponse::Ok().body(""))
-        } else {
-            Err(ApiError::AuthenticationError)
+    let member = match team_member {
+        Some(m) => m,
+        None => {
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to invite users to this team".to_string(),
+            ))
         }
-    } else {
-        Err(ApiError::AuthenticationError)
+    };
+
+    if !member.permissions.contains(Permissions::MANAGE_INVITES) {
+        return Err(ApiError::CustomAuthenticationError(
+            "You don't have permission to invite users to this team".to_string(),
+        ));
     }
+    if !member.permissions.contains(new_member.permissions) {
+        return Err(ApiError::InvalidInputError(
+            "The new member has permissions that you don't have".to_string(),
+        ));
+    }
+
+    if new_member.role == crate::models::teams::OWNER_ROLE {
+        return Err(ApiError::InvalidInputError(
+            "The `Owner` role is restricted to one person".to_string(),
+        ));
+    }
+    let request = crate::database::models::team_item::TeamMember::get_from_user_id_pending(
+        team_id,
+        member.user_id,
+        &**pool,
+    )
+    .await?;
+
+    if let Some(req) = request {
+        if req.accepted {
+            return Err(ApiError::InvalidInputError(
+                "The user is already a member of that team".to_string(),
+            ));
+        } else {
+            return Err(ApiError::InvalidInputError(
+                "There is already a pending member request for this user".to_string(),
+            ));
+        }
+    }
+
+    let new_user = crate::database::models::User::get(member.user_id, &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .ok_or_else(|| ApiError::InvalidInputError("An invalid User ID specified".to_string()))?;
+
+    let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
+    TeamMember {
+        id: new_id,
+        team_id,
+        user_id: new_member.user_id.into(),
+        name: new_user.username,
+        role: new_member.role.clone(),
+        permissions: new_member.permissions,
+        accepted: false,
+    }
+    .insert(&mut transaction)
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    Ok(HttpResponse::Ok().body(""))
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -184,9 +219,7 @@ pub async fn edit_team_member(
     let id = ids.0.into();
     let user_id = ids.1.into();
 
-    let current_user = get_user_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
     let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
     let mut transaction = pool
@@ -194,40 +227,77 @@ pub async fn edit_team_member(
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    if let Some(member) = team_member {
-        if member.permissions.contains(Permissions::EDIT_MEMBER)
-            && member.accepted
-            && edit_member.role.as_deref() != Some(crate::models::teams::OWNER_ROLE)
-        {
-            if let Some(new_permissions) = edit_member.permissions {
-                if !member.permissions.contains(new_permissions) {
-                    return Err(ApiError::AuthenticationError);
-                }
-            }
-
-            TeamMember::edit_team_member(
-                id,
-                user_id,
-                edit_member.permissions,
-                edit_member.role.clone(),
-                None,
-                edit_member.name.clone(),
-                &mut transaction,
-            )
-            .await?;
-
-            transaction
-                .commit()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-            Ok(HttpResponse::Ok().body(""))
-        } else {
-            Err(ApiError::AuthenticationError)
+    let member = match team_member {
+        Some(m) => m,
+        None => {
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to edit members of this team".to_string(),
+            ))
         }
-    } else {
-        Err(ApiError::AuthenticationError)
+    };
+
+    // If the only thing being modified is the name, a user can
+    // modify their own member without extra permissions.
+    if user_id == current_user.id.into()
+        && edit_member.permissions.is_none()
+        && edit_member.role.is_none()
+    {
+        TeamMember::edit_team_member(
+            id,
+            user_id,
+            None,
+            None,
+            None,
+            edit_member.name.clone(),
+            &mut transaction,
+        )
+        .await?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        return Ok(HttpResponse::Ok().body(""));
     }
+
+    if !member.permissions.contains(Permissions::EDIT_MEMBER) {
+        return Err(ApiError::CustomAuthenticationError(
+            "You don't have permission to edit members of this team".to_string(),
+        ));
+    }
+
+    if let Some(new_permissions) = edit_member.permissions {
+        if !member.permissions.contains(new_permissions) {
+            return Err(ApiError::InvalidInputError(
+                "The new permissions have permissions that you don't have".to_string(),
+            ));
+        }
+    }
+
+    if edit_member.role.as_deref() == Some(crate::models::teams::OWNER_ROLE) {
+        return Err(ApiError::InvalidInputError(
+            "The `Owner` role is restricted to one person".to_string(),
+        ));
+    }
+
+    TeamMember::edit_team_member(
+        id,
+        user_id,
+        edit_member.permissions,
+        edit_member.role.clone(),
+        None,
+        edit_member.name.clone(),
+        &mut transaction,
+    )
+    .await?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    Ok(HttpResponse::Ok().body(""))
 }
 
 #[delete("{id}/members/{user_id}")]
@@ -240,36 +310,50 @@ pub async fn remove_team_member(
     let id = ids.0.into();
     let user_id = ids.1.into();
 
-    let current_user = get_user_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
     let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
-    if let Some(member) = team_member {
-        let delete_member_option = TeamMember::get_from_user_id(id, user_id, &**pool).await?;
+    let member = match team_member {
+        Some(m) => m,
+        None => {
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to remove members from this team".to_string(),
+            ))
+        }
+    };
 
-        if let Some(delete_member) = delete_member_option {
-            if delete_member.accepted {
-                if delete_member.user_id == member.user_id
-                    || (member.permissions.contains(Permissions::REMOVE_MEMBER) && member.accepted)
-                {
-                    TeamMember::delete(id, user_id, &**pool).await?;
-                    Ok(HttpResponse::Ok().body(""))
-                } else {
-                    Err(ApiError::AuthenticationError)
-                }
+    let delete_member = TeamMember::get_from_user_id(id, user_id, &**pool).await?;
+
+    if let Some(delete_member) = delete_member {
+        if delete_member.role == crate::models::teams::OWNER_ROLE {
+            return Err(ApiError::CustomAuthenticationError(
+                "The owner can't be removed from a team".to_string(),
+            ));
+        }
+
+        if delete_member.accepted {
+            if delete_member.user_id == member.user_id
+                || member.permissions.contains(Permissions::REMOVE_MEMBER)
+            {
+                TeamMember::delete(id, user_id, &**pool).await?;
             } else {
-                if member.permissions.contains(Permissions::MANAGE_INVITES) && member.accepted {
-                    TeamMember::delete(id, user_id, &**pool).await?;
-                    Ok(HttpResponse::Ok().body(""))
-                } else {
-                    Err(ApiError::AuthenticationError)
-                }
+                return Err(ApiError::CustomAuthenticationError(
+                    "You do not have permission to remove a member from this team".to_string(),
+                ));
             }
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            if delete_member.user_id == member.user_id
+                || member.permissions.contains(Permissions::MANAGE_INVITES)
+            {
+                TeamMember::delete(id, user_id, &**pool).await?;
+            } else {
+                return Err(ApiError::CustomAuthenticationError(
+                    "You do not have permission to cancel a team invite".to_string(),
+                ));
+            }
         }
+        Ok(HttpResponse::Ok().body(""))
     } else {
-        Err(ApiError::AuthenticationError)
+        Ok(HttpResponse::NotFound().body(""))
     }
 }

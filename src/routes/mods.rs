@@ -132,9 +132,7 @@ pub async fn mod_delete(
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id = info.into_inner().0;
 
     if user.role != Role::Moderator || user.role != Role::Admin {
@@ -148,11 +146,13 @@ pub async fn mod_delete(
             &**pool,
         )
         .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .map_err(ApiError::DatabaseError)?
         .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
 
-        if !team_member.permissions.contains(Permissions::DELETE_MOD) && team_member.accepted {
-            return Err(ApiError::AuthenticationError);
+        if !team_member.permissions.contains(Permissions::DELETE_MOD) {
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to delete this mod".to_string(),
+            ));
         }
     }
 

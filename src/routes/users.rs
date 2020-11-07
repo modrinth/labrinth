@@ -20,8 +20,7 @@ pub async fn user_auth_get(
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?,
         )
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?,
+        .await?,
     ))
 }
 
@@ -179,8 +178,7 @@ pub async fn user_delete(
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?,
     )
-    .await
-    .map_err(|_| ApiError::AuthenticationError)?;
+    .await?;
 
     let _id = info.0;
     let result = Some(());

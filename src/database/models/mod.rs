@@ -32,6 +32,8 @@ pub enum DatabaseError {
     InvalidIdentifier(String),
     #[error("Invalid permissions bitflag!")]
     BitflagError,
+    #[error("A database request failed")]
+    Other(String),
 }
 
 impl ids::ChannelId {

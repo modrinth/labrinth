@@ -161,9 +161,7 @@ pub async fn version_delete(
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id = info.into_inner().0;
 
     if user.role != Role::Moderator || user.role != Role::Admin {
@@ -185,15 +183,16 @@ pub async fn version_delete(
             &**pool,
         )
         .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .map_err(ApiError::DatabaseError)?
         .ok_or_else(|| ApiError::InvalidInputError("Invalid Version ID specified!".to_string()))?;
 
-        if team_member
+        if !team_member
             .permissions
             .contains(Permissions::DELETE_VERSION)
-            && team_member.accepted
         {
-            return Err(ApiError::AuthenticationError);
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to delete versions in this team".to_string(),
+            ));
         }
     }
 
