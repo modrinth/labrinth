@@ -30,6 +30,8 @@ pub enum DatabaseError {
              alphanumeric characters or '_-'."
     )]
     InvalidIdentifier(String),
+    #[error("Invalid permissions bitflag!")]
+    BitflagError,
 }
 
 impl ids::ChannelId {

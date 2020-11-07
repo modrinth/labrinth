@@ -62,6 +62,11 @@ pub async fn join_team(
         .await
         .map_err(|_| ApiError::AuthenticationError)?;
 
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
     // Edit Team Member to set Accepted to True
     TeamMember::edit_team_member(
         team_id,
@@ -69,11 +74,30 @@ pub async fn join_team(
         None,
         None,
         Some(true),
-        &**pool,
+        None,
+        &mut transaction,
     )
     .await?;
 
+    transaction
+        .commit()
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
     Ok(HttpResponse::Ok().body(""))
+}
+
+fn default_role() -> String {
+    "Member".to_string()
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct NewTeamMember {
+    pub user_id: UserId,
+    #[serde(default = "default_role")]
+    pub role: String,
+    #[serde(default = "Permissions::default")]
+    pub permissions: Permissions,
 }
 
 #[post("{id}/members")]
@@ -81,7 +105,7 @@ pub async fn add_team_member(
     req: HttpRequest,
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
-    new_member: web::Json<crate::models::teams::TeamMember>,
+    new_member: web::Json<NewTeamMember>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
 
@@ -98,10 +122,19 @@ pub async fn add_team_member(
 
     if let Some(member) = team_member {
         if member.permissions.contains(Permissions::MANAGE_INVITES)
+            && member.accepted
             && new_member.role != crate::models::teams::OWNER_ROLE
         {
+            let new_user = crate::database::models::User::get(member.user_id, &**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?
+                .ok_or_else(|| {
+                    ApiError::InvalidInputError("Invalid User ID specified!".to_string())
+                })?;
             if !member.permissions.contains(new_member.permissions) {
-                return Err(ApiError::AuthenticationError);
+                return Err(ApiError::InvalidInputError(
+                    "New member permissions are not contained in your permissions.".to_string(),
+                ));
             }
 
             let new_id =
@@ -110,7 +143,7 @@ pub async fn add_team_member(
                 id: new_id,
                 team_id,
                 user_id: new_member.user_id.into(),
-                name: new_member.name.clone(),
+                name: new_user.username,
                 role: new_member.role.clone(),
                 permissions: new_member.permissions,
                 accepted: false,
@@ -137,6 +170,7 @@ pub async fn add_team_member(
 pub struct EditTeamMember {
     pub permissions: Option<Permissions>,
     pub role: Option<String>,
+    pub name: Option<String>,
 }
 
 #[patch("{id}/members/{user_id}")]
@@ -155,8 +189,14 @@ pub async fn edit_team_member(
         .map_err(|_| ApiError::AuthenticationError)?;
     let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
     if let Some(member) = team_member {
         if member.permissions.contains(Permissions::EDIT_MEMBER)
+            && member.accepted
             && edit_member.role.as_deref() != Some(crate::models::teams::OWNER_ROLE)
         {
             if let Some(new_permissions) = edit_member.permissions {
@@ -168,12 +208,18 @@ pub async fn edit_team_member(
             TeamMember::edit_team_member(
                 id,
                 user_id,
-                edit_member.permissions.map(|x| x.bits() as i64),
+                edit_member.permissions,
                 edit_member.role.clone(),
                 None,
-                &**pool,
+                edit_member.name.clone(),
+                &mut transaction,
             )
             .await?;
+
+            transaction
+                .commit()
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
             Ok(HttpResponse::Ok().body(""))
         } else {
@@ -204,14 +250,16 @@ pub async fn remove_team_member(
 
         if let Some(delete_member) = delete_member_option {
             if delete_member.accepted {
-                if member.permissions.contains(Permissions::DELETE_MOD) {
+                if delete_member.user_id == member.user_id
+                    || (member.permissions.contains(Permissions::REMOVE_MEMBER) && member.accepted)
+                {
                     TeamMember::delete(id, user_id, &**pool).await?;
                     Ok(HttpResponse::Ok().body(""))
                 } else {
                     Err(ApiError::AuthenticationError)
                 }
             } else {
-                if member.permissions.contains(Permissions::MANAGE_INVITES) {
+                if member.permissions.contains(Permissions::MANAGE_INVITES) && member.accepted {
                     TeamMember::delete(id, user_id, &**pool).await?;
                     Ok(HttpResponse::Ok().body(""))
                 } else {

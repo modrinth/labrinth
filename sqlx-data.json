@@ -548,6 +548,20 @@
       "nullable": []
     }
   },
+  "3b52d9f68ba23d1e3764f8df9f28bcaec0741101f6afd0c7c234b7f1b91054a4": {
+    "query": "\n                    UPDATE team_members\n                    SET accepted = TRUE\n                    WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)\n                    ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Text"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "42e072309779598d0c213280dd8052d1b4889cb24ef5204ca13b74f693b94328": {
     "query": "\n                SELECT user_id FROM team_members tm\n                INNER JOIN mods ON mods.team_id = tm.team_id\n                WHERE mods.id = $1\n                ",
     "describe": {
@@ -810,21 +824,6 @@
       "nullable": []
     }
   },
-  "7176e8907b3898ab135d4915158089275cb62d43e26e2053e3485e6b03dc5712": {
-    "query": "\n                UPDATE team_members\n                SET accepted = $1\n                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)\n                ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Bool",
-          "Int8",
-          "Int8",
-          "Text"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "71db1bc306ff6da3a92544e1585aa11c5627b50d95b15e794b2fa5dc838ea1a3": {
     "query": "\n        SELECT mod_id, version_number, author_id\n        FROM versions\n        WHERE id = $1\n        ",
     "describe": {
@@ -1010,23 +1009,6 @@
       ]
     }
   },
-  "8194b6b434cfff9989fcc6ee15481f61cb3b420b5ee4f3a8fae1d9f2c446475e": {
-    "query": "\n                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions, accepted)\n                VALUES ($1, $2, $3, $4, $5, $6, TRUE)\n                ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Int8",
-          "Varchar",
-          "Varchar",
-          "Int8"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "89fbff6249b248d3e150879aaea1662140bcb10d5104992c784285322c8b3b94": {
     "query": "\n            SELECT version FROM game_versions\n            ",
     "describe": {
@@ -1161,6 +1143,24 @@
         true,
         false
       ]
+    }
+  },
+  "9ef0577ee4845091a0d29bad6d1130223767e6d6140cafb9013fdb428d5159dd": {
+    "query": "\n                INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions, accepted)\n                VALUES ($1, $2, $3, $4, $5, $6, $7)\n                ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Int8",
+          "Bool"
+        ]
+      },
+      "nullable": []
     }
   },
   "a2a99a640468a9fb8f0718e5aea6740cf5b33dafd5e038c154d6a13674fa999b": {
@@ -1827,6 +1827,21 @@
       "nullable": [
         false
       ]
+    }
+  },
+  "e53013562a3a9659df5c56185b92cf9cc30ce7e409f4762be98662161af593b9": {
+    "query": "\n                UPDATE team_members\n                SET member_name = $1\n                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)\n                ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8",
+          "Int8",
+          "Text"
+        ]
+      },
+      "nullable": []
     }
   },
   "e673006d1355fa91ba5739d7cf569eec5e1ec501f7b1dc2b431f0b1c25ac07d5": {

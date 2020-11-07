@@ -151,7 +151,7 @@ pub async fn mod_delete(
         .map_err(|e| ApiError::DatabaseError(e.into()))?
         .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
 
-        if team_member.permissions.contains(Permissions::DELETE_MOD) {
+        if !team_member.permissions.contains(Permissions::DELETE_MOD) && team_member.accepted {
             return Err(ApiError::AuthenticationError);
         }
     }

@@ -191,6 +191,7 @@ pub async fn version_delete(
         if team_member
             .permissions
             .contains(Permissions::DELETE_VERSION)
+            && team_member.accepted
         {
             return Err(ApiError::AuthenticationError);
         }

@@ -133,11 +133,13 @@ pub async fn teams(
     let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
     let results;
+    let mut same_user = false;
 
     if let Some(user) = current_user {
         if user.id.0 == id.0 as u64 {
             results =
                 crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;
+            same_user = true;
         } else {
             results =
                 crate::database::models::TeamMember::get_from_user_public(id, &**pool).await?;
@@ -152,8 +154,11 @@ pub async fn teams(
             user_id: data.user_id.into(),
             name: data.name,
             role: data.role,
-            // TODO: Return permissions if user is the logged in user
-            permissions: Permissions::default(),
+            permissions: if same_user {
+                data.permissions
+            } else {
+                Permissions::default()
+            },
         })
         .collect();
 

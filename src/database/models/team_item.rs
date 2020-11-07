@@ -46,14 +46,15 @@ impl TeamBuilder {
             sqlx::query!(
                 "
                 INSERT INTO team_members (id, team_id, user_id, member_name, role, permissions, accepted)
-                VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 ",
                 team_member.id as TeamMemberId,
                 team_member.team_id as TeamId,
                 team_member.user_id as UserId,
                 team_member.name,
                 team_member.role,
-                team_member.permissions.bits() as i64
+                team_member.permissions.bits() as i64,
+                team_member.accepted,
             )
             .execute(&mut *transaction)
             .await?;
@@ -102,15 +103,24 @@ impl TeamMember {
         )
         .fetch_many(executor)
         .try_filter_map(|e| async {
-            Ok(e.right().map(|m| TeamMember {
-                id: TeamMemberId(m.id),
-                team_id: id,
-                user_id: UserId(m.user_id),
-                name: m.member_name,
-                role: m.role,
-                permissions: Permissions::from_bits_truncate(m.permissions as u64),
-                accepted: m.accepted,
-            }))
+            if let Some(m) = e.right() {
+                let permissions = Permissions::from_bits(m.permissions as u64);
+                if let Some(perms) = permissions {
+                    Ok(Some(TeamMember {
+                        id: TeamMemberId(m.id),
+                        team_id: id,
+                        user_id: UserId(m.user_id),
+                        name: m.member_name,
+                        role: m.role,
+                        permissions: perms,
+                        accepted: m.accepted,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            } else {
+                Ok(None)
+            }
         })
         .try_collect::<Vec<TeamMember>>()
         .await?;
@@ -137,15 +147,24 @@ impl TeamMember {
         )
         .fetch_many(executor)
         .try_filter_map(|e| async {
-            Ok(e.right().map(|m| TeamMember {
-                id: TeamMemberId(m.id),
-                team_id: TeamId(m.team_id),
-                user_id: id,
-                name: m.member_name,
-                role: m.role,
-                permissions: Permissions::from_bits_truncate(m.permissions as u64),
-                accepted: m.accepted,
-            }))
+            if let Some(m) = e.right() {
+                let permissions = Permissions::from_bits(m.permissions as u64);
+                if let Some(perms) = permissions {
+                    Ok(Some(TeamMember {
+                        id: TeamMemberId(m.id),
+                        team_id: TeamId(m.team_id),
+                        user_id: id,
+                        name: m.member_name,
+                        role: m.role,
+                        permissions: perms,
+                        accepted: m.accepted,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            } else {
+                Ok(None)
+            }
         })
         .try_collect::<Vec<TeamMember>>()
         .await?;
@@ -172,15 +191,24 @@ impl TeamMember {
         )
         .fetch_many(executor)
         .try_filter_map(|e| async {
-            Ok(e.right().map(|m| TeamMember {
-                id: TeamMemberId(m.id),
-                team_id: TeamId(m.team_id),
-                user_id: id,
-                name: m.member_name,
-                role: m.role,
-                permissions: Permissions::from_bits_truncate(m.permissions as u64),
-                accepted: m.accepted,
-            }))
+            if let Some(m) = e.right() {
+                let permissions = Permissions::from_bits(m.permissions as u64);
+                if let Some(perms) = permissions {
+                    Ok(Some(TeamMember {
+                        id: TeamMemberId(m.id),
+                        team_id: TeamId(m.team_id),
+                        user_id: id,
+                        name: m.member_name,
+                        role: m.role,
+                        permissions: perms,
+                        accepted: m.accepted,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            } else {
+                Ok(None)
+            }
         })
         .try_collect::<Vec<TeamMember>>()
         .await?;
@@ -215,7 +243,8 @@ impl TeamMember {
                 user_id,
                 name: m.member_name,
                 role: m.role,
-                permissions: Permissions::from_bits_truncate(m.permissions as u64),
+                permissions: Permissions::from_bits(m.permissions as u64)
+                    .ok_or_else(|| super::DatabaseError::BitflagError)?,
                 accepted: m.accepted,
             }))
         } else {
@@ -273,17 +302,15 @@ impl TeamMember {
         Ok(())
     }
 
-    pub async fn edit_team_member<'a, 'b, E>(
+    pub async fn edit_team_member(
         id: TeamId,
         user_id: UserId,
-        new_permissions: Option<i64>,
+        new_permissions: Option<Permissions>,
         new_role: Option<String>,
         new_accepted: Option<bool>,
-        executor: E,
-    ) -> Result<(), super::DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
-    {
+        new_name: Option<String>,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), super::DatabaseError> {
         if let Some(permissions) = new_permissions {
             sqlx::query!(
                 "
@@ -291,12 +318,12 @@ impl TeamMember {
                 SET permissions = $1
                 WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)
                 ",
-                permissions,
+                permissions.bits() as i64,
                 id as TeamId,
                 user_id as UserId,
-                crate::models::teams::OWNER_ROLE.to_string(),
+                crate::models::teams::OWNER_ROLE,
             )
-            .execute(executor)
+            .execute(&mut *transaction)
             .await?;
         }
 
@@ -312,23 +339,40 @@ impl TeamMember {
                 user_id as UserId,
                 crate::models::teams::OWNER_ROLE.to_string(),
             )
-            .execute(executor)
+            .execute(&mut *transaction)
             .await?;
         }
 
         if let Some(accepted) = new_accepted {
+            if accepted {
+                sqlx::query!(
+                    "
+                    UPDATE team_members
+                    SET accepted = TRUE
+                    WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
+                    ",
+                    id as TeamId,
+                    user_id as UserId,
+                    crate::models::teams::OWNER_ROLE,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+        }
+
+        if let Some(name) = new_name {
             sqlx::query!(
                 "
                 UPDATE team_members
-                SET accepted = $1
+                SET member_name = $1
                 WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)
                 ",
-                accepted,
+                name,
                 id as TeamId,
                 user_id as UserId,
                 crate::models::teams::OWNER_ROLE.to_string(),
             )
-            .execute(executor)
+            .execute(&mut *transaction)
             .await?;
         }
 

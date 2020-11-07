@@ -23,14 +23,14 @@ pub struct Team {
 bitflags::bitflags! {
     #[derive(Serialize, Deserialize)]
     pub struct Permissions: u64 {
-        const UPLOAD_VERSION = 0b00000001;
-        const DELETE_VERSION = 0b00000010;
-        const EDIT_DETAILS = 0b00000100;
-        const EDIT_BODY = 0b00001000;
-        const MANAGE_INVITES = 0b00010000;
-        const REMOVE_MEMBER = 0b00100000;
-        const EDIT_MEMBER = 0b01000000;
-        const DELETE_MOD = 0b10000000;
+        const UPLOAD_VERSION = 1 << 0;
+        const DELETE_VERSION = 1 << 1;
+        const EDIT_DETAILS = 1 << 2;
+        const EDIT_BODY = 1 << 3;
+        const MANAGE_INVITES = 1 << 4;
+        const REMOVE_MEMBER = 1 << 5;
+        const EDIT_MEMBER = 1 << 6;
+        const DELETE_MOD = 1 << 7;
         const ALL = 0b11111111;
     }
 }
@@ -50,6 +50,6 @@ pub struct TeamMember {
     pub name: String,
     /// The role of the user in the team
     pub role: String,
-    /// A bitflag containing the user's permissions in this team
+    /// A bitset containing the user's permissions in this team
     pub permissions: Permissions,
 }
