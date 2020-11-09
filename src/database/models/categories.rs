@@ -130,6 +130,7 @@ impl<'a> CategoryBuilder<'a> {
             "
             INSERT INTO categories (category)
             VALUES ($1)
+            ON CONFLICT (category) DO NOTHING
             RETURNING id
             ",
             self.name
@@ -255,6 +256,7 @@ impl<'a> LoaderBuilder<'a> {
             "
             INSERT INTO loaders (loader)
             VALUES ($1)
+            ON CONFLICT (loader) DO NOTHING
             RETURNING id
             ",
             self.name
@@ -266,13 +268,16 @@ impl<'a> LoaderBuilder<'a> {
     }
 }
 
+#[derive(Default)]
 pub struct GameVersionBuilder<'a> {
     pub version: Option<&'a str>,
+    pub version_type: Option<&'a str>,
+    pub date: Option<&'a chrono::DateTime<chrono::Utc>>,
 }
 
 impl GameVersion {
     pub fn builder() -> GameVersionBuilder<'static> {
-        GameVersionBuilder { version: None }
+        GameVersionBuilder::default()
     }
 
     pub async fn get_id<'a, E>(
@@ -302,7 +307,7 @@ impl GameVersion {
         Ok(result.map(|r| GameVersionId(r.id)))
     }
 
-    pub async fn get_name<'a, E>(id: VersionId, exec: E) -> Result<String, DatabaseError>
+    pub async fn get_name<'a, E>(id: GameVersionId, exec: E) -> Result<String, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -311,7 +316,7 @@ impl GameVersion {
             SELECT version FROM game_versions
             WHERE id = $1
             ",
-            id as VersionId
+            id as GameVersionId
         )
         .fetch_one(exec)
         .await?;
@@ -326,7 +331,28 @@ impl GameVersion {
         let result = sqlx::query!(
             "
             SELECT version FROM game_versions
+            ORDER BY created DESC
             "
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
+        .try_collect::<Vec<String>>()
+        .await?;
+
+        Ok(result)
+    }
+
+    pub async fn list_type<'a, E>(version_type: &str, exec: E) -> Result<Vec<String>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT version FROM game_versions
+            WHERE type = $1
+            ORDER BY created DESC
+            ",
+            version_type
         )
         .fetch_many(exec)
         .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
@@ -370,9 +396,34 @@ impl<'a> GameVersionBuilder<'a> {
         {
             Ok(Self {
                 version: Some(version),
+                ..self
             })
         } else {
             Err(DatabaseError::InvalidIdentifier(version.to_string()))
+        }
+    }
+
+    pub fn version_type(
+        self,
+        version_type: &'a str,
+    ) -> Result<GameVersionBuilder<'a>, DatabaseError> {
+        if version_type
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+        {
+            Ok(Self {
+                version_type: Some(version_type),
+                ..self
+            })
+        } else {
+            Err(DatabaseError::InvalidIdentifier(version_type.to_string()))
+        }
+    }
+
+    pub fn created(self, created: &'a chrono::DateTime<chrono::Utc>) -> GameVersionBuilder<'a> {
+        Self {
+            date: Some(created),
+            ..self
         }
     }
 
@@ -380,13 +431,21 @@ impl<'a> GameVersionBuilder<'a> {
     where
         E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
+        // This looks like a mess, but it *should* work
+        // This allows game versions to be partially updated without
+        // replacing the unspecified fields with defaults.
         let result = sqlx::query!(
             "
-            INSERT INTO game_versions (version)
-            VALUES ($1)
+            INSERT INTO game_versions (version, type, created)
+            VALUES ($1, COALESCE($2, 'other'), COALESCE($3, timezone('utc', now())))
+            ON CONFLICT (version) DO UPDATE
+                SET type = COALESCE($2, game_versions.type),
+                    created = COALESCE($3, game_versions.created)
             RETURNING id
             ",
-            self.version
+            self.version,
+            self.version_type,
+            self.date.map(chrono::DateTime::naive_utc),
         )
         .fetch_one(exec)
         .await?;

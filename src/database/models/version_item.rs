@@ -84,6 +84,17 @@ impl VersionBuilder {
 
         version.insert(&mut *transaction).await?;
 
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET updated = NOW()
+            WHERE id = $1
+            ",
+            self.mod_id as ModId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
         for file in self.files {
             file.insert(self.version_id, transaction).await?;
         }
@@ -511,6 +522,18 @@ impl Version {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn get_many_full<'a, E>(
+        version_ids: Vec<VersionId>,
+        exec: E,
+    ) -> Result<Vec<Option<QueryVersion>>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        // TODO: this could be optimized
+        futures::future::try_join_all(version_ids.into_iter().map(|id| Self::get_full(id, exec)))
+            .await
     }
 }
 
