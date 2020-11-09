@@ -342,15 +342,9 @@ pub async fn version_delete(
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(
-        req.headers(),
-        &mut *pool
-            .acquire()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?,
-    )
-    .await
-    .map_err(|_| ApiError::AuthenticationError)?;
+    check_is_moderator_from_headers(req.headers(), &**pool)
+        .await
+        .map_err(|_| ApiError::AuthenticationError)?;
 
     // TODO: check if the mod exists and matches the version id
     let id = info.into_inner().0;
@@ -405,10 +399,15 @@ pub async fn get_version_from_hash(
 // under /api/v1/file/{hash}
 #[delete("{version_id}")]
 pub async fn delete_file(
+    req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
+    check_is_moderator_from_headers(req.headers(), &**pool)
+        .await
+        .map_err(|_| ApiError::AuthenticationError)?;
+
     let hash = info.into_inner().0;
 
     let result = sqlx::query!(
