@@ -2,6 +2,7 @@ use futures::{StreamExt, TryStreamExt};
 use log::info;
 
 use super::IndexingError;
+use crate::models::mods::ModStatus;
 use crate::search::UploadSearchMod;
 use sqlx::postgres::PgPool;
 use std::borrow::Cow;
@@ -14,12 +15,29 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
 
     let mut mods = sqlx::query!(
         "
-        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id FROM mods m
+        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.status FROM mods m
         "
     ).fetch(&pool);
 
     while let Some(result) = mods.next().await {
         if let Ok(mod_data) = result {
+            let status = crate::models::mods::ModStatus::from_str(
+                &sqlx::query!(
+                    "
+                SELECT status FROM statuses
+                WHERE id = $1
+                ",
+                    mod_data.status,
+                )
+                .fetch_one(&pool)
+                .await?
+                .status,
+            );
+
+            if status != ModStatus::Approved {
+                continue;
+            }
+
             let versions = sqlx::query!(
                 "
                 SELECT gv.version FROM versions

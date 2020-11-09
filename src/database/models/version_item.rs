@@ -291,6 +291,15 @@ impl Version {
         .execute(exec)
         .await?;
 
+        sqlx::query!(
+            "
+            DELETE FROM dependencies WHERE dependent_id = $1
+            ",
+            id as VersionId,
+        )
+        .execute(exec)
+        .await?;
+
         Ok(Some(()))
     }
 

@@ -543,10 +543,12 @@ async fn create_initial_version(
         None
     };
 
-    let release_channel =
-        models::ChannelId::get_id(version_data.release_channel.as_str(), &mut *transaction)
-            .await?
-            .expect("Release Channel not found in database");
+    let release_channel = models::ChannelId::get_id(
+        &*format!("{}-hidden", version_data.release_channel.as_str()),
+        &mut *transaction,
+    )
+    .await?
+    .expect("Release Channel not found in database");
 
     let mut game_versions = Vec::with_capacity(version_data.game_versions.len());
     for v in &version_data.game_versions {

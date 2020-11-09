@@ -227,7 +227,7 @@ async fn version_create_inner(
             }
 
             let release_channel = models::ChannelId::get_id(
-                version_create_data.release_channel.as_str(),
+                &*format!("{}-hidden", version_create_data.release_channel.as_str()),
                 &mut *transaction,
             )
             .await?

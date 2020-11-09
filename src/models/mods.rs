@@ -58,7 +58,7 @@ pub struct Mod {
 /// Draft - Mod is not displayed on search, and not accessible by URL
 /// Unlisted - Mod is not displayed on search, but accessible by URL
 /// Processing - Mod is not displayed on search, and not accessible by URL (Temporary state, mod under review)
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ModStatus {
     Approved,
@@ -154,8 +154,11 @@ pub struct VersionFile {
 #[serde(rename_all = "lowercase")]
 pub enum VersionType {
     Release,
+    ReleaseHidden,
     Beta,
+    BetaHidden,
     Alpha,
+    AlphaHidden,
 }
 
 impl std::fmt::Display for VersionType {
@@ -164,6 +167,9 @@ impl std::fmt::Display for VersionType {
             VersionType::Release => write!(fmt, "release"),
             VersionType::Beta => write!(fmt, "beta"),
             VersionType::Alpha => write!(fmt, "alpha"),
+            VersionType::ReleaseHidden => write!(fmt, "release-hidden"),
+            VersionType::BetaHidden => write!(fmt, "beta-hidden"),
+            VersionType::AlphaHidden => write!(fmt, "alpha-hidden"),
         }
     }
 }
@@ -175,6 +181,9 @@ impl VersionType {
             VersionType::Release => "release",
             VersionType::Beta => "beta",
             VersionType::Alpha => "alpha",
+            VersionType::ReleaseHidden => "release-hidden",
+            VersionType::BetaHidden => "beta-hidden",
+            VersionType::AlphaHidden => "alpha-hidden",
         }
     }
 }
