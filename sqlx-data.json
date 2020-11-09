@@ -824,6 +824,57 @@
       "nullable": []
     }
   },
+  "6d8f1863579977d367784a5b457e21c841886834afe69a964de039d6f92795d4": {
+    "query": "\n            SELECT id, user_id, member_name, role, permissions, accepted\n            FROM team_members\n            WHERE (team_id = $1 AND user_id = $2)\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "user_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "member_name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "permissions",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 5,
+          "name": "accepted",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  },
   "71db1bc306ff6da3a92544e1585aa11c5627b50d95b15e794b2fa5dc838ea1a3": {
     "query": "\n        SELECT mod_id, version_number, author_id\n        FROM versions\n        WHERE id = $1\n        ",
     "describe": {

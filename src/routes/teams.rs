@@ -326,12 +326,15 @@ pub async fn remove_team_member(
 
     if let Some(delete_member) = delete_member {
         if delete_member.role == crate::models::teams::OWNER_ROLE {
+            // The owner cannot be removed from a team
             return Err(ApiError::CustomAuthenticationError(
                 "The owner can't be removed from a team".to_string(),
             ));
         }
 
         if delete_member.accepted {
+            // Members other than the owner can either leave the team, or be
+            // removed by a member with the REMOVE_MEMBER permission.
             if delete_member.user_id == member.user_id
                 || member.permissions.contains(Permissions::REMOVE_MEMBER)
             {
@@ -341,16 +344,17 @@ pub async fn remove_team_member(
                     "You do not have permission to remove a member from this team".to_string(),
                 ));
             }
+        } else if delete_member.user_id == member.user_id
+            || member.permissions.contains(Permissions::MANAGE_INVITES)
+        {
+            // This is a pending invite rather than a member, so the
+            // user being invited or team members with the MANAGE_INVITES
+            // permission can remove it.
+            TeamMember::delete(id, user_id, &**pool).await?;
         } else {
-            if delete_member.user_id == member.user_id
-                || member.permissions.contains(Permissions::MANAGE_INVITES)
-            {
-                TeamMember::delete(id, user_id, &**pool).await?;
-            } else {
-                return Err(ApiError::CustomAuthenticationError(
-                    "You do not have permission to cancel a team invite".to_string(),
-                ));
-            }
+            return Err(ApiError::CustomAuthenticationError(
+                "You do not have permission to cancel a team invite".to_string(),
+            ));
         }
         Ok(HttpResponse::Ok().body(""))
     } else {

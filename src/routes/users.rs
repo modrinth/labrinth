@@ -1,5 +1,5 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
-use crate::database::models::User;
+use crate::database::models::{TeamMember, User};
 use crate::models::teams::Permissions;
 use crate::models::users::{Role, UserId};
 use crate::routes::ApiError;
@@ -136,15 +136,13 @@ pub async fn teams(
 
     if let Some(user) = current_user {
         if user.id.0 == id.0 as u64 {
-            results =
-                crate::database::models::TeamMember::get_from_user_private(id, &**pool).await?;
+            results = TeamMember::get_from_user_private(id, &**pool).await?;
             same_user = true;
         } else {
-            results =
-                crate::database::models::TeamMember::get_from_user_public(id, &**pool).await?;
+            results = TeamMember::get_from_user_public(id, &**pool).await?;
         }
     } else {
-        results = crate::database::models::TeamMember::get_from_user_public(id, &**pool).await?;
+        results = TeamMember::get_from_user_public(id, &**pool).await?;
     }
 
     let team_members: Vec<crate::models::teams::TeamMember> = results
