@@ -4,6 +4,7 @@ use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::mods::{ModStatus, SearchRequest};
+use crate::models::teams::Permissions;
 use crate::models::users::Role;
 use crate::search::{search_for_mod, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
@@ -306,11 +307,30 @@ pub async fn mod_delete(
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
-
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id = info.into_inner().0;
+
+    if user.role != Role::Moderator || user.role != Role::Admin {
+        let mod_item = database::models::Mod::get(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+        let team_member = database::models::TeamMember::get_from_user_id(
+            mod_item.team_id,
+            user.id.into(),
+            &**pool,
+        )
+        .await
+        .map_err(ApiError::DatabaseError)?
+        .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+
+        if !team_member.permissions.contains(Permissions::DELETE_MOD) {
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to delete this mod".to_string(),
+            ));
+        }
+    }
+
     let result = database::models::Mod::remove_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;

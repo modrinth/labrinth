@@ -3,6 +3,7 @@ use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
+use crate::models::teams::Permissions;
 use crate::models::users::Role;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -342,12 +343,41 @@ pub async fn version_delete(
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
-
-    // TODO: check if the mod exists and matches the version id
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id = info.into_inner().0;
+
+    if user.role != Role::Moderator || user.role != Role::Admin {
+        let version = database::models::Version::get(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .ok_or_else(|| {
+                ApiError::InvalidInputError("Invalid Version ID specified!".to_string())
+            })?;
+        let mod_item = database::models::Mod::get(version.mod_id, &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .ok_or_else(|| {
+                ApiError::InvalidInputError("Invalid Version ID specified!".to_string())
+            })?;
+        let team_member = database::models::TeamMember::get_from_user_id(
+            mod_item.team_id,
+            user.id.into(),
+            &**pool,
+        )
+        .await
+        .map_err(ApiError::DatabaseError)?
+        .ok_or_else(|| ApiError::InvalidInputError("Invalid Version ID specified!".to_string()))?;
+
+        if !team_member
+            .permissions
+            .contains(Permissions::DELETE_VERSION)
+        {
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to delete versions in this team".to_string(),
+            ));
+        }
+    }
+  
     let result = database::models::Version::remove_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;

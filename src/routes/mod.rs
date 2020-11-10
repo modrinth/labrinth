@@ -58,12 +58,20 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
         web::scope("user")
             .service(users::user_get)
             .service(users::mods_list)
-            .service(users::user_delete),
+            .service(users::user_delete)
+            .service(users::teams),
     );
 }
 
 pub fn teams_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("team").service(teams::team_members_get));
+    cfg.service(
+        web::scope("team")
+            .service(teams::team_members_get)
+            .service(teams::edit_team_member)
+            .service(teams::add_team_member)
+            .service(teams::join_team)
+            .service(teams::remove_team_member),
+    );
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -74,23 +82,26 @@ pub enum ApiError {
     DatabaseError(#[from] crate::database::models::DatabaseError),
     #[error("Deserialization error: {0}")]
     JsonError(#[from] serde_json::Error),
-    #[error("Authentication Error")]
-    AuthenticationError,
+    #[error("Authentication Error: {0}")]
+    AuthenticationError(#[from] crate::auth::AuthenticationError),
+    #[error("Authentication Error: {0}")]
+    CustomAuthenticationError(String),
+    #[error("Invalid Input: {0}")]
+    InvalidInputError(String),
     #[error("Search Error: {0}")]
     SearchError(#[from] meilisearch_sdk::errors::Error),
-    #[error("Invalid Input: {0}")]
-    InvalidInput(String),
 }
 
 impl actix_web::ResponseError for ApiError {
     fn status_code(&self) -> actix_web::http::StatusCode {
         match self {
             ApiError::DatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::AuthenticationError => actix_web::http::StatusCode::UNAUTHORIZED,
+            ApiError::AuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
+            ApiError::CustomAuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::JsonError(..) => actix_web::http::StatusCode::BAD_REQUEST,
             ApiError::SearchError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::InvalidInput(..) => actix_web::http::StatusCode::BAD_REQUEST,
             ApiError::FileHostingError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::InvalidInputError(..) => actix_web::http::StatusCode::BAD_REQUEST,
         }
     }
 
@@ -99,11 +110,12 @@ impl actix_web::ResponseError for ApiError {
             crate::models::error::ApiError {
                 error: match self {
                     ApiError::DatabaseError(..) => "database_error",
-                    ApiError::AuthenticationError => "unauthorized",
+                    ApiError::AuthenticationError(..) => "unauthorized",
+                    ApiError::CustomAuthenticationError(..) => "unauthorized",
                     ApiError::JsonError(..) => "json_error",
                     ApiError::SearchError(..) => "search_error",
-                    ApiError::InvalidInput(..) => "invalid_input",
                     ApiError::FileHostingError(..) => "file_hosting_error",
+                    ApiError::InvalidInputError(..) => "invalid_input",
                 },
                 description: &self.to_string(),
             },
