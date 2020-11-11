@@ -149,7 +149,6 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
 #[derive(Serialize, Deserialize)]
 pub struct EditVersion {
     pub name: Option<String>,
-    pub version_number: Option<String>,
     pub changelog: Option<String>,
     pub version_type: Option<models::mods::VersionType>,
     pub dependencies: Option<Vec<models::ids::VersionId>>,
@@ -166,8 +165,7 @@ pub async fn version_edit(
     new_version: web::Json<EditVersion>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+        .await?;
 
     let version_id = info.into_inner().0;
     let id = version_id.into();
@@ -202,24 +200,9 @@ pub async fn version_edit(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(number) = &new_version.version_number {
-                sqlx::query!(
-                    "
-                    UPDATE versions
-                    SET version_number = $1
-                    WHERE (id = $2)
-                    ",
-                    number,
-                    id as database::models::ids::VersionId,
-                )
-                .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
-            }
-
             if let Some(version_type) = &new_version.version_type {
                 if version_type.as_str().ends_with("hidden") && !is_moderator {
-                    return Err(ApiError::AuthenticationError);
+                    return Err(ApiError::CustomAuthenticationError("You do not have permission to set this version type!".to_string()));
                 }
 
                 let channel = database::models::ids::ChannelId::get_id(
@@ -228,7 +211,7 @@ pub async fn version_edit(
                 )
                 .await?
                 .ok_or_else(|| {
-                    ApiError::InvalidInput(
+                    ApiError::InvalidInputError(
                         "No database entry for version type provided.".to_string(),
                     )
                 })?;
@@ -291,7 +274,7 @@ pub async fn version_edit(
                         database::models::categories::Loader::get_id(&loader.0, &mut *transaction)
                             .await?
                             .ok_or_else(|| {
-                                ApiError::InvalidInput(
+                                ApiError::InvalidInputError(
                                     "No database entry for loader provided.".to_string(),
                                 )
                             })?;
@@ -330,7 +313,7 @@ pub async fn version_edit(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             Ok(HttpResponse::Ok().body(""))
         } else {
-            Err(ApiError::AuthenticationError)
+            Err(ApiError::CustomAuthenticationError("You do not have permission to edit this version!".to_string()))
         }
     } else {
         Ok(HttpResponse::NotFound().body(""))
@@ -435,8 +418,7 @@ pub async fn delete_file(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+        .await?;
 
     let hash = info.into_inner().0;
 

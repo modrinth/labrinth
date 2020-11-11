@@ -44,7 +44,7 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
             .service(versions::version_edit),
     );
     cfg.service(
-        web::scope("file")
+        web::scope("version_file")
             .service(versions::delete_file)
             .service(versions::get_version_from_hash),
     );

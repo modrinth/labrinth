@@ -112,8 +112,7 @@ pub async fn mod_edit(
     new_mod: web::Json<EditMod>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool)
-        .await
-        .map_err(|_| ApiError::AuthenticationError)?;
+        .await?;
 
     let mod_id = info.into_inner().0;
     let id = mod_id.into();
@@ -166,14 +165,14 @@ pub async fn mod_edit(
             if let Some(status) = &new_mod.status {
                 if status == &ModStatus::Rejected || status == &ModStatus::Approved {
                     if !is_moderator {
-                        return Err(ApiError::AuthenticationError);
+                        return Err(ApiError::CustomAuthenticationError("You don't have permission to set this status".to_string()));
                     }
                 }
 
                 let status_id = database::models::StatusId::get_id(&status, &mut *transaction)
                     .await?
                     .ok_or_else(|| {
-                        ApiError::InvalidInput("No database entry for status provided.".to_string())
+                        ApiError::InvalidInputError("No database entry for status provided.".to_string())
                     })?;
                 sqlx::query!(
                     "
@@ -212,7 +211,7 @@ pub async fn mod_edit(
                     )
                     .await?
                     .ok_or_else(|| {
-                        ApiError::InvalidInput(format!(
+                        ApiError::InvalidInputError(format!(
                             "Category {} does not exist.",
                             category.clone()
                         ))
@@ -293,7 +292,7 @@ pub async fn mod_edit(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             Ok(HttpResponse::Ok().body(""))
         } else {
-            Err(ApiError::AuthenticationError)
+            Err(ApiError::CustomAuthenticationError("You do not have permission to edit this mod!".to_string()))
         }
     } else {
         Ok(HttpResponse::NotFound().body(""))
