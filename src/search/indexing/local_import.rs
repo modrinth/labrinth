@@ -40,7 +40,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
 
             let versions = sqlx::query!(
                 "
-                SELECT gv.version FROM versions
+                SELECT DISTINCT gv.version, gv.created FROM versions
                     INNER JOIN game_versions_versions gvv ON gvv.joining_version_id=versions.id
                     INNER JOIN game_versions gv ON gvv.game_version_id=gv.id
                 WHERE versions.mod_id = $1
@@ -108,7 +108,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
             // minecraft that this mod has a version that supports; it doesn't
             // take betas or other info into account.
             let latest_version = versions
-                .get(0)
+                .last()
                 .cloned()
                 .map(Cow::Owned)
                 .unwrap_or_else(|| Cow::Borrowed(""));
@@ -152,7 +152,7 @@ pub async fn query_one(
 
     let versions = sqlx::query!(
         "
-        SELECT gv.version FROM versions
+        SELECT DISTINCT gv.version, gv.created FROM versions
             INNER JOIN game_versions_versions gvv ON gvv.joining_version_id=versions.id
             INNER JOIN game_versions gv ON gvv.game_version_id=gv.id
         WHERE versions.mod_id = $1
@@ -220,7 +220,7 @@ pub async fn query_one(
     // minecraft that this mod has a version that supports; it doesn't
     // take betas or other info into account.
     let latest_version = versions
-        .get(0)
+        .last()
         .cloned()
         .map(Cow::Owned)
         .unwrap_or_else(|| Cow::Borrowed(""));
