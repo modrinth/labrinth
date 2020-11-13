@@ -1,5 +1,5 @@
 use super::ApiError;
-use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
+use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
@@ -29,6 +29,7 @@ pub struct ModIds {
 // TODO: Make this return the full mod struct
 #[get("mods")]
 pub async fn mods_get(
+    req: HttpRequest,
     web::Query(ids): web::Query<ModIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -41,17 +42,39 @@ pub async fn mods_get(
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    let mods = mods_data
-        .into_iter()
-        .filter_map(|m| m)
-        .map(convert_mod)
-        .collect::<Vec<_>>();
+    let mut mods = Vec::new();
+
+    for mod_data_option in mods_data {
+        if let Some(mod_data) = mod_data_option {
+            let mut authorized = mod_data.status == ModStatus::Approved;
+
+            if !authorized {
+                let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+                let team_member = database::models::TeamMember::get_from_user_id(
+                    mod_data.inner.team_id,
+                    user.id.into(),
+                    &**pool,
+                )
+                .await?;
+
+                authorized = team_member.is_some()
+                    || user.role == Role::Moderator
+                    || user.role == Role::Admin
+            }
+
+            if authorized {
+                mods.push(convert_mod(mod_data));
+            }
+        }
+    }
 
     Ok(HttpResponse::Ok().json(mods))
 }
 
 #[get("{id}")]
 pub async fn mod_get(
+    req: HttpRequest,
     info: web::Path<(models::ids::ModId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -61,7 +84,27 @@ pub async fn mod_get(
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(data) = mod_data {
-        Ok(HttpResponse::Ok().json(convert_mod(data)))
+        let mut authorized = data.status == ModStatus::Approved;
+
+        if !authorized {
+            let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+            let team_member = database::models::TeamMember::get_from_user_id(
+                data.inner.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
+
+            authorized =
+                team_member.is_some() || user.role == Role::Moderator || user.role == Role::Admin
+        }
+
+        if authorized {
+            return Ok(HttpResponse::Ok().json(convert_mod(data)));
+        }
+
+        Ok(HttpResponse::NotFound().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -111,8 +154,7 @@ pub async fn mod_edit(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     new_mod: web::Json<EditMod>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool)
-        .await?;
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
 
     let mod_id = info.into_inner().0;
     let id = mod_id.into();
@@ -123,16 +165,36 @@ pub async fn mod_edit(
 
     if let Some(mod_item) = result {
         let is_moderator = user.role == Role::Moderator || user.role == Role::Admin;
+        let team_member = database::models::TeamMember::get_from_user_id(
+            mod_item.inner.team_id,
+            user.id.into(),
+            &**pool,
+        )
+        .await?;
+        let permissions;
 
-        if is_moderator
-        /* TODO: Make user be able to edit their own mods, by checking permissions */
-        {
+        if let Some(member) = team_member {
+            permissions = Some(member.permissions)
+        } else if is_moderator {
+            permissions = Some(Permissions::ALL)
+        } else {
+            permissions = None
+        }
+
+        if let Some(perms) = permissions {
             let mut transaction = pool
                 .begin()
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
             if let Some(title) = &new_mod.title {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the title of this mod!"
+                            .to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -148,6 +210,13 @@ pub async fn mod_edit(
             }
 
             if let Some(description) = &new_mod.description {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the description of this mod!"
+                            .to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -163,16 +232,27 @@ pub async fn mod_edit(
             }
 
             if let Some(status) = &new_mod.status {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the status of this mod!"
+                            .to_string(),
+                    ));
+                }
+
                 if status == &ModStatus::Rejected || status == &ModStatus::Approved {
                     if !is_moderator {
-                        return Err(ApiError::CustomAuthenticationError("You don't have permission to set this status".to_string()));
+                        return Err(ApiError::CustomAuthenticationError(
+                            "You don't have permission to set this status".to_string(),
+                        ));
                     }
                 }
 
                 let status_id = database::models::StatusId::get_id(&status, &mut *transaction)
                     .await?
                     .ok_or_else(|| {
-                        ApiError::InvalidInputError("No database entry for status provided.".to_string())
+                        ApiError::InvalidInputError(
+                            "No database entry for status provided.".to_string(),
+                        )
                     })?;
                 sqlx::query!(
                     "
@@ -193,6 +273,13 @@ pub async fn mod_edit(
             }
 
             if let Some(categories) = &new_mod.categories {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the categories of this mod!"
+                            .to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     DELETE FROM mods_categories
@@ -232,6 +319,13 @@ pub async fn mod_edit(
             }
 
             if let Some(issues_url) = &new_mod.issues_url {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the issues URL of this mod!"
+                            .to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -247,6 +341,13 @@ pub async fn mod_edit(
             }
 
             if let Some(source_url) = &new_mod.source_url {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the source URL of this mod!"
+                            .to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -262,6 +363,13 @@ pub async fn mod_edit(
             }
 
             if let Some(wiki_url) = &new_mod.wiki_url {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the wiki URL of this mod!"
+                            .to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -277,6 +385,12 @@ pub async fn mod_edit(
             }
 
             if let Some(body) = &new_mod.body {
+                if !perms.contains(Permissions::EDIT_BODY) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the body of this mod!".to_string(),
+                    ));
+                }
+
                 let body_path = format!("data/{}/description.md", mod_id);
 
                 file_host.delete_file_version("", &*body_path).await?;
@@ -292,7 +406,9 @@ pub async fn mod_edit(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             Ok(HttpResponse::Ok().body(""))
         } else {
-            Err(ApiError::CustomAuthenticationError("You do not have permission to edit this mod!".to_string()))
+            Err(ApiError::CustomAuthenticationError(
+                "You do not have permission to edit this mod!".to_string(),
+            ))
         }
     } else {
         Ok(HttpResponse::NotFound().body(""))

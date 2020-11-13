@@ -113,6 +113,8 @@ struct ModCreateData {
     pub source_url: Option<String>,
     /// An optional link to the mod's wiki page or other relevant information.
     pub wiki_url: Option<String>,
+    /// An optional boolean. If true, the mod will be created as a draft.
+    pub is_draft: Option<bool>,
 }
 
 pub struct UploadedFile {
@@ -444,7 +446,18 @@ async fn mod_create_inner(
 
         let team_id = team.insert(&mut *transaction).await?;
 
-        let status = ModStatus::Processing;
+        let status;
+
+        if let Some(draft) = mod_create_data.is_draft {
+            if draft {
+                status = ModStatus::Draft;
+            } else {
+                status = ModStatus::Processing;
+            }
+        } else {
+            status = ModStatus::Processing;
+        }
+
         let status_id = models::StatusId::get_id(&status, &mut *transaction)
             .await?
             .expect("No database entry found for status");
@@ -545,12 +558,10 @@ async fn create_initial_version(
         None
     };
 
-    let release_channel = models::ChannelId::get_id(
-        &*format!("{}-hidden", version_data.release_channel.as_str()),
-        &mut *transaction,
-    )
-    .await?
-    .expect("Release Channel not found in database");
+    let release_channel =
+        models::ChannelId::get_id(version_data.release_channel.as_str(), &mut *transaction)
+            .await?
+            .expect("Release Channel not found in database");
 
     let mut game_versions = Vec::with_capacity(version_data.game_versions.len());
     for v in &version_data.game_versions {

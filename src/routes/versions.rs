@@ -54,6 +54,7 @@ pub struct VersionIds {
 
 #[get("versions")]
 pub async fn versions_get(
+    req: HttpRequest,
     web::Query(ids): web::Query<VersionIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -65,17 +66,47 @@ pub async fn versions_get(
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    let versions: Vec<models::mods::Version> = versions_data
-        .into_iter()
-        .filter_map(|v| v)
-        .map(convert_version)
-        .collect();
+    let mut versions = Vec::new();
+
+    for version_data in versions_data {
+        if let Some(version) = version_data {
+            let mut authorized = version.accepted;
+
+            if !authorized {
+                let user = get_user_from_headers(req.headers(), &**pool).await?;
+                let mod_item = database::models::Mod::get(version.mod_id, &**pool)
+                    .await
+                    .map_err(|e| ApiError::DatabaseError(e.into()))?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInputError(
+                            "Attempted to edit version not attached to mod. How did this happen?"
+                                .to_string(),
+                        )
+                    })?;
+                let team_member = database::models::TeamMember::get_from_user_id(
+                    mod_item.team_id,
+                    user.id.into(),
+                    &**pool,
+                )
+                .await?;
+
+                authorized = team_member.is_some()
+                    || user.role == Role::Moderator
+                    || user.role == Role::Admin
+            }
+
+            if authorized {
+                versions.push(convert_version(version));
+            }
+        }
+    }
 
     Ok(HttpResponse::Ok().json(versions))
 }
 
 #[get("{version_id}")]
 pub async fn version_get(
+    req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -85,6 +116,29 @@ pub async fn version_get(
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(data) = version_data {
+        if !data.accepted {
+            let user = get_user_from_headers(req.headers(), &**pool).await?;
+            let mod_item = database::models::Mod::get(data.mod_id, &**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?
+                .ok_or_else(|| {
+                    ApiError::InvalidInputError(
+                        "Attempted to edit version not attached to mod. How did this happen?"
+                            .to_string(),
+                    )
+                })?;
+            let team_member = database::models::TeamMember::get_from_user_id(
+                mod_item.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
+
+            if team_member.is_none() && user.role == Role::Developer {
+                return Ok(HttpResponse::NotFound().body(""));
+            }
+        }
+
         Ok(HttpResponse::Ok().json(convert_version(data)))
     } else {
         Ok(HttpResponse::NotFound().body(""))
@@ -108,10 +162,7 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
             "release" => VersionType::Release,
             "beta" => VersionType::Beta,
             "alpha" => VersionType::Alpha,
-            "release-hidden" => VersionType::ReleaseHidden,
-            "beta-hidden" => VersionType::BetaHidden,
-            "alpha-hidden" => VersionType::AlphaHidden,
-            _ => VersionType::ReleaseHidden,
+            _ => VersionType::Release,
         },
 
         files: data
@@ -154,6 +205,7 @@ pub struct EditVersion {
     pub dependencies: Option<Vec<models::ids::VersionId>>,
     pub game_versions: Option<Vec<models::mods::GameVersion>>,
     pub loaders: Option<Vec<models::mods::ModLoader>>,
+    pub accepted: Option<bool>,
 }
 
 #[patch("{id}")]
@@ -164,8 +216,7 @@ pub async fn version_edit(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     new_version: web::Json<EditVersion>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool)
-        .await?;
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
 
     let version_id = info.into_inner().0;
     let id = version_id.into();
@@ -177,13 +228,65 @@ pub async fn version_edit(
     if let Some(version_item) = result {
         let is_moderator = user.role == Role::Moderator || user.role == Role::Admin;
 
-        if is_moderator
-        /* TODO: Make user be able to edit their own mods, by checking permissions */
-        {
+        let mod_item = database::models::Mod::get(version_item.mod_id, &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .ok_or_else(|| {
+                ApiError::InvalidInputError(
+                    "Attempted to edit version not attached to mod. How did this happen?"
+                        .to_string(),
+                )
+            })?;
+
+        let team_member = database::models::TeamMember::get_from_user_id(
+            mod_item.team_id,
+            user.id.into(),
+            &**pool,
+        )
+        .await?;
+        let permissions;
+
+        if let Some(member) = team_member {
+            permissions = Some(member.permissions)
+        } else if is_moderator {
+            permissions = Some(Permissions::ALL)
+        } else {
+            permissions = None
+        }
+
+        if let Some(perms) = permissions {
+            if !perms.contains(Permissions::UPLOAD_VERSION) {
+                return Err(ApiError::CustomAuthenticationError(
+                    "You do not have the permissions to edit this version!".to_string(),
+                ));
+            }
+
             let mut transaction = pool
                 .begin()
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+            if let Some(accepted) = &new_version.accepted {
+                if !is_moderator {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the approval of this version!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE versions
+                    SET accepted = $1
+                    WHERE (id = $2)
+                    ",
+                    accepted,
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
 
             if let Some(name) = &new_version.name {
                 sqlx::query!(
@@ -201,10 +304,6 @@ pub async fn version_edit(
             }
 
             if let Some(version_type) = &new_version.version_type {
-                if version_type.as_str().ends_with("hidden") && !is_moderator {
-                    return Err(ApiError::CustomAuthenticationError("You do not have permission to set this version type!".to_string()));
-                }
-
                 let channel = database::models::ids::ChannelId::get_id(
                     version_type.as_str(),
                     &mut *transaction,
@@ -313,7 +412,9 @@ pub async fn version_edit(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             Ok(HttpResponse::Ok().body(""))
         } else {
-            Err(ApiError::CustomAuthenticationError("You do not have permission to edit this version!".to_string()))
+            Err(ApiError::CustomAuthenticationError(
+                "You do not have permission to edit this version!".to_string(),
+            ))
         }
     } else {
         Ok(HttpResponse::NotFound().body(""))
@@ -360,7 +461,7 @@ pub async fn version_delete(
             ));
         }
     }
-  
+
     let result = database::models::Version::remove_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
@@ -417,8 +518,7 @@ pub async fn delete_file(
     pool: web::Data<PgPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(req.headers(), &**pool)
-        .await?;
+    check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
     let hash = info.into_inner().0;
 
