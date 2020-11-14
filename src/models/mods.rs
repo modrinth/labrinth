@@ -103,6 +103,24 @@ impl ModStatus {
             ModStatus::Unknown => "unknown",
         }
     }
+
+    pub fn is_hidden(&self) -> bool {
+        match self {
+            ModStatus::Approved => false,
+            ModStatus::Rejected =>  true,
+            ModStatus::Draft => true,
+            ModStatus::Unlisted => false,
+            ModStatus::Processing => true,
+            ModStatus::Unknown => true,
+        }
+    }
+
+    pub fn is_searchable(&self) -> bool {
+        match self {
+            ModStatus::Approved => true,
+            _ => false,
+        }
+    }
 }
 
 /// A specific version of a mod

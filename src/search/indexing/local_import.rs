@@ -2,7 +2,6 @@ use futures::{StreamExt, TryStreamExt};
 use log::info;
 
 use super::IndexingError;
-use crate::models::mods::ModStatus;
 use crate::search::UploadSearchMod;
 use sqlx::postgres::PgPool;
 use std::borrow::Cow;
@@ -34,7 +33,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 .status,
             );
 
-            if status != ModStatus::Approved {
+            if !status.is_searchable() {
                 continue;
             }
 

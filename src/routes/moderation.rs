@@ -15,9 +15,10 @@ pub async fn mods(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpRespo
     let mods = sqlx::query!(
         "
         SELECT * FROM mods
-        WHERE NOT status = (
+        WHERE status = (
             SELECT id FROM statuses WHERE status = $1
         )
+        ORDER BY updated ASC
         LIMIT 100;
         ",
         ModStatus::Processing.as_str()
@@ -49,6 +50,7 @@ pub async fn mods(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpRespo
     Ok(HttpResponse::Ok().json(mods))
 }
 
+/// Returns a list of versions that need to be approved
 #[get("versions")]
 pub async fn versions(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
@@ -58,7 +60,7 @@ pub async fn versions(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpR
     let versions = sqlx::query!(
         "
         SELECT * FROM versions
-        WHERE accepted = TRUE
+        WHERE accepted = FALSE
         LIMIT 100;
         ",
     )

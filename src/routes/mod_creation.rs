@@ -279,6 +279,10 @@ async fn mod_create_inner(
             check_length(3..=2048, "mod description", &create_data.mod_description)?;
             check_length(..65536, "mod body", &create_data.mod_body)?;
 
+            if create_data.categories.len() > 3 {
+                return Err(CreateError::InvalidInput("The maximum number of categories for a mod is four.".to_string()))
+            }
+
             create_data
                 .categories
                 .iter()
@@ -447,13 +451,8 @@ async fn mod_create_inner(
         let team_id = team.insert(&mut *transaction).await?;
 
         let status;
-
-        if let Some(draft) = mod_create_data.is_draft {
-            if draft {
-                status = ModStatus::Draft;
-            } else {
-                status = ModStatus::Processing;
-            }
+        if mod_create_data.is_draft.unwrap_or(false) {
+            status = ModStatus::Draft;
         } else {
             status = ModStatus::Processing;
         }

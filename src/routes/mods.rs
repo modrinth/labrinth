@@ -5,7 +5,6 @@ use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::mods::{ModStatus, SearchRequest};
 use crate::models::teams::Permissions;
-use crate::models::users::Role;
 use crate::search::{search_for_mod, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -42,25 +41,29 @@ pub async fn mods_get(
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
+    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+
     let mut mods = Vec::new();
 
     for mod_data_option in mods_data {
         if let Some(mod_data) = mod_data_option {
-            let mut authorized = mod_data.status == ModStatus::Approved;
+            let mut authorized = !mod_data.status.is_hidden();
 
-            if !authorized {
-                let user = get_user_from_headers(req.headers(), &**pool).await?;
+            if let Some(user) = &user_option {
+                if !authorized {
+                    if user.role.is_mod() {
+                        authorized = true;
+                    } else {
+                        let team_member = database::models::TeamMember::get_from_user_id(
+                            mod_data.inner.team_id,
+                            user.id.into(),
+                            &**pool,
+                        )
+                            .await?;
 
-                let team_member = database::models::TeamMember::get_from_user_id(
-                    mod_data.inner.team_id,
-                    user.id.into(),
-                    &**pool,
-                )
-                .await?;
-
-                authorized = team_member.is_some()
-                    || user.role == Role::Moderator
-                    || user.role == Role::Admin
+                        authorized = team_member.is_some()
+                    }
+                }
             }
 
             if authorized {
@@ -82,22 +85,26 @@ pub async fn mod_get(
     let mod_data = database::models::Mod::get_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
     if let Some(data) = mod_data {
-        let mut authorized = data.status == ModStatus::Approved;
+        let mut authorized = !data.status.is_hidden();
 
-        if !authorized {
-            let user = get_user_from_headers(req.headers(), &**pool).await?;
+        if let Some(user) = user_option {
+            if !authorized {
+                if user.role.is_mod() {
+                    authorized = true;
+                } else {
+                    let team_member = database::models::TeamMember::get_from_user_id(
+                        data.inner.team_id,
+                        user.id.into(),
+                        &**pool,
+                    )
+                        .await?;
 
-            let team_member = database::models::TeamMember::get_from_user_id(
-                data.inner.team_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await?;
-
-            authorized =
-                team_member.is_some() || user.role == Role::Moderator || user.role == Role::Admin
+                    authorized = team_member.is_some();
+                }
+            }
         }
 
         if authorized {
@@ -164,7 +171,6 @@ pub async fn mod_edit(
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(mod_item) = result {
-        let is_moderator = user.role == Role::Moderator || user.role == Role::Admin;
         let team_member = database::models::TeamMember::get_from_user_id(
             mod_item.inner.team_id,
             user.id.into(),
@@ -175,7 +181,7 @@ pub async fn mod_edit(
 
         if let Some(member) = team_member {
             permissions = Some(member.permissions)
-        } else if is_moderator {
+        } else if user.role.is_mod() {
             permissions = Some(Permissions::ALL)
         } else {
             permissions = None
@@ -240,7 +246,7 @@ pub async fn mod_edit(
                 }
 
                 if status == &ModStatus::Rejected || status == &ModStatus::Approved {
-                    if !is_moderator {
+                    if !user.role.is_mod() {
                         return Err(ApiError::CustomAuthenticationError(
                             "You don't have permission to set this status".to_string(),
                         ));
@@ -267,7 +273,7 @@ pub async fn mod_edit(
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-                if mod_item.status == ModStatus::Approved && status != &ModStatus::Approved {
+                if mod_item.status.is_searchable() && status.is_searchable() {
                     delete_from_index(id.into(), config).await?;
                 }
             }
@@ -276,6 +282,13 @@ pub async fn mod_edit(
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
                         "You do not have the permissions to edit the categories of this mod!"
+                            .to_string(),
+                    ));
+                }
+
+                if categories.len() > 3 {
+                    return Err(ApiError::InvalidInputError(
+                        "The maximum number of categories for a mod is four."
                             .to_string(),
                     ));
                 }
@@ -425,7 +438,7 @@ pub async fn mod_delete(
     let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id = info.into_inner().0;
 
-    if user.role != Role::Moderator || user.role != Role::Admin {
+    if !user.role.is_mod() {
         let mod_item = database::models::Mod::get(id.into(), &**pool)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?
