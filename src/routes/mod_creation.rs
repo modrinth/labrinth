@@ -280,7 +280,9 @@ async fn mod_create_inner(
             check_length(..65536, "mod body", &create_data.mod_body)?;
 
             if create_data.categories.len() > 3 {
-                return Err(CreateError::InvalidInput("The maximum number of categories for a mod is four.".to_string()))
+                return Err(CreateError::InvalidInput(
+                    "The maximum number of categories for a mod is four.".to_string(),
+                ));
             }
 
             create_data

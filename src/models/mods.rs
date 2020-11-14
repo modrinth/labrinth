@@ -107,7 +107,7 @@ impl ModStatus {
     pub fn is_hidden(&self) -> bool {
         match self {
             ModStatus::Approved => false,
-            ModStatus::Rejected =>  true,
+            ModStatus::Rejected => true,
             ModStatus::Draft => true,
             ModStatus::Unlisted => false,
             ModStatus::Processing => true,

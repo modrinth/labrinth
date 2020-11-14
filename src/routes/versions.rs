@@ -78,23 +78,19 @@ pub async fn versions_get(
                     if user.role.is_mod() {
                         authorized = true;
                     } else {
-                        let mod_item = database::models::Mod::get(version.mod_id, &**pool)
+                        let user_id: database::models::ids::UserId = user.id.into();
+
+                        let member_exists = sqlx::query!(
+                            "SELECT EXISTS(SELECT 1 FROM team_members tm INNER JOIN mods m ON m.team_id = tm.id AND m.id = $1 WHERE tm.user_id = $2)",
+                            version.mod_id as database::models::ModId,
+                            user_id as database::models::ids::UserId,
+                        )
+                            .fetch_one(&**pool)
                             .await
                             .map_err(|e| ApiError::DatabaseError(e.into()))?
-                            .ok_or_else(|| {
-                                ApiError::InvalidInputError(
-                                    "Attempted to edit version not attached to mod. How did this happen?"
-                                        .to_string(),
-                                )
-                            })?;
-                        let team_member = database::models::TeamMember::get_from_user_id(
-                            mod_item.team_id,
-                            user.id.into(),
-                            &**pool,
-                        )
-                            .await?;
+                            .exists;
 
-                        authorized = team_member.is_some();
+                        authorized = member_exists.unwrap_or(false);
                     }
                 }
             }
@@ -123,23 +119,19 @@ pub async fn version_get(
     if let Some(data) = version_data {
         if let Some(user) = user_option {
             if !data.accepted && !user.role.is_mod() {
-                let mod_item = database::models::Mod::get(data.mod_id, &**pool)
+                let user_id: database::models::ids::UserId = user.id.into();
+
+                let member_exists = sqlx::query!(
+                     "SELECT EXISTS(SELECT 1 FROM team_members tm INNER JOIN mods m ON m.team_id = tm.id AND m.id = $1 WHERE tm.user_id = $2)",
+                     data.mod_id as database::models::ModId,
+                     user_id as database::models::ids::UserId,
+                )
+                    .fetch_one(&**pool)
                     .await
                     .map_err(|e| ApiError::DatabaseError(e.into()))?
-                    .ok_or_else(|| {
-                        ApiError::InvalidInputError(
-                            "Attempted to edit version not attached to mod. How did this happen?"
-                                .to_string(),
-                        )
-                    })?;
-                let team_member = database::models::TeamMember::get_from_user_id(
-                    mod_item.team_id,
-                    user.id.into(),
-                    &**pool,
-                )
-                    .await?;
+                    .exists;
 
-                if team_member.is_none() {
+                if !member_exists.unwrap_or(false) {
                     return Ok(HttpResponse::NotFound().body(""));
                 }
             }

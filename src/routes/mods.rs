@@ -54,14 +54,19 @@ pub async fn mods_get(
                     if user.role.is_mod() {
                         authorized = true;
                     } else {
-                        let team_member = database::models::TeamMember::get_from_user_id(
-                            mod_data.inner.team_id,
-                            user.id.into(),
-                            &**pool,
-                        )
-                            .await?;
+                        let user_id: database::models::ids::UserId = user.id.into();
 
-                        authorized = team_member.is_some()
+                        let mod_exists = sqlx::query!(
+                            "SELECT EXISTS(SELECT 1 FROM team_members WHERE id = $1 AND user_id = $2)",
+                            mod_data.inner.team_id as database::models::ids::TeamId,
+                            user_id as database::models::ids::UserId,
+                        )
+                            .fetch_one(&**pool)
+                            .await
+                            .map_err(|e| ApiError::DatabaseError(e.into()))?
+                            .exists;
+
+                        authorized = mod_exists.unwrap_or(false);
                     }
                 }
             }
@@ -95,14 +100,19 @@ pub async fn mod_get(
                 if user.role.is_mod() {
                     authorized = true;
                 } else {
-                    let team_member = database::models::TeamMember::get_from_user_id(
-                        data.inner.team_id,
-                        user.id.into(),
-                        &**pool,
-                    )
-                        .await?;
+                    let user_id: database::models::ids::UserId = user.id.into();
 
-                    authorized = team_member.is_some();
+                    let mod_exists = sqlx::query!(
+                        "SELECT EXISTS(SELECT 1 FROM team_members WHERE id = $1 AND user_id = $2)",
+                        data.inner.team_id as database::models::ids::TeamId,
+                        user_id as database::models::ids::UserId,
+                    )
+                    .fetch_one(&**pool)
+                    .await
+                    .map_err(|e| ApiError::DatabaseError(e.into()))?
+                    .exists;
+
+                    authorized = mod_exists.unwrap_or(false);
                 }
             }
         }
@@ -147,9 +157,24 @@ pub struct EditMod {
     pub body: Option<String>,
     pub status: Option<ModStatus>,
     pub categories: Option<Vec<String>>,
-    pub issues_url: Option<String>,
-    pub source_url: Option<String>,
-    pub wiki_url: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub issues_url: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub source_url: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub wiki_url: Option<Option<String>>,
 }
 
 #[patch("{id}")]
@@ -288,8 +313,7 @@ pub async fn mod_edit(
 
                 if categories.len() > 3 {
                     return Err(ApiError::InvalidInputError(
-                        "The maximum number of categories for a mod is four."
-                            .to_string(),
+                        "The maximum number of categories for a mod is four.".to_string(),
                     ));
                 }
 
@@ -345,7 +369,7 @@ pub async fn mod_edit(
                     SET issues_url = $1
                     WHERE (id = $2)
                     ",
-                    issues_url,
+                    issues_url.as_deref(),
                     id as database::models::ids::ModId,
                 )
                 .execute(&mut *transaction)
@@ -367,7 +391,7 @@ pub async fn mod_edit(
                     SET source_url = $1
                     WHERE (id = $2)
                     ",
-                    source_url,
+                    source_url.as_deref(),
                     id as database::models::ids::ModId,
                 )
                 .execute(&mut *transaction)
@@ -389,7 +413,7 @@ pub async fn mod_edit(
                     SET wiki_url = $1
                     WHERE (id = $2)
                     ",
-                    wiki_url,
+                    wiki_url.as_deref(),
                     id as database::models::ids::ModId,
                 )
                 .execute(&mut *transaction)

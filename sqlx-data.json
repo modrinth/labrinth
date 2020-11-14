@@ -192,6 +192,27 @@
       ]
     }
   },
+  "15978ec367b2768eea87dcdf1ee2497aa03b8a926139fecffbca22031e3ae7f9": {
+    "query": "SELECT EXISTS(SELECT 1 FROM team_members WHERE id = $1 AND user_id = $2)",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "exists",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      },
+      "nullable": [
+        null
+      ]
+    }
+  },
   "16871e66d8762452be3ca0c80f4733f2db49980205fbf7cb6f9829cdd99cdb65": {
     "query": "\n                        INSERT INTO dependencies (dependent_id, dependency_id)\n                        VALUES ($1, $2)\n                        ",
     "describe": {
@@ -1273,6 +1294,27 @@
       "nullable": []
     }
   },
+  "75a1099a12e73484cf0e7dd4b346ea154ea1ff915fe9ee15f936e1e8faed4118": {
+    "query": "SELECT EXISTS(SELECT 1 FROM team_members tm INNER JOIN mods m ON m.team_id = tm.id AND m.id = $1 WHERE tm.user_id = $2)",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "exists",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      },
+      "nullable": [
+        null
+      ]
+    }
+  },
   "78c8b561e37e3aed48d3a4108ce7fd81866c6835ea91517ffc90c30e1284246e": {
     "query": "\n            SELECT id FROM versions\n            WHERE mod_id = $1\n            ORDER BY date_published ASC\n            ",
     "describe": {
@@ -1584,26 +1626,6 @@
         ]
       },
       "nullable": []
-    }
-  },
-  "9f40ebd5e51199a40209119d033a545fd0c8957ad4d71c4e2a38e8c4e222dec3": {
-    "query": "\n        SELECT version_id FROM files\n        INNER JOIN hashes ON hash = $1\n        ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "version_id",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Bytea"
-        ]
-      },
-      "nullable": [
-        false
-      ]
     }
   },
   "a2a99a640468a9fb8f0718e5aea6740cf5b33dafd5e038c154d6a13674fa999b": {
@@ -2377,32 +2399,6 @@
       ]
     }
   },
-  "d2bed8df91b6a93e86e34fe6854710544950f9f757730e9ed75d1e3c27127e58": {
-    "query": "\n        SELECT version_id, filename FROM files\n        INNER JOIN hashes ON hash = $1\n        ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "version_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "filename",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Bytea"
-        ]
-      },
-      "nullable": [
-        false,
-        false
-      ]
-    }
-  },
   "d6453e50041b5521fa9e919a9162e533bb9426f8c584d98474c6ad414db715c8": {
     "query": "SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)",
     "describe": {
@@ -2780,18 +2776,6 @@
       "nullable": [
         false
       ]
-    }
-  },
-  "f433138fea5ffbb06804b29182dec2f1f12f9320097b26833708deed461f5b8d": {
-    "query": "\n                DELETE FROM hashes\n                WHERE hash = $1\n                ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Bytea"
-        ]
-      },
-      "nullable": []
     }
   },
   "f78dac3d15be1ea0d0ed43a4beadc04ec00d8ba68be2bb68cbc3f2ebe5c93dbd": {
