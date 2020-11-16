@@ -471,7 +471,12 @@ pub async fn version_delete(
 
 #[derive(Deserialize)]
 pub struct Algorithm {
+    #[serde(default = "default_algorithm")]
     algorithm: String,
+}
+
+fn default_algorithm() -> String {
+    "sha1".into()
 }
 
 // under /api/v1/version_file/{hash}

@@ -4,10 +4,25 @@ use crate::database;
 use crate::models;
 use crate::models::mods::{ModStatus, VersionType};
 use actix_web::{get, web, HttpRequest, HttpResponse};
+use serde::Deserialize;
 use sqlx::PgPool;
 
+#[derive(Deserialize)]
+pub struct ResultCount {
+    #[serde(default = "default_count")]
+    count: i16,
+}
+
+fn default_count() -> i16 {
+    100
+}
+
 #[get("mods")]
-pub async fn mods(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
+pub async fn mods(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    count: web::Query<ResultCount>,
+) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
     use futures::stream::TryStreamExt;
@@ -19,9 +34,10 @@ pub async fn mods(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpRespo
             SELECT id FROM statuses WHERE status = $1
         )
         ORDER BY updated ASC
-        LIMIT 100;
+        LIMIT $2;
         ",
-        ModStatus::Processing.as_str()
+        ModStatus::Processing.as_str(),
+        count.count as i64
     )
     .fetch_many(&**pool)
     .try_filter_map(|e| async {
@@ -52,7 +68,11 @@ pub async fn mods(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpRespo
 
 /// Returns a list of versions that need to be approved
 #[get("versions")]
-pub async fn versions(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
+pub async fn versions(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    count: web::Query<ResultCount>,
+) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
     use futures::stream::TryStreamExt;
@@ -61,8 +81,10 @@ pub async fn versions(req: HttpRequest, pool: web::Data<PgPool>) -> Result<HttpR
         "
         SELECT * FROM versions
         WHERE accepted = FALSE
-        LIMIT 100;
+        ORDER BY date_published ASC
+        LIMIT $1;
         ",
+        count.count as i64
     )
     .fetch_many(&**pool)
     .try_filter_map(|e| async {
