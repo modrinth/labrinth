@@ -151,6 +151,7 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
         mod_id: data.mod_id.into(),
         author_id: data.author_id.into(),
 
+        featured: data.featured,
         name: data.name,
         version_number: data.version_number,
         changelog_url: data.changelog_url,
@@ -178,6 +179,7 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
                         .map(|(k, v)| Some((k, String::from_utf8(v).ok()?)))
                         .collect::<Option<_>>()
                         .unwrap_or_else(Default::default),
+                    primary: f.primary
                 }
             })
             .collect(),

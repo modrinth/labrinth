@@ -2,7 +2,7 @@ use super::ApiError;
 use crate::auth::check_is_moderator_from_headers;
 use crate::database;
 use crate::models;
-use crate::models::mods::{ModStatus, VersionType};
+use crate::models::mods::{ModStatus, VersionType, SideType, License};
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -43,6 +43,7 @@ pub async fn mods(
     .try_filter_map(|e| async {
         Ok(e.right().map(|m| models::mods::Mod {
             id: database::models::ids::ModId(m.id).into(),
+            slug: m.slug,
             team: database::models::ids::TeamId(m.team_id).into(),
             title: m.title,
             description: m.description,
@@ -54,9 +55,18 @@ pub async fn mods(
             issues_url: m.issues_url,
             source_url: m.source_url,
             status: ModStatus::Processing,
+            license: License {
+                id: "".to_string(),
+                name: "".to_string(),
+                url: None
+            },
+            client_side: SideType::Required,
             updated: m.updated,
             downloads: m.downloads as u32,
             wiki_url: m.wiki_url,
+            discord_url: m.discord_url,
+            server_side: SideType::Required,
+            donation_urls: None
         }))
     })
     .try_collect::<Vec<models::mods::Mod>>()
@@ -92,6 +102,7 @@ pub async fn versions(
             id: database::models::ids::VersionId(m.id).into(),
             mod_id: database::models::ids::ModId(m.mod_id).into(),
             author_id: database::models::ids::UserId(m.author_id).into(),
+            featured: m.featured,
             name: m.name,
             version_number: m.version_number,
             changelog_url: m.changelog_url,

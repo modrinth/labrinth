@@ -3,7 +3,7 @@ use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::mods::{ModStatus, SearchRequest};
+use crate::models::mods::{ModStatus, SearchRequest, License, SideType};
 use crate::models::teams::Permissions;
 use crate::search::{search_for_mod, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
@@ -130,8 +130,10 @@ pub async fn mod_get(
 fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod {
     let m = data.inner;
 
+    // TODO: Fill fields
     models::mods::Mod {
         id: m.id.into(),
+        slug: m.slug,
         team: m.team_id.into(),
         title: m.title,
         description: m.description,
@@ -139,6 +141,13 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
         published: m.published,
         updated: m.updated,
         status: data.status,
+        license: License {
+            id: "".to_string(),
+            name: "".to_string(),
+            url: None
+        },
+        client_side: SideType::Required,
+        server_side: SideType::Required,
         downloads: m.downloads as u32,
         categories: data.categories,
         versions: data.versions.into_iter().map(|v| v.into()).collect(),
@@ -146,6 +155,8 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
         issues_url: m.issues_url,
         source_url: m.source_url,
         wiki_url: m.wiki_url,
+        discord_url: m.discord_url,
+        donation_urls: None
     }
 }
 
