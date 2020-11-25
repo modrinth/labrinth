@@ -34,14 +34,7 @@ pub async fn category_create(
     pool: web::Data<PgPool>,
     category: web::Path<(String,)>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_admin_from_headers(
-        req.headers(),
-        &mut *pool
-            .acquire()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?,
-    )
-    .await?;
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
 
     let name = category.into_inner().0;
 
@@ -56,14 +49,7 @@ pub async fn category_delete(
     pool: web::Data<PgPool>,
     category: web::Path<(String,)>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_admin_from_headers(
-        req.headers(),
-        &mut *pool
-            .acquire()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?,
-    )
-    .await?;
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
 
     let name = category.into_inner().0;
     let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
@@ -94,14 +80,7 @@ pub async fn loader_create(
     pool: web::Data<PgPool>,
     loader: web::Path<(String,)>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_admin_from_headers(
-        req.headers(),
-        &mut *pool
-            .acquire()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?,
-    )
-    .await?;
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
 
     let name = loader.into_inner().0;
 
@@ -116,14 +95,7 @@ pub async fn loader_delete(
     pool: web::Data<PgPool>,
     loader: web::Path<(String,)>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_admin_from_headers(
-        req.headers(),
-        &mut *pool
-            .acquire()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?,
-    )
-    .await?;
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
 
     let name = loader.into_inner().0;
     let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
@@ -176,14 +148,7 @@ pub async fn game_version_create(
     game_version: web::Path<(String,)>,
     version_data: web::Json<GameVersionData>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_admin_from_headers(
-        req.headers(),
-        &mut *pool
-            .acquire()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?,
-    )
-    .await?;
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
 
     let name = game_version.into_inner().0;
 
@@ -209,14 +174,7 @@ pub async fn game_version_delete(
     pool: web::Data<PgPool>,
     game_version: web::Path<(String,)>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_admin_from_headers(
-        req.headers(),
-        &mut *pool
-            .acquire()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?,
-    )
-    .await?;
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
 
     let name = game_version.into_inner().0;
     let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;

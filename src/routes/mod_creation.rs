@@ -2,7 +2,7 @@ use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
-use crate::models::mods::{ModId, ModStatus, VersionId, SideType, DonationLink, License};
+use crate::models::mods::{DonationLink, License, ModId, ModStatus, SideType, VersionId};
 use crate::models::users::UserId;
 use crate::routes::version_creation::InitialVersionData;
 use crate::search::indexing::{queue::CreationQueue, IndexingError};
@@ -477,13 +477,15 @@ async fn mod_create_inner(
             .await?
             .expect("No database entry found for status");
 
-        let client_side_id = models::SideTypeId::get_id(&mod_create_data.client_side, &mut *transaction)
-            .await?
-            .expect("No database entry found for side type");
+        let client_side_id =
+            models::SideTypeId::get_id(&mod_create_data.client_side, &mut *transaction)
+                .await?
+                .expect("No database entry found for side type");
 
-        let server_side_id = models::SideTypeId::get_id(&mod_create_data.server_side, &mut *transaction)
-            .await?
-            .expect("No database entry found for side type");
+        let server_side_id =
+            models::SideTypeId::get_id(&mod_create_data.server_side, &mut *transaction)
+                .await?
+                .expect("No database entry found for side type");
 
         let license_id = models::LicenseId::get_id(&mod_create_data.license_id, &mut *transaction)
             .await?
@@ -500,7 +502,7 @@ async fn mod_create_inner(
                 donation_urls.push(models::mod_item::DonationUrl {
                     mod_id: mod_id.into(),
                     platform_id,
-                    url: url.url.clone()
+                    url: url.url.clone(),
                 })
             }
         }
@@ -543,7 +545,7 @@ async fn mod_create_inner(
             license: License {
                 id: mod_create_data.license_id.clone(),
                 name: "".to_string(),
-                url: mod_builder.license_url.clone()
+                url: mod_builder.license_url.clone(),
             },
             client_side: mod_create_data.client_side,
             server_side: mod_create_data.server_side,
@@ -558,8 +560,8 @@ async fn mod_create_inner(
             issues_url: mod_builder.issues_url.clone(),
             source_url: mod_builder.source_url.clone(),
             wiki_url: mod_builder.wiki_url.clone(),
-            discord_url:  mod_builder.discord_url.clone(),
-            donation_urls: mod_create_data.donation_urls.clone()
+            discord_url: mod_builder.discord_url.clone(),
+            donation_urls: mod_create_data.donation_urls.clone(),
         };
 
         let _mod_id = mod_builder.insert(&mut *transaction).await?;
@@ -657,7 +659,7 @@ async fn create_initial_version(
         game_versions,
         loaders,
         release_channel,
-        featured: version_data.featured
+        featured: version_data.featured,
     };
 
     Ok(version)

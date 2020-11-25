@@ -147,7 +147,7 @@ pub async fn index_curseforge(
     }
 
     let res = reqwest::Client::new()
-        .post("https://googleweblight.com/?lite_url=https://addons-ecs.forgesvc.net/api/v2/addon")
+        .post("https://addons-ecs.forgesvc.net/api/v2/addon")
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(requested_ids)
         .send()

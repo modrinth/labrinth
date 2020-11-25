@@ -3,7 +3,7 @@ use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::mods::{ModStatus, SearchRequest, License, SideType};
+use crate::models::mods::{License, ModStatus, SearchRequest, SideType};
 use crate::models::teams::Permissions;
 use crate::search::{search_for_mod, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
@@ -144,7 +144,7 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
         license: License {
             id: "".to_string(),
             name: "".to_string(),
-            url: None
+            url: None,
         },
         client_side: SideType::Required,
         server_side: SideType::Required,
@@ -156,7 +156,7 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
         source_url: m.source_url,
         wiki_url: m.wiki_url,
         discord_url: m.discord_url,
-        donation_urls: None
+        donation_urls: None,
     }
 }
 

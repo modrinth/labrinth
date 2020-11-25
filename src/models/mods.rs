@@ -89,7 +89,7 @@ impl SideType {
     // These are constant, so this can remove unneccessary allocations (`to_string`)
     pub fn as_str(&self) -> &'static str {
         match self {
-            SideType::Required =>"required",
+            SideType::Required => "required",
             SideType::NoFunctionality => "no-functionality",
             SideType::Unsupported => "unsupported",
             SideType::Unknown => "unknown",
@@ -139,14 +139,7 @@ pub enum ModStatus {
 
 impl std::fmt::Display for ModStatus {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            ModStatus::Approved => write!(fmt, "approved"),
-            ModStatus::Rejected => write!(fmt, "rejected"),
-            ModStatus::Draft => write!(fmt, "draft"),
-            ModStatus::Unlisted => write!(fmt, "unlisted"),
-            ModStatus::Processing => write!(fmt, "processing"),
-            ModStatus::Unknown => write!(fmt, "unknown"),
-        }
+        write!(fmt, "{}", self.as_str())
     }
 }
 

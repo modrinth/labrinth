@@ -266,7 +266,7 @@ async fn version_create_inner(
                 game_versions,
                 loaders,
                 release_channel,
-                featured: version_create_data.featured
+                featured: version_create_data.featured,
             });
 
             continue;
@@ -327,7 +327,7 @@ async fn version_create_inner(
                     .collect(),
                 url: file.url.clone(),
                 filename: file.filename.clone(),
-                primary: file.primary
+                primary: file.primary,
             })
             .collect::<Vec<_>>(),
         dependencies: version_data.dependencies,

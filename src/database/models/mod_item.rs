@@ -24,8 +24,8 @@ impl DonationUrl {
             self.platform_id as DonationPlatformId,
             self.url,
         )
-            .execute(&mut *transaction)
-            .await?;
+        .execute(&mut *transaction)
+        .await?;
 
         Ok(())
     }
@@ -77,7 +77,7 @@ impl ModBuilder {
             client_side: self.client_side,
             server_side: self.server_side,
             license: self.license,
-            slug: self.slug
+            slug: self.slug,
         };
         mod_struct.insert(&mut *transaction).await?;
 
@@ -127,7 +127,7 @@ pub struct Mod {
     pub client_side: SideTypeId,
     pub server_side: SideTypeId,
     pub license: LicenseId,
-    pub slug: Option<String>
+    pub slug: Option<String>,
 }
 
 impl Mod {
@@ -263,7 +263,7 @@ impl Mod {
                 status: StatusId(m.status),
                 server_side: SideTypeId(m.server_side),
                 license: LicenseId(m.license),
-                slug: m.slug
+                slug: m.slug,
             }))
         })
         .try_collect::<Vec<Mod>>()
@@ -311,8 +311,8 @@ impl Mod {
             ",
             id as ModId,
         )
-            .execute(exec)
-            .await?;
+        .execute(exec)
+        .await?;
 
         use futures::TryStreamExt;
         let versions: Vec<VersionId> = sqlx::query!(
@@ -406,14 +406,16 @@ impl Mod {
                 ",
                 id as ModId,
             )
-                .fetch_many(executor)
-                .try_filter_map(|e| async { Ok(e.right().map(|c| DonationUrl {
+            .fetch_many(executor)
+            .try_filter_map(|e| async {
+                Ok(e.right().map(|c| DonationUrl {
                     mod_id: id,
                     platform_id: DonationPlatformId(c.joining_platform_id),
-                    url: c.url
-                })) })
-                .try_collect::<Vec<DonationUrl>>()
-                .await?;
+                    url: c.url,
+                }))
+            })
+            .try_collect::<Vec<DonationUrl>>()
+            .await?;
 
             let status = sqlx::query!(
                 "

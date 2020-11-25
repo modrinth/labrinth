@@ -4,7 +4,7 @@ use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::teams::Permissions;
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -179,7 +179,7 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
                         .map(|(k, v)| Some((k, String::from_utf8(v).ok()?)))
                         .collect::<Option<_>>()
                         .unwrap_or_else(Default::default),
-                    primary: f.primary
+                    primary: f.primary,
                 }
             })
             .collect(),
@@ -515,6 +515,100 @@ pub async fn get_version_from_hash(
         } else {
             Ok(HttpResponse::NotFound().body(""))
         }
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DownloadRedirect {
+    pub url: String,
+}
+
+// under /api/v1/version_file/{hash}
+#[post("{version_id}")]
+pub async fn download_version(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    algorithm: web::Query<Algorithm>,
+) -> Result<HttpResponse, ApiError> {
+    let hash = info.into_inner().0;
+
+    let result = sqlx::query!(
+        "
+        SELECT f.url url, f.id id, f.version_id version_id, v.mod_id mod_id FROM files f
+        INNER JOIN versions v ON v.id = f.version_id
+        INNER JOIN hashes ON hash = $1 AND algorithm = $2
+        ",
+        hash.as_bytes(),
+        algorithm.algorithm
+    )
+    .fetch_optional(&**pool)
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    if let Some(id) = result {
+        let download_exists = sqlx::query!(
+            "SELECT EXISTS(SELECT 1 FROM downloads WHERE version_id = $1 AND date > (CURRENT_DATE - INTERVAL '30 minutes ago'))",
+            id.version_id,
+        )
+            .fetch_one(&**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .exists.unwrap_or(false);
+
+        let real_ip = req.connection_info();
+        if !download_exists {
+            sqlx::query!(
+                "
+                INSERT INTO downloads (
+                    version_id, identifier
+                )
+                VALUES (
+                    $1, $2
+                )
+                ",
+                id.version_id,
+                real_ip
+                    .realip_remote_addr()
+                    .ok_or_else(|| ApiError::InvalidInputError(
+                        "You may only record a download for a mod with a normal client!"
+                            .to_string()
+                    ))?
+            )
+            .execute(&**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+            sqlx::query!(
+                "
+                UPDATE versions
+                SET downloads = downloads + 1
+                WHERE id = $1
+                ",
+                id.version_id,
+            )
+            .execute(&**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+            sqlx::query!(
+                "
+                UPDATE mods
+                SET downloads = downloads + 1
+                WHERE id = $1
+                ",
+                id.mod_id,
+            )
+            .execute(&**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+
+        Ok(HttpResponse::TemporaryRedirect()
+            .header("Location", &*id.url)
+            .json(DownloadRedirect { url: id.url }))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

@@ -2,7 +2,7 @@ use super::ApiError;
 use crate::auth::check_is_moderator_from_headers;
 use crate::database;
 use crate::models;
-use crate::models::mods::{ModStatus, VersionType, SideType, License};
+use crate::models::mods::{License, ModStatus, SideType, VersionType};
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -58,7 +58,7 @@ pub async fn mods(
             license: License {
                 id: "".to_string(),
                 name: "".to_string(),
-                url: None
+                url: None,
             },
             client_side: SideType::Required,
             updated: m.updated,
@@ -66,7 +66,7 @@ pub async fn mods(
             wiki_url: m.wiki_url,
             discord_url: m.discord_url,
             server_side: SideType::Required,
-            donation_urls: None
+            donation_urls: None,
         }))
     })
     .try_collect::<Vec<models::mods::Mod>>()

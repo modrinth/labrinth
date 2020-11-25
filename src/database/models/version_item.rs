@@ -251,7 +251,7 @@ impl Version {
                 version_id: id,
                 url: c.url,
                 filename: c.filename,
-                primary: c.primary
+                primary: c.primary,
             }))
         })
         .try_collect::<Vec<VersionFile>>()
@@ -394,7 +394,7 @@ impl Version {
                 downloads: row.downloads,
                 release_channel: ChannelId(row.release_channel),
                 accepted: row.accepted,
-                featured: row.featured
+                featured: row.featured,
             }))
         } else {
             Ok(None)
@@ -434,7 +434,7 @@ impl Version {
                 downloads: v.downloads,
                 release_channel: ChannelId(v.release_channel),
                 accepted: v.accepted,
-                featured: v.featured
+                featured: v.featured,
             }))
         })
         .try_collect::<Vec<Version>>()
@@ -507,7 +507,7 @@ impl Version {
                     url: c.url,
                     filename: c.filename,
                     hashes: std::collections::HashMap::new(),
-                    primary: c.primary
+                    primary: c.primary,
                 }))
             })
             .try_collect::<Vec<QueryFile>>()
@@ -544,7 +544,7 @@ impl Version {
                 loaders,
                 game_versions,
                 accepted: row.accepted,
-                featured: row.featured
+                featured: row.featured,
             }))
         } else {
             Ok(None)

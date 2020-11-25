@@ -26,6 +26,7 @@ CREATE TABLE side_types (
 INSERT INTO side_types (name) VALUES ('required');
 INSERT INTO side_types (name) VALUES ('no-functionality');
 INSERT INTO side_types (name) VALUES ('unsupported');
+INSERT INTO side_types (name) VALUES ('unknown');
 
 CREATE TABLE licenses (
     id serial PRIMARY KEY,
@@ -33,7 +34,7 @@ CREATE TABLE licenses (
     name varchar(1000) UNIQUE
 );
 
-INSERT INTO licenses (short, name) VALUES ('arr', 'All Rights Reserved');
+INSERT INTO licenses (short, name) VALUES ('custom', 'Custom License');
 
 ALTER TABLE versions
     ADD COLUMN featured BOOLEAN NOT NULL default FALSE;
@@ -45,10 +46,18 @@ ALTER TABLE mods
 ALTER TABLE mods
     ADD COLUMN license_url varchar(1000) NULL;
 ALTER TABLE mods
-    ADD COLUMN client_side integer REFERENCES side_types NOT NULL default 1;
+    ADD COLUMN client_side integer REFERENCES side_types NOT NULL default 4;
 ALTER TABLE mods
-    ADD COLUMN server_side integer REFERENCES side_types NOT NULL default 1;
+    ADD COLUMN server_side integer REFERENCES side_types NOT NULL default 4;
 ALTER TABLE mods
     ADD COLUMN discord_url varchar(255) NULL;
 ALTER TABLE mods
     ADD COLUMN slug varchar(255) NULL UNIQUE;
+
+CREATE TABLE downloads (
+    id serial PRIMARY KEY,
+    version_id bigint REFERENCES versions ON UPDATE CASCADE NOT NULL,
+    date timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    -- A SHA1 hash of the downloader IP address
+    identifier varchar(40) NOT NULL
+);
