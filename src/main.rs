@@ -155,6 +155,44 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
+    let pool_ref = pool.clone();
+    scheduler.run(std::time::Duration::from_secs(15 * 60), move || {
+        let pool_ref = pool_ref.clone();
+        // Use sqlx to delete records more than an hour old
+        info!("Deleting old records from temporary tables");
+
+        async move {
+            let downloads_result = sqlx::query!(
+                "
+                DELETE FROM downloads
+                WHERE date < (CURRENT_DATE - INTERVAL '30 minutes ago')
+                "
+            )
+                .execute(&pool_ref)
+                .await;
+
+            if let Err(e) = downloads_result {
+                warn!("Deleting old records from temporary table downloads failed: {:?}", e);
+            }
+
+            let states_result = sqlx::query!(
+                "
+                DELETE FROM states
+                WHERE expires < CURRENT_DATE
+                "
+            )
+                .execute(&pool_ref)
+                .await;
+
+            if let Err(e) = states_result {
+                warn!("Deleting old records from temporary table states failed: {:?}", e);
+            }
+
+            info!("Finished deleting old records from temporary tables");
+        }
+
+    });
+
     let indexing_queue = Arc::new(search::indexing::queue::CreationQueue::new());
 
     let queue_ref = indexing_queue.clone();
@@ -341,6 +379,8 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("GITHUB_CLIENT_ID");
     failed |= check_var::<String>("GITHUB_CLIENT_SECRET");
+
+    failed |= check_var::<String>("IP_SALT");
 
     failed
 }

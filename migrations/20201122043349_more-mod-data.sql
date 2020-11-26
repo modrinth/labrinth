@@ -1,7 +1,7 @@
 CREATE TABLE donation_platforms (
     id serial PRIMARY KEY,
-    short varchar(100) UNIQUE,
-    name varchar(500) UNIQUE
+    short varchar(100) UNIQUE NOT NULL,
+    name varchar(500) UNIQUE NOT NULL
 );
 
 INSERT INTO donation_platforms (short, name) VALUES ('patreon', 'Patreon');
@@ -20,7 +20,7 @@ CREATE TABLE mods_donations (
 
 CREATE TABLE side_types (
     id serial PRIMARY KEY,
-    name varchar(64) UNIQUE
+    name varchar(64) UNIQUE NOT NULL
 );
 
 INSERT INTO side_types (name) VALUES ('required');
@@ -30,8 +30,8 @@ INSERT INTO side_types (name) VALUES ('unknown');
 
 CREATE TABLE licenses (
     id serial PRIMARY KEY,
-    short varchar(60) UNIQUE,
-    name varchar(1000) UNIQUE
+    short varchar(60) UNIQUE NOT NULL,
+    name varchar(1000) UNIQUE NOT NULL
 );
 
 INSERT INTO licenses (short, name) VALUES ('custom', 'Custom License');

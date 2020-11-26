@@ -102,25 +102,6 @@ impl ids::SideTypeId {
     }
 }
 
-impl ids::LicenseId {
-    pub async fn get_id<'a, E>(id: &str, exec: E) -> Result<Option<Self>, DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        let result = sqlx::query!(
-            "
-            SELECT id FROM licenses
-            WHERE short = $1
-            ",
-            id
-        )
-        .fetch_optional(exec)
-        .await?;
-
-        Ok(result.map(|r| ids::LicenseId(r.id)))
-    }
-}
-
 impl ids::DonationPlatformId {
     pub async fn get_id<'a, E>(id: &str, exec: E) -> Result<Option<Self>, DatabaseError>
     where

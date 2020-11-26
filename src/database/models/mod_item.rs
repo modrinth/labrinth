@@ -364,6 +364,30 @@ impl Mod {
         Ok(Some(()))
     }
 
+    pub async fn get_full_from_slug<'a, 'b, E>(
+        slug: String,
+        executor: E,
+    ) -> Result<Option<QueryMod>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let id = sqlx::query!(
+            "
+                SELECT id FROM mods
+                WHERE slug = $1
+                ",
+            slug
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        if let Some(mod_id) = id {
+            Mod::get_full(ModId(mod_id.id), executor).await
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn get_full<'a, 'b, E>(
         id: ModId,
         executor: E,
@@ -428,12 +452,48 @@ impl Mod {
             .await?
             .status;
 
+            let client_side = sqlx::query!(
+                "
+                SELECT name FROM side_types
+                WHERE id = $1
+                ",
+                inner.client_side.0,
+            )
+                .fetch_one(executor)
+                .await?
+                .name;
+
+            let server_side = sqlx::query!(
+                "
+                SELECT name FROM side_types
+                WHERE id = $1
+                ",
+                inner.server_side.0,
+            )
+                .fetch_one(executor)
+                .await?
+                .name;
+
+            let license = sqlx::query!(
+                "
+                SELECT short, name FROM licenses
+                WHERE id = $1
+                ",
+                inner.license.0,
+            )
+                .fetch_one(executor)
+                .await?;
+
             Ok(Some(QueryMod {
                 inner,
                 categories,
                 versions,
                 donation_urls: donations,
                 status: crate::models::mods::ModStatus::from_str(&status),
+                license_id: license.short,
+                license_name: license.name,
+                client_side: crate::models::mods::SideType::from_str(&client_side),
+                server_side: crate::models::mods::SideType::from_str(&server_side)
             }))
         } else {
             Ok(None)
@@ -459,4 +519,8 @@ pub struct QueryMod {
     pub versions: Vec<VersionId>,
     pub donation_urls: Vec<DonationUrl>,
     pub status: crate::models::mods::ModStatus,
+    pub license_id: String,
+    pub license_name: String,
+    pub client_side: crate::models::mods::SideType,
+    pub server_side: crate::models::mods::SideType,
 }

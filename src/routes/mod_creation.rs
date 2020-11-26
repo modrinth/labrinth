@@ -496,11 +496,12 @@ async fn mod_create_inner(
                     )
                 })?;
 
-        let license_id = models::LicenseId::get_id(&mod_create_data.license_id, &mut *transaction)
-            .await?
-            .ok_or_else(|| {
-                CreateError::InvalidInput("License specified does not exist.".to_string())
-            })?;
+        let license_id =
+            models::categories::License::get_id(&mod_create_data.license_id, &mut *transaction)
+                .await?
+                .ok_or_else(|| {
+                    CreateError::InvalidInput("License specified does not exist.".to_string())
+                })?;
         let mut donation_urls = vec![];
 
         if let Some(urls) = &mod_create_data.donation_urls {

@@ -81,6 +81,53 @@ pub async fn mods_get(
     Ok(HttpResponse::Ok().json(mods))
 }
 
+#[get("@{id}")]
+pub async fn mod_slug_get(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let id = info.into_inner().0;
+    let mod_data = database::models::Mod::get_full_from_slug(id, &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+
+    if let Some(data) = mod_data {
+        let mut authorized = !data.status.is_hidden();
+
+        if let Some(user) = user_option {
+            if !authorized {
+                if user.role.is_mod() {
+                    authorized = true;
+                } else {
+                    let user_id: database::models::ids::UserId = user.id.into();
+
+                    let mod_exists = sqlx::query!(
+                        "SELECT EXISTS(SELECT 1 FROM team_members WHERE id = $1 AND user_id = $2)",
+                        data.inner.team_id as database::models::ids::TeamId,
+                        user_id as database::models::ids::UserId,
+                    )
+                    .fetch_one(&**pool)
+                    .await
+                    .map_err(|e| ApiError::DatabaseError(e.into()))?
+                    .exists;
+
+                    authorized = mod_exists.unwrap_or(false);
+                }
+            }
+        }
+
+        if authorized {
+            return Ok(HttpResponse::Ok().json(convert_mod(data)));
+        }
+
+        Ok(HttpResponse::NotFound().body(""))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
 #[get("{id}")]
 pub async fn mod_get(
     req: HttpRequest,
@@ -131,7 +178,6 @@ pub async fn mod_get(
 fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod {
     let m = data.inner;
 
-    // TODO: Fill fields
     models::mods::Mod {
         id: m.id.into(),
         slug: m.slug,
@@ -143,12 +189,12 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
         updated: m.updated,
         status: data.status,
         license: License {
-            id: "".to_string(),
-            name: "".to_string(),
-            url: None,
+            id: data.license_id,
+            name: data.license_name,
+            url: m.license_url,
         },
-        client_side: SideType::Required,
-        server_side: SideType::Required,
+        client_side: data.client_side,
+        server_side: data.server_side,
         downloads: m.downloads as u32,
         categories: data.categories,
         versions: data.versions.into_iter().map(|v| v.into()).collect(),
@@ -582,9 +628,10 @@ pub async fn mod_edit(
                     ));
                 }
 
-                let license_id = database::models::LicenseId::get_id(license, &mut *transaction)
-                    .await?
-                    .expect("No database entry found for license");
+                let license_id =
+                    database::models::categories::License::get_id(license, &mut *transaction)
+                        .await?
+                        .expect("No database entry found for license");
 
                 sqlx::query!(
                     "

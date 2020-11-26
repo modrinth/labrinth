@@ -4,7 +4,7 @@ use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::teams::Permissions;
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -586,14 +586,15 @@ pub struct DownloadRedirect {
     pub url: String,
 }
 
-// under /api/v1/version_file/{hash}
-#[post("{version_id}")]
+// under /api/v1/version_file/{hash}/download
+#[get("{version_id}/download")]
 pub async fn download_version(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     algorithm: web::Query<Algorithm>,
 ) -> Result<HttpResponse, ApiError> {
+    let salt = dotenv::var("IP_SALT")?;
     let hash = info.into_inner().0;
 
     let result = sqlx::query!(
@@ -610,19 +611,25 @@ pub async fn download_version(
     .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(id) = result {
-        let download_exists = sqlx::query!(
-            "SELECT EXISTS(SELECT 1 FROM downloads WHERE version_id = $1 AND date > (CURRENT_DATE - INTERVAL '30 minutes ago'))",
-            id.version_id,
-        )
-            .fetch_one(&**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .exists.unwrap_or(false);
-
         let real_ip = req.connection_info();
-        if !download_exists {
-            sqlx::query!(
-                "
+        let ip_option = real_ip.realip_remote_addr();
+
+        if let Some(ip) = ip_option {
+            let hash = sha1::Sha1::from(format!("{}{}", ip, salt)).hexdigest();
+
+            let download_exists = sqlx::query!(
+                "SELECT EXISTS(SELECT 1 FROM downloads WHERE version_id = $1 AND date > (CURRENT_DATE - INTERVAL '30 minutes ago') AND identifier = $2)",
+                id.version_id,
+                hash,
+            )
+                .fetch_one(&**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?
+                .exists.unwrap_or(false);
+
+            if !download_exists {
+                sqlx::query!(
+                    "
                 INSERT INTO downloads (
                     version_id, identifier
                 )
@@ -630,43 +637,38 @@ pub async fn download_version(
                     $1, $2
                 )
                 ",
-                id.version_id,
-                real_ip
-                    .realip_remote_addr()
-                    .ok_or_else(|| ApiError::InvalidInputError(
-                        "You may only record a download for a mod with a normal client!"
-                            .to_string()
-                    ))?
-            )
-            .execute(&**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                    id.version_id,
+                    hash
+                )
+                .execute(&**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-            sqlx::query!(
-                "
+                sqlx::query!(
+                    "
                 UPDATE versions
                 SET downloads = downloads + 1
                 WHERE id = $1
                 ",
-                id.version_id,
-            )
-            .execute(&**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                    id.version_id,
+                )
+                .execute(&**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-            sqlx::query!(
-                "
+                sqlx::query!(
+                    "
                 UPDATE mods
                 SET downloads = downloads + 1
                 WHERE id = $1
                 ",
-                id.mod_id,
-            )
-            .execute(&**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                    id.mod_id,
+                )
+                .execute(&**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
         }
-
         Ok(HttpResponse::TemporaryRedirect()
             .header("Location", &*id.url)
             .json(DownloadRedirect { url: id.url }))

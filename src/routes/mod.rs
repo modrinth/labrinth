@@ -26,9 +26,11 @@ pub fn mods_config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("mod")
+            .service(mods::mod_slug_get)
             .service(mods::mod_get)
             .service(mods::mod_delete)
             .service(mods::mod_edit)
+            .service(mods::mod_icon_edit)
             .service(web::scope("{mod_id}").service(versions::version_list)),
     );
 }
@@ -46,7 +48,8 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("version_file")
             .service(versions::delete_file)
-            .service(versions::get_version_from_hash),
+            .service(versions::get_version_from_hash)
+            .service(versions::download_version),
     );
 }
 
@@ -56,9 +59,12 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
     cfg.service(users::users_get);
     cfg.service(
         web::scope("user")
+            .service(users::user_username_get)
             .service(users::user_get)
             .service(users::mods_list)
             .service(users::user_delete)
+            .service(users::user_edit)
+            .service(users::user_icon_edit)
             .service(users::teams),
     );
 }

@@ -47,20 +47,28 @@ pub async fn users_get(
 
     let users: Vec<crate::models::users::User> = users_data
         .into_iter()
-        .map(|data| crate::models::users::User {
-            id: data.id.into(),
-            github_id: data.github_id.map(|i| i as u64),
-            username: data.username,
-            name: data.name,
-            email: None,
-            avatar_url: data.avatar_url,
-            bio: data.bio,
-            created: data.created,
-            role: Role::from_string(&*data.role),
-        })
+        .map(|data| convert_user(data))
         .collect();
 
     Ok(HttpResponse::Ok().json(users))
+}
+
+#[get("@{id}")]
+pub async fn user_username_get(
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let id = info.into_inner().0;
+    let user_data = User::get_from_username(id, &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    if let Some(data) = user_data {
+        let response = convert_user(data);
+        Ok(HttpResponse::Ok().json(response))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
 }
 
 #[get("{id}")]
@@ -74,20 +82,24 @@ pub async fn user_get(
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(data) = user_data {
-        let response = crate::models::users::User {
-            id: data.id.into(),
-            github_id: data.github_id.map(|i| i as u64),
-            username: data.username,
-            name: data.name,
-            email: None,
-            avatar_url: data.avatar_url,
-            bio: data.bio,
-            created: data.created,
-            role: Role::from_string(&*data.role),
-        };
+        let response = convert_user(data);
         Ok(HttpResponse::Ok().json(response))
     } else {
         Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+fn convert_user(data: crate::database::models::user_item::User) -> crate::models::users::User {
+    crate::models::users::User {
+        id: data.id.into(),
+        github_id: data.github_id.map(|i| i as u64),
+        username: data.username,
+        name: data.name,
+        email: None,
+        avatar_url: data.avatar_url,
+        bio: data.bio,
+        created: data.created,
+        role: Role::from_string(&*data.role),
     }
 }
 
@@ -189,7 +201,7 @@ pub struct EditUser {
 }
 
 #[patch("{id}")]
-pub async fn user_id(
+pub async fn user_edit(
     req: HttpRequest,
     info: web::Path<(UserId,)>,
     pool: web::Data<PgPool>,

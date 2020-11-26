@@ -1,6 +1,7 @@
 use super::ApiError;
 use crate::auth::check_is_admin_from_headers;
 use crate::database::models;
+use crate::database::models::categories::{DonationPlatform, License};
 use actix_web::{delete, get, put, web, HttpRequest, HttpResponse};
 use models::categories::{Category, GameVersion, Loader};
 use sqlx::PgPool;
@@ -16,7 +17,13 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(loader_delete)
             .service(game_version_list)
             .service(game_version_create)
-            .service(game_version_delete),
+            .service(game_version_delete)
+            .service(license_create)
+            .service(license_delete)
+            .service(license_list)
+            .service(donation_platform_create)
+            .service(donation_platform_list)
+            .service(donation_platform_delete),
     );
 }
 
@@ -180,6 +187,144 @@ pub async fn game_version_delete(
     let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
 
     let result = GameVersion::remove(&name, &mut transaction).await?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(models::DatabaseError::from)?;
+
+    if result.is_some() {
+        Ok(HttpResponse::Ok().body(""))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct LicenseQueryData {
+    short: String,
+    name: String,
+}
+
+#[get("license")]
+pub async fn license_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
+    let results: Vec<LicenseQueryData> = License::list(&**pool)
+        .await?
+        .into_iter()
+        .map(|x| LicenseQueryData {
+            short: x.short,
+            name: x.name,
+        })
+        .collect();
+    Ok(HttpResponse::Ok().json(results))
+}
+
+#[derive(serde::Deserialize)]
+pub struct LicenseData {
+    name: String,
+}
+
+#[put("license/{name}")]
+pub async fn license_create(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    license: web::Path<(String,)>,
+    license_data: web::Json<LicenseData>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
+
+    let short = license.into_inner().0;
+
+    let _id = License::builder()
+        .short(&short)?
+        .name(&license_data.name)?
+        .insert(&**pool)
+        .await?;
+
+    Ok(HttpResponse::Ok().body(""))
+}
+
+#[delete("license/{name}")]
+pub async fn license_delete(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    license: web::Path<(String,)>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
+
+    let name = license.into_inner().0;
+    let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
+
+    let result = License::remove(&name, &mut transaction).await?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(models::DatabaseError::from)?;
+
+    if result.is_some() {
+        Ok(HttpResponse::Ok().body(""))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct DonationPlatformQueryData {
+    short: String,
+    name: String,
+}
+
+#[get("donation_platform")]
+pub async fn donation_platform_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
+    let results: Vec<DonationPlatformQueryData> = DonationPlatform::list(&**pool)
+        .await?
+        .into_iter()
+        .map(|x| DonationPlatformQueryData {
+            short: x.short,
+            name: x.name,
+        })
+        .collect();
+    Ok(HttpResponse::Ok().json(results))
+}
+
+#[derive(serde::Deserialize)]
+pub struct DonationPlatformData {
+    name: String,
+}
+
+#[put("donation_platform/{name}")]
+pub async fn donation_platform_create(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    license: web::Path<(String,)>,
+    license_data: web::Json<DonationPlatformData>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
+
+    let short = license.into_inner().0;
+
+    let _id = DonationPlatform::builder()
+        .short(&short)?
+        .name(&license_data.name)?
+        .insert(&**pool)
+        .await?;
+
+    Ok(HttpResponse::Ok().body(""))
+}
+
+#[delete("donation_platform/{name}")]
+pub async fn donation_platform_delete(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    loader: web::Path<(String,)>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
+
+    let name = loader.into_inner().0;
+    let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
+
+    let result = DonationPlatform::remove(&name, &mut transaction).await?;
 
     transaction
         .commit()

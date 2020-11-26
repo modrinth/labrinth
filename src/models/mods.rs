@@ -90,6 +90,15 @@ impl SideType {
             SideType::Unknown => "unknown",
         }
     }
+
+    pub fn from_str(string: &str) -> SideType {
+        match string {
+            "required" => SideType::Required,
+            "no-functionality" => SideType::NoFunctionality,
+            "unsupported" => SideType::Unsupported,
+            _ => SideType::Unknown,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
