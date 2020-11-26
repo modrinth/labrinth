@@ -239,7 +239,7 @@ impl Version {
 
         let files = sqlx::query!(
             "
-            SELECT files.id, files.url, files.filename, files.primary FROM files
+            SELECT files.id, files.url, files.filename, files.is_primary FROM files
             WHERE files.version_id = $1
             ",
             id as VersionId,
@@ -251,7 +251,7 @@ impl Version {
                 version_id: id,
                 url: c.url,
                 filename: c.filename,
-                primary: c.primary,
+                primary: c.is_primary,
             }))
         })
         .try_collect::<Vec<VersionFile>>()
@@ -495,7 +495,7 @@ impl Version {
 
             let mut files = sqlx::query!(
                 "
-                SELECT files.id, files.url, files.filename, files.primary FROM files
+                SELECT files.id, files.url, files.filename, files.is_primary FROM files
                 WHERE files.version_id = $1
                 ",
                 id as VersionId,
@@ -507,7 +507,7 @@ impl Version {
                     url: c.url,
                     filename: c.filename,
                     hashes: std::collections::HashMap::new(),
-                    primary: c.primary,
+                    primary: c.is_primary,
                 }))
             })
             .try_collect::<Vec<QueryFile>>()

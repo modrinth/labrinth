@@ -475,29 +475,44 @@ async fn mod_create_inner(
 
         let status_id = models::StatusId::get_id(&status, &mut *transaction)
             .await?
-            .expect("No database entry found for status");
-
+            .ok_or_else(|| {
+                CreateError::InvalidInput(format!("Status {} does not exist.", status.clone()))
+            })?;
         let client_side_id =
             models::SideTypeId::get_id(&mod_create_data.client_side, &mut *transaction)
                 .await?
-                .expect("No database entry found for side type");
+                .ok_or_else(|| {
+                    CreateError::InvalidInput(
+                        "Client side type specified does not exist.".to_string(),
+                    )
+                })?;
 
         let server_side_id =
             models::SideTypeId::get_id(&mod_create_data.server_side, &mut *transaction)
                 .await?
-                .expect("No database entry found for side type");
+                .ok_or_else(|| {
+                    CreateError::InvalidInput(
+                        "Server side type specified does not exist.".to_string(),
+                    )
+                })?;
 
         let license_id = models::LicenseId::get_id(&mod_create_data.license_id, &mut *transaction)
             .await?
-            .expect("No database entry found for license");
-
+            .ok_or_else(|| {
+                CreateError::InvalidInput("License specified does not exist.".to_string())
+            })?;
         let mut donation_urls = vec![];
 
         if let Some(urls) = &mod_create_data.donation_urls {
             for url in urls {
                 let platform_id = models::DonationPlatformId::get_id(&url.id, &mut *transaction)
                     .await?
-                    .expect("No database entry found for license");
+                    .ok_or_else(|| {
+                        CreateError::InvalidInput(format!(
+                            "Donation platform {} does not exist.",
+                            url.id.clone()
+                        ))
+                    })?;
 
                 donation_urls.push(models::mod_item::DonationUrl {
                     mod_id: mod_id.into(),
@@ -704,7 +719,7 @@ async fn process_icon_upload(
     }
 }
 
-fn get_image_content_type(extension: &str) -> Option<&'static str> {
+pub fn get_image_content_type(extension: &str) -> Option<&'static str> {
     let content_type = match &*extension {
         "bmp" => "image/bmp",
         "gif" => "image/gif",

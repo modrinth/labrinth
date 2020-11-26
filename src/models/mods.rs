@@ -76,12 +76,7 @@ pub enum SideType {
 
 impl std::fmt::Display for SideType {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            SideType::Required => write!(fmt, "required"),
-            SideType::NoFunctionality => write!(fmt, "no-functionality"),
-            SideType::Unsupported => write!(fmt, "unsupported"),
-            SideType::Unknown => write!(fmt, "unknown"),
-        }
+        write!(fmt, "{}", self.as_str())
     }
 }
 
@@ -93,15 +88,6 @@ impl SideType {
             SideType::NoFunctionality => "no-functionality",
             SideType::Unsupported => "unsupported",
             SideType::Unknown => "unknown",
-        }
-    }
-
-    pub fn from_str(string: &str) -> SideType {
-        match string {
-            "required" => SideType::Required,
-            "no-functionality" => SideType::NoFunctionality,
-            "unsupported" => SideType::Unsupported,
-            _ => SideType::Unknown,
         }
     }
 }

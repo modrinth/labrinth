@@ -3,10 +3,11 @@ use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::mods::{License, ModStatus, SearchRequest, SideType};
+use crate::models::mods::{DonationLink, License, ModStatus, SearchRequest, SideType};
 use crate::models::teams::Permissions;
 use crate::search::{search_for_mod, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -186,6 +187,28 @@ pub struct EditMod {
         with = "::serde_with::rust::double_option"
     )]
     pub wiki_url: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub license_url: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub discord_url: Option<Option<String>>,
+    pub donation_urls: Option<Vec<DonationLink>>,
+    pub license_id: Option<String>,
+    pub client_side: Option<SideType>,
+    pub server_side: Option<SideType>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub slug: Option<Option<String>>,
 }
 
 #[patch("{id}")]
@@ -432,6 +455,198 @@ pub async fn mod_edit(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
+            if let Some(license_url) = &new_mod.license_url {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the license URL of this mod!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET license_url = $1
+                    WHERE (id = $2)
+                    ",
+                    license_url.as_deref(),
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
+
+            if let Some(discord_url) = &new_mod.discord_url {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the discord URL of this mod!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET discord_url = $1
+                    WHERE (id = $2)
+                    ",
+                    discord_url.as_deref(),
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
+
+            if let Some(slug) = &new_mod.slug {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the slug of this mod!".to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET slug = $1
+                    WHERE (id = $2)
+                    ",
+                    slug.as_deref(),
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
+
+            if let Some(new_side) = &new_mod.client_side {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the side type of this mod!"
+                            .to_string(),
+                    ));
+                }
+
+                let side_type_id =
+                    database::models::SideTypeId::get_id(new_side, &mut *transaction)
+                        .await?
+                        .expect("No database entry found for side type");
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET client_side = $1
+                    WHERE (id = $2)
+                    ",
+                    side_type_id as database::models::SideTypeId,
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
+
+            if let Some(new_side) = &new_mod.server_side {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the side type of this mod!"
+                            .to_string(),
+                    ));
+                }
+
+                let side_type_id =
+                    database::models::SideTypeId::get_id(new_side, &mut *transaction)
+                        .await?
+                        .expect("No database entry found for side type");
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET server_side = $1
+                    WHERE (id = $2)
+                    ",
+                    side_type_id as database::models::SideTypeId,
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
+
+            if let Some(license) = &new_mod.license_id {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the license of this mod!"
+                            .to_string(),
+                    ));
+                }
+
+                let license_id = database::models::LicenseId::get_id(license, &mut *transaction)
+                    .await?
+                    .expect("No database entry found for license");
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET license = $1
+                    WHERE (id = $2)
+                    ",
+                    license_id as database::models::LicenseId,
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
+
+            if let Some(donations) = &new_mod.donation_urls {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the donation links of this mod!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    DELETE FROM mods_donations
+                    WHERE joining_mod_id = $1
+                    ",
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+                for donation in donations {
+                    let platform_id = database::models::DonationPlatformId::get_id(
+                        &donation.id,
+                        &mut *transaction,
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInputError(format!(
+                            "Platform {} does not exist.",
+                            donation.id.clone()
+                        ))
+                    })?;
+
+                    sqlx::query!(
+                        "
+                        INSERT INTO mods_donations (joining_mod_id, joining_platform_id, url)
+                        VALUES ($1, $2, $3)
+                        ",
+                        id as database::models::ids::ModId,
+                        platform_id as database::models::ids::DonationPlatformId,
+                        donation.url
+                    )
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                }
+            }
+
             if let Some(body) = &new_mod.body {
                 if !perms.contains(Permissions::EDIT_BODY) {
                     return Err(ApiError::CustomAuthenticationError(
@@ -460,6 +675,99 @@ pub async fn mod_edit(
         }
     } else {
         Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Extension {
+    pub ext: String,
+}
+
+#[patch("{id}/icon")]
+pub async fn mod_icon_edit(
+    web::Query(ext): web::Query<Extension>,
+    req: HttpRequest,
+    info: web::Path<(models::ids::ModId,)>,
+    pool: web::Data<PgPool>,
+    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
+    mut payload: web::Payload,
+) -> Result<HttpResponse, ApiError> {
+    if let Some(content_type) = super::mod_creation::get_image_content_type(&*ext.ext) {
+        let cdn_url = dotenv::var("CDN_URL")?;
+        let user = get_user_from_headers(req.headers(), &**pool).await?;
+        let id = info.into_inner().0;
+
+        let mod_item = database::models::Mod::get(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+
+        if !user.role.is_mod() {
+            let team_member = database::models::TeamMember::get_from_user_id(
+                mod_item.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await
+            .map_err(ApiError::DatabaseError)?
+            .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+
+            if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
+                return Err(ApiError::CustomAuthenticationError(
+                    "You don't have permission to edit this mod's icon.".to_string(),
+                ));
+            }
+        }
+
+        if let Some(icon) = mod_item.icon_url {
+            let name = icon.split('/').next();
+
+            if let Some(icon_path) = name {
+                file_host.delete_file_version("", icon_path).await?;
+            }
+        }
+
+        let mut bytes = web::BytesMut::new();
+        while let Some(item) = payload.next().await {
+            bytes.extend_from_slice(&item.map_err(|_| {
+                ApiError::InvalidInputError("Unable to parse bytes in payload sent!".to_string())
+            })?);
+        }
+
+        if bytes.len() >= 262144 {
+            return Err(ApiError::InvalidInputError(String::from(
+                "Icons must be smaller than 256KiB",
+            )));
+        }
+
+        let upload_data = file_host
+            .upload_file(
+                content_type,
+                &format!("data/{}/icon.{}", id, ext.ext),
+                bytes.to_vec(),
+            )
+            .await?;
+
+        let mod_id: database::models::ids::ModId = id.into();
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET icon_url = $1
+            WHERE (id = $2)
+            ",
+            format!("{}/{}", cdn_url, upload_data.file_name),
+            mod_id as database::models::ids::ModId,
+        )
+        .execute(&**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        Ok(HttpResponse::Ok().body(""))
+    } else {
+        Err(ApiError::InvalidInputError(format!(
+            "Invalid format for mod icon: {}",
+            ext.ext
+        )))
     }
 }
 

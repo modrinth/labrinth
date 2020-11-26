@@ -206,6 +206,8 @@ pub struct EditVersion {
     pub game_versions: Option<Vec<models::mods::GameVersion>>,
     pub loaders: Option<Vec<models::mods::ModLoader>>,
     pub accepted: Option<bool>,
+    pub featured: Option<bool>,
+    pub primary_file: Option<(String, String)>,
 }
 
 #[patch("{id}")]
@@ -388,6 +390,65 @@ pub async fn version_edit(
                     .await
                     .map_err(|e| ApiError::DatabaseError(e.into()))?;
                 }
+            }
+
+            if let Some(featured) = &new_version.featured {
+                sqlx::query!(
+                    "
+                    UPDATE versions
+                    SET featured = $1
+                    WHERE (id = $2)
+                    ",
+                    featured,
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
+
+            if let Some(primary_file) = &new_version.primary_file {
+                let result = sqlx::query!(
+                    "
+                    SELECT id FROM files
+                    INNER JOIN hashes ON hash = $1 AND algorithm = $2
+                    ",
+                    primary_file.1.as_bytes(),
+                    primary_file.0
+                )
+                .fetch_optional(&**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?
+                .ok_or_else(|| {
+                    ApiError::InvalidInputError(format!(
+                        "Specified file with hash {} does not exist.",
+                        primary_file.1.clone()
+                    ))
+                })?;
+
+                sqlx::query!(
+                    "
+                    UPDATE files
+                    SET is_primary = FALSE
+                    WHERE (version_id = $1)
+                    ",
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+                sqlx::query!(
+                    "
+                    UPDATE files
+                    SET is_primary = TRUE
+                    WHERE (id = $1)
+                    ",
+                    result.id,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
             if let Some(body) = &new_version.changelog {

@@ -39,7 +39,7 @@ INSERT INTO licenses (short, name) VALUES ('custom', 'Custom License');
 ALTER TABLE versions
     ADD COLUMN featured BOOLEAN NOT NULL default FALSE;
 ALTER TABLE files
-    ADD COLUMN "primary" BOOLEAN NOT NULL default FALSE;
+    ADD COLUMN is_primary BOOLEAN NOT NULL default FALSE;
 
 ALTER TABLE mods
     ADD COLUMN license integer REFERENCES licenses NOT NULL default 1;

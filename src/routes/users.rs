@@ -1,10 +1,13 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database::models::{TeamMember, User};
+use crate::file_hosting::FileHost;
 use crate::models::users::{Role, UserId};
 use crate::routes::ApiError;
-use actix_web::{delete, get, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::Arc;
 
 #[get("user")]
 pub async fn user_auth_get(
@@ -159,6 +162,236 @@ pub async fn teams(
         .collect();
 
     Ok(HttpResponse::Ok().json(team_members))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EditUser {
+    pub username: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub name: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub email: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub bio: Option<Option<String>>,
+    pub role: Option<String>,
+}
+
+#[patch("{id}")]
+pub async fn user_id(
+    req: HttpRequest,
+    info: web::Path<(UserId,)>,
+    pool: web::Data<PgPool>,
+    new_user: web::Json<EditUser>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    let user_id = info.into_inner().0;
+    let id: crate::database::models::ids::UserId = user_id.into();
+
+    if user.id == user_id || user.role.is_mod() {
+        let mut transaction = pool
+            .begin()
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        if let Some(username) = &new_user.username {
+            sqlx::query!(
+                "
+                    UPDATE users
+                    SET username = $1
+                    WHERE (id = $2)
+                    ",
+                username,
+                id as crate::database::models::ids::UserId,
+            )
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+
+        if let Some(name) = &new_user.name {
+            sqlx::query!(
+                "
+                    UPDATE users
+                    SET name = $1
+                    WHERE (id = $2)
+                    ",
+                name.as_deref(),
+                id as crate::database::models::ids::UserId,
+            )
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+
+        if let Some(bio) = &new_user.bio {
+            sqlx::query!(
+                "
+                    UPDATE users
+                    SET bio = $1
+                    WHERE (id = $2)
+                    ",
+                bio.as_deref(),
+                id as crate::database::models::ids::UserId,
+            )
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+
+        if let Some(email) = &new_user.email {
+            sqlx::query!(
+                "
+                    UPDATE users
+                    SET email = $1
+                    WHERE (id = $2)
+                    ",
+                email.as_deref(),
+                id as crate::database::models::ids::UserId,
+            )
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+
+        if let Some(role) = &new_user.role {
+            if !user.role.is_mod() {
+                return Err(ApiError::CustomAuthenticationError(
+                    "You do not have the permissions to edit the role of this user!".to_string(),
+                ));
+            }
+
+            let role = Role::from_string(role).to_string();
+
+            sqlx::query!(
+                "
+                    UPDATE users
+                    SET role = $1
+                    WHERE (id = $2)
+                    ",
+                role,
+                id as crate::database::models::ids::UserId,
+            )
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+
+        transaction
+            .commit()
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        Ok(HttpResponse::Ok().body(""))
+    } else {
+        Err(ApiError::CustomAuthenticationError(
+            "You do not have permission to edit this user!".to_string(),
+        ))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Extension {
+    pub ext: String,
+}
+
+#[patch("{id}/icon")]
+pub async fn user_icon_edit(
+    web::Query(ext): web::Query<Extension>,
+    req: HttpRequest,
+    info: web::Path<(UserId,)>,
+    pool: web::Data<PgPool>,
+    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
+    mut payload: web::Payload,
+) -> Result<HttpResponse, ApiError> {
+    if let Some(content_type) = super::mod_creation::get_image_content_type(&*ext.ext) {
+        let cdn_url = dotenv::var("CDN_URL")?;
+        let user = get_user_from_headers(req.headers(), &**pool).await?;
+        let id = info.into_inner().0;
+
+        if user.id != id && !user.role.is_mod() {
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to edit this user's icon.".to_string(),
+            ));
+        }
+
+        let mut icon_url = user.avatar_url;
+
+        if user.id != id {
+            let new_user = User::get(id.into(), &**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+            if let Some(new) = new_user {
+                icon_url = new.avatar_url;
+            } else {
+                return Ok(HttpResponse::NotFound().body(""));
+            }
+        }
+
+        if let Some(icon) = icon_url {
+            if icon.starts_with(&cdn_url) {
+                let name = icon.split('/').next();
+
+                if let Some(icon_path) = name {
+                    file_host.delete_file_version("", icon_path).await?;
+                }
+            }
+        }
+
+        let mut bytes = web::BytesMut::new();
+        while let Some(item) = payload.next().await {
+            bytes.extend_from_slice(&item.map_err(|_| {
+                ApiError::InvalidInputError("Unable to parse bytes in payload sent!".to_string())
+            })?);
+        }
+
+        if bytes.len() >= 262144 {
+            return Err(ApiError::InvalidInputError(String::from(
+                "Icons must be smaller than 256KiB",
+            )));
+        }
+
+        let upload_data = file_host
+            .upload_file(
+                content_type,
+                &format!("user/{}/icon.{}", id, ext.ext),
+                bytes.to_vec(),
+            )
+            .await?;
+
+        let mod_id: crate::database::models::ids::UserId = id.into();
+        sqlx::query!(
+            "
+            UPDATE users
+            SET avatar_url = $1
+            WHERE (id = $2)
+            ",
+            format!("{}/{}", cdn_url, upload_data.file_name),
+            mod_id as crate::database::models::ids::UserId,
+        )
+        .execute(&**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        Ok(HttpResponse::Ok().body(""))
+    } else {
+        Err(ApiError::InvalidInputError(format!(
+            "Invalid format for user icon: {}",
+            ext.ext
+        )))
+    }
 }
 
 // TODO: Make this actually do stuff

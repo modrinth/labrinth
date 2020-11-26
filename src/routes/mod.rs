@@ -84,6 +84,8 @@ pub fn moderation_config(cfg: &mut web::ServiceConfig) {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
+    #[error("Environment Error")]
+    EnvError(#[from] dotenv::Error),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
     #[error("Internal server error")]
@@ -103,6 +105,7 @@ pub enum ApiError {
 impl actix_web::ResponseError for ApiError {
     fn status_code(&self) -> actix_web::http::StatusCode {
         match self {
+            ApiError::EnvError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::DatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::AuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::CustomAuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
@@ -117,6 +120,7 @@ impl actix_web::ResponseError for ApiError {
         actix_web::web::HttpResponse::build(self.status_code()).json(
             crate::models::error::ApiError {
                 error: match self {
+                    ApiError::EnvError(..) => "environment_error",
                     ApiError::DatabaseError(..) => "database_error",
                     ApiError::AuthenticationError(..) => "unauthorized",
                     ApiError::CustomAuthenticationError(..) => "unauthorized",
