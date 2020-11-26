@@ -2,10 +2,12 @@ use super::ApiError;
 use crate::auth::check_is_moderator_from_headers;
 use crate::database;
 use crate::models;
-use crate::models::mods::{License, ModStatus, SideType, VersionType};
+use crate::models::mods::{ModStatus, VersionType, ModId};
 use actix_web::{get, web, HttpRequest, HttpResponse};
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use sqlx::PgPool;
+use sqlx::types::chrono::{DateTime, Utc};
+use crate::models::teams::TeamId;
 
 #[derive(Deserialize)]
 pub struct ResultCount {
@@ -15,6 +17,42 @@ pub struct ResultCount {
 
 fn default_count() -> i16 {
     100
+}
+
+/// A mod returned from the API moderation routes
+#[derive(Serialize)]
+pub struct ModerationMod {
+    /// The ID of the mod, encoded as a base62 string.
+    pub id: ModId,
+    /// The slug of a mod, used for vanity URLs
+    pub slug: Option<String>,
+    /// The team of people that has ownership of this mod.
+    pub team: TeamId,
+    /// The title or name of the mod.
+    pub title: String,
+    /// A short description of the mod.
+    pub description: String,
+    /// The link to the long description of the mod.
+    pub body_url: String,
+    /// The date at which the mod was first published.
+    pub published: DateTime<Utc>,
+    /// The date at which the mod was first published.
+    pub updated: DateTime<Utc>,
+    /// The status of the mod
+    pub status: ModStatus,
+
+    /// The total number of downloads the mod has had.
+    pub downloads: u32,
+    /// The URL of the icon of the mod
+    pub icon_url: Option<String>,
+    /// An optional link to where to submit bugs or issues with the mod.
+    pub issues_url: Option<String>,
+    /// An optional link to the source code for the mod.
+    pub source_url: Option<String>,
+    /// An optional link to the mod's wiki page or other relevant information.
+    pub wiki_url: Option<String>,
+    /// An optional link to the mod's discord
+    pub discord_url: Option<String>,
 }
 
 #[get("mods")]
@@ -41,7 +79,7 @@ pub async fn mods(
     )
     .fetch_many(&**pool)
     .try_filter_map(|e| async {
-        Ok(e.right().map(|m| models::mods::Mod {
+        Ok(e.right().map(|m| ModerationMod {
             id: database::models::ids::ModId(m.id).into(),
             slug: m.slug,
             team: database::models::ids::TeamId(m.team_id).into(),
@@ -49,27 +87,17 @@ pub async fn mods(
             description: m.description,
             body_url: m.body_url,
             published: m.published,
-            categories: vec![],
-            versions: vec![],
             icon_url: m.icon_url,
             issues_url: m.issues_url,
             source_url: m.source_url,
             status: ModStatus::Processing,
-            license: License {
-                id: "".to_string(),
-                name: "".to_string(),
-                url: None,
-            },
-            client_side: SideType::Required,
             updated: m.updated,
             downloads: m.downloads as u32,
             wiki_url: m.wiki_url,
             discord_url: m.discord_url,
-            server_side: SideType::Required,
-            donation_urls: None,
         }))
     })
-    .try_collect::<Vec<models::mods::Mod>>()
+    .try_collect::<Vec<ModerationMod>>()
     .await
     .map_err(|e| ApiError::DatabaseError(e.into()))?;
 

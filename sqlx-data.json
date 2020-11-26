@@ -2030,16 +2030,6 @@
       ]
     }
   },
-  "7914ce31830a6c60c875d3f40aea1ec34889ca3597a70a2fc2d1a98b25a68c85": {
-    "query": "\n            DELETE FROM downloads\n            WHERE date < (CURRENT_DATE - INTERVAL '30 minutes ago')\n            ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": []
-    }
-  },
   "79b896b1a8ddab285294638302976b75d0d915f36036383cc21bd2fc48d4502c": {
     "query": "\n                    DELETE FROM loaders_versions WHERE version_id = $1\n                    ",
     "describe": {
@@ -2101,16 +2091,6 @@
         false,
         false
       ]
-    }
-  },
-  "81a1c88ca4796929eddf5ac9ed9e67d7e3fcad0906111a04f0e174a4be29719f": {
-    "query": "\n            DELETE FROM states\n            WHERE expires < CURRENT_DATE\n            ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": []
     }
   },
   "82515e4e7e88f1193c956f032caabc70f535f925e212de30f974afd3ec126092": {
@@ -2210,7 +2190,7 @@
         ]
       },
       "nullable": [
-        true
+        false
       ]
     }
   },

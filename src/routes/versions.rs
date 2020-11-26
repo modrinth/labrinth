@@ -1,6 +1,6 @@
 use super::ApiError;
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
-use crate::database;
+use crate::{database, Pepper};
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::teams::Permissions;
@@ -593,8 +593,8 @@ pub async fn download_version(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     algorithm: web::Query<Algorithm>,
+    pepper: web::Data<Pepper>,
 ) -> Result<HttpResponse, ApiError> {
-    let salt = dotenv::var("IP_SALT")?;
     let hash = info.into_inner().0;
 
     let result = sqlx::query!(
@@ -615,7 +615,7 @@ pub async fn download_version(
         let ip_option = real_ip.realip_remote_addr();
 
         if let Some(ip) = ip_option {
-            let hash = sha1::Sha1::from(format!("{}{}", ip, salt)).hexdigest();
+            let hash = sha1::Sha1::from(format!("{}{}", ip, pepper.pepper)).hexdigest();
 
             let download_exists = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM downloads WHERE version_id = $1 AND date > (CURRENT_DATE - INTERVAL '30 minutes ago') AND identifier = $2)",

@@ -36,6 +36,11 @@ struct Config {
     allow_missing_vars: bool,
 }
 
+#[derive(Clone)]
+pub struct Pepper {
+    pub pepper: String,
+}
+
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
@@ -254,6 +259,10 @@ async fn main() -> std::io::Result<()> {
 
     scheduler::schedule_versions(&mut scheduler, pool.clone(), skip_initial);
 
+    let ip_salt = Pepper {
+        pepper: crate::models::ids::Base62Id(crate::models::ids::random_base62(11)).to_string()
+    };
+
     let allowed_origins = dotenv::var("CORS_ORIGINS")
         .ok()
         .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
@@ -285,6 +294,7 @@ async fn main() -> std::io::Result<()> {
             .data(file_host.clone())
             .data(indexing_queue.clone())
             .data(search_config.clone())
+            .data(ip_salt.clone())
             .service(routes::index_get)
             .service(
                 web::scope("/api/v1/")
@@ -379,8 +389,6 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("GITHUB_CLIENT_ID");
     failed |= check_var::<String>("GITHUB_CLIENT_SECRET");
-
-    failed |= check_var::<String>("IP_SALT");
 
     failed
 }

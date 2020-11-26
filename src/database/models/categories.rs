@@ -564,7 +564,7 @@ impl License {
 }
 
 impl<'a> LicenseBuilder<'a> {
-    /// The game version.  Spaces must be replaced with '_' for it to be valid
+    /// The license's short name/abbreviation.  Spaces must be replaced with '_' for it to be valid
     pub fn short(self, short: &'a str) -> Result<LicenseBuilder<'a>, DatabaseError> {
         if short
             .chars()
@@ -579,6 +579,7 @@ impl<'a> LicenseBuilder<'a> {
         }
     }
 
+    /// The license's long name
     pub fn name(self, name: &'a str) -> Result<LicenseBuilder<'a>, DatabaseError> {
         Ok(Self {
             name: Some(name),
@@ -590,9 +591,6 @@ impl<'a> LicenseBuilder<'a> {
     where
         E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
-        // This looks like a mess, but it *should* work
-        // This allows game versions to be partially updated without
-        // replacing the unspecified fields with defaults.
         let result = sqlx::query!(
             "
             INSERT INTO licenses (short, name)
@@ -714,7 +712,7 @@ impl DonationPlatform {
 }
 
 impl<'a> DonationPlatformBuilder<'a> {
-    /// The game version.  Spaces must be replaced with '_' for it to be valid
+    /// The donation platform short name.  Spaces must be replaced with '_' for it to be valid
     pub fn short(self, short: &'a str) -> Result<DonationPlatformBuilder<'a>, DatabaseError> {
         if short
             .chars()
@@ -729,6 +727,7 @@ impl<'a> DonationPlatformBuilder<'a> {
         }
     }
 
+    /// The donation platform long name
     pub fn name(self, name: &'a str) -> Result<DonationPlatformBuilder<'a>, DatabaseError> {
         Ok(Self {
             name: Some(name),
@@ -740,9 +739,6 @@ impl<'a> DonationPlatformBuilder<'a> {
     where
         E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
-        // This looks like a mess, but it *should* work
-        // This allows game versions to be partially updated without
-        // replacing the unspecified fields with defaults.
         let result = sqlx::query!(
             "
             INSERT INTO donation_platforms (short, name)
