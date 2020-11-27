@@ -172,10 +172,7 @@ impl ModStatus {
     }
 
     pub fn is_searchable(&self) -> bool {
-        match self {
-            ModStatus::Approved => true,
-            _ => false,
-        }
+        matches!(self, ModStatus::Approved)
     }
 }
 

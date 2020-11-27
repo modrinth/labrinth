@@ -47,7 +47,7 @@ pub async fn users_get(
 
     let users: Vec<crate::models::users::User> = users_data
         .into_iter()
-        .map(|data| convert_user(data))
+        .map(convert_user)
         .collect();
 
     Ok(HttpResponse::Ok().json(users))

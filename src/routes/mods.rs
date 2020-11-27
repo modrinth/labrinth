@@ -350,12 +350,10 @@ pub async fn mod_edit(
                     ));
                 }
 
-                if status == &ModStatus::Rejected || status == &ModStatus::Approved {
-                    if !user.role.is_mod() {
-                        return Err(ApiError::CustomAuthenticationError(
-                            "You don't have permission to set this status".to_string(),
-                        ));
-                    }
+                if (status == &ModStatus::Rejected || status == &ModStatus::Approved) && !user.role.is_mod() {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You don't have permission to set this status".to_string(),
+                    ));
                 }
 
                 let status_id = database::models::StatusId::get_id(&status, &mut *transaction)
