@@ -1,9 +1,9 @@
 use super::ApiError;
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
-use crate::{database, Pepper};
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::teams::Permissions;
+use crate::{database, Pepper};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -711,51 +711,51 @@ pub async fn delete_file(
     .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(row) = result {
-         let mut transaction = pool
-                .begin()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        let mut transaction = pool
+            .begin()
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-            sqlx::query!(
-                "
+        sqlx::query!(
+            "
                 DELETE FROM hashes
                 WHERE hash = $1 AND algorithm = $2
                 ",
-                hash.as_bytes(),
-                algorithm.algorithm
-            )
-            .execute(&mut *transaction)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            hash.as_bytes(),
+            algorithm.algorithm
+        )
+        .execute(&mut *transaction)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-            sqlx::query!(
-                "
+        sqlx::query!(
+            "
                 DELETE FROM files
                 WHERE files.id = $1
                 ",
-                row.id,
+            row.id,
+        )
+        .execute(&mut *transaction)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        let mod_id: models::mods::ModId = database::models::ids::ModId(row.mod_id).into();
+        file_host
+            .delete_file_version(
+                "",
+                &format!(
+                    "data/{}/versions/{}/{}",
+                    mod_id, row.version_number, row.filename
+                ),
             )
-            .execute(&mut *transaction)
+            .await?;
+
+        transaction
+            .commit()
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-            let mod_id: models::mods::ModId = database::models::ids::ModId(row.mod_id).into();
-            file_host
-                .delete_file_version(
-                    "",
-                    &format!(
-                        "data/{}/versions/{}/{}",
-                        mod_id, row.version_number, row.filename
-                    ),
-                )
-                .await?;
-
-            transaction
-                .commit()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-            Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::Ok().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
