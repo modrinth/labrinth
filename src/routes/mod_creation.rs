@@ -154,7 +154,6 @@ pub async fn mod_create(
     payload: Multipart,
     client: Data<PgPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    indexing_queue: Data<Arc<CreationQueue>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -165,7 +164,6 @@ pub async fn mod_create(
         &mut transaction,
         &***file_host,
         &mut uploaded_files,
-        &***indexing_queue,
     )
     .await;
 
@@ -222,7 +220,6 @@ async fn mod_create_inner(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
-    indexing_queue: &CreationQueue,
 ) -> Result<HttpResponse, CreateError> {
     // The base URL for files uploaded to backblaze
     let cdn_url = dotenv::var("CDN_URL")?;
@@ -581,11 +578,6 @@ async fn mod_create_inner(
         };
 
         let _mod_id = mod_builder.insert(&mut *transaction).await?;
-
-        let index_mod =
-            crate::search::indexing::local_import::query_one(mod_id.into(), &mut *transaction)
-                .await?;
-        indexing_queue.add(index_mod);
 
         Ok(HttpResponse::Ok().json(response))
     }

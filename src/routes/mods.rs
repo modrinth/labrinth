@@ -58,7 +58,7 @@ pub async fn mods_get(
                         let user_id: database::models::ids::UserId = user.id.into();
 
                         let mod_exists = sqlx::query!(
-                            "SELECT EXISTS(SELECT 1 FROM team_members WHERE id = $1 AND user_id = $2)",
+                            "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
                             mod_data.inner.team_id as database::models::ids::TeamId,
                             user_id as database::models::ids::UserId,
                         )
@@ -104,7 +104,7 @@ pub async fn mod_slug_get(
                     let user_id: database::models::ids::UserId = user.id.into();
 
                     let mod_exists = sqlx::query!(
-                        "SELECT EXISTS(SELECT 1 FROM team_members WHERE id = $1 AND user_id = $2)",
+                        "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
                         data.inner.team_id as database::models::ids::TeamId,
                         user_id as database::models::ids::UserId,
                     )
@@ -151,7 +151,7 @@ pub async fn mod_get(
                     let user_id: database::models::ids::UserId = user.id.into();
 
                     let mod_exists = sqlx::query!(
-                        "SELECT EXISTS(SELECT 1 FROM team_members WHERE id = $1 AND user_id = $2)",
+                        "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
                         data.inner.team_id as database::models::ids::TeamId,
                         user_id as database::models::ids::UserId,
                     )
