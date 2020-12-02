@@ -11,6 +11,8 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
+use crate::search::indexing::queue::CreationQueue;
+use actix_web::web::Data;
 
 #[get("mod")]
 pub async fn mod_search(
@@ -265,6 +267,7 @@ pub async fn mod_edit(
     config: web::Data<SearchConfig>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     new_mod: web::Json<EditMod>,
+    indexing_queue: Data<Arc<CreationQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
@@ -378,8 +381,14 @@ pub async fn mod_edit(
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-                if mod_item.status.is_searchable() && status.is_searchable() {
+                if mod_item.status.is_searchable() && !status.is_searchable() {
                     delete_from_index(id.into(), config).await?;
+                } else if !mod_item.status.is_searchable() && status.is_searchable() {
+                    let index_mod =
+                        crate::search::indexing::local_import::query_one(mod_id.into(), &mut *transaction)
+                            .await?;
+
+                    indexing_queue.add(index_mod);
                 }
             }
 
