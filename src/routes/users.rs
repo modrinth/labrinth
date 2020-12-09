@@ -74,9 +74,15 @@ pub async fn user_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let user_data = User::get(id.into(), &**pool)
+    let mut user_data = User::get(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    if user_data.is_some() {
+        user_data = User::get_from_username(id, &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    }
 
     if let Some(data) = user_data {
         let response = convert_user(data);
