@@ -70,16 +70,26 @@ pub async fn user_username_get(
 
 #[get("{id}")]
 pub async fn user_get(
-    info: web::Path<(UserId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0;
-    let mut user_data = User::get(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let string = info.into_inner().0;
+    let id_option: Option<UserId> = serde_json::from_str(&*string).ok();
 
-    if user_data.is_some() {
-        user_data = User::get_from_username(id, &**pool)
+    let mut user_data ;
+
+    if let Some(id) = id_option {
+        user_data = User::get(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        if user_data.is_none() {
+            user_data = User::get_from_username(string, &**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+    } else {
+        user_data = User::get_from_username(string, &**pool)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?;
     }

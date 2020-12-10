@@ -3,7 +3,7 @@ use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::mods::{DonationLink, License, ModStatus, SearchRequest, SideType};
+use crate::models::mods::{DonationLink, License, ModStatus, SearchRequest, SideType, ModId};
 use crate::models::teams::Permissions;
 use crate::search::{search_for_mod, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
@@ -133,16 +133,26 @@ pub async fn mod_slug_get(
 #[get("{id}")]
 pub async fn mod_get(
     req: HttpRequest,
-    info: web::Path<(models::ids::ModId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0;
-    let mut mod_data = database::models::Mod::get_full(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let string = info.into_inner().0;
+    let id_option : Option<ModId> = serde_json::from_str(&*string).ok();
 
-    if mod_data.is_none() {
-        mod_data = database::models::Mod::get_full_from_slug(id, &**pool)
+    let mut mod_data ;
+
+    if let Some(id) = id_option {
+        mod_data = database::models::Mod::get_full(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        if mod_data.is_none() {
+            mod_data = database::models::Mod::get_full_from_slug(string, &**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+    } else {
+        mod_data = database::models::Mod::get_full_from_slug(string, &**pool)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?;
     }
