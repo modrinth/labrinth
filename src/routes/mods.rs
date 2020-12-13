@@ -137,7 +137,7 @@ pub async fn mod_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
-    let id_option : Option<ModId> = serde_json::from_str(&*string).ok();
+    let id_option : Option<ModId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
     let mut mod_data ;
 

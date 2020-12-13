@@ -74,7 +74,7 @@ pub async fn user_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
-    let id_option: Option<UserId> = serde_json::from_str(&*string).ok();
+    let id_option: Option<UserId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
     let mut user_data ;
 
@@ -176,7 +176,6 @@ pub async fn teams(
         .into_iter()
         .map(|data| crate::models::teams::TeamMember {
             user_id: data.user_id.into(),
-            name: data.name,
             role: data.role,
             permissions: if same_user {
                 Some(data.permissions)
@@ -192,11 +191,6 @@ pub async fn teams(
 #[derive(Serialize, Deserialize)]
 pub struct EditUser {
     pub username: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "::serde_with::rust::double_option"
-    )]
     pub name: Option<Option<String>>,
     #[serde(
         default,
