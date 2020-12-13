@@ -76,7 +76,7 @@ pub async fn user_get(
     let string = info.into_inner().0;
     let id_option: Option<UserId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let mut user_data ;
+    let mut user_data;
 
     if let Some(id) = id_option {
         user_data = User::get(id.into(), &**pool)
@@ -191,6 +191,11 @@ pub async fn teams(
 #[derive(Serialize, Deserialize)]
 pub struct EditUser {
     pub username: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
     pub name: Option<Option<String>>,
     #[serde(
         default,

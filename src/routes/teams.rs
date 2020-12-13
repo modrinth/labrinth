@@ -171,7 +171,7 @@ pub async fn add_team_member(
         }
     }
 
-   crate::database::models::User::get(member.user_id, &**pool)
+    crate::database::models::User::get(member.user_id, &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?
         .ok_or_else(|| ApiError::InvalidInputError("An invalid User ID specified".to_string()))?;

@@ -165,7 +165,7 @@ pub async fn mod_create(
         &mut transaction,
         &***file_host,
         &mut uploaded_files,
-        &***indexing_queue
+        &***indexing_queue,
     )
     .await;
 
