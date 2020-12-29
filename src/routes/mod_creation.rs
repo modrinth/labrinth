@@ -99,6 +99,8 @@ impl actix_web::ResponseError for CreateError {
 struct ModCreateData {
     /// The title or name of the mod.
     pub mod_name: String,
+    /// The project type of this mod
+    pub project_type: String,
     /// The slug of a mod, used for vanity URLs
     pub mod_slug: Option<String>,
     /// A short description of the mod.

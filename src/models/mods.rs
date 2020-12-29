@@ -21,6 +21,8 @@ pub struct VersionId(pub u64);
 pub struct Mod {
     /// The ID of the mod, encoded as a base62 string.
     pub id: ModId,
+    /// The project type of this mod
+    pub project_type: String,
     /// The slug of a mod, used for vanity URLs
     pub slug: Option<String>,
     /// The team of people that has ownership of this mod.

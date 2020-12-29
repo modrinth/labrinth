@@ -33,6 +33,7 @@ impl DonationUrl {
 
 pub struct ModBuilder {
     pub mod_id: ModId,
+    pub project_type_id: ProjectTypeId,
     pub team_id: TeamId,
     pub title: String,
     pub description: String,
@@ -110,6 +111,7 @@ impl ModBuilder {
 
 pub struct Mod {
     pub id: ModId,
+    pub project_type_id: ProjectTypeId,
     pub team_id: TeamId,
     pub title: String,
     pub description: String,
