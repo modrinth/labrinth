@@ -7,6 +7,7 @@ use crate::{database, Pepper};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::borrow::Borrow;
 use std::sync::Arc;
 
 // TODO: this needs filtering, and a better response type
@@ -361,6 +362,43 @@ pub async fn version_edit(
                 }
             }
 
+            if let Some(game_versions) = &new_version.game_versions {
+                sqlx::query!(
+                    "
+                    DELETE FROM game_versions_versions WHERE joining_version_id = $1
+                    ",
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+                for game_version in game_versions {
+                    let game_version_id = database::models::categories::GameVersion::get_id(
+                        &game_version.0,
+                        &mut *transaction,
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInputError(
+                            "No database entry for game version provided.".to_string(),
+                        )
+                    })?;
+
+                    sqlx::query!(
+                        "
+                        INSERT INTO game_versions_versions (game_version_id, joining_version_id)
+                        VALUES ($1, $2)
+                        ",
+                        game_version_id as database::models::ids::GameVersionId,
+                        id as database::models::ids::VersionId,
+                    )
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                }
+            }
+
             if let Some(loaders) = &new_version.loaders {
                 sqlx::query!(
                     "
@@ -596,6 +634,7 @@ pub struct DownloadRedirect {
 }
 
 // under /api/v1/version_file/{hash}/download
+#[allow(clippy::await_holding_refcell_ref)]
 #[get("{version_id}/download")]
 pub async fn download_version(
     req: HttpRequest,
@@ -622,7 +661,7 @@ pub async fn download_version(
 
     if let Some(id) = result {
         let real_ip = req.connection_info();
-        let ip_option = real_ip.realip_remote_addr();
+        let ip_option = real_ip.borrow().remote_addr();
 
         if let Some(ip) = ip_option {
             let hash = sha1::Sha1::from(format!("{}{}", ip, pepper.pepper)).hexdigest();
