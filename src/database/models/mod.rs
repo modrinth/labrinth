@@ -120,3 +120,25 @@ impl ids::DonationPlatformId {
         Ok(result.map(|r| ids::DonationPlatformId(r.id)))
     }
 }
+
+impl ids::ProjectTypeId {
+    pub async fn get_id<'a, E>(
+        project_type: String,
+        exec: E,
+    ) -> Result<Option<Self>, DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT id FROM project_types
+            WHERE name = $1
+            ",
+            project_type
+        )
+            .fetch_optional(exec)
+            .await?;
+
+        Ok(result.map(|r| ids::ProjectTypeId(r.id)))
+    }
+}

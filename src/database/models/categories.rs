@@ -31,14 +31,15 @@ pub struct DonationPlatform {
 
 pub struct CategoryBuilder<'a> {
     pub name: Option<&'a str>,
+    pub project_type: Option<&'a ProjectTypeId>
 }
 
 impl Category {
     pub fn builder() -> CategoryBuilder<'static> {
-        CategoryBuilder { name: None }
+        CategoryBuilder { name: None, project_type: None, }
     }
 
-    pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<CategoryId>, DatabaseError>
+    pub async fn get_id<'a, E>(name: &str, project_type: ProjectTypeId, exec: E) -> Result<Option<CategoryId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -128,7 +129,10 @@ impl<'a> CategoryBuilder<'a> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
-            Ok(Self { name: Some(name) })
+            Ok(Self {
+                name: Some(name),
+                ..self
+            })
         } else {
             Err(DatabaseError::InvalidIdentifier(name.to_string()))
         }
@@ -140,12 +144,13 @@ impl<'a> CategoryBuilder<'a> {
     {
         let result = sqlx::query!(
             "
-            INSERT INTO categories (category)
-            VALUES ($1)
+            INSERT INTO categories (category, project_type)
+            VALUES ($1, $2)
             ON CONFLICT (category) DO NOTHING
             RETURNING id
             ",
-            self.name
+            self.name,
+            self.project_type as super::ids::ProjectTypeId
         )
         .fetch_one(exec)
         .await?;

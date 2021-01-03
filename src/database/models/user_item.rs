@@ -195,7 +195,7 @@ impl User {
         let mods = sqlx::query!(
             "
             SELECT m.id FROM mods m
-            INNER JOIN team_members tm ON tm.team_id = m.team_id
+            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.accepted = TRUE
             WHERE tm.user_id = $1
             ",
             user_id as UserId,

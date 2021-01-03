@@ -61,6 +61,7 @@ impl ModBuilder {
     ) -> Result<ModId, super::DatabaseError> {
         let mod_struct = Mod {
             id: self.mod_id,
+            project_type_id: self.project_type_id,
             team_id: self.team_id,
             title: self.title,
             description: self.description,
@@ -185,7 +186,7 @@ impl Mod {
     {
         let result = sqlx::query!(
             "
-            SELECT title, description, downloads,
+            SELECT title, project_type, description, downloads,
                    icon_url, body_url, published,
                    updated, status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
@@ -201,6 +202,7 @@ impl Mod {
         if let Some(row) = result {
             Ok(Some(Mod {
                 id,
+                project_type_id: ProjectTypeId(row.project_type),
                 team_id: TeamId(row.team_id),
                 title: row.title,
                 description: row.description,
@@ -234,7 +236,7 @@ impl Mod {
         let mod_ids_parsed: Vec<i64> = mod_ids.into_iter().map(|x| x.0).collect();
         let mods = sqlx::query!(
             "
-            SELECT id, title, description, downloads,
+            SELECT id, project_type, title, description, downloads,
                    icon_url, body_url, published,
                    updated, status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
@@ -248,6 +250,7 @@ impl Mod {
         .try_filter_map(|e| async {
             Ok(e.right().map(|m| Mod {
                 id: ModId(m.id),
+                project_type_id: ProjectTypeId(m.project_type),
                 team_id: TeamId(m.team_id),
                 title: m.title,
                 description: m.description,
@@ -486,8 +489,20 @@ impl Mod {
             .fetch_one(executor)
             .await?;
 
+            let project_type = sqlx::query!(
+                "
+                SELECT name FROM project_types
+                WHERE id = $1
+                ",
+                inner.project_type_id.0,
+            )
+                .fetch_one(executor)
+                .await?
+                .name;
+
             Ok(Some(QueryMod {
                 inner,
+                project_type,
                 categories,
                 versions,
                 donation_urls: donations,
@@ -517,6 +532,7 @@ impl Mod {
 pub struct QueryMod {
     pub inner: Mod,
 
+    pub project_type: String,
     pub categories: Vec<String>,
     pub versions: Vec<VersionId>,
     pub donation_urls: Vec<DonationUrl>,

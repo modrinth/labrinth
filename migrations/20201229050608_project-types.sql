@@ -9,6 +9,8 @@ INSERT INTO project_types (name) VALUES ('datapack');
 INSERT INTO project_types (name) VALUES ('world');
 INSERT INTO project_types (name) VALUES ('resourcepack');
 
+INSERT INTO loaders (loader) VALUES ('bukkit');
+
 ALTER TABLE mods
     ADD COLUMN project_type integer REFERENCES project_types NOT NULL default 1;
 

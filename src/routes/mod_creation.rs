@@ -429,6 +429,12 @@ async fn mod_create_inner(
             }
         }
 
+        let project_type_id = models::ProjectTypeId::get_id(mod_create_data.project_type, &mut *transaction)
+            .await?
+            .ok_or_else(|| {
+                CreateError::InvalidInput(format!("Project Type {} does not exist.", mod_create_data.project_type.clone()))
+            })?;
+
         // Convert the list of category names to actual categories
         let mut categories = Vec::with_capacity(mod_create_data.categories.len());
         for category in &mod_create_data.categories {
@@ -479,6 +485,7 @@ async fn mod_create_inner(
             .ok_or_else(|| {
                 CreateError::InvalidInput(format!("Status {} does not exist.", status.clone()))
             })?;
+
         let client_side_id =
             models::SideTypeId::get_id(&mod_create_data.client_side, &mut *transaction)
                 .await?
@@ -526,6 +533,7 @@ async fn mod_create_inner(
 
         let mod_builder = models::mod_item::ModBuilder {
             mod_id: mod_id.into(),
+            project_type_id,
             team_id,
             title: mod_create_data.mod_name,
             description: mod_create_data.mod_description,
@@ -551,6 +559,7 @@ async fn mod_create_inner(
 
         let response = crate::models::mods::Mod {
             id: mod_id,
+            project_type: mod_create_data.project_type,
             slug: mod_builder.slug.clone(),
             team: team_id.into(),
             title: mod_builder.title.clone(),

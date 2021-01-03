@@ -199,6 +199,7 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
 
     models::mods::Mod {
         id: m.id.into(),
+        project_type: data.project_type,
         slug: m.slug,
         team: m.team_id.into(),
         title: m.title,
