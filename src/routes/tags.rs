@@ -1,7 +1,7 @@
 use super::ApiError;
 use crate::auth::check_is_admin_from_headers;
 use crate::database::models;
-use crate::database::models::categories::{DonationPlatform, License};
+use crate::database::models::categories::{DonationPlatform, License, ProjectType};
 use actix_web::{delete, get, put, web, HttpRequest, HttpResponse};
 use models::categories::{Category, GameVersion, Loader};
 use sqlx::PgPool;
@@ -27,11 +27,27 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
+#[derive(serde::Serialize)]
+pub struct CategoryQueryData {
+    name: String,
+    project_type: String,
+}
 // TODO: searching / filtering? Could be used to implement a live
 // searching category list
 #[get("category")]
 pub async fn category_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
-    let results = Category::list(&**pool).await?;
+    let categories = Category::list(&**pool).await?;
+
+    let mut results = vec![];
+    for category in categories {
+        let project_type = ProjectType::get_name(category.project_type, &**pool).await?;
+
+        results.push(CategoryQueryData {
+            name: category.category,
+            project_type,
+        })
+    }
+
     Ok(HttpResponse::Ok().json(results))
 }
 

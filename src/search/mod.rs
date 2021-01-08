@@ -62,6 +62,7 @@ pub struct SearchConfig {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UploadSearchMod {
     pub mod_id: String,
+    pub project_type: String,
     pub slug: Option<String>,
     pub author: String,
     pub title: String,
@@ -73,6 +74,9 @@ pub struct UploadSearchMod {
     pub icon_url: String,
     pub author_url: String,
     pub latest_version: Cow<'static, str>,
+    pub license: String,
+    pub client_side: String,
+    pub server_side: String,
 
     /// RFC 3339 formatted creation date of the mod
     pub date_created: DateTime<Utc>,
@@ -97,6 +101,7 @@ pub struct SearchResults {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResultSearchMod {
     pub mod_id: String,
+    pub project_type: String,
     pub slug: Option<String>,
     pub author: String,
     pub title: String,
@@ -108,6 +113,9 @@ pub struct ResultSearchMod {
     pub page_url: String,
     pub icon_url: String,
     pub author_url: String,
+    pub license: String,
+    pub client_side: String,
+    pub server_side: String,
     /// RFC 3339 formatted creation date of the mod
     pub date_created: String,
     /// RFC 3339 formatted modification date of the mod

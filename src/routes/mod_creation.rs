@@ -429,7 +429,7 @@ async fn mod_create_inner(
             }
         }
 
-        let project_type_id = models::ProjectTypeId::get_id(mod_create_data.project_type, &mut *transaction)
+        let project_type_id = models::ProjectTypeId::get_id(mod_create_data.project_type.clone(), &mut *transaction)
             .await?
             .ok_or_else(|| {
                 CreateError::InvalidInput(format!("Project Type {} does not exist.", mod_create_data.project_type.clone()))
@@ -438,7 +438,7 @@ async fn mod_create_inner(
         // Convert the list of category names to actual categories
         let mut categories = Vec::with_capacity(mod_create_data.categories.len());
         for category in &mod_create_data.categories {
-            let id = models::categories::Category::get_id(&category, &mut *transaction)
+            let id = models::categories::Category::get_id_project(&category, project_type_id, &mut *transaction)
                 .await?
                 .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
             categories.push(id);

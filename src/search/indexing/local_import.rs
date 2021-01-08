@@ -5,6 +5,7 @@ use super::IndexingError;
 use crate::search::UploadSearchMod;
 use sqlx::postgres::PgPool;
 use std::borrow::Cow;
+use crate::models::mods::{SideType};
 
 // TODO: only loaders for recent versions? For mods that have moved from forge to fabric
 pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingError> {
@@ -14,7 +15,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
 
     let mut mods = sqlx::query!(
         "
-        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.status, m.slug FROM mods m
+        SELECT m.id, m.project_type, m.license, m.client_side, m.server_side, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.status, m.slug FROM mods m
         "
     ).fetch(&pool);
 
@@ -112,6 +113,32 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 .map(Cow::Owned)
                 .unwrap_or_else(|| Cow::Borrowed(""));
 
+            let client_side = SideType::from_str(
+                &sqlx::query!(
+                    "
+                SELECT name FROM side_types
+                WHERE id = $1
+                ",
+                    mod_data.client_side,
+                )
+                    .fetch_one(&pool)
+                    .await?
+                    .name,
+            );
+
+            let server_side = SideType::from_str(
+                &sqlx::query!(
+                    "
+                SELECT name FROM side_types
+                WHERE id = $1
+                ",
+                    mod_data.server_side,
+                )
+                    .fetch_one(&pool)
+                    .await?
+                    .name,
+            );
+
             docs_to_add.push(UploadSearchMod {
                 mod_id: format!("local-{}", mod_id),
                 title: mod_data.title,
@@ -128,8 +155,12 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 date_modified: mod_data.updated,
                 modified_timestamp: mod_data.updated.timestamp(),
                 latest_version,
+                license: "".to_string(),
+                client_side: client_side.to_string(),
                 host: Cow::Borrowed("modrinth"),
                 slug: mod_data.slug,
+                project_type: "".to_string(),
+                server_side: server_side.to_string()
             });
         }
     }
@@ -143,7 +174,7 @@ pub async fn query_one(
 ) -> Result<UploadSearchMod, IndexingError> {
     let mod_data = sqlx::query!(
         "
-        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.slug
+        SELECT m.id, m.project_type, m.license, m.client_side, m.server_side, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.status, m.slug
         FROM mods m
         WHERE id = $1
         ",
@@ -213,6 +244,35 @@ pub async fn query_one(
         icon_url = url;
     }
 
+    let client_side = SideType::from_str(
+        &sqlx::query!(
+                    "
+                SELECT name FROM side_types
+                WHERE id = $1
+                ",
+                    mod_data.client_side,
+                )
+            .fetch_one(&mut *exec)
+            .await?
+            .name,
+    );
+
+    let server_side = SideType::from_str(
+        &sqlx::query!(
+                    "
+                SELECT name FROM side_types
+                WHERE id = $1
+                ",
+                    mod_data.server_side,
+                )
+            .fetch_one(&mut *exec)
+            .await?
+            .name,
+    );
+
+    let license = crate::database::models::categories::License::get(crate::database::models::LicenseId(mod_data.license), &mut *exec).await?;
+    let project_type = crate::database::models::categories::ProjectType::get_name(crate::database::models::ids::ProjectTypeId(mod_data.project_type), &mut *exec).await?;
+
     let mod_id = crate::models::ids::ModId(mod_data.id as u64);
     let author_id = crate::models::ids::UserId(user.id as u64);
 
@@ -241,7 +301,11 @@ pub async fn query_one(
         date_modified: mod_data.updated,
         modified_timestamp: mod_data.updated.timestamp(),
         latest_version,
+        license: license.short,
+        client_side: client_side.to_string(),
         host: Cow::Borrowed("modrinth"),
         slug: mod_data.slug,
+        project_type,
+        server_side: server_side.to_string()
     })
 }

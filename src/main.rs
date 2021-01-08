@@ -18,6 +18,7 @@ mod models;
 mod routes;
 mod scheduler;
 mod search;
+mod pack;
 
 #[derive(Debug, Options)]
 struct Config {
