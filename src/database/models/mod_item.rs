@@ -496,9 +496,9 @@ impl Mod {
                 ",
                 inner.project_type_id.0,
             )
-                .fetch_one(executor)
-                .await?
-                .name;
+            .fetch_one(executor)
+            .await?
+            .name;
 
             Ok(Some(QueryMod {
                 inner,

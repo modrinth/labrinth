@@ -24,7 +24,7 @@ pub struct PackFile {
 #[derive(Serialize, Deserialize)]
 pub struct Environment {
     pub client: SideType,
-    pub server: SideType
+    pub server: SideType,
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]

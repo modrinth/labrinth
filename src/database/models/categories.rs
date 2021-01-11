@@ -37,12 +37,15 @@ pub struct DonationPlatform {
 
 pub struct CategoryBuilder<'a> {
     pub name: Option<&'a str>,
-    pub project_type: Option<&'a ProjectTypeId>
+    pub project_type: Option<&'a ProjectTypeId>,
 }
 
 impl Category {
     pub fn builder() -> CategoryBuilder<'static> {
-        CategoryBuilder { name: None, project_type: None, }
+        CategoryBuilder {
+            name: None,
+            project_type: None,
+        }
     }
 
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<CategoryId>, DatabaseError>
@@ -69,9 +72,13 @@ impl Category {
         Ok(result.map(|r| CategoryId(r.id)))
     }
 
-    pub async fn get_id_project<'a, E>(name: &str, project_type: ProjectTypeId, exec: E) -> Result<Option<CategoryId>, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    pub async fn get_id_project<'a, E>(
+        name: &str,
+        project_type: ProjectTypeId,
+        exec: E,
+    ) -> Result<Option<CategoryId>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         if !name
             .chars()
@@ -88,8 +95,8 @@ impl Category {
             name,
             project_type as ProjectTypeId
         )
-            .fetch_optional(exec)
-            .await?;
+        .fetch_optional(exec)
+        .await?;
 
         Ok(result.map(|r| CategoryId(r.id)))
     }
@@ -125,8 +132,9 @@ impl Category {
             Ok(e.right().map(|c| Category {
                 id: CategoryId(c.id),
                 category: c.category,
-                project_type: ProjectTypeId(c.project_type)
-            })) })
+                project_type: ProjectTypeId(c.project_type),
+            }))
+        })
         .try_collect::<Vec<Category>>()
         .await?;
 
@@ -174,7 +182,10 @@ impl<'a> CategoryBuilder<'a> {
         }
     }
 
-    pub fn project_type(self, project_type: &'a ProjectTypeId) -> Result<CategoryBuilder<'a>, DatabaseError> {
+    pub fn project_type(
+        self,
+        project_type: &'a ProjectTypeId,
+    ) -> Result<CategoryBuilder<'a>, DatabaseError> {
         Ok(Self {
             project_type: Some(project_type),
             ..self
@@ -185,7 +196,9 @@ impl<'a> CategoryBuilder<'a> {
     where
         E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
-        let id = self.project_type.ok_or_else(|| DatabaseError::Other("No project type specified.".to_string()))?.clone();
+        let id = *self
+            .project_type
+            .ok_or_else(|| DatabaseError::Other("No project type specified.".to_string()))?;
         let result = sqlx::query!(
             "
             INSERT INTO categories (category, project_type)
@@ -815,8 +828,8 @@ impl ProjectType {
     }
 
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<ProjectTypeId>, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         if !name
             .chars()
@@ -832,15 +845,15 @@ impl ProjectType {
             ",
             name
         )
-            .fetch_optional(exec)
-            .await?;
+        .fetch_optional(exec)
+        .await?;
 
         Ok(result.map(|r| ProjectTypeId(r.id)))
     }
 
     pub async fn get_name<'a, E>(id: ProjectTypeId, exec: E) -> Result<String, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -849,33 +862,33 @@ impl ProjectType {
             ",
             id as ProjectTypeId
         )
-            .fetch_one(exec)
-            .await?;
+        .fetch_one(exec)
+        .await?;
 
         Ok(result.name)
     }
 
     pub async fn list<'a, E>(exec: E) -> Result<Vec<String>, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
             SELECT name FROM project_types
             "
         )
-            .fetch_many(exec)
-            .try_filter_map(|e| async { Ok(e.right().map(|c| c.name)) })
-            .try_collect::<Vec<String>>()
-            .await?;
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|c| c.name)) })
+        .try_collect::<Vec<String>>()
+        .await?;
 
         Ok(result)
     }
 
     // TODO: remove loaders with mods using them
     pub async fn remove<'a, E>(name: &str, exec: E) -> Result<Option<()>, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         use sqlx::Done;
 
@@ -886,8 +899,8 @@ impl ProjectType {
             ",
             name
         )
-            .execute(exec)
-            .await?;
+        .execute(exec)
+        .await?;
 
         if result.rows_affected() == 0 {
             // Nothing was deleted
@@ -912,8 +925,8 @@ impl<'a> ProjectTypeBuilder<'a> {
     }
 
     pub async fn insert<'b, E>(self, exec: E) -> Result<ProjectTypeId, DatabaseError>
-        where
-            E: sqlx::Executor<'b, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -924,8 +937,8 @@ impl<'a> ProjectTypeBuilder<'a> {
             ",
             self.name
         )
-            .fetch_one(exec)
-            .await?;
+        .fetch_one(exec)
+        .await?;
 
         Ok(ProjectTypeId(result.id))
     }

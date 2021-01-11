@@ -1,6 +1,6 @@
 pub mod format;
-use thiserror::Error;
 use std::io::Read;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PackValidationError {
@@ -23,11 +23,14 @@ pub fn validate_format(buffer: &[u8]) -> Result<format::PackFormat, PackValidati
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
-    let pack : format::PackFormat = serde_json::from_str(&*contents)?;
+    let pack: format::PackFormat = serde_json::from_str(&*contents)?;
 
     // TODO: Implement games
-    if pack.game != "minecraft".to_string() {
-        return Err(PackValidationError::InvalidInputError(format!("Game {0} does not exist!", pack.game)))
+    if pack.game != *"minecraft" {
+        return Err(PackValidationError::InvalidInputError(format!(
+            "Game {0} does not exist!",
+            pack.game
+        )));
     }
 
     Ok(pack)

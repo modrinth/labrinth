@@ -4,6 +4,7 @@ use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::mods::{DonationLink, License, ModId, ModStatus, SideType, VersionId};
 use crate::models::users::UserId;
+use crate::pack::PackValidationError;
 use crate::routes::version_creation::InitialVersionData;
 use crate::search::indexing::{queue::CreationQueue, IndexingError};
 use actix_multipart::{Field, Multipart};
@@ -15,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 use thiserror::Error;
-use crate::pack::PackValidationError;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -309,8 +309,7 @@ async fn mod_create_inner(
             create_data
                 .categories
                 .iter()
-                .map(|f| check_length(1..=256, "category", f))
-                .collect::<Result<(), _>>()?;
+                .try_for_each(|f| check_length(1..=256, "category", f))?;
 
             if let Some(url) = &create_data.issues_url {
                 check_length(..=2048, "url", url)?;
@@ -325,8 +324,7 @@ async fn mod_create_inner(
             create_data
                 .initial_versions
                 .iter()
-                .map(|v| super::version_creation::check_version(v))
-                .collect::<Result<(), _>>()?;
+                .try_for_each(|v| super::version_creation::check_version(v))?;
         }
 
         // Create VersionBuilders for the versions specified in `initial_versions`
@@ -358,11 +356,15 @@ async fn mod_create_inner(
         mod_create_data = create_data;
     }
 
-    let project_type_id = models::ProjectTypeId::get_id(mod_create_data.project_type.clone(), &mut *transaction)
-        .await?
-        .ok_or_else(|| {
-            CreateError::InvalidInput(format!("Project Type {} does not exist.", mod_create_data.project_type.clone()))
-        })?;
+    let project_type_id =
+        models::ProjectTypeId::get_id(mod_create_data.project_type.clone(), &mut *transaction)
+            .await?
+            .ok_or_else(|| {
+                CreateError::InvalidInput(format!(
+                    "Project Type {} does not exist.",
+                    mod_create_data.project_type.clone()
+                ))
+            })?;
 
     let mut icon_url = None;
 
@@ -444,9 +446,13 @@ async fn mod_create_inner(
         // Convert the list of category names to actual categories
         let mut categories = Vec::with_capacity(mod_create_data.categories.len());
         for category in &mod_create_data.categories {
-            let id = models::categories::Category::get_id_project(&category, project_type_id, &mut *transaction)
-                .await?
-                .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
+            let id = models::categories::Category::get_id_project(
+                &category,
+                project_type_id,
+                &mut *transaction,
+            )
+            .await?
+            .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
             categories.push(id);
         }
 
@@ -750,7 +756,7 @@ pub fn get_image_content_type(extension: &str) -> Option<&'static str> {
         _ => "",
     };
 
-    if content_type != "" {
+    if !content_type.is_empty() {
         Some(content_type)
     } else {
         None

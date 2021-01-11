@@ -48,8 +48,7 @@ pub fn check_version(version: &InitialVersionData) -> Result<(), CreateError> {
     version
         .file_parts
         .iter()
-        .map(|f| check_length(1..=256, "file part name", f))
-        .collect::<Result<_, _>>()?;
+        .try_for_each(|f| check_length(1..=256, "file part name", f))?;
 
     check_length(1..=64, "version number", &version.version_number)?;
     check_length(3..=256, "version title", &version.version_title)?;
@@ -60,13 +59,11 @@ pub fn check_version(version: &InitialVersionData) -> Result<(), CreateError> {
     version
         .game_versions
         .iter()
-        .map(|v| check_length(1..=256, "game version", &v.0))
-        .collect::<Result<_, _>>()?;
+        .try_for_each(|v| check_length(1..=256, "game version", &v.0))?;
     version
         .loaders
         .iter()
-        .map(|l| check_length(1..=256, "loader name", &l.0))
-        .collect::<Result<_, _>>()?;
+        .try_for_each(|l| check_length(1..=256, "loader name", &l.0))?;
 
     Ok(())
 }
@@ -277,15 +274,16 @@ async fn version_create_inner(
         })?;
 
         let project_type = sqlx::query!(
-                "
+            "
                 SELECT name FROM project_types pt
                 INNER JOIN mods ON mods.project_type = pt.id
                 WHERE mods.id = $1
                 ",
-                version.mod_id as models::ModId,
-            )
-            .fetch_one(&mut *transaction)
-            .await?.name;
+            version.mod_id as models::ModId,
+        )
+        .fetch_one(&mut *transaction)
+        .await?
+        .name;
 
         let file_builder = upload_file(
             &mut field,
@@ -440,15 +438,16 @@ async fn upload_file_to_version_inner(
     let db_mod_id = models::ModId(version.mod_id as i64);
 
     let project_type = sqlx::query!(
-                "
+        "
                 SELECT name FROM project_types pt
                 INNER JOIN mods ON mods.project_type = pt.id
                 WHERE mods.id = $1
                 ",
-                db_mod_id as models::ModId,
-            )
-        .fetch_one(&mut *transaction)
-        .await?.name;
+        db_mod_id as models::ModId,
+    )
+    .fetch_one(&mut *transaction)
+    .await?
+    .name;
 
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
@@ -518,9 +517,9 @@ pub async fn upload_file(
 ) -> Result<models::version_item::VersionFileBuilder, CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
 
-    if project_type == "mod" && file_extension != "jar" {
-        return Err(CreateError::InvalidFileType(file_extension.to_string()));
-    } else if  project_type != "mod" && file_extension != "zip" {
+    if (project_type == "mod" && file_extension != "jar")
+        || (project_type != "mod" && file_extension != "zip")
+    {
         return Err(CreateError::InvalidFileType(file_extension.to_string()));
     }
 

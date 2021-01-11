@@ -15,10 +15,10 @@ mod auth;
 mod database;
 mod file_hosting;
 mod models;
+mod pack;
 mod routes;
 mod scheduler;
 mod search;
-mod pack;
 
 #[derive(Debug, Options)]
 struct Config {

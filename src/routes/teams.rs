@@ -287,7 +287,8 @@ pub async fn remove_team_member(
     let user_id = ids.1.into();
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await?;
-    let team_member = TeamMember::get_from_user_id_pending(id, current_user.id.into(), &**pool).await?;
+    let team_member =
+        TeamMember::get_from_user_id_pending(id, current_user.id.into(), &**pool).await?;
 
     let member = match team_member {
         Some(m) => m,
