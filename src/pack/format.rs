@@ -1,19 +1,15 @@
-use crate::models::mods::{ModId, SideType};
-use chrono::{DateTime, Utc};
+use crate::models::mods::SideType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackFormat {
-    pub format_type: String,
+    pub game: String,
     pub format_version: i32,
-    pub id: ModId,
+    pub version_id: String,
     pub name: String,
     pub summary: Option<String>,
-    pub description: Option<String>,
-    pub updates: Option<String>,
-    pub release_date: Option<DateTime<Utc>>,
-
+    pub dependencies: std::collections::HashMap<PackDependency, String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -31,7 +27,7 @@ pub struct Environment {
     pub server: SideType
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum PackDependency {
     Forge,

@@ -183,7 +183,7 @@ async fn version_create_inner(
             let member_ids = sqlx::query!(
                 "
                 SELECT user_id FROM team_members tm
-                INNER JOIN mods ON mods.team_id = tm.team_id
+                INNER JOIN mods ON mods.team_id = tm.team_id AND tm.accepted = TRUE
                 WHERE mods.id = $1
                 ",
                 mod_id as models::ModId,
@@ -276,6 +276,17 @@ async fn version_create_inner(
             CreateError::InvalidInput(String::from("`data` field must come before file fields"))
         })?;
 
+        let project_type = sqlx::query!(
+                "
+                SELECT name FROM project_types pt
+                INNER JOIN mods ON mods.project_type = pt.id
+                WHERE mods.id = $1
+                ",
+                version.mod_id as models::ModId,
+            )
+            .fetch_one(&mut *transaction)
+            .await?.name;
+
         let file_builder = upload_file(
             &mut field,
             file_host,
@@ -283,6 +294,7 @@ async fn version_create_inner(
             &cdn_url,
             &content_disposition,
             version.mod_id.into(),
+            &*project_type,
             &version.version_number,
         )
         .await?;
@@ -425,6 +437,19 @@ async fn upload_file_to_version_inner(
     let mod_id = ModId(version.mod_id as u64);
     let version_number = version.version_number;
 
+    let db_mod_id = models::ModId(version.mod_id as i64);
+
+    let project_type = sqlx::query!(
+                "
+                SELECT name FROM project_types pt
+                INNER JOIN mods ON mods.project_type = pt.id
+                WHERE mods.id = $1
+                ",
+                db_mod_id as models::ModId,
+            )
+        .fetch_one(&mut *transaction)
+        .await?.name;
+
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
         let content_disposition = field.content_disposition().ok_or_else(|| {
@@ -457,6 +482,7 @@ async fn upload_file_to_version_inner(
             &cdn_url,
             &content_disposition,
             mod_id,
+            &*project_type,
             &version_number,
         )
         .await?;
@@ -487,9 +513,16 @@ pub async fn upload_file(
     cdn_url: &str,
     content_disposition: &actix_web::http::header::ContentDisposition,
     mod_id: crate::models::ids::ModId,
+    project_type: &str,
     version_number: &str,
 ) -> Result<models::version_item::VersionFileBuilder, CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
+
+    if project_type == "mod" && file_extension != "jar" {
+        return Err(CreateError::InvalidFileType(file_extension.to_string()));
+    } else if  project_type != "mod" && file_extension != "zip" {
+        return Err(CreateError::InvalidFileType(file_extension.to_string()));
+    }
 
     let content_type = mod_file_type(file_extension)
         .ok_or_else(|| CreateError::InvalidFileType(file_extension.to_string()))?;
@@ -507,6 +540,10 @@ pub async fn upload_file(
         return Err(CreateError::InvalidInput(
             String::from("Mod file exceeds the maximum of 25MiB. Contact a moderator or admin to request permission to upload larger files.")
         ));
+    }
+
+    if project_type == "modpack" {
+        crate::pack::validate_format(data.as_slice())?;
     }
 
     let upload_data = file_host
@@ -540,6 +577,7 @@ pub async fn upload_file(
 fn mod_file_type(ext: &str) -> Option<&str> {
     match ext {
         "jar" => Some("application/java-archive"),
+        "zip" => Some("application/zip"),
         _ => None,
     }
 }

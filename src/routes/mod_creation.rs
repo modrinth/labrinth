@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 use thiserror::Error;
+use crate::pack::PackValidationError;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -48,6 +49,8 @@ pub enum CreateError {
     InvalidFileType(String),
     #[error("Authentication Error: {0}")]
     Unauthorized(#[from] AuthenticationError),
+    #[error("Modpack Error: {0}")]
+    PackError(#[from] PackValidationError),
 }
 
 impl actix_web::ResponseError for CreateError {
@@ -68,6 +71,7 @@ impl actix_web::ResponseError for CreateError {
             CreateError::InvalidCategory(..) => StatusCode::BAD_REQUEST,
             CreateError::InvalidFileType(..) => StatusCode::BAD_REQUEST,
             CreateError::Unauthorized(..) => StatusCode::UNAUTHORIZED,
+            CreateError::PackError(..) => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -89,6 +93,7 @@ impl actix_web::ResponseError for CreateError {
                 CreateError::InvalidCategory(..) => "invalid_input",
                 CreateError::InvalidFileType(..) => "invalid_input",
                 CreateError::Unauthorized(..) => "unauthorized",
+                CreateError::PackError(..) => "pack_error",
             },
             description: &self.to_string(),
         })
@@ -353,6 +358,12 @@ async fn mod_create_inner(
         mod_create_data = create_data;
     }
 
+    let project_type_id = models::ProjectTypeId::get_id(mod_create_data.project_type.clone(), &mut *transaction)
+        .await?
+        .ok_or_else(|| {
+            CreateError::InvalidInput(format!("Project Type {} does not exist.", mod_create_data.project_type.clone()))
+        })?;
+
     let mut icon_url = None;
 
     while let Some(item) = payload.next().await {
@@ -410,6 +421,7 @@ async fn mod_create_inner(
             &cdn_url,
             &content_disposition,
             mod_id,
+            &*mod_create_data.project_type,
             &version_data.version_number,
         )
         .await?;
@@ -428,12 +440,6 @@ async fn mod_create_inner(
                 )));
             }
         }
-
-        let project_type_id = models::ProjectTypeId::get_id(mod_create_data.project_type.clone(), &mut *transaction)
-            .await?
-            .ok_or_else(|| {
-                CreateError::InvalidInput(format!("Project Type {} does not exist.", mod_create_data.project_type.clone()))
-            })?;
 
         // Convert the list of category names to actual categories
         let mut categories = Vec::with_capacity(mod_create_data.categories.len());
