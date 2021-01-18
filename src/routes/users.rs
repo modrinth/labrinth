@@ -1,4 +1,4 @@
-use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
+use crate::auth::get_user_from_headers;
 use crate::database::models::{TeamMember, User};
 use crate::file_hosting::FileHost;
 use crate::models::users::{Role, UserId};
@@ -70,13 +70,29 @@ pub async fn user_username_get(
 
 #[get("{id}")]
 pub async fn user_get(
-    info: web::Path<(UserId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0;
-    let user_data = User::get(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let string = info.into_inner().0;
+    let id_option: Option<UserId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
+
+    let mut user_data;
+
+    if let Some(id) = id_option {
+        user_data = User::get(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        if user_data.is_none() {
+            user_data = User::get_from_username(string, &**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+    } else {
+        user_data = User::get_from_username(string, &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    }
 
     if let Some(data) = user_data {
         let response = convert_user(data);
@@ -132,7 +148,7 @@ pub async fn mods_list(
     }
 }
 
-#[get("teams")]
+#[get("{user_id}/teams")]
 pub async fn teams(
     req: HttpRequest,
     info: web::Path<(UserId,)>,
@@ -159,14 +175,15 @@ pub async fn teams(
     let team_members: Vec<crate::models::teams::TeamMember> = results
         .into_iter()
         .map(|data| crate::models::teams::TeamMember {
+            team_id: data.team_id.into(),
             user_id: data.user_id.into(),
-            name: data.name,
             role: data.role,
             permissions: if same_user {
                 Some(data.permissions)
             } else {
                 None
             },
+            accepted: data.accepted,
         })
         .collect();
 
@@ -403,24 +420,42 @@ pub async fn user_icon_edit(
     }
 }
 
-// TODO: Make this actually do stuff
+#[derive(Deserialize)]
+pub struct RemovalType {
+    #[serde(default = "default_removal")]
+    removal_type: String,
+}
+
+fn default_removal() -> String {
+    "partial".into()
+}
+
 #[delete("{id}")]
 pub async fn user_delete(
     req: HttpRequest,
     info: web::Path<(UserId,)>,
     pool: web::Data<PgPool>,
+    removal_type: web::Query<RemovalType>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(
-        req.headers(),
-        &mut *pool
-            .acquire()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?,
-    )
-    .await?;
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id = info.into_inner().0;
 
-    let _id = info.0;
-    let result = Some(());
+    if !user.role.is_mod() && user.id != id {
+        return Err(ApiError::CustomAuthenticationError(
+            "You do not have permission to delete this user!".to_string(),
+        ));
+    }
+
+    let result;
+    if &*removal_type.removal_type == "full" {
+        result = crate::database::models::User::remove_full(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    } else {
+        result = crate::database::models::User::remove(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    };
 
     if result.is_some() {
         Ok(HttpResponse::Ok().body(""))

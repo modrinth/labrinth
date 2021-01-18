@@ -27,10 +27,11 @@ pub async fn team_members_get(
             let team_members: Vec<crate::models::teams::TeamMember> = members_data
                 .into_iter()
                 .map(|data| crate::models::teams::TeamMember {
+                    team_id: id,
                     user_id: data.user_id.into(),
-                    name: data.name,
                     role: data.role,
                     permissions: Some(data.permissions),
+                    accepted: data.accepted,
                 })
                 .collect();
 
@@ -38,15 +39,19 @@ pub async fn team_members_get(
         }
     }
 
-    let team_members: Vec<crate::models::teams::TeamMember> = members_data
-        .into_iter()
-        .map(|data| crate::models::teams::TeamMember {
-            user_id: data.user_id.into(),
-            name: data.name,
-            role: data.role,
-            permissions: None,
-        })
-        .collect();
+    let mut team_members: Vec<crate::models::teams::TeamMember> = Vec::new();
+
+    for team_member in members_data {
+        if team_member.accepted {
+            team_members.push(crate::models::teams::TeamMember {
+                team_id: id,
+                user_id: team_member.user_id.into(),
+                role: team_member.role,
+                permissions: None,
+                accepted: team_member.accepted,
+            })
+        }
+    }
 
     Ok(HttpResponse::Ok().json(team_members))
 }
@@ -81,7 +86,6 @@ pub async fn join_team(
             None,
             None,
             Some(true),
-            None,
             &mut transaction,
         )
         .await?;
@@ -157,7 +161,7 @@ pub async fn add_team_member(
     }
     let request = crate::database::models::team_item::TeamMember::get_from_user_id_pending(
         team_id,
-        member.user_id,
+        new_member.user_id.into(),
         &**pool,
     )
     .await?;
@@ -174,7 +178,7 @@ pub async fn add_team_member(
         }
     }
 
-    let new_user = crate::database::models::User::get(member.user_id, &**pool)
+    crate::database::models::User::get(member.user_id, &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?
         .ok_or_else(|| ApiError::InvalidInputError("An invalid User ID specified".to_string()))?;
@@ -184,7 +188,6 @@ pub async fn add_team_member(
         id: new_id,
         team_id,
         user_id: new_member.user_id.into(),
-        name: new_user.username,
         role: new_member.role.clone(),
         permissions: new_member.permissions,
         accepted: false,
@@ -205,7 +208,6 @@ pub async fn add_team_member(
 pub struct EditTeamMember {
     pub permissions: Option<Permissions>,
     pub role: Option<String>,
-    pub name: Option<String>,
 }
 
 #[patch("{id}/members/{user_id}")]
@@ -236,31 +238,6 @@ pub async fn edit_team_member(
         }
     };
 
-    // If the only thing being modified is the name, a user can
-    // modify their own member without extra permissions.
-    if user_id == current_user.id.into()
-        && edit_member.permissions.is_none()
-        && edit_member.role.is_none()
-    {
-        TeamMember::edit_team_member(
-            id,
-            user_id,
-            None,
-            None,
-            None,
-            edit_member.name.clone(),
-            &mut transaction,
-        )
-        .await?;
-
-        transaction
-            .commit()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-        return Ok(HttpResponse::Ok().body(""));
-    }
-
     if !member.permissions.contains(Permissions::EDIT_MEMBER) {
         return Err(ApiError::CustomAuthenticationError(
             "You don't have permission to edit members of this team".to_string(),
@@ -287,7 +264,6 @@ pub async fn edit_team_member(
         edit_member.permissions,
         edit_member.role.clone(),
         None,
-        edit_member.name.clone(),
         &mut transaction,
     )
     .await?;
@@ -311,7 +287,8 @@ pub async fn remove_team_member(
     let user_id = ids.1.into();
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await?;
-    let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
+    let team_member =
+        TeamMember::get_from_user_id_pending(id, current_user.id.into(), &**pool).await?;
 
     let member = match team_member {
         Some(m) => m,
@@ -322,7 +299,7 @@ pub async fn remove_team_member(
         }
     };
 
-    let delete_member = TeamMember::get_from_user_id(id, user_id, &**pool).await?;
+    let delete_member = TeamMember::get_from_user_id_pending(id, user_id, &**pool).await?;
 
     if let Some(delete_member) = delete_member {
         if delete_member.role == crate::models::teams::OWNER_ROLE {
@@ -336,7 +313,7 @@ pub async fn remove_team_member(
             // Members other than the owner can either leave the team, or be
             // removed by a member with the REMOVE_MEMBER permission.
             if delete_member.user_id == member.user_id
-                || member.permissions.contains(Permissions::REMOVE_MEMBER)
+                || (member.permissions.contains(Permissions::REMOVE_MEMBER) && member.accepted)
             {
                 TeamMember::delete(id, user_id, &**pool).await?;
             } else {
@@ -345,7 +322,7 @@ pub async fn remove_team_member(
                 ));
             }
         } else if delete_member.user_id == member.user_id
-            || member.permissions.contains(Permissions::MANAGE_INVITES)
+            || (member.permissions.contains(Permissions::MANAGE_INVITES) && member.accepted)
         {
             // This is a pending invite rather than a member, so the
             // user being invited or team members with the MANAGE_INVITES

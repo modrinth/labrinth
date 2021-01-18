@@ -3,16 +3,16 @@ use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::mods::{DonationLink, License, ModStatus, SearchRequest, SideType};
+use crate::models::mods::{DonationLink, License, ModId, ModStatus, SearchRequest, SideType};
 use crate::models::teams::Permissions;
+use crate::search::indexing::queue::CreationQueue;
 use crate::search::{search_for_mod, SearchConfig, SearchError};
+use actix_web::web::Data;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
-use crate::search::indexing::queue::CreationQueue;
-use actix_web::web::Data;
 
 #[get("mod")]
 pub async fn mod_search(
@@ -133,13 +133,30 @@ pub async fn mod_slug_get(
 #[get("{id}")]
 pub async fn mod_get(
     req: HttpRequest,
-    info: web::Path<(models::ids::ModId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0;
-    let mod_data = database::models::Mod::get_full(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let string = info.into_inner().0;
+    let id_option: Option<ModId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
+
+    let mut mod_data;
+
+    if let Some(id) = id_option {
+        mod_data = database::models::Mod::get_full(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        if mod_data.is_none() {
+            mod_data = database::models::Mod::get_full_from_slug(string, &**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+    } else {
+        mod_data = database::models::Mod::get_full_from_slug(string, &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    }
+
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
     if let Some(data) = mod_data {
@@ -186,6 +203,7 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
         team: m.team_id.into(),
         title: m.title,
         description: m.description,
+        body: m.body,
         body_url: m.body_url,
         published: m.published,
         updated: m.updated,
@@ -265,7 +283,6 @@ pub async fn mod_edit(
     info: web::Path<(models::ids::ModId,)>,
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     new_mod: web::Json<EditMod>,
     indexing_queue: Data<Arc<CreationQueue>>,
 ) -> Result<HttpResponse, ApiError> {
@@ -384,9 +401,11 @@ pub async fn mod_edit(
                 if mod_item.status.is_searchable() && !status.is_searchable() {
                     delete_from_index(id.into(), config).await?;
                 } else if !mod_item.status.is_searchable() && status.is_searchable() {
-                    let index_mod =
-                        crate::search::indexing::local_import::query_one(mod_id.into(), &mut *transaction)
-                            .await?;
+                    let index_mod = crate::search::indexing::local_import::query_one(
+                        mod_id.into(),
+                        &mut *transaction,
+                    )
+                    .await?;
 
                     indexing_queue.add(index_mod);
                 }
@@ -710,13 +729,18 @@ pub async fn mod_edit(
                     ));
                 }
 
-                let body_path = format!("data/{}/description.md", mod_id);
-
-                file_host.delete_file_version("", &*body_path).await?;
-
-                file_host
-                    .upload_file("text/plain", &body_path, body.clone().into_bytes())
-                    .await?;
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET body = $1
+                    WHERE (id = $2)
+                    ",
+                    body,
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
             transaction
@@ -838,18 +862,13 @@ pub async fn mod_delete(
     let id = info.into_inner().0;
 
     if !user.role.is_mod() {
-        let mod_item = database::models::Mod::get(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
-        let team_member = database::models::TeamMember::get_from_user_id(
-            mod_item.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::DatabaseError)?
-        .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+        let team_member =
+            database::models::TeamMember::get_from_user_id_mod(id.into(), user.id.into(), &**pool)
+                .await
+                .map_err(ApiError::DatabaseError)?
+                .ok_or_else(|| {
+                    ApiError::InvalidInputError("Invalid Mod ID specified!".to_string())
+                })?;
 
         if !team_member.permissions.contains(Permissions::DELETE_MOD) {
             return Err(ApiError::CustomAuthenticationError(

@@ -45,12 +45,14 @@ impl Default for Permissions {
 /// A member of a team
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TeamMember {
+    /// The ID of the team this team member is a member of
+    pub team_id: TeamId,
     /// The ID of the user associated with the member
     pub user_id: UserId,
-    /// The name of the user
-    pub name: String,
     /// The role of the user in the team
     pub role: String,
     /// A bitset containing the user's permissions in this team
     pub permissions: Option<Permissions>,
+    /// Whether the user has joined the team or is just invited to it
+    pub accepted: bool,
 }

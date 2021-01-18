@@ -29,8 +29,10 @@ pub struct Mod {
     pub title: String,
     /// A short description of the mod.
     pub description: String,
-    /// The link to the long description of the mod.
-    pub body_url: String,
+    /// A long form description of the mod.
+    pub body: String,
+    /// The link to the long description of the mod. (Deprecated), being replaced by `body`
+    pub body_url: Option<String>,
     /// The date at which the mod was first published.
     pub published: DateTime<Utc>,
     /// The date at which the mod was first published.
@@ -69,7 +71,7 @@ pub struct Mod {
 #[serde(rename_all = "kebab-case")]
 pub enum SideType {
     Required,
-    NoFunctionality,
+    Optional,
     Unsupported,
     Unknown,
 }
@@ -85,7 +87,7 @@ impl SideType {
     pub fn as_str(&self) -> &'static str {
         match self {
             SideType::Required => "required",
-            SideType::NoFunctionality => "no-functionality",
+            SideType::Optional => "optional",
             SideType::Unsupported => "unsupported",
             SideType::Unknown => "unknown",
         }
@@ -94,7 +96,7 @@ impl SideType {
     pub fn from_str(string: &str) -> SideType {
         match string {
             "required" => SideType::Required,
-            "no-functionality" => SideType::NoFunctionality,
+            "optional" => SideType::Optional,
             "unsupported" => SideType::Unsupported,
             _ => SideType::Unknown,
         }
@@ -192,7 +194,9 @@ pub struct Version {
     pub name: String,
     /// The version number. Ideally will follow semantic versioning
     pub version_number: String,
-    /// A link to the changelog for this version of the mod.
+    /// The changelog for this version of the mod.
+    pub changelog: String,
+    /// A link to the changelog for this version of the mod. (Deprecated), being replaced by `changelog`
     pub changelog_url: Option<String>,
     /// The date that this version was published.
     pub date_published: DateTime<Utc>,
