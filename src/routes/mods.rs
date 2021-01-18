@@ -203,6 +203,7 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
         team: m.team_id.into(),
         title: m.title,
         description: m.description,
+        body: m.body,
         body_url: m.body_url,
         published: m.published,
         updated: m.updated,
@@ -222,7 +223,16 @@ fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod 
         source_url: m.source_url,
         wiki_url: m.wiki_url,
         discord_url: m.discord_url,
-        donation_urls: None,
+        donation_urls: Some(
+            data.donation_urls
+                .into_iter()
+                .map(|d| DonationLink {
+                    id: d.platform_short,
+                    platform: d.platform_name,
+                    url: d.url,
+                })
+                .collect(),
+        ),
     }
 }
 
@@ -282,7 +292,6 @@ pub async fn mod_edit(
     info: web::Path<(models::ids::ModId,)>,
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     new_mod: web::Json<EditMod>,
     indexing_queue: Data<Arc<CreationQueue>>,
 ) -> Result<HttpResponse, ApiError> {
@@ -729,13 +738,18 @@ pub async fn mod_edit(
                     ));
                 }
 
-                let body_path = format!("data/{}/description.md", mod_id);
-
-                file_host.delete_file_version("", &*body_path).await?;
-
-                file_host
-                    .upload_file("text/plain", &body_path, body.clone().into_bytes())
-                    .await?;
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET body = $1
+                    WHERE (id = $2)
+                    ",
+                    body,
+                    id as database::models::ids::ModId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
             transaction
@@ -857,18 +871,13 @@ pub async fn mod_delete(
     let id = info.into_inner().0;
 
     if !user.role.is_mod() {
-        let mod_item = database::models::Mod::get(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
-        let team_member = database::models::TeamMember::get_from_user_id(
-            mod_item.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::DatabaseError)?
-        .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+        let team_member =
+            database::models::TeamMember::get_from_user_id_mod(id.into(), user.id.into(), &**pool)
+                .await
+                .map_err(ApiError::DatabaseError)?
+                .ok_or_else(|| {
+                    ApiError::InvalidInputError("Invalid Mod ID specified!".to_string())
+                })?;
 
         if !team_member.permissions.contains(Permissions::DELETE_MOD) {
             return Err(ApiError::CustomAuthenticationError(

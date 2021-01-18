@@ -7,7 +7,7 @@ pub struct VersionBuilder {
     pub author_id: UserId,
     pub name: String,
     pub version_number: String,
-    pub changelog_url: Option<String>,
+    pub changelog: String,
     pub files: Vec<VersionFileBuilder>,
     pub dependencies: Vec<VersionId>,
     pub game_versions: Vec<GameVersionId>,
@@ -78,11 +78,11 @@ impl VersionBuilder {
             author_id: self.author_id,
             name: self.name,
             version_number: self.version_number,
-            changelog_url: self.changelog_url,
+            changelog: self.changelog,
+            changelog_url: None,
             date_published: chrono::Utc::now(),
             downloads: 0,
             release_channel: self.release_channel,
-            accepted: false,
             featured: self.featured,
         };
 
@@ -152,11 +152,11 @@ pub struct Version {
     pub author_id: UserId,
     pub name: String,
     pub version_number: String,
+    pub changelog: String,
     pub changelog_url: Option<String>,
     pub date_published: chrono::DateTime<chrono::Utc>,
     pub downloads: i32,
     pub release_channel: ChannelId,
-    pub accepted: bool,
     pub featured: bool,
 }
 
@@ -170,13 +170,13 @@ impl Version {
             INSERT INTO versions (
                 id, mod_id, author_id, name, version_number,
                 changelog_url, date_published,
-                downloads, release_channel, accepted, featured
+                downloads, release_channel, featured
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7,
                 $8, $9,
-                $10, $11
+                $10
             )
             ",
             self.id as VersionId,
@@ -188,7 +188,6 @@ impl Version {
             self.date_published,
             self.downloads,
             self.release_channel as ChannelId,
-            self.accepted,
             self.featured
         )
         .execute(&mut *transaction)
@@ -382,8 +381,8 @@ impl Version {
         let result = sqlx::query!(
             "
             SELECT v.mod_id, v.author_id, v.name, v.version_number,
-                v.changelog_url, v.date_published, v.downloads,
-                v.release_channel, v.accepted, v.featured
+                v.changelog, v.changelog_url, v.date_published, v.downloads,
+                v.release_channel, v.featured
             FROM versions v
             WHERE v.id = $1
             ",
@@ -399,11 +398,11 @@ impl Version {
                 author_id: UserId(row.author_id),
                 name: row.name,
                 version_number: row.version_number,
+                changelog: row.changelog,
                 changelog_url: row.changelog_url,
                 date_published: row.date_published,
                 downloads: row.downloads,
                 release_channel: ChannelId(row.release_channel),
-                accepted: row.accepted,
                 featured: row.featured,
             }))
         } else {
@@ -424,8 +423,8 @@ impl Version {
         let versions = sqlx::query!(
             "
             SELECT v.id, v.mod_id, v.author_id, v.name, v.version_number,
-                v.changelog_url, v.date_published, v.downloads,
-                v.release_channel, v.accepted, v.featured
+                v.changelog, v.changelog_url, v.date_published, v.downloads,
+                v.release_channel, v.featured
             FROM versions v
             WHERE v.id IN (SELECT * FROM UNNEST($1::bigint[]))
             ",
@@ -439,11 +438,11 @@ impl Version {
                 author_id: UserId(v.author_id),
                 name: v.name,
                 version_number: v.version_number,
+                changelog: v.changelog,
                 changelog_url: v.changelog_url,
                 date_published: v.date_published,
                 downloads: v.downloads,
                 release_channel: ChannelId(v.release_channel),
-                accepted: v.accepted,
                 featured: v.featured,
             }))
         })
@@ -463,8 +462,8 @@ impl Version {
         let result = sqlx::query!(
             "
             SELECT v.mod_id, v.author_id, v.name, v.version_number,
-                v.changelog_url, v.date_published, v.downloads,
-                release_channels.channel, v.accepted, v.featured
+                v.changelog, v.changelog_url, v.date_published, v.downloads,
+                release_channels.channel, v.featured
             FROM versions v
             INNER JOIN release_channels ON v.release_channel = release_channels.id
             WHERE v.id = $1
@@ -482,6 +481,7 @@ impl Version {
                 SELECT gv.version FROM game_versions_versions gvv
                 INNER JOIN game_versions gv ON gvv.game_version_id=gv.id
                 WHERE gvv.joining_version_id = $1
+                ORDER BY gv.created
                 ",
                 id as VersionId,
             )
@@ -545,6 +545,7 @@ impl Version {
                 author_id: UserId(row.author_id),
                 name: row.name,
                 version_number: row.version_number,
+                changelog: row.changelog,
                 changelog_url: row.changelog_url,
                 date_published: row.date_published,
                 downloads: row.downloads,
@@ -553,7 +554,6 @@ impl Version {
                 files,
                 loaders,
                 game_versions,
-                accepted: row.accepted,
                 featured: row.featured,
             }))
         } else {
@@ -599,6 +599,7 @@ pub struct QueryVersion {
     pub author_id: UserId,
     pub name: String,
     pub version_number: String,
+    pub changelog: String,
     pub changelog_url: Option<String>,
     pub date_published: chrono::DateTime<chrono::Utc>,
     pub downloads: i32,
@@ -607,7 +608,6 @@ pub struct QueryVersion {
     pub files: Vec<QueryFile>,
     pub game_versions: Vec<String>,
     pub loaders: Vec<String>,
-    pub accepted: bool,
     pub featured: bool,
 }
 

@@ -17,6 +17,7 @@ actix-rt = "1.1.1"
 actix-files = "0.4.0"
 actix-multipart = "0.3.0"
 actix-cors = "0.4.1"
+actix-ratelimit = "0.3.0"
 
 meilisearch-sdk = "0.4.0"
 reqwest = { version = "0.10.8", features = ["json"] }
@@ -28,6 +29,7 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.7.3"
 base64 = "0.13.0"
 sha1 = { version = "0.6.0", features = ["std"] }
+sha2 = "0.9.2"
 bitflags = "1.2.1"
 
 gumdrop = "0.8.0"
@@ -42,19 +44,4 @@ futures-timer = "3.0.2"
 rust-s3 = "0.26.1"
 async-trait = "0.1.41"
 
-[dependencies.sqlx]
-git = "https://github.com/launchbadge/sqlx/"
-branch = "master"
-default-features = false
-features = ["runtime-actix", "postgres", "chrono", "offline", "macros", "migrate"]
-
-[dependencies.sqlx-macros]
-git = "https://github.com/launchbadge/sqlx/"
-branch = "master"
-default-features = false
-features = ["runtime-actix", "postgres", "chrono", "offline"]
-
-[dependencies.actix-ratelimit]
-# Temp until actix-ratelimit bumps version on cargo
-git = "https://github.com/TerminalWitchcraft/actix-ratelimit"
-rev = "870822067dfeae7cc0304352d81c4cb79ee27f5a"
+sqlx = { version = "0.4.2", features = ["runtime-actix-rustls", "postgres", "chrono", "offline", "macros", "migrate"] }

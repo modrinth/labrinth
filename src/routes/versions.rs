@@ -1,5 +1,5 @@
 use super::ApiError;
-use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
+use crate::auth::get_user_from_headers;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::teams::Permissions;
@@ -7,6 +7,7 @@ use crate::{database, Pepper};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::borrow::Borrow;
 use std::sync::Arc;
 
 // TODO: this needs filtering, and a better response type
@@ -53,7 +54,6 @@ pub struct VersionIds {
 
 #[get("versions")]
 pub async fn versions_get(
-    req: HttpRequest,
     web::Query(ids): web::Query<VersionIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -65,39 +65,11 @@ pub async fn versions_get(
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
-
     let mut versions = Vec::new();
 
     for version_data in versions_data {
         if let Some(version) = version_data {
-            let mut authorized = version.accepted;
-
-            if let Some(user) = &user_option {
-                if !authorized {
-                    if user.role.is_mod() {
-                        authorized = true;
-                    } else {
-                        let user_id: database::models::ids::UserId = user.id.into();
-
-                        let member_exists = sqlx::query!(
-                            "SELECT EXISTS(SELECT 1 FROM team_members tm INNER JOIN mods m ON m.team_id = tm.team_id AND m.id = $1 WHERE tm.user_id = $2)",
-                            version.mod_id as database::models::ModId,
-                            user_id as database::models::ids::UserId,
-                        )
-                            .fetch_one(&**pool)
-                            .await
-                            .map_err(|e| ApiError::DatabaseError(e.into()))?
-                            .exists;
-
-                        authorized = member_exists.unwrap_or(false);
-                    }
-                }
-            }
-
-            if authorized {
-                versions.push(convert_version(version));
-            }
+            versions.push(convert_version(version));
         }
     }
 
@@ -106,7 +78,6 @@ pub async fn versions_get(
 
 #[get("{version_id}")]
 pub async fn version_get(
-    req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -114,33 +85,8 @@ pub async fn version_get(
     let version_data = database::models::Version::get_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
     if let Some(data) = version_data {
-        if !data.accepted {
-            if let Some(user) = user_option {
-                if !user.role.is_mod() {
-                    let user_id: database::models::ids::UserId = user.id.into();
-
-                    let member_exists = sqlx::query!(
-                        "SELECT EXISTS(SELECT 1 FROM team_members tm INNER JOIN mods m ON m.team_id = tm.team_id AND m.id = $1 WHERE tm.user_id = $2)",
-                        data.mod_id as database::models::ModId,
-                        user_id as database::models::ids::UserId,
-                    )
-                        .fetch_one(&**pool)
-                        .await
-                        .map_err(|e| ApiError::DatabaseError(e.into()))?
-                        .exists;
-
-                    if !member_exists.unwrap_or(false) {
-                        return Ok(HttpResponse::NotFound().body(""));
-                    }
-                }
-            } else {
-                return Ok(HttpResponse::NotFound().body(""));
-            }
-        }
-
         Ok(HttpResponse::Ok().json(convert_version(data)))
     } else {
         Ok(HttpResponse::NotFound().body(""))
@@ -158,6 +104,7 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
         featured: data.featured,
         name: data.name,
         version_number: data.version_number,
+        changelog: data.changelog,
         changelog_url: data.changelog_url,
         date_published: data.date_published,
         downloads: data.downloads as u32,
@@ -204,12 +151,12 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
 #[derive(Serialize, Deserialize)]
 pub struct EditVersion {
     pub name: Option<String>,
+    pub version_number: Option<String>,
     pub changelog: Option<String>,
     pub version_type: Option<models::mods::VersionType>,
     pub dependencies: Option<Vec<models::ids::VersionId>>,
     pub game_versions: Option<Vec<models::mods::GameVersion>>,
     pub loaders: Option<Vec<models::mods::ModLoader>>,
-    pub accepted: Option<bool>,
     pub featured: Option<bool>,
     pub primary_file: Option<(String, String)>,
 }
@@ -219,7 +166,6 @@ pub async fn version_edit(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     new_version: web::Json<EditVersion>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
@@ -232,18 +178,8 @@ pub async fn version_edit(
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(version_item) = result {
-        let mod_item = database::models::Mod::get(version_item.mod_id, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .ok_or_else(|| {
-                ApiError::InvalidInputError(
-                    "Attempted to edit version not attached to mod. How did this happen?"
-                        .to_string(),
-                )
-            })?;
-
-        let team_member = database::models::TeamMember::get_from_user_id(
-            mod_item.team_id,
+        let team_member = database::models::TeamMember::get_from_user_id_version(
+            version_item.id,
             user.id.into(),
             &**pool,
         )
@@ -270,28 +206,6 @@ pub async fn version_edit(
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-            if let Some(accepted) = &new_version.accepted {
-                if !user.role.is_mod() {
-                    return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the approval of this version!"
-                            .to_string(),
-                    ));
-                }
-
-                sqlx::query!(
-                    "
-                    UPDATE versions
-                    SET accepted = $1
-                    WHERE (id = $2)
-                    ",
-                    accepted,
-                    id as database::models::ids::VersionId,
-                )
-                .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
-            }
-
             if let Some(name) = &new_version.name {
                 sqlx::query!(
                     "
@@ -300,6 +214,21 @@ pub async fn version_edit(
                     WHERE (id = $2)
                     ",
                     name,
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            }
+
+            if let Some(number) = &new_version.version_number {
+                sqlx::query!(
+                    "
+                    UPDATE versions
+                    SET version_number = $1
+                    WHERE (id = $2)
+                    ",
+                    number,
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
@@ -493,17 +422,18 @@ pub async fn version_edit(
             }
 
             if let Some(body) = &new_version.changelog {
-                let mod_id: models::mods::ModId = version_item.mod_id.into();
-                let body_path = format!(
-                    "data/{}/versions/{}/changelog.md",
-                    mod_id, version_item.version_number
-                );
-
-                file_host.delete_file_version("", &*body_path).await?;
-
-                file_host
-                    .upload_file("text/plain", &body_path, body.clone().into_bytes())
-                    .await?;
+                sqlx::query!(
+                    "
+                    UPDATE versions
+                    SET changelog = $1
+                    WHERE (id = $2)
+                    ",
+                    body,
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
             transaction
@@ -531,20 +461,8 @@ pub async fn version_delete(
     let id = info.into_inner().0;
 
     if !user.role.is_mod() {
-        let version = database::models::Version::get(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .ok_or_else(|| {
-                ApiError::InvalidInputError("An invalid version ID was specified".to_string())
-            })?;
-        let mod_item = database::models::Mod::get(version.mod_id, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .ok_or_else(|| {
-                ApiError::InvalidInputError("The version is not attached to a mod".to_string())
-            })?;
-        let team_member = database::models::TeamMember::get_from_user_id(
-            mod_item.team_id,
+        let team_member = database::models::TeamMember::get_from_user_id_version(
+            id.into(),
             user.id.into(),
             &**pool,
         )
@@ -633,6 +551,7 @@ pub struct DownloadRedirect {
 }
 
 // under /api/v1/version_file/{hash}/download
+#[allow(clippy::await_holding_refcell_ref)]
 #[get("{version_id}/download")]
 pub async fn download_version(
     req: HttpRequest,
@@ -659,7 +578,7 @@ pub async fn download_version(
 
     if let Some(id) = result {
         let real_ip = req.connection_info();
-        let ip_option = real_ip.realip_remote_addr();
+        let ip_option = real_ip.borrow().remote_addr();
 
         if let Some(ip) = ip_option {
             let hash = sha1::Sha1::from(format!("{}{}", ip, pepper.pepper)).hexdigest();
@@ -733,7 +652,7 @@ pub async fn delete_file(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     algorithm: web::Query<Algorithm>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
 
     let hash = info.into_inner().0;
 
@@ -752,6 +671,30 @@ pub async fn delete_file(
     .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     if let Some(row) = result {
+        if !user.role.is_mod() {
+            let team_member = database::models::TeamMember::get_from_user_id_version(
+                database::models::ids::VersionId(row.version_id),
+                user.id.into(),
+                &**pool,
+            )
+            .await
+            .map_err(ApiError::DatabaseError)?
+            .ok_or_else(|| {
+                ApiError::CustomAuthenticationError(
+                    "You don't have permission to delete this file!".to_string(),
+                )
+            })?;
+
+            if !team_member
+                .permissions
+                .contains(Permissions::DELETE_VERSION)
+            {
+                return Err(ApiError::CustomAuthenticationError(
+                    "You don't have permission to delete this file!".to_string(),
+                ));
+            }
+        }
+
         let mut transaction = pool
             .begin()
             .await

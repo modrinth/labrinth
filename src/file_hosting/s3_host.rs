@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use s3::bucket::Bucket;
 use s3::creds::Credentials;
 use s3::region::Region;
+use sha2::Digest;
 
 pub struct S3Host {
     bucket: Bucket,
@@ -40,6 +41,7 @@ impl FileHost for S3Host {
         file_bytes: Vec<u8>,
     ) -> Result<UploadFileData, FileHostingError> {
         let content_sha1 = sha1::Sha1::from(&file_bytes).hexdigest();
+        let content_sha512 = format!("{:x}", sha2::Sha512::digest(&file_bytes));
 
         self.bucket
             .put_object_with_content_type(
@@ -53,6 +55,7 @@ impl FileHost for S3Host {
             file_id: file_name.to_string(),
             file_name: file_name.to_string(),
             content_length: file_bytes.len() as u32,
+            content_sha512,
             content_sha1,
             content_md5: None,
             content_type: content_type.to_string(),
