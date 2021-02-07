@@ -26,6 +26,8 @@ pub struct GitHubUser {
     pub name: Option<String>,
     pub email: Option<String>,
     pub bio: Option<String>,
+    pub twitter: Option<String>,
+    pub github: Option<String>,
 }
 
 pub async fn get_github_user_from_token(
@@ -66,6 +68,8 @@ where
             bio: result.bio,
             created: result.created,
             role: Role::from_string(&*result.role),
+            twitter: result.twitter,
+            github: result.github,
         }),
         None => Err(AuthenticationError::InvalidCredentialsError),
     }

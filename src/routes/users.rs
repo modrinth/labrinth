@@ -113,6 +113,8 @@ fn convert_user(data: crate::database::models::user_item::User) -> crate::models
         bio: data.bio,
         created: data.created,
         role: Role::from_string(&*data.role),
+        twitter: data.twitter,
+        github: data.github,
     }
 }
 
@@ -212,6 +214,8 @@ pub struct EditUser {
     )]
     pub bio: Option<Option<String>>,
     pub role: Option<String>,
+    pub twitter: Option<Option<String>>,
+    pub github: Option<Option<String>>,
 }
 
 #[patch("{id}")]
@@ -313,6 +317,36 @@ pub async fn user_edit(
             .execute(&mut *transaction)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+
+        if let Some(twitter) = &new_user.twitter {
+            sqlx::query!(
+                "
+                    UPDATE users
+                    SET twitter = $1
+                    WHERE (id = $2)
+                    ",
+                twitter.as_deref(),
+                id as crate::database::models::ids::UserId,
+            )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        }
+
+        if let Some(github) = &new_user.github {
+            sqlx::query!(
+                "
+                    UPDATE users
+                    SET github = $1
+                    WHERE (id = $2)
+                    ",
+                github.as_deref(),
+                id as crate::database::models::ids::UserId,
+            )
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?;
         }
 
         transaction

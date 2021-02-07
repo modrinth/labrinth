@@ -56,25 +56,6 @@
       "nullable": []
     }
   },
-  "03209c5bda2d704e688439919a7b3903db6ad7caebf7ddafb3ea52d312d47bfb": {
-    "query": "\n            INSERT INTO users (\n                id, github_id, username, name, email,\n                avatar_url, bio, created\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8\n            )\n            ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Varchar",
-          "Varchar",
-          "Varchar",
-          "Varchar",
-          "Varchar",
-          "Timestamptz"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "04345d9c23430267f755b1420520df91bd403524fd60ba1a94e3a239ea70cae7": {
     "query": "\n                    UPDATE mods\n                    SET source_url = $1\n                    WHERE (id = $2)\n                    ",
     "describe": {
@@ -345,63 +326,67 @@
       "nullable": []
     }
   },
-  "17e6d30c3693e9bd9f772f3dc4e2eafe75fdeecfdcf2746eac641f77ced6b8a8": {
-    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role FROM users u\n            WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
+  "17fc90626da9cdd5698dcd99e3d1af1ba0e1b4879aee01be6b271ff5f8691ffc": {
+    "query": "\n            SELECT u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.twitter, u.github\n            FROM users u\n            WHERE u.id = $1\n            ",
     "describe": {
       "columns": [
         {
           "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
           "name": "github_id",
           "type_info": "Int8"
         },
         {
-          "ordinal": 2,
+          "ordinal": 1,
           "name": "name",
           "type_info": "Varchar"
         },
         {
-          "ordinal": 3,
+          "ordinal": 2,
           "name": "email",
           "type_info": "Varchar"
         },
         {
-          "ordinal": 4,
+          "ordinal": 3,
           "name": "avatar_url",
           "type_info": "Varchar"
         },
         {
-          "ordinal": 5,
+          "ordinal": 4,
           "name": "username",
           "type_info": "Varchar"
         },
         {
-          "ordinal": 6,
+          "ordinal": 5,
           "name": "bio",
           "type_info": "Varchar"
         },
         {
-          "ordinal": 7,
+          "ordinal": 6,
           "name": "created",
           "type_info": "Timestamptz"
         },
         {
-          "ordinal": 8,
+          "ordinal": 7,
           "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 8,
+          "name": "twitter",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 9,
+          "name": "github",
           "type_info": "Varchar"
         }
       ],
       "parameters": {
         "Left": [
-          "Int8Array"
+          "Int8"
         ]
       },
       "nullable": [
-        false,
         true,
         true,
         true,
@@ -409,7 +394,9 @@
         false,
         true,
         false,
-        false
+        false,
+        true,
+        true
       ]
     }
   },
@@ -596,6 +583,19 @@
       "parameters": {
         "Left": [
           "Int4",
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "1c5bdbd8988adc4453449e9ca90ef326edb9f962bc6f4d7cd155f70567fe6f5c": {
+    "query": "\n                    UPDATE users\n                    SET github = $1\n                    WHERE (id = $2)\n                    ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
           "Int8"
         ]
       },
@@ -1957,8 +1957,95 @@
       "nullable": []
     }
   },
+  "70a9c6946de5d8128ffcaa91b3bd91e1d7b3e1fc3778e3d918a442c3f554b5d3": {
+    "query": "\n            SELECT u.id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.twitter, u.github\n            FROM users u\n            WHERE u.github_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "email",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "avatar_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "username",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "bio",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "created",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 7,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 8,
+          "name": "twitter",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 9,
+          "name": "github",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        true,
+        true
+      ]
+    }
+  },
   "70cdf1b4a17405974909d89b1437a8425792d620f9ed67fd8e31e004e4609e83": {
     "query": "\n                    UPDATE users\n                    SET username = $1\n                    WHERE (id = $2)\n                    ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "71bedc528af3356f0d93cf2a3311b6e38ce513b713ae9eb1946a255d833fa063": {
+    "query": "\n                    UPDATE users\n                    SET twitter = $1\n                    WHERE (id = $2)\n                    ",
     "describe": {
       "columns": [],
       "parameters": {
@@ -2182,6 +2269,80 @@
       },
       "nullable": [
         false
+      ]
+    }
+  },
+  "81abe5502c4b48c0236fc69035bd6533d6a573f9a3ddd25e74a4f4be098f5e40": {
+    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.bio,\n                u.created, u.role, u.twitter, u.github\n            FROM users u\n            WHERE u.username = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "github_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "email",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "avatar_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "bio",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "created",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 7,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 8,
+          "name": "twitter",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 9,
+          "name": "github",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true
       ]
     }
   },
@@ -2474,6 +2635,86 @@
       ]
     }
   },
+  "945e16ced7c2f6cb49a8ae68e16202f1bf00220afe24433807a0455c32cbdf28": {
+    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.twitter, u.github FROM users u\n            WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "github_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "email",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "avatar_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "username",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "bio",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 7,
+          "name": "created",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 8,
+          "name": "role",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 9,
+          "name": "twitter",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 10,
+          "name": "github",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      },
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        true,
+        true
+      ]
+    }
+  },
   "94c49b879a95a9068d93e01e270755c8acedfcfad178b0ed1efbf253b23431aa": {
     "query": "\n            INSERT INTO versions (\n                id, mod_id, author_id, name, version_number,\n                changelog, changelog_url, date_published,\n                downloads, release_channel, featured\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7,\n                $8, $9,\n                $10, $11\n            )\n            ",
     "describe": {
@@ -2491,6 +2732,27 @@
           "Int4",
           "Int4",
           "Bool"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "96611756bddaf7775adc8e549516c16e21a40f611be7a8ee770884bd3bc4de90": {
+    "query": "\n            INSERT INTO users (\n                id, github_id, username, name, email,\n                avatar_url, bio, created, twitter, github\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8, $9, $10\n            )\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Varchar",
+          "Varchar",
+          "Varchar",
+          "Timestamptz",
+          "Varchar",
+          "Varchar"
         ]
       },
       "nullable": []
@@ -2979,68 +3241,6 @@
       ]
     }
   },
-  "a94eb4862ba30ca21f15198d9b7b9fd80ce01d45457e0b4d68270b5e3f9be8c6": {
-    "query": "\n            SELECT u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role\n            FROM users u\n            WHERE u.id = $1\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "github_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "name",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "email",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "avatar_url",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 4,
-          "name": "username",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 5,
-          "name": "bio",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 6,
-          "name": "created",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 7,
-          "name": "role",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false
-      ]
-    }
-  },
   "acbafe265c4b7a1c95b0494a0a03c8bd2cd778ae561ef5a662fa931ca26cf603": {
     "query": "\n                    DELETE FROM mods_donations\n                    WHERE joining_mod_id = $1\n                    ",
     "describe": {
@@ -3413,68 +3613,6 @@
       },
       "nullable": [
         null
-      ]
-    }
-  },
-  "c7c1d5629b128a70d415a74f07d56e12911c4ac6a394dd1fd83ffa88bd6851fa": {
-    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.bio,\n                u.created, u.role\n            FROM users u\n            WHERE u.username = $1\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "github_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 2,
-          "name": "name",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "email",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 4,
-          "name": "avatar_url",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 5,
-          "name": "bio",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 6,
-          "name": "created",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 7,
-          "name": "role",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      },
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        true,
-        true,
-        false,
-        false
       ]
     }
   },
@@ -3954,68 +4092,6 @@
         ]
       },
       "nullable": []
-    }
-  },
-  "ea877d50ba461eae97ba3a35c3da71e7cdb7a92de1bb877d6b5dd766aca4e4ef": {
-    "query": "\n            SELECT u.id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role\n            FROM users u\n            WHERE u.github_id = $1\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "name",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "email",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "avatar_url",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 4,
-          "name": "username",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 5,
-          "name": "bio",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 6,
-          "name": "created",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 7,
-          "name": "role",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false
-      ]
     }
   },
   "ebf2d1fbcd12816799b60be6e8dec606eadd96edc26a840a411b44a19dc0497c": {

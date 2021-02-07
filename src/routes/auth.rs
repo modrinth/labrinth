@@ -190,6 +190,8 @@ pub async fn auth_callback(
                 bio: user.bio,
                 created: Utc::now(),
                 role: Role::Developer.to_string(),
+                twitter: user.twitter,
+                github: user.github,
             }
             .insert(&mut transaction)
             .await?;

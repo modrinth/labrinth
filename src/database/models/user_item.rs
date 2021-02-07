@@ -10,6 +10,8 @@ pub struct User {
     pub bio: Option<String>,
     pub created: chrono::DateTime<chrono::Utc>,
     pub role: String,
+    pub twitter: Option<String>,
+    pub github: Option<String>,
 }
 
 impl User {
@@ -21,11 +23,11 @@ impl User {
             "
             INSERT INTO users (
                 id, github_id, username, name, email,
-                avatar_url, bio, created
+                avatar_url, bio, created, twitter, github
             )
             VALUES (
                 $1, $2, $3, $4, $5,
-                $6, $7, $8
+                $6, $7, $8, $9, $10
             )
             ",
             self.id as UserId,
@@ -36,6 +38,8 @@ impl User {
             self.avatar_url.as_ref(),
             self.bio.as_ref(),
             self.created,
+            self.twitter,
+            self.github,
         )
         .execute(&mut *transaction)
         .await?;
@@ -50,7 +54,7 @@ impl User {
             "
             SELECT u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role
+                u.created, u.role, u.twitter, u.github
             FROM users u
             WHERE u.id = $1
             ",
@@ -70,6 +74,8 @@ impl User {
                 bio: row.bio,
                 created: row.created,
                 role: row.role,
+                twitter: row.twitter,
+                github: row.github,
             }))
         } else {
             Ok(None)
@@ -87,7 +93,7 @@ impl User {
             "
             SELECT u.id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role
+                u.created, u.role, u.twitter, u.github
             FROM users u
             WHERE u.github_id = $1
             ",
@@ -107,6 +113,8 @@ impl User {
                 bio: row.bio,
                 created: row.created,
                 role: row.role,
+                twitter: row.twitter,
+                github: row.github,
             }))
         } else {
             Ok(None)
@@ -124,7 +132,7 @@ impl User {
             "
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.bio,
-                u.created, u.role
+                u.created, u.role, u.twitter, u.github
             FROM users u
             WHERE u.username = $1
             ",
@@ -144,6 +152,8 @@ impl User {
                 bio: row.bio,
                 created: row.created,
                 role: row.role,
+                twitter: row.twitter,
+                github: row.github,
             }))
         } else {
             Ok(None)
@@ -161,7 +171,7 @@ impl User {
             "
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role FROM users u
+                u.created, u.role, u.twitter, u.github FROM users u
             WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))
             ",
             &user_ids_parsed
@@ -178,6 +188,8 @@ impl User {
                 bio: u.bio,
                 created: u.created,
                 role: u.role,
+                twitter: u.twitter,
+                github: u.github,
             }))
         })
         .try_collect::<Vec<User>>()
