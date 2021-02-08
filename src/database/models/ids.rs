@@ -86,6 +86,13 @@ generate_ids!(
     "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1)",
     UserId
 );
+generate_ids!(
+    pub generate_report_id,
+    ReportId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM reports WHERE id=$1)",
+    ReportId
+);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type)]
 #[sqlx(transparent)]
@@ -129,6 +136,13 @@ pub struct LoaderId(pub i32);
 #[derive(Copy, Clone, Debug, Type)]
 #[sqlx(transparent)]
 pub struct CategoryId(pub i32);
+
+#[derive(Copy, Clone, Debug, Type)]
+#[sqlx(transparent)]
+pub struct ReportId(pub i64);
+#[derive(Copy, Clone, Debug, Type)]
+#[sqlx(transparent)]
+pub struct ReportTypeId(pub i32);
 
 #[derive(Copy, Clone, Debug, Type)]
 #[sqlx(transparent)]

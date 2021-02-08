@@ -1,7 +1,7 @@
 use super::ApiError;
 use crate::auth::check_is_admin_from_headers;
 use crate::database::models;
-use crate::database::models::categories::{DonationPlatform, License};
+use crate::database::models::categories::{DonationPlatform, License, ReportType};
 use actix_web::{delete, get, put, web, HttpRequest, HttpResponse};
 use models::categories::{Category, GameVersion, Loader};
 use sqlx::PgPool;
@@ -325,6 +325,52 @@ pub async fn donation_platform_delete(
     let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
 
     let result = DonationPlatform::remove(&name, &mut transaction).await?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(models::DatabaseError::from)?;
+
+    if result.is_some() {
+        Ok(HttpResponse::Ok().body(""))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[get("report_type")]
+pub async fn report_type_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
+    let results = ReportType::list(&**pool).await?;
+    Ok(HttpResponse::Ok().json(results))
+}
+
+#[put("report_type/{name}")]
+pub async fn report_type_create(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    loader: web::Path<(String,)>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
+
+    let name = loader.into_inner().0;
+
+    let _id = ReportType::builder().name(&name)?.insert(&**pool).await?;
+
+    Ok(HttpResponse::Ok().body(""))
+}
+
+#[delete("report_type/{name}")]
+pub async fn report_type_delete(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    report_type: web::Path<(String,)>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
+
+    let name = report_type.into_inner().0;
+    let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
+
+    let result = ReportType::remove(&name, &mut transaction).await?;
 
     transaction
         .commit()

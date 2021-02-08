@@ -219,6 +219,16 @@ impl Version {
 
         sqlx::query!(
             "
+            DELETE FROM reports
+            WHERE version_id = $1
+            ",
+            id as VersionId,
+        )
+            .execute(exec)
+            .await?;
+
+        sqlx::query!(
+            "
             DELETE FROM game_versions_versions gvv
             WHERE gvv.joining_version_id = $1
             ",

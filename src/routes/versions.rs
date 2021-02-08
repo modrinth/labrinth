@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 #[derive(Serialize, Deserialize)]
 pub struct VersionListFilters {
-    pub game_versions: Option<Vec<String>>,
-    pub loaders: Option<Vec<String>>,
+    pub game_versions: Option<String>,
+    pub loaders: Option<String>,
     pub featured: Option<bool>,
 }
 
@@ -38,8 +38,8 @@ pub async fn version_list(
     if mod_exists.unwrap_or(false) {
         let version_ids = database::models::Version::get_mod_versions(
             id,
-            filters.game_versions,
-            filters.loaders,
+            filters.game_versions.map(|x| serde_json::from_str(&*x).unwrap_or_default()),
+            filters.loaders.map(|x| serde_json::from_str(&*x).unwrap_or_default()),
             &**pool,
         )
         .await
@@ -52,7 +52,7 @@ pub async fn version_list(
         let mut response = Vec::new();
         for version in versions {
             if let Some(featured) = filters.featured {
-                if featured {
+                if featured == version.featured {
                     response.push(convert_version(version))
                 }
             } else {

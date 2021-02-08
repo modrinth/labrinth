@@ -17,6 +17,11 @@ pub struct Category {
     pub category: String,
 }
 
+pub struct ReportType {
+    pub id: ReportTypeId,
+    pub report_type: String,
+}
+
 pub struct License {
     pub id: LicenseId,
     pub short: String,
@@ -753,5 +758,131 @@ impl<'a> DonationPlatformBuilder<'a> {
         .await?;
 
         Ok(DonationPlatformId(result.id))
+    }
+}
+
+pub struct ReportTypeBuilder<'a> {
+    pub name: Option<&'a str>,
+}
+
+impl ReportType {
+    pub fn builder() -> ReportTypeBuilder<'static> {
+        ReportTypeBuilder { name: None }
+    }
+
+    pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<ReportTypeId>, DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        if !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(DatabaseError::InvalidIdentifier(name.to_string()));
+        }
+
+        let result = sqlx::query!(
+            "
+            SELECT id FROM report_types
+            WHERE name = $1
+            ",
+            name
+        )
+            .fetch_optional(exec)
+            .await?;
+
+        Ok(result.map(|r| ReportTypeId(r.id)))
+    }
+
+    pub async fn get_name<'a, E>(id: ReportTypeId, exec: E) -> Result<String, DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT name FROM report_types
+            WHERE id = $1
+            ",
+            id as ReportTypeId
+        )
+            .fetch_one(exec)
+            .await?;
+
+        Ok(result.name)
+    }
+
+    pub async fn list<'a, E>(exec: E) -> Result<Vec<String>, DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT name FROM report_types
+            "
+        )
+            .fetch_many(exec)
+            .try_filter_map(|e| async { Ok(e.right().map(|c| c.name)) })
+            .try_collect::<Vec<String>>()
+            .await?;
+
+        Ok(result)
+    }
+
+    // TODO: remove loaders with mods using them
+    pub async fn remove<'a, E>(name: &str, exec: E) -> Result<Option<()>, DatabaseError>
+        where
+            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        use sqlx::Done;
+
+        let result = sqlx::query!(
+            "
+            DELETE FROM report_types
+            WHERE name = $1
+            ",
+            name
+        )
+            .execute(exec)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            // Nothing was deleted
+            Ok(None)
+        } else {
+            Ok(Some(()))
+        }
+    }
+}
+
+impl<'a> ReportTypeBuilder<'a> {
+    /// The name of the report type.  Must be ASCII alphanumeric or `-`/`_`
+    pub fn name(self, name: &'a str) -> Result<ReportTypeBuilder<'a>, DatabaseError> {
+        if name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            Ok(Self { name: Some(name) })
+        } else {
+            Err(DatabaseError::InvalidIdentifier(name.to_string()))
+        }
+    }
+
+    pub async fn insert<'b, E>(self, exec: E) -> Result<ReportTypeId, DatabaseError>
+        where
+            E: sqlx::Executor<'b, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            INSERT INTO report_types (name)
+            VALUES ($1)
+            ON CONFLICT (name) DO NOTHING
+            RETURNING id
+            ",
+            self.name
+        )
+            .fetch_one(exec)
+            .await?;
+
+        Ok(ReportTypeId(result.id))
     }
 }
