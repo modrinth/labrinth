@@ -27,9 +27,7 @@ pub async fn report_create(
 
     let current_user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
-    let id = crate::database::models::generate_report_id(&mut transaction)
-        .await?
-        .into();
+    let id = crate::database::models::generate_report_id(&mut transaction).await?;
     let report_type = crate::database::models::categories::ReportType::get_id(
         &*new_report.report_type,
         &mut *transaction,

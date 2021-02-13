@@ -40,10 +40,12 @@ pub async fn version_list(
             id,
             filters
                 .game_versions
-                .map(|x| serde_json::from_str(&*x).unwrap_or_default()),
+                .as_ref()
+                .map(|x| serde_json::from_str(x).unwrap_or_default()),
             filters
                 .loaders
-                .map(|x| serde_json::from_str(&*x).unwrap_or_default()),
+                .as_ref()
+                .map(|x| serde_json::from_str(x).unwrap_or_default()),
             &**pool,
         )
         .await
@@ -53,17 +55,16 @@ pub async fn version_list(
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-        let filters_featured = filters.featured.clone();
-
         let mut response = versions
             .iter()
             .cloned()
             .filter(|version| {
-                filters_featured
+                filters
+                    .featured
                     .map(|featured| featured == version.featured)
                     .unwrap_or(true)
             })
-            .map(|version| convert_version(version))
+            .map(convert_version)
             .collect::<Vec<_>>();
 
         // Attempt to populate versions with "auto featured" versions

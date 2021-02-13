@@ -48,7 +48,7 @@ pub async fn mods(
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?
         .into_iter()
-        .map(|x| super::mods::convert_mod(x))
+        .map(super::mods::convert_mod)
         .collect();
 
     Ok(HttpResponse::Ok().json(mods))

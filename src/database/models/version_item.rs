@@ -579,13 +579,13 @@ impl Version {
                 game_versions: v
                     .game_versions
                     .unwrap_or_default()
-                    .split(",")
+                    .split(',')
                     .map(|x| x.to_string())
                     .collect(),
                 loaders: v
                     .loaders
                     .unwrap_or_default()
-                    .split(",")
+                    .split(',')
                     .map(|x| x.to_string())
                     .collect(),
                 featured: v.featured,
@@ -693,8 +693,8 @@ impl Version {
                         downloads: v.downloads,
                         release_channel: v.release_channel,
                         files,
-                        game_versions: v.game_versions.unwrap_or_default().split(",").map(|x| x.to_string()).collect(),
-                        loaders: v.loaders.unwrap_or_default().split(",").map(|x| x.to_string()).collect(),
+                        game_versions: v.game_versions.unwrap_or_default().split(',').map(|x| x.to_string()).collect(),
+                        loaders: v.loaders.unwrap_or_default().split(',').map(|x| x.to_string()).collect(),
                         featured: v.featured,
                         dependencies,
                     }
