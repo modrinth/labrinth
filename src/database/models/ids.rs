@@ -194,3 +194,13 @@ impl From<VersionId> for ids::VersionId {
         ids::VersionId(id.0 as u64)
     }
 }
+impl From<ids::ReportId> for ReportId {
+    fn from(id: ids::ReportId) -> Self {
+        ReportId(id.0 as i64)
+    }
+}
+impl From<ReportId> for ids::ReportId {
+    fn from(id: ReportId) -> Self {
+        ids::ReportId(id.0 as u64)
+    }
+}

@@ -359,22 +359,61 @@ impl GameVersion {
         Ok(result)
     }
 
-    pub async fn list_type<'a, E>(version_type: &str, exec: E) -> Result<Vec<String>, DatabaseError>
+    pub async fn list_filter<'a, E>(
+        version_type_option: Option<&str>,
+        major_option: Option<bool>,
+        exec: E,
+    ) -> Result<Vec<String>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let result = sqlx::query!(
-            "
-            SELECT version FROM game_versions
-            WHERE type = $1
-            ORDER BY created DESC
-            ",
-            version_type
-        )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
-        .try_collect::<Vec<String>>()
-        .await?;
+        let result;
+
+        if let Some(version_type) = version_type_option {
+            if let Some(major) = major_option {
+                result = sqlx::query!(
+                    "
+                    SELECT version FROM game_versions
+                    WHERE major = $1 AND type = $2
+                    ORDER BY created DESC
+                    ",
+                    major,
+                    version_type
+                )
+                .fetch_many(exec)
+                .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
+                .try_collect::<Vec<String>>()
+                .await?;
+            } else {
+                result = sqlx::query!(
+                    "
+                    SELECT version FROM game_versions
+                    WHERE type = $1
+                    ORDER BY created DESC
+                    ",
+                    version_type
+                )
+                .fetch_many(exec)
+                .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
+                .try_collect::<Vec<String>>()
+                .await?;
+            }
+        } else if let Some(major) = major_option {
+            result = sqlx::query!(
+                "
+                SELECT version FROM game_versions
+                WHERE major = $1
+                ORDER BY created DESC
+                ",
+                major
+            )
+            .fetch_many(exec)
+            .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
+            .try_collect::<Vec<String>>()
+            .await?;
+        } else {
+            result = Vec::new();
+        }
 
         Ok(result)
     }
@@ -771,8 +810,8 @@ impl ReportType {
     }
 
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<ReportTypeId>, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         if !name
             .chars()
@@ -788,15 +827,15 @@ impl ReportType {
             ",
             name
         )
-            .fetch_optional(exec)
-            .await?;
+        .fetch_optional(exec)
+        .await?;
 
         Ok(result.map(|r| ReportTypeId(r.id)))
     }
 
     pub async fn get_name<'a, E>(id: ReportTypeId, exec: E) -> Result<String, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -805,33 +844,33 @@ impl ReportType {
             ",
             id as ReportTypeId
         )
-            .fetch_one(exec)
-            .await?;
+        .fetch_one(exec)
+        .await?;
 
         Ok(result.name)
     }
 
     pub async fn list<'a, E>(exec: E) -> Result<Vec<String>, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
             SELECT name FROM report_types
             "
         )
-            .fetch_many(exec)
-            .try_filter_map(|e| async { Ok(e.right().map(|c| c.name)) })
-            .try_collect::<Vec<String>>()
-            .await?;
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|c| c.name)) })
+        .try_collect::<Vec<String>>()
+        .await?;
 
         Ok(result)
     }
 
     // TODO: remove loaders with mods using them
     pub async fn remove<'a, E>(name: &str, exec: E) -> Result<Option<()>, DatabaseError>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         use sqlx::Done;
 
@@ -842,8 +881,8 @@ impl ReportType {
             ",
             name
         )
-            .execute(exec)
-            .await?;
+        .execute(exec)
+        .await?;
 
         if result.rows_affected() == 0 {
             // Nothing was deleted
@@ -868,8 +907,8 @@ impl<'a> ReportTypeBuilder<'a> {
     }
 
     pub async fn insert<'b, E>(self, exec: E) -> Result<ReportTypeId, DatabaseError>
-        where
-            E: sqlx::Executor<'b, Database = sqlx::Postgres>,
+    where
+        E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -880,8 +919,8 @@ impl<'a> ReportTypeBuilder<'a> {
             ",
             self.name
         )
-            .fetch_one(exec)
-            .await?;
+        .fetch_one(exec)
+        .await?;
 
         Ok(ReportTypeId(result.id))
     }

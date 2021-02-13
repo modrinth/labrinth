@@ -125,6 +125,7 @@ pub async fn loader_delete(
 pub struct GameVersionQueryData {
     #[serde(rename = "type")]
     type_: Option<String>,
+    major: Option<bool>,
 }
 
 #[get("game_version")]
@@ -132,8 +133,9 @@ pub async fn game_version_list(
     pool: web::Data<PgPool>,
     query: web::Query<GameVersionQueryData>,
 ) -> Result<HttpResponse, ApiError> {
-    if let Some(type_) = &query.type_ {
-        let results = GameVersion::list_type(type_, &**pool).await?;
+    if query.type_.is_some() || query.major.is_some() {
+        let results =
+            GameVersion::list_filter(query.type_.as_deref(), query.major, &**pool).await?;
         Ok(HttpResponse::Ok().json(results))
     } else {
         let results = GameVersion::list(&**pool).await?;

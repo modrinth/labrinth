@@ -224,8 +224,8 @@ impl Version {
             ",
             id as VersionId,
         )
-            .execute(exec)
-            .await?;
+        .execute(exec)
+        .await?;
 
         sqlx::query!(
             "
@@ -724,6 +724,7 @@ pub struct FileHash {
     pub hash: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct QueryVersion {
     pub id: VersionId,
     pub mod_id: ModId,
@@ -743,6 +744,7 @@ pub struct QueryVersion {
     pub dependencies: Vec<(VersionId, String)>,
 }
 
+#[derive(Clone)]
 pub struct QueryFile {
     pub id: FileId,
     pub url: String,

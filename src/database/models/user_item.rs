@@ -246,8 +246,8 @@ impl User {
             ",
             id as UserId,
         )
-            .execute(exec)
-            .await?;
+        .execute(exec)
+        .await?;
 
         sqlx::query!(
             "

@@ -307,8 +307,8 @@ impl Mod {
             ",
             id as ModId,
         )
-            .execute(exec)
-            .await?;
+        .execute(exec)
+        .await?;
 
         sqlx::query!(
             "

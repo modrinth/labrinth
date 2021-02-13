@@ -1,11 +1,9 @@
 use super::ApiError;
 use crate::auth::check_is_moderator_from_headers;
 use crate::database;
-use crate::models::mods::{ModId, ModStatus, Mod};
-use crate::models::teams::TeamId;
+use crate::models::mods::{Mod, ModStatus};
 use actix_web::{get, web, HttpRequest, HttpResponse};
-use serde::{Deserialize, Serialize};
-use sqlx::types::chrono::{DateTime, Utc};
+use serde::Deserialize;
 use sqlx::PgPool;
 
 #[derive(Deserialize)]
@@ -41,14 +39,17 @@ pub async fn mods(
         count.count as i64
     )
     .fetch_many(&**pool)
-    .try_filter_map(|e| async {
-        Ok(e.right().map(|m| database::models::ids::ModId(m.id)))
-    })
-    .try_collect::<Vec<ModId>>()
+    .try_filter_map(|e| async { Ok(e.right().map(|m| database::models::ids::ModId(m.id))) })
+    .try_collect::<Vec<database::models::ModId>>()
     .await
     .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    let mods : Vec<Mod> = database::models::mod_item::Mod::get_many_full(mod_ids, &**pool).await?.into_iter().map(|x| super::mods::convert_mod(x)).collect();
+    let mods: Vec<Mod> = database::models::mod_item::Mod::get_many_full(mod_ids, &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .into_iter()
+        .map(|x| super::mods::convert_mod(x))
+        .collect();
 
     Ok(HttpResponse::Ok().json(mods))
 }

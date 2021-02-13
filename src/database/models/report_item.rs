@@ -8,6 +8,7 @@ pub struct Report {
     pub user_id: Option<UserId>,
     pub body: String,
     pub reporter: UserId,
+    pub created: chrono::DateTime<chrono::Utc>,
 }
 
 pub struct QueryReport {
@@ -18,6 +19,7 @@ pub struct QueryReport {
     pub user_id: Option<UserId>,
     pub body: String,
     pub reporter: UserId,
+    pub created: chrono::DateTime<chrono::Utc>,
 }
 
 impl Report {
@@ -44,27 +46,27 @@ impl Report {
             self.body,
             self.reporter as UserId
         )
-            .execute(&mut *transaction)
-            .await?;
+        .execute(&mut *transaction)
+        .await?;
 
         Ok(())
     }
 
     pub async fn get<'a, E>(id: ReportId, exec: E) -> Result<Option<QueryReport>, sqlx::Error>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         let result = sqlx::query!(
             "
-            SELECT rt.name, r.mod_id, r.version_id, r.user_id, r.body, r.reporter
+            SELECT rt.name, r.mod_id, r.version_id, r.user_id, r.body, r.reporter, r.created
             FROM reports r
             INNER JOIN report_types rt ON rt.id = r.report_type_id
             WHERE r.id = $1
             ",
             id as ReportId,
         )
-            .fetch_optional(exec)
-            .await?;
+        .fetch_optional(exec)
+        .await?;
 
         if let Some(row) = result {
             Ok(Some(QueryReport {
@@ -75,15 +77,54 @@ impl Report {
                 user_id: row.user_id.map(|x| UserId(x)),
                 body: row.body,
                 reporter: UserId(row.reporter),
+                created: row.created,
             }))
         } else {
             Ok(None)
         }
     }
 
+    pub async fn get_many<'a, E>(
+        version_ids: Vec<ReportId>,
+        exec: E,
+    ) -> Result<Vec<QueryReport>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let version_ids_parsed: Vec<i64> = version_ids.into_iter().map(|x| x.0).collect();
+        let versions = sqlx::query!(
+            "
+            SELECT r.id, rt.name, r.mod_id, r.version_id, r.user_id, r.body, r.reporter, r.created
+            FROM reports r
+            INNER JOIN report_types rt ON rt.id = r.report_type_id
+            WHERE r.id IN (SELECT * FROM UNNEST($1::bigint[]))
+            ",
+            &version_ids_parsed
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|row| QueryReport {
+                id: ReportId(row.id),
+                report_type: row.name,
+                mod_id: row.mod_id.map(|x| ModId(x)),
+                version_id: row.version_id.map(|x| VersionId(x)),
+                user_id: row.user_id.map(|x| UserId(x)),
+                body: row.body,
+                reporter: UserId(row.reporter),
+                created: row.created,
+            }))
+        })
+        .try_collect::<Vec<QueryReport>>()
+        .await?;
+
+        Ok(versions)
+    }
+
     pub async fn remove_full<'a, E>(id: ReportId, exec: E) -> Result<Option<()>, sqlx::Error>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         let result = sqlx::query!(
             "
@@ -91,8 +132,8 @@ impl Report {
             ",
             id as ReportId
         )
-            .fetch_one(exec)
-            .await?;
+        .fetch_one(exec)
+        .await?;
 
         if !result.exists.unwrap_or(false) {
             return Ok(None);
@@ -104,8 +145,8 @@ impl Report {
             ",
             id as ReportId,
         )
-            .execute(exec)
-            .await?;
+        .execute(exec)
+        .await?;
 
         Ok(Some(()))
     }

@@ -6,10 +6,10 @@ use thiserror::Error;
 pub mod categories;
 pub mod ids;
 pub mod mod_item;
+pub mod report_item;
 pub mod team_item;
 pub mod user_item;
 pub mod version_item;
-pub mod report_item;
 
 pub use ids::*;
 pub use mod_item::Mod;

@@ -16,5 +16,9 @@ CREATE TABLE reports (
     version_id bigint REFERENCES versions ON UPDATE CASCADE,
     user_id bigint REFERENCES users ON UPDATE CASCADE,
     body varchar(65536) NOT NULL,
-    reporter bigint REFERENCES users ON UPDATE CASCADE NOT NULL
+    reporter bigint REFERENCES users ON UPDATE CASCADE NOT NULL,
+    created timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+
+ALTER TABLE game_versions
+    ADD COLUMN major boolean NOT NULL DEFAULT FALSE;
