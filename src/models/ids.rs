@@ -4,6 +4,7 @@ pub use super::mods::{ModId, VersionId};
 pub use super::reports::ReportId;
 pub use super::teams::TeamId;
 pub use super::users::UserId;
+pub use super::notifications::NotificationId;
 
 /// Generates a random 64 bit integer that is exactly `n` characters
 /// long when encoded as base62.
@@ -109,6 +110,7 @@ base62_id_impl!(UserId, UserId);
 base62_id_impl!(VersionId, VersionId);
 base62_id_impl!(TeamId, TeamId);
 base62_id_impl!(ReportId, ReportId);
+base62_id_impl!(NotificationId, NotificationId);
 
 pub mod base62_impl {
     use serde::de::{self, Deserializer, Visitor};

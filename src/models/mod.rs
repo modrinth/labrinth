@@ -4,3 +4,4 @@ pub mod mods;
 pub mod reports;
 pub mod teams;
 pub mod users;
+pub mod notifications;

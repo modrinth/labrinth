@@ -10,6 +10,7 @@ pub mod report_item;
 pub mod team_item;
 pub mod user_item;
 pub mod version_item;
+pub mod notification_item;
 
 pub use ids::*;
 pub use mod_item::Mod;
