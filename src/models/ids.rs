@@ -1,10 +1,10 @@
 use thiserror::Error;
 
 pub use super::mods::{ModId, VersionId};
+pub use super::notifications::NotificationId;
 pub use super::reports::ReportId;
 pub use super::teams::TeamId;
 pub use super::users::UserId;
-pub use super::notifications::NotificationId;
 
 /// Generates a random 64 bit integer that is exactly `n` characters
 /// long when encoded as base62.

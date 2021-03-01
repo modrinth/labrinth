@@ -24,7 +24,7 @@ impl User {
                 avatar_url, bio, created
             )
             VALUES (
-                $1, $2, $3, $4, $5,
+                $1, $2, LOWER($3), $4, $5,
                 $6, $7, $8
             )
             ",
@@ -126,7 +126,7 @@ impl User {
                 u.avatar_url, u.bio,
                 u.created, u.role
             FROM users u
-            WHERE u.username = $1
+            WHERE LOWER(u.username) = LOWER($1)
             ",
             username
         )

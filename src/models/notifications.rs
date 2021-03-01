@@ -1,5 +1,5 @@
-use super::users::UserId;
 use super::ids::Base62Id;
+use super::users::UserId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

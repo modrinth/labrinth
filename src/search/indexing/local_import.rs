@@ -55,7 +55,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
 
             let loaders = sqlx::query!(
                 "
-                SELECT loaders.loader FROM versions
+                SELECT DISTINCT loaders.loader FROM versions
                 INNER JOIN loaders_versions lv ON lv.version_id = versions.id
                 INNER JOIN loaders ON loaders.id = lv.loader_id
                 WHERE versions.mod_id = $1
@@ -203,7 +203,7 @@ pub async fn query_one(
 
     let loaders = sqlx::query!(
         "
-        SELECT loaders.loader FROM versions
+        SELECT DISTINCT loaders.loader FROM versions
         INNER JOIN loaders_versions lv ON lv.version_id = versions.id
         INNER JOIN loaders ON loaders.id = lv.loader_id
         WHERE versions.mod_id = $1

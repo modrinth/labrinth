@@ -36,8 +36,8 @@ impl Notification {
             &self.title,
             &self.text,
         )
-            .execute(&mut *transaction)
-            .await?;
+        .execute(&mut *transaction)
+        .await?;
 
         for action in &self.actions {
             action.insert(&mut *transaction).await?;
@@ -46,9 +46,12 @@ impl Notification {
         Ok(())
     }
 
-    pub async fn get<'a, 'b, E>(id: NotificationId, executor: E) -> Result<Option<Self>, sqlx::error::Error>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    pub async fn get<'a, 'b, E>(
+        id: NotificationId,
+        executor: E,
+    ) -> Result<Option<Self>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -61,29 +64,24 @@ impl Notification {
             ",
             id as NotificationId,
         )
-            .fetch_optional(executor)
-            .await?;
+        .fetch_optional(executor)
+        .await?;
 
         if let Some(row) = result {
             let mut actions: Vec<NotificationAction> = Vec::new();
 
-            row.actions
-                .unwrap_or_default()
-                .split(" ,")
-                .for_each(|x| {
-                    let action: Vec<&str> = x.split(", ").collect();
-                    
-                    if action.len() >= 3 {
-                        actions.push(
-                            NotificationAction {
-                                id: NotificationActionId(action[0].parse().unwrap_or(0)),
-                                notification_id: id,
-                                title: action[1].to_string(),
-                                action_route: action[2].to_string()
-                            }
-                        );
-                    }
-                });
+            row.actions.unwrap_or_default().split(" ,").for_each(|x| {
+                let action: Vec<&str> = x.split(", ").collect();
+
+                if action.len() >= 3 {
+                    actions.push(NotificationAction {
+                        id: NotificationActionId(action[0].parse().unwrap_or(0)),
+                        notification_id: id,
+                        title: action[1].to_string(),
+                        action_route: action[2].to_string(),
+                    });
+                }
+            });
 
             Ok(Some(Notification {
                 id,
@@ -92,7 +90,7 @@ impl Notification {
                 text: row.text,
                 read: row.read,
                 created: row.created,
-                actions
+                actions,
             }))
         } else {
             Ok(None)
@@ -103,8 +101,8 @@ impl Notification {
         notification_ids: Vec<NotificationId>,
         exec: E,
     ) -> Result<Vec<Notification>, sqlx::Error>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
@@ -120,51 +118,46 @@ impl Notification {
             ",
             &notification_ids_parsed
         )
-            .fetch_many(exec)
-            .try_filter_map(|e| async {
-                Ok(e.right().map(|row| {
-                    let id = NotificationId(row.id);
-                    let mut actions: Vec<NotificationAction> = Vec::new();
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|row| {
+                let id = NotificationId(row.id);
+                let mut actions: Vec<NotificationAction> = Vec::new();
 
-                    row.actions
-                        .unwrap_or_default()
-                        .split(" ,")
-                        .for_each(|x| {
-                            let action: Vec<&str> = x.split(", ").collect();
+                row.actions.unwrap_or_default().split(" ,").for_each(|x| {
+                    let action: Vec<&str> = x.split(", ").collect();
 
-                            if action.len() >= 3 {
-                                actions.push(
-                                    NotificationAction {
-                                        id: NotificationActionId(action[0].parse().unwrap_or(0)),
-                                        notification_id: id,
-                                        title: action[1].to_string(),
-                                        action_route: action[2].to_string()
-                                    }
-                                );
-                            }
+                    if action.len() >= 3 {
+                        actions.push(NotificationAction {
+                            id: NotificationActionId(action[0].parse().unwrap_or(0)),
+                            notification_id: id,
+                            title: action[1].to_string(),
+                            action_route: action[2].to_string(),
                         });
-
-                    Notification {
-                        id,
-                        user_id: UserId(row.user_id),
-                        title: row.title,
-                        text: row.text,
-                        read: row.read,
-                        created: row.created,
-                        actions
                     }
-                }))
-            })
-            .try_collect::<Vec<Notification>>()
-            .await
+                });
+
+                Notification {
+                    id,
+                    user_id: UserId(row.user_id),
+                    title: row.title,
+                    text: row.text,
+                    read: row.read,
+                    created: row.created,
+                    actions,
+                }
+            }))
+        })
+        .try_collect::<Vec<Notification>>()
+        .await
     }
 
     pub async fn get_many_user<'a, E>(
         user_id: UserId,
         exec: E,
     ) -> Result<Vec<Notification>, sqlx::Error>
-        where
-            E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
@@ -179,43 +172,38 @@ impl Notification {
             ",
             user_id as UserId
         )
-            .fetch_many(exec)
-            .try_filter_map(|e| async {
-                Ok(e.right().map(|row| {
-                    let id = NotificationId(row.id);
-                    let mut actions: Vec<NotificationAction> = Vec::new();
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|row| {
+                let id = NotificationId(row.id);
+                let mut actions: Vec<NotificationAction> = Vec::new();
 
-                    row.actions
-                        .unwrap_or_default()
-                        .split(" ,")
-                        .for_each(|x| {
-                            let action: Vec<&str> = x.split(", ").collect();
+                row.actions.unwrap_or_default().split(" ,").for_each(|x| {
+                    let action: Vec<&str> = x.split(", ").collect();
 
-                            if action.len() >= 3 {
-                                actions.push(
-                                    NotificationAction {
-                                        id: NotificationActionId(action[0].parse().unwrap_or(0)),
-                                        notification_id: id,
-                                        title: action[1].to_string(),
-                                        action_route: action[2].to_string()
-                                    }
-                                );
-                            }
+                    if action.len() >= 3 {
+                        actions.push(NotificationAction {
+                            id: NotificationActionId(action[0].parse().unwrap_or(0)),
+                            notification_id: id,
+                            title: action[1].to_string(),
+                            action_route: action[2].to_string(),
                         });
-
-                    Notification {
-                        id,
-                        user_id: UserId(row.user_id),
-                        title: row.title,
-                        text: row.text,
-                        read: row.read,
-                        created: row.created,
-                        actions
                     }
-                }))
-            })
-            .try_collect::<Vec<Notification>>()
-            .await
+                });
+
+                Notification {
+                    id,
+                    user_id: UserId(row.user_id),
+                    title: row.title,
+                    text: row.text,
+                    read: row.read,
+                    created: row.created,
+                    actions,
+                }
+            }))
+        })
+        .try_collect::<Vec<Notification>>()
+        .await
     }
 }
 
@@ -237,8 +225,8 @@ impl NotificationAction {
             &self.title,
             &self.action_route,
         )
-            .execute(&mut *transaction)
-            .await?;
+        .execute(&mut *transaction)
+        .await?;
 
         Ok(())
     }
