@@ -1,6 +1,10 @@
 use crate::auth::get_user_from_headers;
 use crate::database::models;
+use crate::database::models::notification_item::{
+    Notification, NotificationAction, NotificationActionBuilder, NotificationBuilder,
+};
 use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder};
+use crate::database::models::NotificationActionId;
 use crate::file_hosting::FileHost;
 use crate::models::mods::{
     Dependency, GameVersion, ModId, ModLoader, Version, VersionFile, VersionId, VersionType,
@@ -271,6 +275,30 @@ async fn version_create_inner(
         .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
     let builder = version_builder
         .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
+
+    let result = sqlx::query!(
+        "
+        SELECT m.title FROM mods m
+        WHERE id = $1
+        ",
+        mod_id.into()
+    )
+    .fetch_one(&**pool)
+    .await?;
+
+    NotificationBuilder {
+        title: "A mod you followed has been updated!".to_string(),
+        text: format!(
+            "Mod {} has been updated to version {}",
+            result.title,
+            version_data.version_number.clone()
+        ),
+        link: format!("mod/{}/version/{}", mod_id, version_id.into()),
+        read: false,
+        actions: vec![],
+    }
+    .insert(new_member.user_id.into(), &mut *transaction)
+    .await?;
 
     let response = Version {
         id: builder.version_id.into(),

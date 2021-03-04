@@ -486,7 +486,7 @@ pub async fn version_edit(
             }
 
             if let Some(body) = &new_version.changelog {
-                if body.len() > 64 {
+                if body.len() > 65536 {
                     return Err(ApiError::InvalidInputError(
                         "The version changelog must be less than 65536 characters long!"
                             .to_string(),

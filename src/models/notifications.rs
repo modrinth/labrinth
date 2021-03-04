@@ -8,16 +8,19 @@ use serde::{Deserialize, Serialize};
 #[serde(into = "Base62Id")]
 pub struct NotificationId(pub u64);
 
+#[derive(Serialize, Deserialize)]
 pub struct Notification {
     pub id: NotificationId,
     pub user_id: UserId,
     pub title: String,
     pub text: String,
+    pub link: String,
     pub read: bool,
-    pub updated: DateTime<Utc>,
+    pub created: DateTime<Utc>,
     pub actions: Vec<NotificationAction>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct NotificationAction {
     pub title: String,
     pub action_route: String,

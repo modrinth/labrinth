@@ -986,6 +986,89 @@ pub async fn mod_delete(
     }
 }
 
+#[get("{id}/follow")]
+pub async fn mod_follow(
+    req: HttpRequest,
+    info: web::Path<(models::ids::ModId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id = info.into_inner().0;
+
+    let _result = database::models::Mod::get(id.into(), &**pool)
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+
+    let user_id: database::models::ids::UserId = user.id.into();
+    let mod_id: database::models::ids::ModId = id.into();
+
+    sqlx::query!(
+        "
+        UPDATE mods
+        SET follows = follows + 1
+        WHERE id = $1
+        ",
+        mod_id as database::models::ids::ModId,
+    )
+    .execute(&**pool)
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    sqlx::query!(
+        "
+        INSERT INTO mod_follows (follower_id, mod_id)
+        VALUES ($1, $2)
+        ",
+        user_id as database::models::ids::UserId,
+        mod_id as database::models::ids::ModId
+    )
+    .execute(&**pool)
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    Ok(HttpResponse::Ok().body(""))
+}
+
+#[delete("{id}/follow")]
+pub async fn mod_unfollow(
+    req: HttpRequest,
+    info: web::Path<(models::ids::ModId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id = info.into_inner().0;
+
+    let user_id: database::models::ids::UserId = user.id.into();
+    let mod_id: database::models::ids::ModId = id.into();
+
+    sqlx::query!(
+        "
+        UPDATE mods
+        SET follows = follows - 1
+        WHERE id = $1
+        ",
+        mod_id as database::models::ids::ModId,
+    )
+    .execute(&**pool)
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    sqlx::query!(
+        "
+        DELETE FROM mod_follows
+        WHERE follower_id = $1 AND mod_id = $2
+        ",
+        user_id as database::models::ids::UserId,
+        mod_id as database::models::ids::ModId
+    )
+    .execute(&**pool)
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    Ok(HttpResponse::Ok().body(""))
+}
+
 pub async fn delete_from_index(
     id: crate::models::mods::ModId,
     config: web::Data<SearchConfig>,

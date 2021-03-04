@@ -219,6 +219,11 @@ impl From<ReportId> for ids::ReportId {
         ids::ReportId(id.0 as u64)
     }
 }
+impl From<ids::NotificationId> for NotificationId {
+    fn from(id: ids::NotificationId) -> Self {
+        NotificationId(id.0 as i64)
+    }
+}
 impl From<NotificationId> for ids::NotificationId {
     fn from(id: NotificationId) -> Self {
         ids::NotificationId(id.0 as u64)

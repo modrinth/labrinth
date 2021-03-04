@@ -306,6 +306,16 @@ impl Mod {
 
         sqlx::query!(
             "
+            DELETE FROM mod_follows
+            WHERE mod_id = $1
+            ",
+            id as ModId
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
             DELETE FROM reports
             WHERE mod_id = $1
             ",

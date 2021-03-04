@@ -1,10 +1,24 @@
 use super::ids::*;
 
+pub struct NotificationBuilder {
+    pub title: String,
+    pub text: String,
+    pub link: String,
+    pub read: bool,
+    pub actions: Vec<NotificationActionBuilder>,
+}
+
+pub struct NotificationActionBuilder {
+    pub title: String,
+    pub action_route: String,
+}
+
 pub struct Notification {
     pub id: NotificationId,
     pub user_id: UserId,
     pub title: String,
     pub text: String,
+    pub link: String,
     pub read: bool,
     pub created: chrono::DateTime<chrono::Utc>,
     pub actions: Vec<NotificationAction>,
@@ -17,6 +31,29 @@ pub struct NotificationAction {
     pub action_route: String,
 }
 
+impl NotificationBuilder {
+    pub async fn insert(
+        &self,
+        user: UserId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), sqlx::error::Error> {
+        self.insert_many(vec![user], transaction)
+    }
+
+    pub async fn insert_many(
+        &self,
+        users: Vec<UserId>,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), sqlx::error::Error> {
+        let notifications = users
+            .into_iter()
+            .map(|| generate_notification_id(&mut *transaction))
+            .collect::<Vec<NotificationId>>();
+
+        Ok(())
+    }
+}
+
 impl Notification {
     pub async fn insert(
         &self,
@@ -25,16 +62,17 @@ impl Notification {
         sqlx::query!(
             "
             INSERT INTO notifications (
-                id, user_id, title, text
+                id, user_id, title, text, link
             )
             VALUES (
-                $1, $2, $3, $4
+                $1, $2, $3, $4, $5
             )
             ",
             self.id as NotificationId,
             self.user_id as UserId,
             &self.title,
             &self.text,
+            &self.link
         )
         .execute(&mut *transaction)
         .await?;
@@ -55,7 +93,7 @@ impl Notification {
     {
         let result = sqlx::query!(
             "
-            SELECT n.user_id, n.title, n.text, n.created, n.read,
+            SELECT n.user_id, n.title, n.text, n.link, n.created, n.read,
             STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions
             FROM notifications n
             LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id
@@ -88,6 +126,7 @@ impl Notification {
                 user_id: UserId(row.user_id),
                 title: row.title,
                 text: row.text,
+                link: row.link,
                 read: row.read,
                 created: row.created,
                 actions,
@@ -109,7 +148,7 @@ impl Notification {
         let notification_ids_parsed: Vec<i64> = notification_ids.into_iter().map(|x| x.0).collect();
         sqlx::query!(
             "
-            SELECT n.id, n.user_id, n.title, n.text, n.created, n.read,
+            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read,
             STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions
             FROM notifications n
             LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id
@@ -142,6 +181,7 @@ impl Notification {
                     user_id: UserId(row.user_id),
                     title: row.title,
                     text: row.text,
+                    link: row.link,
                     read: row.read,
                     created: row.created,
                     actions,
@@ -163,7 +203,7 @@ impl Notification {
 
         sqlx::query!(
             "
-            SELECT n.id, n.user_id, n.title, n.text, n.created, n.read,
+            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read,
             STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions
             FROM notifications n
             LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id
@@ -196,6 +236,7 @@ impl Notification {
                     user_id: UserId(row.user_id),
                     title: row.title,
                     text: row.text,
+                    link: row.link,
                     read: row.read,
                     created: row.created,
                     actions,
@@ -204,6 +245,36 @@ impl Notification {
         })
         .try_collect::<Vec<Notification>>()
         .await
+    }
+
+    pub async fn remove<'a, 'b, E>(
+        id: NotificationId,
+        exec: E,
+    ) -> Result<Option<()>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        sqlx::query!(
+            "
+            DELETE FROM notifications_actions
+            WHERE notification_id = $1
+            ",
+            id as NotificationId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM notifications
+            WHERE id = $1
+            ",
+            id as NotificationId,
+        )
+        .execute(exec)
+        .await?;
+
+        Ok(Some(()))
     }
 }
 
