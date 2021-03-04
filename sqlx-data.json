@@ -56,6 +56,18 @@
       "nullable": []
     }
   },
+  "03c196a6b0c287b9d913559442b1ea679c35634e33f94197f587532757cb7385": {
+    "query": "\n            DELETE FROM notifications_actions\n             WHERE notification_id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "041f499f542ddab1b81bd445d6cabe225b1b2ad3ec7bbc1f755346c016ae06e6": {
     "query": "\n            DELETE FROM reports\n            WHERE user_id = $1\n            ",
     "describe": {
@@ -130,21 +142,6 @@
         "Left": [
           "Int8",
           "Int4",
-          "Varchar"
-        ]
-      },
-      "nullable": []
-    }
-  },
-  "07fffb221842e8d3904f0ac684b0e5bcc8e68d9b79a0ba23f108ca7ed894400f": {
-    "query": "\n            INSERT INTO notifications (\n                id, user_id, title, text\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Varchar",
           "Varchar"
         ]
       },
@@ -247,6 +244,62 @@
         ]
       },
       "nullable": [
+        null
+      ]
+    }
+  },
+  "105a0184a875e7b9c5aa38527816bace9d9136ffc22627a1695ca337bf7009dd": {
+    "query": "\n            SELECT n.user_id, n.title, n.text, n.link, n.created, n.read,\n            STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions\n            FROM notifications n\n            LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id\n            WHERE n.id = $1\n            GROUP BY n.id, n.user_id;\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "user_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "title",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "text",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "link",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "created",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 5,
+          "name": "read",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 6,
+          "name": "actions",
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
         null
       ]
     }
@@ -365,6 +418,18 @@
         false,
         false
       ]
+    }
+  },
+  "15b8ea323c2f6d03c2e385d9c46d7f13460764f2f106fd638226c42ae0217f75": {
+    "query": "\n            DELETE FROM notifications\n            WHERE user_id = $1\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
     }
   },
   "16049957962ded08751d5a4ddce2ffac17ecd486f61210c51a952508425d83e6": {
@@ -822,6 +887,18 @@
       "nullable": []
     }
   },
+  "24dd644d22542e4d4493ce1e0ea57ce73e47a1a433ffcedf2631ce2f21bfd2c0": {
+    "query": "\n        UPDATE mods\n        SET follows = follows - 1\n        WHERE id = $1\n        ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "24e5daad907eec54505274f93952d5c20f4bbdd3f771eb0a2fdfa6324768df39": {
     "query": "\n            SELECT short, name FROM licenses\n            WHERE id = $1\n            ",
     "describe": {
@@ -1134,6 +1211,19 @@
       ]
     }
   },
+  "3387447d6dd9c63448f021c670457270d0f2c00a270d3c1dd7160f8ed99805d3": {
+    "query": "\n        DELETE FROM mod_follows\n        WHERE follower_id = $1 AND mod_id = $2\n        ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "33fc96ac71cfa382991cfb153e89da1e9f43ebf5367c28b30c336b758222307b": {
     "query": "\n            DELETE FROM loaders_versions\n            WHERE loaders_versions.version_id = $1\n            ",
     "describe": {
@@ -1286,62 +1376,6 @@
         ]
       },
       "nullable": []
-    }
-  },
-  "3db5307737447c72799b28c788dcd6f90a2822e91cf00c46c23cc155cc01a28f": {
-    "query": "\n            SELECT n.id, n.user_id, n.title, n.text, n.created, n.read,\n            STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions\n            FROM notifications n\n            LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id\n            WHERE n.user_id = $1\n            GROUP BY n.id, n.user_id;\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "user_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 2,
-          "name": "title",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "text",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 4,
-          "name": "created",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 5,
-          "name": "read",
-          "type_info": "Bool"
-        },
-        {
-          "ordinal": 6,
-          "name": "actions",
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        null
-      ]
     }
   },
   "3f2f05653552ce8c1be95ce0a922ab41f52f40f8ff6c91c6621481102c8f35e3": {
@@ -1571,6 +1605,22 @@
         "Left": [
           "Text",
           "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "4ff46a178f181a11c6c57c628770ef3b80e7344cff5d8bf268876a863cbfda36": {
+    "query": "\n            INSERT INTO notifications (\n                id, user_id, title, text, link\n            )\n            VALUES (\n                $1, $2, $3, $4, $5\n            )\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Varchar"
         ]
       },
       "nullable": []
@@ -1932,6 +1982,18 @@
       "nullable": []
     }
   },
+  "5d7d7e33c2952199225d7b93f5a74f3436ba18aa24e6ef1840becbf236447fd6": {
+    "query": "\n            DELETE FROM mod_follows\n            WHERE mod_id = $1\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "5eb2795d25d6d03e22564048c198d821cd5ff22eb4e39b9dd7f198c9113d4f87": {
     "query": "\n                    UPDATE users\n                    SET name = $1\n                    WHERE (id = $2)\n                    ",
     "describe": {
@@ -1994,6 +2056,68 @@
         false,
         false,
         false
+      ]
+    }
+  },
+  "64b2c8a208eaef033bf555c4a4962746d2c3706d24ae60e67a8b732c9a4b0edc": {
+    "query": "\n            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read,\n            STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions\n            FROM notifications n\n            LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id\n            WHERE n.user_id = $1\n            GROUP BY n.id, n.user_id;\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "user_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "title",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "text",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "link",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "created",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 6,
+          "name": "read",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 7,
+          "name": "actions",
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        null
       ]
     }
   },
@@ -2245,6 +2369,19 @@
       "columns": [],
       "parameters": {
         "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "6e5ddd4069e59426636cf59a67d19cee449bc7de0762a68327181a5009118ca6": {
+    "query": "\n        INSERT INTO mod_follows (follower_id, mod_id)\n        VALUES ($1, $2)\n        ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
           "Int8"
         ]
       },
@@ -2528,6 +2665,26 @@
       ]
     }
   },
+  "7e73d3a17807f57ba6def5ff718e6dcb3a65ef8da653d839560b24635334cf05": {
+    "query": "\n        SELECT m.title FROM mods m\n        WHERE id = $1\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "title",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "80e253ea5c9846a8ce479bb2617773109a8e2583af74bfc30ddbfe3a7c5da8ae": {
     "query": "\n                    SELECT f.id FROM files f\n                    INNER JOIN hashes h ON h.hash = $1 AND h.algorithm = $2\n                    ",
     "describe": {
@@ -2677,6 +2834,32 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "8c25a870b9306d653caaa4c324122ecd928796107b9d2fcdeaba82c7fcbbbebc": {
+    "query": "\n        SELECT m.title, m.id FROM mods m\n        WHERE m.team_id = $1\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "title",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 1,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false
+      ]
     }
   },
   "8f02d5c2b9095c21498802f01cefdbc57a5f1c2a7aee717ba19daaffc498c5cd": {
@@ -3419,6 +3602,68 @@
       "nullable": []
     }
   },
+  "b6d377746ceeb0e52ed55255fb294cfce4873739e3277a79038bcaf1e9796c68": {
+    "query": "\n            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read,\n            STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions\n            FROM notifications n\n            LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id\n            WHERE n.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            GROUP BY n.id, n.user_id;\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "user_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "title",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "text",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 4,
+          "name": "link",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "created",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 6,
+          "name": "read",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 7,
+          "name": "actions",
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        null
+      ]
+    }
+  },
   "b7b2b5b99340c7601de53cc33dc56af054b50b2fe4d1d212901c958115a42baa": {
     "query": "\n            UPDATE versions\n            SET author_id = $1\n            WHERE (author_id = $2)\n            ",
     "describe": {
@@ -3426,6 +3671,18 @@
       "parameters": {
         "Left": [
           "Int8",
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "b8091122d243912e628b06e244bb8ac47cd36903185a50d15ad2368b257ab0e2": {
+    "query": "\n            DELETE FROM notifications\n            WHERE id = $1\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
           "Int8"
         ]
       },
@@ -3561,6 +3818,18 @@
         false,
         false
       ]
+    }
+  },
+  "bdde6a7e476933c109c5b0d7236e033ccb7bf242266f77815a387a370365a10e": {
+    "query": "\n            DELETE FROM notifications_actions\n            WHERE notification_id = $1\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
     }
   },
   "bec1612d4929d143bc5d6860a57cc036c5ab23e69d750ca5791c620297953c50": {
@@ -4477,6 +4746,26 @@
       ]
     }
   },
+  "ebef881a0dae70e990814e567ed3de9565bb29b772782bc974c953af195fd6d7": {
+    "query": "\n            SELECT n.id FROM notifications n\n            WHERE n.user_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "ed4c0b620d01cdcdd0c2b3b5727ae3485d51114ca76e17331cec0d244d7f972d": {
     "query": "\n            SELECT version FROM game_versions\n            ORDER BY created DESC\n            ",
     "describe": {
@@ -4493,6 +4782,18 @@
       "nullable": [
         false
       ]
+    }
+  },
+  "ef994a6ba13ac2b24cd035d5e31302f2a53a63d1baa42d0d7ac84418a82fbb9b": {
+    "query": "\n        UPDATE mods\n        SET follows = follows + 1\n        WHERE id = $1\n        ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
     }
   },
   "f0db9d8606ccc2196a9cfafe0e7090dab42bf790f25e0469b8947fac1cf043d5": {
@@ -4512,62 +4813,6 @@
       },
       "nullable": [
         false
-      ]
-    }
-  },
-  "f10b2d13991a23dd69159f728f2c7353519236a4eea86024d09a751e565252b5": {
-    "query": "\n            SELECT n.id, n.user_id, n.title, n.text, n.created, n.read,\n            STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions\n            FROM notifications n\n            LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id\n            WHERE n.id IN (SELECT * FROM UNNEST($1::bigint[]))\n            GROUP BY n.id, n.user_id;\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "user_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 2,
-          "name": "title",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "text",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 4,
-          "name": "created",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 5,
-          "name": "read",
-          "type_info": "Bool"
-        },
-        {
-          "ordinal": 6,
-          "name": "actions",
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        null
       ]
     }
   },
@@ -4614,56 +4859,6 @@
         ]
       },
       "nullable": []
-    }
-  },
-  "f732951b2682807d682113fb89e55271b7f0036a4acb67c2667984bc37709374": {
-    "query": "\n            SELECT n.user_id, n.title, n.text, n.created, n.read,\n            STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route,  ' ,') actions\n            FROM notifications n\n            LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id\n            WHERE n.id = $1\n            GROUP BY n.id, n.user_id;\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "user_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "title",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "text",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "created",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 4,
-          "name": "read",
-          "type_info": "Bool"
-        },
-        {
-          "ordinal": 5,
-          "name": "actions",
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        null
-      ]
     }
   },
   "f7bea04e8e279e27a24de1bdf3c413daa8677994df5131494b28691ed6611efc": {

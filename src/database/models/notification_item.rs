@@ -37,7 +37,7 @@ impl NotificationBuilder {
         user: UserId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), sqlx::error::Error> {
-        self.insert_many(vec![user], transaction)
+        self.insert_many(vec![user], transaction).await
     }
 
     pub async fn insert_many(
@@ -45,11 +45,6 @@ impl NotificationBuilder {
         users: Vec<UserId>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), sqlx::error::Error> {
-        let notifications = users
-            .into_iter()
-            .map(|| generate_notification_id(&mut *transaction))
-            .collect::<Vec<NotificationId>>();
-
         Ok(())
     }
 }

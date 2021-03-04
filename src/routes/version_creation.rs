@@ -1,10 +1,7 @@
 use crate::auth::get_user_from_headers;
 use crate::database::models;
-use crate::database::models::notification_item::{
-    Notification, NotificationAction, NotificationActionBuilder, NotificationBuilder,
-};
+use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder};
-use crate::database::models::NotificationActionId;
 use crate::file_hosting::FileHost;
 use crate::models::mods::{
     Dependency, GameVersion, ModId, ModLoader, Version, VersionFile, VersionId, VersionType,
@@ -281,10 +278,13 @@ async fn version_create_inner(
         SELECT m.title FROM mods m
         WHERE id = $1
         ",
-        mod_id.into()
+        builder.mod_id as crate::database::models::ids::ModId
     )
-    .fetch_one(&**pool)
+    .fetch_one(&mut *transaction)
     .await?;
+
+    let mod_id: ModId = builder.mod_id.into();
+    let version_id: VersionId = builder.version_id.into();
 
     NotificationBuilder {
         title: "A mod you followed has been updated!".to_string(),
@@ -293,11 +293,11 @@ async fn version_create_inner(
             result.title,
             version_data.version_number.clone()
         ),
-        link: format!("mod/{}/version/{}", mod_id, version_id.into()),
+        link: format!("mod/{}/version/{}", mod_id, version_id),
         read: false,
         actions: vec![],
     }
-    .insert(new_member.user_id.into(), &mut *transaction)
+    .insert_many(vec![], &mut *transaction)
     .await?;
 
     let response = Version {

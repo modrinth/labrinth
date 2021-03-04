@@ -1,8 +1,6 @@
 use crate::auth::get_user_from_headers;
-use crate::database::models::notification_item::{
-    Notification, NotificationAction, NotificationActionBuilder, NotificationBuilder,
-};
-use crate::database::models::{NotificationActionId, TeamMember};
+use crate::database::models::notification_item::{NotificationActionBuilder, NotificationBuilder};
+use crate::database::models::TeamMember;
 use crate::models::ids::ModId;
 use crate::models::teams::{Permissions, TeamId};
 use crate::models::users::UserId;
