@@ -15,7 +15,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
 
     let mut mods = sqlx::query!(
         "
-        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.status, m.slug, m.license, m.client_side, m.server_side FROM mods m
+        SELECT m.id, m.title, m.description, m.downloads, m.follows, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.status, m.slug, m.license, m.client_side, m.server_side FROM mods m
         "
     ).fetch(&pool);
 
@@ -151,6 +151,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 description: mod_data.description,
                 categories,
                 versions,
+                follows: mod_data.follows,
                 downloads: mod_data.downloads,
                 page_url: format!("https://modrinth.com/mod/{}", mod_id),
                 icon_url,
@@ -179,7 +180,7 @@ pub async fn query_one(
 ) -> Result<UploadSearchMod, IndexingError> {
     let mod_data = sqlx::query!(
         "
-        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.slug, m.license, m.client_side, m.server_side
+        SELECT m.id, m.title, m.description, m.downloads, m.follows, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.slug, m.license, m.client_side, m.server_side
         FROM mods m
         WHERE id = $1
         ",
@@ -299,6 +300,7 @@ pub async fn query_one(
         description: mod_data.description,
         categories,
         versions,
+        follows: mod_data.follows,
         downloads: mod_data.downloads,
         page_url: format!("https://modrinth.com/mod/{}", mod_id),
         icon_url,

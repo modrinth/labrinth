@@ -239,12 +239,55 @@ impl User {
         .execute(exec)
         .await?;
 
+        use futures::TryStreamExt;
+        let notifications: Vec<i64> = sqlx::query!(
+            "
+            SELECT n.id FROM notifications n
+            WHERE n.user_id = $1
+            ",
+            id as UserId,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| m.id as i64)) })
+        .try_collect::<Vec<i64>>()
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM notifications
+            WHERE user_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(exec)
+        .await?;
+
         sqlx::query!(
             "
             DELETE FROM reports
             WHERE user_id = $1
             ",
             id as UserId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM mod_follows
+            WHERE follower_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM notifications_actions
+             WHERE notification_id IN (SELECT * FROM UNNEST($1::bigint[]))
+            ",
+            &notifications
         )
         .execute(exec)
         .await?;

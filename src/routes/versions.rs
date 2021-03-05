@@ -278,7 +278,7 @@ pub async fn version_edit(
             }
 
             if let Some(number) = &new_version.version_number {
-                if number.len() > 64 || number.len() < 1 {
+                if number.len() > 64 || number.is_empty() {
                     return Err(ApiError::InvalidInputError(
                         "The version number must be within 1-64 characters!".to_string(),
                     ));
@@ -667,13 +667,13 @@ pub async fn download_version(
             if !download_exists {
                 sqlx::query!(
                     "
-                INSERT INTO downloads (
-                    version_id, identifier
-                )
-                VALUES (
-                    $1, $2
-                )
-                ",
+                    INSERT INTO downloads (
+                        version_id, identifier
+                    )
+                    VALUES (
+                        $1, $2
+                    )
+                    ",
                     id.version_id,
                     hash
                 )
@@ -683,10 +683,10 @@ pub async fn download_version(
 
                 sqlx::query!(
                     "
-                UPDATE versions
-                SET downloads = downloads + 1
-                WHERE id = $1
-                ",
+                    UPDATE versions
+                    SET downloads = downloads + 1
+                    WHERE id = $1
+                    ",
                     id.version_id,
                 )
                 .execute(&**pool)
@@ -695,10 +695,10 @@ pub async fn download_version(
 
                 sqlx::query!(
                     "
-                UPDATE mods
-                SET downloads = downloads + 1
-                WHERE id = $1
-                ",
+                    UPDATE mods
+                    SET downloads = downloads + 1
+                    WHERE id = $1
+                    ",
                     id.mod_id,
                 )
                 .execute(&**pool)

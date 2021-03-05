@@ -217,7 +217,6 @@ pub async fn add_team_member(
             current_user.username, result.title
         ),
         link: format!("mod/{}", ModId(result.id as u64)),
-        read: false,
         actions: vec![
             NotificationActionBuilder {
                 title: "Accept".to_string(),
@@ -230,8 +229,7 @@ pub async fn add_team_member(
         ],
     }
     .insert(new_member.user_id.into(), &mut transaction)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     transaction
         .commit()

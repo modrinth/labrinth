@@ -324,102 +324,6 @@
       ]
     }
   },
-  "1305fabd44e54fb9f4a78e698507f19cbcd9cf52bb193f3188679918979f28a8": {
-    "query": "\n        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.status, m.slug, m.license, m.client_side, m.server_side FROM mods m\n        ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "title",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "description",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "downloads",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 4,
-          "name": "icon_url",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 5,
-          "name": "body_url",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 6,
-          "name": "published",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 7,
-          "name": "updated",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 8,
-          "name": "team_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 9,
-          "name": "status",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 10,
-          "name": "slug",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 11,
-          "name": "license",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 12,
-          "name": "client_side",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 13,
-          "name": "server_side",
-          "type_info": "Int4"
-        }
-      ],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-        false,
-        false
-      ]
-    }
-  },
   "15b8ea323c2f6d03c2e385d9c46d7f13460764f2f106fd638226c42ae0217f75": {
     "query": "\n            DELETE FROM notifications\n            WHERE user_id = $1\n            ",
     "describe": {
@@ -875,18 +779,6 @@
       ]
     }
   },
-  "2439ae8db5ae81aad03351e9a2e19259ef033110ed1c2d71bc0a643104ca32d0": {
-    "query": "\n                UPDATE versions\n                SET downloads = downloads + 1\n                WHERE id = $1\n                ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "24dd644d22542e4d4493ce1e0ea57ce73e47a1a433ffcedf2631ce2f21bfd2c0": {
     "query": "\n        UPDATE mods\n        SET follows = follows - 1\n        WHERE id = $1\n        ",
     "describe": {
@@ -941,6 +833,108 @@
         ]
       },
       "nullable": [
+        false
+      ]
+    }
+  },
+  "255ebd215adf4e2a5a837b8a682b7396d185c656e1151fcec24eddca1b7fb942": {
+    "query": "\n        SELECT m.id, m.title, m.description, m.downloads, m.follows, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.status, m.slug, m.license, m.client_side, m.server_side FROM mods m\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "title",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "description",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "downloads",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 4,
+          "name": "follows",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 5,
+          "name": "icon_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "body_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 7,
+          "name": "published",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 8,
+          "name": "updated",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 9,
+          "name": "team_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 10,
+          "name": "status",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 11,
+          "name": "slug",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 12,
+          "name": "license",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 13,
+          "name": "client_side",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 14,
+          "name": "server_side",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
         false
       ]
     }
@@ -1156,19 +1150,6 @@
       "nullable": [
         false
       ]
-    }
-  },
-  "30bb72960840e11c2ef0f7ebebe33010ebdd6f0a7a977542c7a82c2ad0fb1e85": {
-    "query": "\n                INSERT INTO downloads (\n                    version_id, identifier\n                )\n                VALUES (\n                    $1, $2\n                )\n                ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Varchar"
-        ]
-      },
-      "nullable": []
     }
   },
   "3135db1c5309dac7580a731b2829397ae7bdd6c9a67b21e813f26a4f5aa251a9": {
@@ -1391,6 +1372,18 @@
       "nullable": []
     }
   },
+  "413762398111e04074a2d8a1e4e03ed362b9167d397947f8d14e5ae330e3de0b": {
+    "query": "\n                    UPDATE versions\n                    SET downloads = downloads + 1\n                    WHERE id = $1\n                    ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "43b793e2df30a6ace9e037e38bb4ea456656cfbe276c151e3a9e0a408d2c249f": {
     "query": "\n                    UPDATE versions\n                    SET release_channel = $1\n                    WHERE (id = $2)\n                    ",
     "describe": {
@@ -1430,6 +1423,26 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "48294a4e0c594e80fff8d14a705aa7282f55e47cf3772e77f1d4bf4849008b60": {
+    "query": "\n            SELECT follower_id FROM mod_follows\n            WHERE mod_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "follower_id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
+      ]
     }
   },
   "49e36828e3a0214b48234435e34311735ae32e08d8be1270f8f0db4b27e708ba": {
@@ -2549,18 +2562,6 @@
       "nullable": []
     }
   },
-  "763eaff18057e579472960e9e8256c22ae275f24a45da96bc3e47385376faae3": {
-    "query": "\n                UPDATE mods\n                SET downloads = downloads + 1\n                WHERE id = $1\n                ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "76db1c204139e18002e5751c3dcefff79791a1dd852b62d34fcf008151e8945a": {
     "query": "\n            SELECT id, short, name FROM donation_platforms\n            ",
     "describe": {
@@ -2683,6 +2684,19 @@
       "nullable": [
         false
       ]
+    }
+  },
+  "7f1696cee355c03f474fda2283669c60046833db88b3e2befd62a1fea7a12c70": {
+    "query": "\n                    INSERT INTO downloads (\n                        version_id, identifier\n                    )\n                    VALUES (\n                        $1, $2\n                    )\n                    ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Varchar"
+        ]
+      },
+      "nullable": []
     }
   },
   "80e253ea5c9846a8ce479bb2617773109a8e2583af74bfc30ddbfe3a7c5da8ae": {
@@ -3059,98 +3073,6 @@
         ]
       },
       "nullable": [
-        false
-      ]
-    }
-  },
-  "975616f51d8d179a34e92b445c8ed3ac62de17dbbc44a7d42ca5476615b4f04d": {
-    "query": "\n        SELECT m.id, m.title, m.description, m.downloads, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.slug, m.license, m.client_side, m.server_side\n        FROM mods m\n        WHERE id = $1\n        ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "title",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "description",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "downloads",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 4,
-          "name": "icon_url",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 5,
-          "name": "body_url",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 6,
-          "name": "published",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 7,
-          "name": "updated",
-          "type_info": "Timestamptz"
-        },
-        {
-          "ordinal": 8,
-          "name": "team_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 9,
-          "name": "slug",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 10,
-          "name": "license",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 11,
-          "name": "client_side",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 12,
-          "name": "server_side",
-          "type_info": "Int4"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        false,
-        false,
-        false,
-        true,
-        false,
-        false,
         false
       ]
     }
@@ -3750,6 +3672,18 @@
       "nullable": []
     }
   },
+  "bc41b72640b63a9eb09ed92adc119b7119a7173d758d9541e06672c4b2f977d7": {
+    "query": "\n                    UPDATE mods\n                    SET downloads = downloads + 1\n                    WHERE id = $1\n                    ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "bc91841f9672608a28bd45a862919f2bd34fac0b3479e3b4b67a9f6bea2a562a": {
     "query": "\n                    UPDATE mods\n                    SET issues_url = $1\n                    WHERE (id = $2)\n                    ",
     "describe": {
@@ -3935,6 +3869,18 @@
       "nullable": [
         false
       ]
+    }
+  },
+  "c201a7a7198fe2a083fc556b408b8b700e81759f4aa5966a4a3874a46aafb6b2": {
+    "query": "\n            DELETE FROM mod_follows\n            WHERE follower_id = $1\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": []
     }
   },
   "c3dcb5a8b798ea6c0922698a007dbc8ab549f5f85bad780da59163f4d6371238": {
@@ -4908,6 +4854,104 @@
         ]
       },
       "nullable": [
+        false,
+        false
+      ]
+    }
+  },
+  "fa5fe155fafd3b10c12fe5cf9cbbe4a4b3eb59f0f2e6584753a72517bb2d4574": {
+    "query": "\n        SELECT m.id, m.title, m.description, m.downloads, m.follows, m.icon_url, m.body_url, m.published, m.updated, m.team_id, m.slug, m.license, m.client_side, m.server_side\n        FROM mods m\n        WHERE id = $1\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 1,
+          "name": "title",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "description",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "downloads",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 4,
+          "name": "follows",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 5,
+          "name": "icon_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 6,
+          "name": "body_url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 7,
+          "name": "published",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 8,
+          "name": "updated",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 9,
+          "name": "team_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 10,
+          "name": "slug",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 11,
+          "name": "license",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 12,
+          "name": "client_side",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 13,
+          "name": "server_side",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
         false,
         false
       ]

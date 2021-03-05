@@ -1,10 +1,10 @@
 use super::ids::*;
+use crate::database::models::DatabaseError;
 
 pub struct NotificationBuilder {
     pub title: String,
     pub text: String,
     pub link: String,
-    pub read: bool,
     pub actions: Vec<NotificationActionBuilder>,
 }
 
@@ -36,7 +36,7 @@ impl NotificationBuilder {
         &self,
         user: UserId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), sqlx::error::Error> {
+    ) -> Result<(), DatabaseError> {
         self.insert_many(vec![user], transaction).await
     }
 
@@ -44,7 +44,35 @@ impl NotificationBuilder {
         &self,
         users: Vec<UserId>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), sqlx::error::Error> {
+    ) -> Result<(), DatabaseError> {
+        for user in users {
+            let id = generate_notification_id(&mut *transaction).await?;
+
+            let mut actions = Vec::new();
+
+            for action in &self.actions {
+                actions.push(NotificationAction {
+                    id: NotificationActionId(0),
+                    notification_id: id,
+                    title: action.title.clone(),
+                    action_route: action.action_route.clone(),
+                })
+            }
+
+            Notification {
+                id,
+                user_id: user,
+                title: self.title.clone(),
+                text: self.text.clone(),
+                link: self.link.clone(),
+                read: false,
+                created: chrono::Utc::now(),
+                actions,
+            }
+            .insert(&mut *transaction)
+            .await?;
+        }
+
         Ok(())
     }
 }

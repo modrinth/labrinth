@@ -283,6 +283,23 @@ async fn version_create_inner(
     .fetch_one(&mut *transaction)
     .await?;
 
+    use futures::stream::TryStreamExt;
+
+    let users = sqlx::query!(
+        "
+            SELECT follower_id FROM mod_follows
+            WHERE mod_id = $1
+            ",
+        builder.mod_id as crate::database::models::ids::ModId
+    )
+    .fetch_many(&mut *transaction)
+    .try_filter_map(|e| async {
+        Ok(e.right()
+            .map(|m| crate::database::models::ids::UserId(m.follower_id)))
+    })
+    .try_collect::<Vec<crate::database::models::ids::UserId>>()
+    .await?;
+
     let mod_id: ModId = builder.mod_id.into();
     let version_id: VersionId = builder.version_id.into();
 
@@ -294,10 +311,9 @@ async fn version_create_inner(
             version_data.version_number.clone()
         ),
         link: format!("mod/{}/version/{}", mod_id, version_id),
-        read: false,
         actions: vec![],
     }
-    .insert_many(vec![], &mut *transaction)
+    .insert_many(users, &mut *transaction)
     .await?;
 
     let response = Version {
