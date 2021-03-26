@@ -405,7 +405,7 @@ impl Mod {
     }
 
     pub async fn get_full_from_slug<'a, 'b, E>(
-        slug: String,
+        slug: &String,
         executor: E,
     ) -> Result<Option<QueryMod>, sqlx::error::Error>
     where
