@@ -42,8 +42,7 @@ pub fn mods_config(cfg: &mut web::ServiceConfig) {
 
 pub fn maven_config(cfg: &mut web::ServiceConfig) {
     cfg.service(maven::maven_metadata);
-    cfg.service(maven::version_pom);
-    cfg.service(maven::version_jar);
+    cfg.service(maven::version_file);
 }
 
 pub fn versions_config(cfg: &mut web::ServiceConfig) {
