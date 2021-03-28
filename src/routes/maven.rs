@@ -57,23 +57,16 @@ pub async fn maven_metadata(
     let string = info.into_inner().0;
     let id_option: Option<ModId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let mut mod_data;
-
-    if let Some(id) = id_option {
-        mod_data = database::models::Mod::get_full(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-        if mod_data.is_none() {
-            mod_data = database::models::Mod::get_full_from_slug(&string, &**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let mod_data = if let Some(id) = id_option {
+        match database::models::Mod::get_full(id.into(), &**pool).await {
+            Ok(Some(data)) => Ok(Some(data)),
+            Ok(None) => database::models::Mod::get_full_from_slug(&string, &**pool).await,
+            Err(e) => Err(e),
         }
     } else {
-        mod_data = database::models::Mod::get_full_from_slug(&string, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        database::models::Mod::get_full_from_slug(&string, &**pool).await
     }
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -159,23 +152,16 @@ pub async fn version_file(
 ) -> Result<HttpResponse, ApiError> {
     let id_option: Option<ModId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let mut mod_data;
-
-    if let Some(id) = id_option {
-        mod_data = database::models::Mod::get_full(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-        if mod_data.is_none() {
-            mod_data = database::models::Mod::get_full_from_slug(&string, &**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let mod_data = if let Some(id) = id_option {
+        match database::models::Mod::get_full(id.into(), &**pool).await {
+            Ok(Some(data)) => Ok(Some(data)),
+            Ok(None) => database::models::Mod::get_full_from_slug(&string, &**pool).await,
+            Err(e) => Err(e),
         }
     } else {
-        mod_data = database::models::Mod::get_full_from_slug(&string, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        database::models::Mod::get_full_from_slug(&string, &**pool).await
     }
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
