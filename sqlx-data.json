@@ -310,6 +310,27 @@
       ]
     }
   },
+  "153100dc632392c4d446cc768235d071bac26a0818a4a72d203d8e549f969eea": {
+    "query": "SELECT id FROM versions WHERE mod_id = $1 AND version_number = $2",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "15b8ea323c2f6d03c2e385d9c46d7f13460764f2f106fd638226c42ae0217f75": {
     "query": "\n            DELETE FROM notifications\n            WHERE user_id = $1\n            ",
     "describe": {
@@ -2369,6 +2390,32 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "6d123a568c48de6a9ca4d99ffec067577fdb1a5a65def19ca6f07e0aa70b1be4": {
+    "query": "\n                SELECT version_number, release_channels.channel channel\n                FROM versions\n                LEFT JOIN release_channels ON release_channels.id = versions.release_channel\n                WHERE mod_id = $1\n                ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "version_number",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 1,
+          "name": "channel",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false
+      ]
     }
   },
   "6d883ea05aead20f571a0f63bfd63f1d432717ec7a0fb9ab29e01fcb061b3afc": {
