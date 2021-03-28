@@ -2,6 +2,7 @@ use super::ApiError;
 use crate::auth::get_user_from_headers;
 use crate::file_hosting::FileHost;
 use crate::models;
+use crate::models::mods::{Dependency, DependencyType};
 use crate::models::teams::Permissions;
 use crate::{database, Pepper};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
@@ -10,14 +11,17 @@ use sqlx::PgPool;
 use std::borrow::Borrow;
 use std::sync::Arc;
 
-// TODO: this needs filtering, and a better response type
-// Currently it only gives a list of ids, which have to be
-// requested manually.  This route could give a list of the
-// ids as well as the supported versions and loaders, or
-// other info that is needed for selecting the right version.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct VersionListFilters {
+    pub game_versions: Option<String>,
+    pub loaders: Option<String>,
+    pub featured: Option<bool>,
+}
+
 #[get("version")]
 pub async fn version_list(
     info: web::Path<(models::ids::ModId,)>,
+    web::Query(filters): web::Query<VersionListFilters>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0.into();
@@ -32,14 +36,73 @@ pub async fn version_list(
     .exists;
 
     if mod_exists.unwrap_or(false) {
-        let mod_data = database::models::Version::get_mod_versions(id, &**pool)
+        let version_ids = database::models::Version::get_mod_versions(
+            id,
+            filters
+                .game_versions
+                .as_ref()
+                .map(|x| serde_json::from_str(x).unwrap_or_default()),
+            filters
+                .loaders
+                .as_ref()
+                .map(|x| serde_json::from_str(x).unwrap_or_default()),
+            &**pool,
+        )
+        .await
+        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+        let mut versions = database::models::Version::get_many_full(version_ids, &**pool)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-        let response = mod_data
-            .into_iter()
-            .map(|v| v.into())
-            .collect::<Vec<models::ids::VersionId>>();
+        let mut response = versions
+            .iter()
+            .cloned()
+            .filter(|version| {
+                filters
+                    .featured
+                    .map(|featured| featured == version.featured)
+                    .unwrap_or(true)
+            })
+            .map(convert_version)
+            .collect::<Vec<_>>();
+
+        versions.sort_by(|a, b| b.date_published.cmp(&a.date_published));
+
+        // Attempt to populate versions with "auto featured" versions
+        if response.is_empty() && !versions.is_empty() && filters.featured.unwrap_or(false) {
+            let loaders = database::models::categories::Loader::list(&**pool).await?;
+            let game_versions =
+                database::models::categories::GameVersion::list_filter(None, Some(true), &**pool)
+                    .await?;
+
+            let mut joined_filters = Vec::new();
+            for game_version in &game_versions {
+                for loader in &loaders {
+                    joined_filters.push((game_version, loader))
+                }
+            }
+
+            joined_filters.into_iter().for_each(|filter| {
+                versions
+                    .iter()
+                    .find(|version| {
+                        version.game_versions.contains(&filter.0)
+                            && version.loaders.contains(&filter.1)
+                    })
+                    .map(|version| response.push(convert_version(version.clone())))
+                    .unwrap_or(());
+            });
+
+            if response.is_empty() {
+                versions
+                    .into_iter()
+                    .for_each(|version| response.push(convert_version(version)));
+            }
+        }
+
+        response.sort_by(|a, b| b.date_published.cmp(&a.date_published));
+        response.dedup_by(|a, b| a.id == b.id);
 
         Ok(HttpResponse::Ok().json(response))
     } else {
@@ -68,9 +131,7 @@ pub async fn versions_get(
     let mut versions = Vec::new();
 
     for version_data in versions_data {
-        if let Some(version) = version_data {
-            versions.push(convert_version(version));
-        }
+        versions.push(convert_version(version_data));
     }
 
     Ok(HttpResponse::Ok().json(versions))
@@ -134,7 +195,14 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
                 }
             })
             .collect(),
-        dependencies: Vec::new(), // TODO: dependencies
+        dependencies: data
+            .dependencies
+            .into_iter()
+            .map(|d| Dependency {
+                version_id: d.0.into(),
+                dependency_type: DependencyType::from_str(&*d.1),
+            })
+            .collect(),
         game_versions: data
             .game_versions
             .into_iter()
@@ -154,7 +222,7 @@ pub struct EditVersion {
     pub version_number: Option<String>,
     pub changelog: Option<String>,
     pub version_type: Option<models::mods::VersionType>,
-    pub dependencies: Option<Vec<models::ids::VersionId>>,
+    pub dependencies: Option<Vec<Dependency>>,
     pub game_versions: Option<Vec<models::mods::GameVersion>>,
     pub loaders: Option<Vec<models::mods::ModLoader>>,
     pub featured: Option<bool>,
@@ -207,6 +275,12 @@ pub async fn version_edit(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
             if let Some(name) = &new_version.name {
+                if name.len() > 256 || name.len() < 3 {
+                    return Err(ApiError::InvalidInputError(
+                        "The version name must be within 3-256 characters!".to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     UPDATE versions
@@ -222,6 +296,12 @@ pub async fn version_edit(
             }
 
             if let Some(number) = &new_version.version_number {
+                if number.len() > 64 || number.is_empty() {
+                    return Err(ApiError::InvalidInputError(
+                        "The version number must be within 1-64 characters!".to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     UPDATE versions
@@ -274,15 +354,17 @@ pub async fn version_edit(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
                 for dependency in dependencies {
-                    let dependency_id: database::models::ids::VersionId = dependency.clone().into();
+                    let dependency_id: database::models::ids::VersionId =
+                        dependency.version_id.clone().into();
 
                     sqlx::query!(
                         "
-                        INSERT INTO dependencies (dependent_id, dependency_id)
-                        VALUES ($1, $2)
+                        INSERT INTO dependencies (dependent_id, dependency_id, dependency_type)
+                        VALUES ($1, $2, $3)
                         ",
                         id as database::models::ids::VersionId,
                         dependency_id as database::models::ids::VersionId,
+                        dependency.dependency_type.as_str()
                     )
                     .execute(&mut *transaction)
                     .await
@@ -380,8 +462,9 @@ pub async fn version_edit(
             if let Some(primary_file) = &new_version.primary_file {
                 let result = sqlx::query!(
                     "
-                    SELECT id FROM files
-                    INNER JOIN hashes ON hash = $1 AND algorithm = $2
+                    SELECT f.id id FROM hashes h
+                    INNER JOIN files f ON h.file_id = f.id
+                    WHERE h.algorithm = $2 AND h.hash = $1
                     ",
                     primary_file.1.as_bytes(),
                     primary_file.0
@@ -422,6 +505,13 @@ pub async fn version_edit(
             }
 
             if let Some(body) = &new_version.changelog {
+                if body.len() > 65536 {
+                    return Err(ApiError::InvalidInputError(
+                        "The version changelog must be less than 65536 characters long!"
+                            .to_string(),
+                    ));
+                }
+
                 sqlx::query!(
                     "
                     UPDATE versions
@@ -596,13 +686,13 @@ pub async fn download_version(
             if !download_exists {
                 sqlx::query!(
                     "
-                INSERT INTO downloads (
-                    version_id, identifier
-                )
-                VALUES (
-                    $1, $2
-                )
-                ",
+                    INSERT INTO downloads (
+                        version_id, identifier
+                    )
+                    VALUES (
+                        $1, $2
+                    )
+                    ",
                     id.version_id,
                     hash
                 )
@@ -612,10 +702,10 @@ pub async fn download_version(
 
                 sqlx::query!(
                     "
-                UPDATE versions
-                SET downloads = downloads + 1
-                WHERE id = $1
-                ",
+                    UPDATE versions
+                    SET downloads = downloads + 1
+                    WHERE id = $1
+                    ",
                     id.version_id,
                 )
                 .execute(&**pool)
@@ -624,10 +714,10 @@ pub async fn download_version(
 
                 sqlx::query!(
                     "
-                UPDATE mods
-                SET downloads = downloads + 1
-                WHERE id = $1
-                ",
+                    UPDATE mods
+                    SET downloads = downloads + 1
+                    WHERE id = $1
+                    ",
                     id.mod_id,
                 )
                 .execute(&**pool)
@@ -702,11 +792,10 @@ pub async fn delete_file(
 
         sqlx::query!(
             "
-                DELETE FROM hashes
-                WHERE hash = $1 AND algorithm = $2
-                ",
-            hash.as_bytes(),
-            algorithm.algorithm
+            DELETE FROM hashes
+            WHERE file_id = $1
+            ",
+            row.id
         )
         .execute(&mut *transaction)
         .await
@@ -714,9 +803,9 @@ pub async fn delete_file(
 
         sqlx::query!(
             "
-                DELETE FROM files
-                WHERE files.id = $1
-                ",
+            DELETE FROM files
+            WHERE files.id = $1
+            ",
             row.id,
         )
         .execute(&mut *transaction)

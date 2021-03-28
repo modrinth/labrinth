@@ -24,7 +24,7 @@ impl User {
                 avatar_url, bio, created
             )
             VALUES (
-                $1, $2, $3, $4, $5,
+                $1, $2, LOWER($3), $4, $5,
                 $6, $7, $8
             )
             ",
@@ -126,7 +126,7 @@ impl User {
                 u.avatar_url, u.bio,
                 u.created, u.role
             FROM users u
-            WHERE u.username = $1
+            WHERE LOWER(u.username) = LOWER($1)
             ",
             username
         )
@@ -186,7 +186,37 @@ impl User {
         Ok(users)
     }
 
-    pub async fn get_mods<'a, E>(user_id: UserId, exec: E) -> Result<Vec<ModId>, sqlx::Error>
+    pub async fn get_mods<'a, E>(
+        user_id: UserId,
+        status: &str,
+        exec: E,
+    ) -> Result<Vec<ModId>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let mods = sqlx::query!(
+            "
+            SELECT m.id FROM mods m
+            INNER JOIN team_members tm ON tm.team_id = m.team_id
+            WHERE tm.user_id = $1 AND m.status = (SELECT s.id FROM statuses s WHERE s.status = $2)
+            ",
+            user_id as UserId,
+            status,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| ModId(m.id))) })
+        .try_collect::<Vec<ModId>>()
+        .await?;
+
+        Ok(mods)
+    }
+
+    pub async fn get_mods_private<'a, E>(
+        user_id: UserId,
+        exec: E,
+    ) -> Result<Vec<ModId>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
@@ -239,6 +269,59 @@ impl User {
         .execute(exec)
         .await?;
 
+        use futures::TryStreamExt;
+        let notifications: Vec<i64> = sqlx::query!(
+            "
+            SELECT n.id FROM notifications n
+            WHERE n.user_id = $1
+            ",
+            id as UserId,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| m.id as i64)) })
+        .try_collect::<Vec<i64>>()
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM notifications
+            WHERE user_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM reports
+            WHERE user_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM mod_follows
+            WHERE follower_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM notifications_actions
+             WHERE notification_id IN (SELECT * FROM UNNEST($1::bigint[]))
+            ",
+            &notifications
+        )
+        .execute(exec)
+        .await?;
+
         sqlx::query!(
             "
             DELETE FROM team_members
@@ -287,6 +370,38 @@ impl User {
         for mod_id in mods {
             let _result = super::mod_item::Mod::remove_full(mod_id, exec).await?;
         }
+
+        let notifications: Vec<i64> = sqlx::query!(
+            "
+            SELECT n.id FROM notifications n
+            WHERE n.user_id = $1
+            ",
+            id as UserId,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| m.id as i64)) })
+        .try_collect::<Vec<i64>>()
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM notifications
+            WHERE user_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM notifications_actions
+             WHERE notification_id IN (SELECT * FROM UNNEST($1::bigint[]))
+            ",
+            &notifications
+        )
+        .execute(exec)
+        .await?;
 
         let deleted_user: UserId = crate::models::users::DELETED_USER.into();
 

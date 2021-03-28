@@ -1,5 +1,6 @@
 use super::ids::*;
 use super::DatabaseError;
+use std::collections::HashMap;
 
 pub struct VersionBuilder {
     pub version_id: VersionId,
@@ -9,7 +10,7 @@ pub struct VersionBuilder {
     pub version_number: String,
     pub changelog: String,
     pub files: Vec<VersionFileBuilder>,
-    pub dependencies: Vec<VersionId>,
+    pub dependencies: Vec<(VersionId, String)>,
     pub game_versions: Vec<GameVersionId>,
     pub loaders: Vec<LoaderId>,
     pub release_channel: ChannelId,
@@ -106,11 +107,12 @@ impl VersionBuilder {
         for dependency in self.dependencies {
             sqlx::query!(
                 "
-                INSERT INTO dependencies (dependent_id, dependency_id)
-                VALUES ($1, $2)
+                INSERT INTO dependencies (dependent_id, dependency_id, dependency_type)
+                VALUES ($1, $2, $3)
                 ",
                 self.version_id as VersionId,
-                dependency as VersionId,
+                dependency.0 as VersionId,
+                dependency.1,
             )
             .execute(&mut *transaction)
             .await?;
@@ -169,14 +171,14 @@ impl Version {
             "
             INSERT INTO versions (
                 id, mod_id, author_id, name, version_number,
-                changelog_url, date_published,
+                changelog, changelog_url, date_published,
                 downloads, release_channel, featured
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7,
                 $8, $9,
-                $10
+                $10, $11
             )
             ",
             self.id as VersionId,
@@ -184,6 +186,7 @@ impl Version {
             self.author_id as UserId,
             &self.name,
             &self.version_number,
+            self.changelog,
             self.changelog_url.as_ref(),
             self.date_published,
             self.downloads,
@@ -213,6 +216,16 @@ impl Version {
         if !result.exists.unwrap_or(false) {
             return Ok(None);
         }
+
+        sqlx::query!(
+            "
+            DELETE FROM reports
+            WHERE version_id = $1
+            ",
+            id as VersionId,
+        )
+        .execute(exec)
+        .await?;
 
         sqlx::query!(
             "
@@ -348,6 +361,8 @@ impl Version {
 
     pub async fn get_mod_versions<'a, E>(
         mod_id: ModId,
+        game_versions: Option<Vec<String>>,
+        loaders: Option<Vec<String>>,
         exec: E,
     ) -> Result<Vec<VersionId>, sqlx::Error>
     where
@@ -357,11 +372,19 @@ impl Version {
 
         let vec = sqlx::query!(
             "
-            SELECT id FROM versions
-            WHERE mod_id = $1
-            ORDER BY date_published ASC
+            SELECT version.id FROM (
+                SELECT DISTINCT ON(v.id) v.id, v.date_published FROM versions v
+                INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
+                INNER JOIN game_versions gv on gvv.game_version_id = gv.id AND (cardinality($2::varchar[]) = 0 OR gv.version = ANY($2::varchar[]))
+                INNER JOIN loaders_versions lv ON lv.version_id = v.id
+                INNER JOIN loaders l on lv.loader_id = l.id AND (cardinality($3::varchar[]) = 0 OR l.loader = ANY($3::varchar[]))
+                WHERE v.mod_id = $1
+            ) AS version
+            ORDER BY version.date_published ASC
             ",
             mod_id as ModId,
+            &game_versions.unwrap_or_default(),
+            &loaders.unwrap_or_default(),
         )
         .fetch_many(exec)
         .try_filter_map(|e| async { Ok(e.right().map(|v| VersionId(v.id))) })
@@ -461,100 +484,112 @@ impl Version {
     {
         let result = sqlx::query!(
             "
-            SELECT v.mod_id, v.author_id, v.name, v.version_number,
-                v.changelog, v.changelog_url, v.date_published, v.downloads,
-                release_channels.channel, v.featured
+            SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
+            v.changelog changelog, v.changelog_url changelog_url, v.date_published date_published, v.downloads downloads,
+            rc.channel release_channel, v.featured featured,
+            STRING_AGG(DISTINCT gv.version, ',') game_versions, STRING_AGG(DISTINCT l.loader, ',') loaders,
+            STRING_AGG(DISTINCT f.id || ', ' || f.filename || ', ' || f.is_primary || ', ' || f.url, ' ,') files,
+            STRING_AGG(DISTINCT h.algorithm || ', ' || encode(h.hash, 'escape') || ', ' || h.file_id,  ' ,') hashes,
+            STRING_AGG(DISTINCT d.dependency_id || ', ' || d.dependency_type,  ' ,') dependencies
             FROM versions v
-            INNER JOIN release_channels ON v.release_channel = release_channels.id
+            INNER JOIN release_channels rc on v.release_channel = rc.id
+            LEFT OUTER JOIN game_versions_versions gvv on v.id = gvv.joining_version_id
+            LEFT OUTER JOIN game_versions gv on gvv.game_version_id = gv.id
+            LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id
+            LEFT OUTER JOIN loaders l on lv.loader_id = l.id
+            LEFT OUTER JOIN files f on v.id = f.version_id
+            LEFT OUTER JOIN hashes h on f.id = h.file_id
+            LEFT OUTER JOIN dependencies d on v.id = d.dependent_id
             WHERE v.id = $1
+            GROUP BY v.id, rc.id;
             ",
             id as VersionId,
         )
-        .fetch_optional(executor)
-        .await?;
-
-        if let Some(row) = result {
-            use futures::TryStreamExt;
-
-            let game_versions: Vec<String> = sqlx::query!(
-                "
-                SELECT gv.version FROM game_versions_versions gvv
-                INNER JOIN game_versions gv ON gvv.game_version_id=gv.id
-                WHERE gvv.joining_version_id = $1
-                ORDER BY gv.created
-                ",
-                id as VersionId,
-            )
-            .fetch_many(executor)
-            .try_filter_map(|e| async { Ok(e.right().map(|c| c.version)) })
-            .try_collect::<Vec<String>>()
+            .fetch_optional(executor)
             .await?;
 
-            let loaders: Vec<String> = sqlx::query!(
-                "
-                SELECT loaders.loader FROM loaders
-                INNER JOIN loaders_versions ON loaders.id = loaders_versions.loader_id
-                WHERE loaders_versions.version_id = $1
-                ",
-                id as VersionId,
-            )
-            .fetch_many(executor)
-            .try_filter_map(|e| async { Ok(e.right().map(|c| c.loader)) })
-            .try_collect::<Vec<String>>()
-            .await?;
+        if let Some(v) = result {
+            let mut hashes: Vec<(FileId, String, Vec<u8>)> = Vec::new();
 
-            let mut files = sqlx::query!(
-                "
-                SELECT files.id, files.url, files.filename, files.is_primary FROM files
-                WHERE files.version_id = $1
-                ",
-                id as VersionId,
-            )
-            .fetch_many(executor)
-            .try_filter_map(|e| async {
-                Ok(e.right().map(|c| QueryFile {
-                    id: FileId(c.id),
-                    url: c.url,
-                    filename: c.filename,
-                    hashes: std::collections::HashMap::new(),
-                    primary: c.is_primary,
-                }))
-            })
-            .try_collect::<Vec<QueryFile>>()
-            .await?;
+            v.hashes.unwrap_or_default().split(" ,").for_each(|f| {
+                let hash: Vec<&str> = f.split(", ").collect();
 
-            for file in files.iter_mut() {
-                let files = sqlx::query!(
-                    "
-                    SELECT hashes.algorithm, hashes.hash FROM hashes
-                    WHERE hashes.file_id = $1
-                    ",
-                    file.id as FileId
-                )
-                .fetch_many(executor)
-                .try_filter_map(|e| async { Ok(e.right().map(|c| (c.algorithm, c.hash))) })
-                .try_collect::<Vec<(String, Vec<u8>)>>()
-                .await?;
+                if hash.len() >= 3 {
+                    hashes.push((
+                        FileId(hash[2].parse().unwrap_or(0)),
+                        hash[0].to_string(),
+                        hash[1].to_string().into_bytes(),
+                    ));
+                }
+            });
 
-                file.hashes.extend(files);
-            }
+            let mut files = Vec::new();
+
+            v.files.unwrap_or_default().split(" ,").for_each(|f| {
+                let file: Vec<&str> = f.split(", ").collect();
+
+                if file.len() >= 4 {
+                    let file_id = FileId(file[0].parse().unwrap_or(0));
+                    let mut file_hashes = HashMap::new();
+
+                    for hash in &hashes {
+                        if (hash.0).0 == file_id.0 {
+                            file_hashes.insert(hash.1.clone(), hash.2.clone());
+                        }
+                    }
+
+                    files.push(QueryFile {
+                        id: file_id,
+                        url: file[3].to_string(),
+                        filename: file[1].to_string(),
+                        hashes: file_hashes,
+                        primary: file[2].parse().unwrap_or(false),
+                    })
+                }
+            });
+
+            let mut dependencies = Vec::new();
+
+            v.dependencies
+                .unwrap_or_default()
+                .split(" ,")
+                .for_each(|f| {
+                    let dependency: Vec<&str> = f.split(", ").collect();
+
+                    if dependency.len() >= 2 {
+                        dependencies.push((
+                            VersionId(dependency[0].parse().unwrap_or(0)),
+                            dependency[1].to_string(),
+                        ))
+                    }
+                });
 
             Ok(Some(QueryVersion {
-                id,
-                mod_id: ModId(row.mod_id),
-                author_id: UserId(row.author_id),
-                name: row.name,
-                version_number: row.version_number,
-                changelog: row.changelog,
-                changelog_url: row.changelog_url,
-                date_published: row.date_published,
-                downloads: row.downloads,
-
-                release_channel: row.channel,
+                id: VersionId(v.id),
+                mod_id: ModId(v.mod_id),
+                author_id: UserId(v.author_id),
+                name: v.version_name,
+                version_number: v.version_number,
+                changelog: v.changelog,
+                changelog_url: v.changelog_url,
+                date_published: v.date_published,
+                downloads: v.downloads,
+                release_channel: v.release_channel,
                 files,
-                loaders,
-                game_versions,
-                featured: row.featured,
+                game_versions: v
+                    .game_versions
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|x| x.to_string())
+                    .collect(),
+                loaders: v
+                    .loaders
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|x| x.to_string())
+                    .collect(),
+                featured: v.featured,
+                dependencies,
             }))
         } else {
             Ok(None)
@@ -564,12 +599,108 @@ impl Version {
     pub async fn get_many_full<'a, E>(
         version_ids: Vec<VersionId>,
         exec: E,
-    ) -> Result<Vec<Option<QueryVersion>>, sqlx::Error>
+    ) -> Result<Vec<QueryVersion>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        // TODO: this could be optimized
-        futures::future::try_join_all(version_ids.into_iter().map(|id| Self::get_full(id, exec)))
+        use futures::stream::TryStreamExt;
+
+        let version_ids_parsed: Vec<i64> = version_ids.into_iter().map(|x| x.0).collect();
+        sqlx::query!(
+            "
+            SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
+            v.changelog changelog, v.changelog_url changelog_url, v.date_published date_published, v.downloads downloads,
+            rc.channel release_channel, v.featured featured,
+            STRING_AGG(DISTINCT gv.version, ',') game_versions, STRING_AGG(DISTINCT l.loader, ',') loaders,
+            STRING_AGG(DISTINCT f.id || ', ' || f.filename || ', ' || f.is_primary || ', ' || f.url, ' ,') files,
+            STRING_AGG(DISTINCT h.algorithm || ', ' || encode(h.hash, 'escape') || ', ' || h.file_id,  ' ,') hashes,
+            STRING_AGG(DISTINCT d.dependency_id || ', ' || d.dependency_type,  ' ,') dependencies
+            FROM versions v
+            INNER JOIN release_channels rc on v.release_channel = rc.id
+            LEFT OUTER JOIN game_versions_versions gvv on v.id = gvv.joining_version_id
+            LEFT OUTER JOIN game_versions gv on gvv.game_version_id = gv.id
+            LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id
+            LEFT OUTER JOIN loaders l on lv.loader_id = l.id
+            LEFT OUTER JOIN files f on v.id = f.version_id
+            LEFT OUTER JOIN hashes h on f.id = h.file_id
+            LEFT OUTER JOIN dependencies d on v.id = d.dependent_id
+            WHERE v.id IN (SELECT * FROM UNNEST($1::bigint[]))
+            GROUP BY v.id, rc.id;
+            ",
+            &version_ids_parsed
+        )
+            .fetch_many(exec)
+            .try_filter_map(|e| async {
+                Ok(e.right().map(|v| {
+                    let mut hashes : Vec<(FileId, String, Vec<u8>)>  = Vec::new();
+
+                    v.hashes.unwrap_or_default().split(" ,").for_each(|f| {
+                        let hash: Vec<&str> = f.split(", ").collect();
+
+                        if hash.len() >= 3 {
+                            hashes.push((
+                                FileId(hash[2].parse().unwrap_or(0)),
+                                hash[0].to_string(),
+                                hash[1].to_string().into_bytes(),
+                            ));
+                        }
+                    });
+
+                    let mut files = Vec::new();
+
+                    v.files.unwrap_or_default().split(" ,").for_each(|f| {
+                        let file : Vec<&str> = f.split(", ").collect();
+
+                        if file.len() >= 4 {
+                            let file_id = FileId(file[0].parse().unwrap_or(0));
+                            let mut file_hashes = HashMap::new();
+
+                            for hash in &hashes {
+                                if (hash.0).0 == file_id.0 {
+                                    file_hashes.insert(hash.1.clone(), hash.2.clone());
+                                }
+                            }
+
+                            files.push(QueryFile {
+                                id: file_id,
+                                url: file[3].to_string(),
+                                filename: file[1].to_string(),
+                                hashes: file_hashes,
+                                primary: file[2].parse().unwrap_or(false)
+                            })
+                        }
+                    });
+
+                    let mut dependencies = Vec::new();
+
+                    v.dependencies.unwrap_or_default().split(" ,").for_each(|f| {
+                        let dependency: Vec<&str> = f.split(", ").collect();
+
+                        if dependency.len() >= 2 {
+                            dependencies.push((VersionId(dependency[0].parse().unwrap_or(0)), dependency[1].to_string()))
+                        }
+                    });
+
+                    QueryVersion {
+                        id: VersionId(v.id),
+                        mod_id: ModId(v.mod_id),
+                        author_id: UserId(v.author_id),
+                        name: v.version_name,
+                        version_number: v.version_number,
+                        changelog: v.changelog,
+                        changelog_url: v.changelog_url,
+                        date_published: v.date_published,
+                        downloads: v.downloads,
+                        release_channel: v.release_channel,
+                        files,
+                        game_versions: v.game_versions.unwrap_or_default().split(',').map(|x| x.to_string()).collect(),
+                        loaders: v.loaders.unwrap_or_default().split(',').map(|x| x.to_string()).collect(),
+                        featured: v.featured,
+                        dependencies,
+                    }
+                }))
+            })
+            .try_collect::<Vec<QueryVersion>>()
             .await
     }
 }
@@ -593,6 +724,7 @@ pub struct FileHash {
     pub hash: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct QueryVersion {
     pub id: VersionId,
     pub mod_id: ModId,
@@ -609,12 +741,14 @@ pub struct QueryVersion {
     pub game_versions: Vec<String>,
     pub loaders: Vec<String>,
     pub featured: bool,
+    pub dependencies: Vec<(VersionId, String)>,
 }
 
+#[derive(Clone)]
 pub struct QueryFile {
     pub id: FileId,
     pub url: String,
     pub filename: String,
-    pub hashes: std::collections::HashMap<String, Vec<u8>>,
+    pub hashes: HashMap<String, Vec<u8>>,
     pub primary: bool,
 }

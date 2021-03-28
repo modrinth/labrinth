@@ -1,7 +1,11 @@
 use crate::auth::get_user_from_headers;
-use crate::database::models::{TeamMember, User};
+use crate::database::models::User;
 use crate::file_hosting::FileHost;
+use crate::models::ids::ModId;
+use crate::models::mods::ModStatus;
+use crate::models::notifications::Notification;
 use crate::models::users::{Role, UserId};
+use crate::routes::notifications::convert_notification;
 use crate::routes::ApiError;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
@@ -118,10 +122,13 @@ fn convert_user(data: crate::database::models::user_item::User) -> crate::models
 
 #[get("{user_id}/mods")]
 pub async fn mods_list(
+    req: HttpRequest,
     info: web::Path<(UserId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0.into();
+    let user = get_user_from_headers(req.headers(), &**pool).await.ok();
+
+    let id: crate::database::models::UserId = info.into_inner().0.into();
 
     let user_exists = sqlx::query!(
         "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
@@ -133,9 +140,23 @@ pub async fn mods_list(
     .exists;
 
     if user_exists.unwrap_or(false) {
-        let mod_data = User::get_mods(id, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        let user_id: UserId = id.into();
+
+        let mod_data = if let Some(current_user) = user {
+            if current_user.role.is_mod() || current_user.id == user_id {
+                User::get_mods_private(id, &**pool)
+                    .await
+                    .map_err(|e| ApiError::DatabaseError(e.into()))?
+            } else {
+                User::get_mods(id, ModStatus::Approved.as_str(), &**pool)
+                    .await
+                    .map_err(|e| ApiError::DatabaseError(e.into()))?
+            }
+        } else {
+            User::get_mods(id, ModStatus::Approved.as_str(), &**pool)
+                .await
+                .map_err(|e| ApiError::DatabaseError(e.into()))?
+        };
 
         let response = mod_data
             .into_iter()
@@ -146,48 +167,6 @@ pub async fn mods_list(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
-}
-
-#[get("{user_id}/teams")]
-pub async fn teams(
-    req: HttpRequest,
-    info: web::Path<(UserId,)>,
-    pool: web::Data<PgPool>,
-) -> Result<HttpResponse, ApiError> {
-    let id: crate::database::models::UserId = info.into_inner().0.into();
-
-    let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
-
-    let results;
-    let mut same_user = false;
-
-    if let Some(user) = current_user {
-        if user.id.0 == id.0 as u64 {
-            results = TeamMember::get_from_user_private(id, &**pool).await?;
-            same_user = true;
-        } else {
-            results = TeamMember::get_from_user_public(id, &**pool).await?;
-        }
-    } else {
-        results = TeamMember::get_from_user_public(id, &**pool).await?;
-    }
-
-    let team_members: Vec<crate::models::teams::TeamMember> = results
-        .into_iter()
-        .map(|data| crate::models::teams::TeamMember {
-            team_id: data.team_id.into(),
-            user_id: data.user_id.into(),
-            role: data.role,
-            permissions: if same_user {
-                Some(data.permissions)
-            } else {
-                None
-            },
-            accepted: data.accepted,
-        })
-        .collect();
-
-    Ok(HttpResponse::Ok().json(team_members))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -410,7 +389,6 @@ pub async fn user_icon_edit(
         .execute(&**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
         Ok(HttpResponse::Ok().body(""))
     } else {
         Err(ApiError::InvalidInputError(format!(
@@ -462,4 +440,64 @@ pub async fn user_delete(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+#[get("{id}/follows")]
+pub async fn user_follows(
+    req: HttpRequest,
+    info: web::Path<(UserId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id = info.into_inner().0;
+
+    if !user.role.is_mod() && user.id != id {
+        return Err(ApiError::CustomAuthenticationError(
+            "You do not have permission to see the mods this user follows!".to_string(),
+        ));
+    }
+
+    use futures::TryStreamExt;
+
+    let user_id: crate::database::models::UserId = id.into();
+    let mods: Vec<ModId> = sqlx::query!(
+        "
+        SELECT mf.mod_id FROM mod_follows mf
+        WHERE mf.follower_id = $1
+        ",
+        user_id as crate::database::models::ids::UserId,
+    )
+    .fetch_many(&**pool)
+    .try_filter_map(|e| async { Ok(e.right().map(|m| ModId(m.mod_id as u64))) })
+    .try_collect::<Vec<ModId>>()
+    .await
+    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+
+    Ok(HttpResponse::Ok().json(mods))
+}
+
+#[get("{id}/notifications")]
+pub async fn user_notifications(
+    req: HttpRequest,
+    info: web::Path<(UserId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id = info.into_inner().0;
+
+    if !user.role.is_mod() && user.id != id {
+        return Err(ApiError::CustomAuthenticationError(
+            "You do not have permission to see the mods this user follows!".to_string(),
+        ));
+    }
+
+    let notifications: Vec<Notification> =
+        crate::database::models::notification_item::Notification::get_many_user(id.into(), &**pool)
+            .await
+            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .into_iter()
+            .map(convert_notification)
+            .collect();
+
+    Ok(HttpResponse::Ok().json(notifications))
 }

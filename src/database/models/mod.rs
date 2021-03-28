@@ -6,6 +6,8 @@ use thiserror::Error;
 pub mod categories;
 pub mod ids;
 pub mod mod_item;
+pub mod notification_item;
+pub mod report_item;
 pub mod team_item;
 pub mod user_item;
 pub mod version_item;
@@ -21,7 +23,7 @@ pub use version_item::VersionFile;
 
 #[derive(Error, Debug)]
 pub enum DatabaseError {
-    #[error("Error while interacting with the database")]
+    #[error("Error while interacting with the database: {0}")]
     DatabaseError(#[from] sqlx::error::Error),
     #[error("Error while trying to generate random ID")]
     RandomIdError,

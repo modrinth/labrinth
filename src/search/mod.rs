@@ -14,8 +14,8 @@ pub mod indexing;
 
 #[derive(Error, Debug)]
 pub enum SearchError {
-    #[error("Error while connecting to the MeiliSearch database: {0}")]
-    IndexDBError(#[from] meilisearch_sdk::errors::Error),
+    #[error("MeiliSearch Error: {0}")]
+    MeiliSearchError(#[from] meilisearch_sdk::errors::Error),
     #[error("Error while serializing or deserializing JSON: {0}")]
     SerDeError(#[from] serde_json::Error),
     #[error("Error while parsing an integer: {0}")]
@@ -30,7 +30,7 @@ impl actix_web::ResponseError for SearchError {
     fn status_code(&self) -> StatusCode {
         match self {
             SearchError::EnvError(..) => StatusCode::INTERNAL_SERVER_ERROR,
-            SearchError::IndexDBError(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            SearchError::MeiliSearchError(..) => StatusCode::BAD_REQUEST,
             SearchError::SerDeError(..) => StatusCode::BAD_REQUEST,
             SearchError::IntParsingError(..) => StatusCode::BAD_REQUEST,
             SearchError::InvalidIndex(..) => StatusCode::BAD_REQUEST,
@@ -41,7 +41,7 @@ impl actix_web::ResponseError for SearchError {
         HttpResponse::build(self.status_code()).json(ApiError {
             error: match self {
                 SearchError::EnvError(..) => "environment_error",
-                SearchError::IndexDBError(..) => "indexdb_error",
+                SearchError::MeiliSearchError(..) => "meilisearch_error",
                 SearchError::SerDeError(..) => "invalid_input",
                 SearchError::IntParsingError(..) => "invalid_input",
                 SearchError::InvalidIndex(..) => "invalid_input",
@@ -68,6 +68,7 @@ pub struct UploadSearchMod {
     pub description: String,
     pub categories: Vec<Cow<'static, str>>,
     pub versions: Vec<String>,
+    pub follows: i32,
     pub downloads: i32,
     pub page_url: String,
     pub icon_url: String,
@@ -108,6 +109,7 @@ pub struct ResultSearchMod {
     // TODO: more efficient format for listing versions, without many repetitions
     pub versions: Vec<String>,
     pub downloads: i32,
+    pub follows: i32,
     pub page_url: String,
     pub icon_url: String,
     pub author_url: String,
@@ -160,6 +162,7 @@ pub async fn search_for_mod(
     let index = match index {
         "relevance" => "relevance_mods",
         "downloads" => "downloads_mods",
+        "follows" => "follows_mods",
         "updated" => "updated_mods",
         "newest" => "newest_mods",
         i => return Err(SearchError::InvalidIndex(i.to_string())),

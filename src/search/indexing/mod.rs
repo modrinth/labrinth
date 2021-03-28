@@ -76,6 +76,7 @@ pub async fn reset_indices(config: &SearchConfig) -> Result<(), IndexingError> {
 
     client.delete_index("relevance_mods").await?;
     client.delete_index("downloads_mods").await?;
+    client.delete_index("follows_mods").await?;
     client.delete_index("updated_mods").await?;
     client.delete_index("newest_mods").await?;
     Ok(())
@@ -97,6 +98,14 @@ pub async fn reconfigure_indices(config: &SearchConfig) -> Result<(), IndexingEr
         let mut downloads_rules = default_rules();
         downloads_rules.push_front("desc(downloads)".to_string());
         downloads_rules.into()
+    })
+    .await?;
+
+    // Follows Index
+    update_index(&client, "follows_mods", {
+        let mut follows_rules = default_rules();
+        follows_rules.push_front("desc(follows)".to_string());
+        follows_rules.into()
     })
     .await?;
 
@@ -199,6 +208,15 @@ pub async fn add_mods(
     .await?;
     add_to_index(downloads_index, &mods).await?;
 
+    // Follows Index
+    let follows_index = create_index(&client, "follows_mods", || {
+        let mut follows_rules = default_rules();
+        follows_rules.push_front("desc(follows)".to_string());
+        follows_rules.into()
+    })
+    .await?;
+    add_to_index(follows_index, &mods).await?;
+
     // Updated Index
     let updated_index = create_index(&client, "updated_mods", || {
         let mut updated_rules = default_rules();
@@ -236,18 +254,23 @@ fn default_rules() -> VecDeque<String> {
 fn default_settings() -> Settings {
     let displayed_attributes = vec![
         "mod_id".to_string(),
+        "slug".to_string(),
         "author".to_string(),
         "title".to_string(),
         "description".to_string(),
         "categories".to_string(),
         "versions".to_string(),
         "downloads".to_string(),
+        "follows".to_string(),
         "page_url".to_string(),
         "icon_url".to_string(),
         "author_url".to_string(),
         "date_created".to_string(),
         "date_modified".to_string(),
         "latest_version".to_string(),
+        "license".to_string(),
+        "client_side".to_string(),
+        "server_side".to_string(),
         "host".to_string(),
     ];
 
@@ -259,11 +282,14 @@ fn default_settings() -> Settings {
         "author".to_string(),
     ];
 
+    let stop_words: Vec<String> = Vec::new();
+    let synonyms: HashMap<String, Vec<String>> = HashMap::new();
+
     Settings::new()
         .with_displayed_attributes(displayed_attributes)
         .with_searchable_attributes(searchable_attributes)
-        .with_stop_words(vec![])
-        .with_synonyms(HashMap::new())
+        .with_stop_words(stop_words)
+        .with_synonyms(synonyms)
         .with_attributes_for_faceting(vec![
             String::from("categories"),
             String::from("host"),

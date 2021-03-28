@@ -46,6 +46,8 @@ pub enum CreateError {
     InvalidCategory(String),
     #[error("Invalid file type for version file: {0}")]
     InvalidFileType(String),
+    #[error("Slug collides with other mod's id!")]
+    SlugCollision,
     #[error("Authentication Error: {0}")]
     Unauthorized(#[from] AuthenticationError),
     #[error("Authentication Error: {0}")]
@@ -71,6 +73,7 @@ impl actix_web::ResponseError for CreateError {
             CreateError::InvalidFileType(..) => StatusCode::BAD_REQUEST,
             CreateError::Unauthorized(..) => StatusCode::UNAUTHORIZED,
             CreateError::CustomAuthenticationError(..) => StatusCode::UNAUTHORIZED,
+            CreateError::SlugCollision => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -93,6 +96,7 @@ impl actix_web::ResponseError for CreateError {
                 CreateError::InvalidFileType(..) => "invalid_input",
                 CreateError::Unauthorized(..) => "unauthorized",
                 CreateError::CustomAuthenticationError(..) => "unauthorized",
+                CreateError::SlugCollision => "invalid_input",
             },
             description: &self.to_string(),
         })
@@ -104,7 +108,7 @@ struct ModCreateData {
     /// The title or name of the mod.
     pub mod_name: String,
     /// The slug of a mod, used for vanity URLs
-    pub mod_slug: Option<String>,
+    pub mod_slug: String,
     /// A short description of the mod.
     pub mod_description: String,
     /// A long description of the mod, in markdown.
@@ -295,6 +299,7 @@ async fn mod_create_inner(
 
             check_length(3..=256, "mod name", &create_data.mod_name)?;
             check_length(3..=2048, "mod description", &create_data.mod_description)?;
+            check_length(3..=64, "mod slug", &create_data.mod_slug)?;
             check_length(..65536, "mod body", &create_data.mod_body)?;
 
             if create_data.categories.len() > 3 {
@@ -306,8 +311,7 @@ async fn mod_create_inner(
             create_data
                 .categories
                 .iter()
-                .map(|f| check_length(1..=256, "category", f))
-                .collect::<Result<(), _>>()?;
+                .try_for_each(|f| check_length(1..=256, "category", f))?;
 
             if let Some(url) = &create_data.issues_url {
                 check_length(..=2048, "url", url)?;
@@ -318,12 +322,36 @@ async fn mod_create_inner(
             if let Some(url) = &create_data.source_url {
                 check_length(..=2048, "url", url)?;
             }
+            if let Some(url) = &create_data.discord_url {
+                check_length(..=2048, "url", url)?;
+            }
+            if let Some(url) = &create_data.license_url {
+                check_length(..=2048, "url", url)?;
+            }
 
             create_data
                 .initial_versions
                 .iter()
-                .map(|v| super::version_creation::check_version(v))
-                .collect::<Result<(), _>>()?;
+                .try_for_each(|v| super::version_creation::check_version(v))?;
+        }
+
+        let slug_modid_option: Option<ModId> =
+            serde_json::from_str(&*format!("\"{}\"", create_data.mod_slug)).ok();
+        if let Some(slug_modid) = slug_modid_option {
+            let slug_modid: models::ids::ModId = slug_modid.into();
+            let results = sqlx::query!(
+                "
+                SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
+                ",
+                slug_modid as models::ids::ModId
+            )
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|e| CreateError::DatabaseError(e.into()))?;
+
+            if results.exists.unwrap_or(true) {
+                return Err(CreateError::SlugCollision);
+            }
         }
 
         // Create VersionBuilders for the versions specified in `initial_versions`
@@ -519,7 +547,7 @@ async fn mod_create_inner(
             client_side: client_side_id,
             server_side: server_side_id,
             license: license_id,
-            slug: mod_create_data.mod_slug,
+            slug: Some(mod_create_data.mod_slug),
             donation_urls,
         };
 
@@ -544,6 +572,7 @@ async fn mod_create_inner(
             client_side: mod_create_data.client_side,
             server_side: mod_create_data.server_side,
             downloads: 0,
+            followers: 0,
             categories: mod_create_data.categories,
             versions: mod_builder
                 .initial_versions
@@ -613,7 +642,7 @@ async fn create_initial_version(
     let dependencies = version_data
         .dependencies
         .iter()
-        .map(|x| (*x).into())
+        .map(|x| ((x.version_id).into(), x.dependency_type.to_string()))
         .collect::<Vec<_>>();
 
     let version = models::version_item::VersionBuilder {
@@ -688,7 +717,7 @@ pub fn get_image_content_type(extension: &str) -> Option<&'static str> {
         _ => "",
     };
 
-    if content_type != "" {
+    if !content_type.is_empty() {
         Some(content_type)
     } else {
         None

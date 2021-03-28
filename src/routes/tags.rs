@@ -1,7 +1,7 @@
 use super::ApiError;
 use crate::auth::check_is_admin_from_headers;
 use crate::database::models;
-use crate::database::models::categories::{DonationPlatform, License};
+use crate::database::models::categories::{DonationPlatform, License, ReportType};
 use actix_web::{delete, get, put, web, HttpRequest, HttpResponse};
 use models::categories::{Category, GameVersion, Loader};
 use sqlx::PgPool;
@@ -23,7 +23,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(license_list)
             .service(donation_platform_create)
             .service(donation_platform_list)
-            .service(donation_platform_delete),
+            .service(donation_platform_delete)
+            .service(report_type_create)
+            .service(report_type_delete)
+            .service(report_type_list),
     );
 }
 
@@ -125,6 +128,7 @@ pub async fn loader_delete(
 pub struct GameVersionQueryData {
     #[serde(rename = "type")]
     type_: Option<String>,
+    major: Option<bool>,
 }
 
 #[get("game_version")]
@@ -132,8 +136,9 @@ pub async fn game_version_list(
     pool: web::Data<PgPool>,
     query: web::Query<GameVersionQueryData>,
 ) -> Result<HttpResponse, ApiError> {
-    if let Some(type_) = &query.type_ {
-        let results = GameVersion::list_type(type_, &**pool).await?;
+    if query.type_.is_some() || query.major.is_some() {
+        let results =
+            GameVersion::list_filter(query.type_.as_deref(), query.major, &**pool).await?;
         Ok(HttpResponse::Ok().json(results))
     } else {
         let results = GameVersion::list(&**pool).await?;
@@ -325,6 +330,52 @@ pub async fn donation_platform_delete(
     let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
 
     let result = DonationPlatform::remove(&name, &mut transaction).await?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(models::DatabaseError::from)?;
+
+    if result.is_some() {
+        Ok(HttpResponse::Ok().body(""))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[get("report_type")]
+pub async fn report_type_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
+    let results = ReportType::list(&**pool).await?;
+    Ok(HttpResponse::Ok().json(results))
+}
+
+#[put("report_type/{name}")]
+pub async fn report_type_create(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    loader: web::Path<(String,)>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
+
+    let name = loader.into_inner().0;
+
+    let _id = ReportType::builder().name(&name)?.insert(&**pool).await?;
+
+    Ok(HttpResponse::Ok().body(""))
+}
+
+#[delete("report_type/{name}")]
+pub async fn report_type_delete(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    report_type: web::Path<(String,)>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_admin_from_headers(req.headers(), &**pool).await?;
+
+    let name = report_type.into_inner().0;
+    let mut transaction = pool.begin().await.map_err(models::DatabaseError::from)?;
+
+    let result = ReportType::remove(&name, &mut transaction).await?;
 
     transaction
         .commit()

@@ -71,6 +71,7 @@ impl ModBuilder {
             updated: chrono::Utc::now(),
             status: self.status,
             downloads: 0,
+            follows: 0,
             icon_url: self.icon_url,
             issues_url: self.issues_url,
             source_url: self.source_url,
@@ -122,6 +123,7 @@ pub struct Mod {
     pub updated: chrono::DateTime<chrono::Utc>,
     pub status: StatusId,
     pub downloads: i32,
+    pub follows: i32,
     pub icon_url: Option<String>,
     pub issues_url: Option<String>,
     pub source_url: Option<String>,
@@ -153,7 +155,7 @@ impl Mod {
                 $6, $7, $8, $9,
                 $10, $11, $12, $13,
                 $14, $15, $16, $17,
-                $18
+                LOWER($18)
             )
             ",
             self.id as ModId,
@@ -187,7 +189,7 @@ impl Mod {
     {
         let result = sqlx::query!(
             "
-            SELECT title, description, downloads,
+            SELECT title, description, downloads, follows,
                    icon_url, body, body_url, published,
                    updated, status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
@@ -222,6 +224,7 @@ impl Mod {
                 license: LicenseId(row.license),
                 slug: row.slug,
                 body: row.body,
+                follows: row.follows,
             }))
         } else {
             Ok(None)
@@ -237,7 +240,7 @@ impl Mod {
         let mod_ids_parsed: Vec<i64> = mod_ids.into_iter().map(|x| x.0).collect();
         let mods = sqlx::query!(
             "
-            SELECT id, title, description, downloads,
+            SELECT id, title, description, downloads, follows,
                    icon_url, body, body_url, published,
                    updated, status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
@@ -270,6 +273,7 @@ impl Mod {
                 license: LicenseId(m.license),
                 slug: m.slug,
                 body: m.body,
+                follows: m.follows,
             }))
         })
         .try_collect::<Vec<Mod>>()
@@ -299,6 +303,36 @@ impl Mod {
         } else {
             return Ok(None);
         };
+
+        sqlx::query!(
+            "
+            DELETE FROM mod_follows
+            WHERE mod_id = $1
+            ",
+            id as ModId
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM mod_follows
+            WHERE mod_id = $1
+            ",
+            id as ModId,
+        )
+        .execute(exec)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM reports
+            WHERE mod_id = $1
+            ",
+            id as ModId,
+        )
+        .execute(exec)
+        .await?;
 
         sqlx::query!(
             "
@@ -380,7 +414,7 @@ impl Mod {
         let id = sqlx::query!(
             "
                 SELECT id FROM mods
-                WHERE slug = $1
+                WHERE LOWER(slug) = LOWER($1)
                 ",
             slug
         )
@@ -401,108 +435,74 @@ impl Mod {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let result = Self::get(id, executor).await?;
-        if let Some(inner) = result {
-            use futures::TryStreamExt;
-            let categories: Vec<String> = sqlx::query!(
-                "
-                SELECT category FROM mods_categories
-                INNER JOIN categories ON joining_category_id = id
-                WHERE joining_mod_id = $1
-                ",
-                id as ModId,
-            )
-            .fetch_many(executor)
-            .try_filter_map(|e| async { Ok(e.right().map(|c| c.category)) })
-            .try_collect::<Vec<String>>()
+        let result = sqlx::query!(
+            "
+            SELECT m.id id, m.title title, m.description description, m.downloads downloads, m.follows follows,
+            m.icon_url icon_url, m.body body, m.body_url body_url, m.published published,
+            m.updated updated, m.status status,
+            m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
+            m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug,
+            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name,
+            STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT v.id::text, ',') versions
+            FROM mods m
+            LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
+            LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
+            LEFT OUTER JOIN versions v ON v.mod_id = m.id
+            INNER JOIN statuses s ON s.id = m.status
+            INNER JOIN side_types cs ON m.client_side = cs.id
+            INNER JOIN side_types ss ON m.server_side = ss.id
+            INNER JOIN licenses l ON m.license = l.id
+            WHERE m.id = $1
+            GROUP BY m.id, s.id, cs.id, ss.id, l.id;
+            ",
+            id as ModId,
+        )
+            .fetch_optional(executor)
             .await?;
 
-            let versions: Vec<VersionId> = sqlx::query!(
-                "
-                SELECT id FROM versions
-                WHERE mod_id = $1
-                ",
-                id as ModId,
-            )
-            .fetch_many(executor)
-            .try_filter_map(|e| async { Ok(e.right().map(|c| VersionId(c.id))) })
-            .try_collect::<Vec<VersionId>>()
-            .await?;
-
-            let donations: Vec<DonationUrl> = sqlx::query!(
-                "
-                SELECT d.joining_platform_id, d.url, dp.short, dp.name FROM mods_donations d
-                INNER JOIN donation_platforms dp ON d.joining_platform_id=dp.id
-                WHERE joining_mod_id = $1
-                ",
-                id as ModId,
-            )
-            .fetch_many(executor)
-            .try_filter_map(|e| async {
-                Ok(e.right().map(|c| DonationUrl {
-                    mod_id: id,
-                    platform_id: DonationPlatformId(c.joining_platform_id),
-                    platform_short: c.short,
-                    platform_name: c.name,
-                    url: c.url,
-                }))
-            })
-            .try_collect::<Vec<DonationUrl>>()
-            .await?;
-
-            let status = sqlx::query!(
-                "
-                SELECT status FROM statuses
-                WHERE id = $1
-                ",
-                inner.status.0,
-            )
-            .fetch_one(executor)
-            .await?
-            .status;
-
-            let client_side = sqlx::query!(
-                "
-                SELECT name FROM side_types
-                WHERE id = $1
-                ",
-                inner.client_side.0,
-            )
-            .fetch_one(executor)
-            .await?
-            .name;
-
-            let server_side = sqlx::query!(
-                "
-                SELECT name FROM side_types
-                WHERE id = $1
-                ",
-                inner.server_side.0,
-            )
-            .fetch_one(executor)
-            .await?
-            .name;
-
-            let license = sqlx::query!(
-                "
-                SELECT short, name FROM licenses
-                WHERE id = $1
-                ",
-                inner.license.0,
-            )
-            .fetch_one(executor)
-            .await?;
-
+        if let Some(m) = result {
             Ok(Some(QueryMod {
-                inner,
-                categories,
-                versions,
-                donation_urls: donations,
-                status: crate::models::mods::ModStatus::from_str(&status),
-                license_id: license.short,
-                license_name: license.name,
-                client_side: crate::models::mods::SideType::from_str(&client_side),
-                server_side: crate::models::mods::SideType::from_str(&server_side),
+                inner: Mod {
+                    id: ModId(m.id),
+                    team_id: TeamId(m.team_id),
+                    title: m.title.clone(),
+                    description: m.description.clone(),
+                    downloads: m.downloads,
+                    body_url: m.body_url.clone(),
+                    icon_url: m.icon_url.clone(),
+                    published: m.published,
+                    updated: m.updated,
+                    issues_url: m.issues_url.clone(),
+                    source_url: m.source_url.clone(),
+                    wiki_url: m.wiki_url.clone(),
+                    license_url: m.license_url.clone(),
+                    discord_url: m.discord_url.clone(),
+                    client_side: SideTypeId(m.client_side),
+                    status: StatusId(m.status),
+                    server_side: SideTypeId(m.server_side),
+                    license: LicenseId(m.license),
+                    slug: m.slug.clone(),
+                    body: m.body.clone(),
+                    follows: m.follows,
+                },
+                categories: m
+                    .categories
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|x| x.to_string())
+                    .collect(),
+                versions: m
+                    .versions
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|x| VersionId(x.parse().unwrap_or_default()))
+                    .collect(),
+                donation_urls: vec![],
+                status: crate::models::mods::ModStatus::from_str(&m.status_name),
+                license_id: m.short,
+                license_name: m.license_name,
+                client_side: crate::models::mods::SideType::from_str(&m.client_side_type),
+                server_side: crate::models::mods::SideType::from_str(&m.server_side_type),
             }))
         } else {
             Ok(None)
@@ -512,12 +512,73 @@ impl Mod {
     pub async fn get_many_full<'a, E>(
         mod_ids: Vec<ModId>,
         exec: E,
-    ) -> Result<Vec<Option<QueryMod>>, sqlx::Error>
+    ) -> Result<Vec<QueryMod>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        // TODO: this could be optimized
-        futures::future::try_join_all(mod_ids.into_iter().map(|id| Self::get_full(id, exec))).await
+        use futures::TryStreamExt;
+
+        let mod_ids_parsed: Vec<i64> = mod_ids.into_iter().map(|x| x.0).collect();
+        sqlx::query!(
+            "
+            SELECT m.id id, m.title title, m.description description, m.downloads downloads, m.follows follows,
+            m.icon_url icon_url, m.body body, m.body_url body_url, m.published published,
+            m.updated updated, m.status status,
+            m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
+            m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug,
+            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name,
+            STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT v.id::text, ',') versions
+            FROM mods m
+            LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
+            LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
+            LEFT OUTER JOIN versions v ON v.mod_id = m.id
+            INNER JOIN statuses s ON s.id = m.status
+            INNER JOIN side_types cs ON m.client_side = cs.id
+            INNER JOIN side_types ss ON m.server_side = ss.id
+            INNER JOIN licenses l ON m.license = l.id
+            WHERE m.id IN (SELECT * FROM UNNEST($1::bigint[]))
+            GROUP BY m.id, s.id, cs.id, ss.id, l.id;
+            ",
+            &mod_ids_parsed
+        )
+            .fetch_many(exec)
+            .try_filter_map(|e| async {
+                Ok(e.right().map(|m| QueryMod {
+                    inner: Mod {
+                        id: ModId(m.id),
+                        team_id: TeamId(m.team_id),
+                        title: m.title.clone(),
+                        description: m.description.clone(),
+                        downloads: m.downloads,
+                        body_url: m.body_url.clone(),
+                        icon_url: m.icon_url.clone(),
+                        published: m.published,
+                        updated: m.updated,
+                        issues_url: m.issues_url.clone(),
+                        source_url: m.source_url.clone(),
+                        wiki_url: m.wiki_url.clone(),
+                        license_url: m.license_url.clone(),
+                        discord_url: m.discord_url.clone(),
+                        client_side: SideTypeId(m.client_side),
+                        status: StatusId(m.status),
+                        server_side: SideTypeId(m.server_side),
+                        license: LicenseId(m.license),
+                        slug: m.slug.clone(),
+                        body: m.body.clone(),
+                        follows: m.follows
+                    },
+                    categories: m.categories.unwrap_or_default().split(',').map(|x| x.to_string()).collect(),
+                    versions: m.versions.unwrap_or_default().split(',').map(|x| VersionId(x.parse().unwrap_or_default())).collect(),
+                    donation_urls: vec![],
+                    status: crate::models::mods::ModStatus::from_str(&m.status_name),
+                    license_id: m.short,
+                    license_name: m.license_name,
+                    client_side: crate::models::mods::SideType::from_str(&m.client_side_type),
+                    server_side: crate::models::mods::SideType::from_str(&m.server_side_type),
+                }))
+            })
+            .try_collect::<Vec<QueryMod>>()
+            .await
     }
 }
 

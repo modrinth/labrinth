@@ -6,6 +6,8 @@ mod mod_creation;
 mod moderation;
 mod mods;
 mod not_found;
+mod notifications;
+mod reports;
 mod tags;
 mod teams;
 mod users;
@@ -31,6 +33,8 @@ pub fn mods_config(cfg: &mut web::ServiceConfig) {
             .service(mods::mod_delete)
             .service(mods::mod_edit)
             .service(mods::mod_icon_edit)
+            .service(mods::mod_follow)
+            .service(mods::mod_unfollow)
             .service(web::scope("{mod_id}").service(versions::version_list)),
     );
 }
@@ -65,7 +69,8 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
             .service(users::user_delete)
             .service(users::user_edit)
             .service(users::user_icon_edit)
-            .service(users::teams),
+            .service(users::user_notifications)
+            .service(users::user_follows),
     );
 }
 
@@ -80,8 +85,24 @@ pub fn teams_config(cfg: &mut web::ServiceConfig) {
     );
 }
 
+pub fn notifications_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(notifications::notifications_get);
+
+    cfg.service(
+        web::scope("notification")
+            .service(notifications::notification_get)
+            .service(notifications::notification_delete),
+    );
+}
+
 pub fn moderation_config(cfg: &mut web::ServiceConfig) {
     cfg.service(web::scope("moderation").service(moderation::mods));
+}
+
+pub fn reports_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(reports::reports);
+    cfg.service(reports::report_create);
+    cfg.service(reports::delete_report);
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -90,7 +111,7 @@ pub enum ApiError {
     EnvError(#[from] dotenv::Error),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
-    #[error("Internal server error")]
+    #[error("Internal server error: {0}")]
     DatabaseError(#[from] crate::database::models::DatabaseError),
     #[error("Deserialization error: {0}")]
     JsonError(#[from] serde_json::Error),
