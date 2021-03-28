@@ -234,10 +234,10 @@ pub async fn version_file(
                             name: data.inner.title,
                             description: data.inner.description,
                         };
-                        Ok(HttpResponse::Ok().content_type("text/xml").body(
+                        return Ok(HttpResponse::Ok().content_type("text/xml").body(
                             yaserde::ser::to_string(&respdata)
                                 .map_err(|e| ApiError::XmlError(e))?,
-                        ))
+                        ));
                     } else {
                         if let Some(selected_file) =
                             version.files.iter().find(|x| x.filename == file)
@@ -252,19 +252,11 @@ pub async fn version_file(
                                     .body(""));
                             }
                         };
-
-                        Ok(HttpResponse::NotFound().body(""))
                     }
-                } else {
-                    Ok(HttpResponse::NotFound().body(""))
                 }
-            } else {
-                Ok(HttpResponse::NotFound().body(""))
             }
-        } else {
-            Ok(HttpResponse::NotFound().body(""))
         }
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
     }
+
+    Ok(HttpResponse::NotFound().body(""))
 }
