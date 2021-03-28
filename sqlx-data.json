@@ -2392,32 +2392,6 @@
       "nullable": []
     }
   },
-  "6d123a568c48de6a9ca4d99ffec067577fdb1a5a65def19ca6f07e0aa70b1be4": {
-    "query": "\n                SELECT version_number, release_channels.channel channel\n                FROM versions\n                LEFT JOIN release_channels ON release_channels.id = versions.release_channel\n                WHERE mod_id = $1\n                ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "version_number",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 1,
-          "name": "channel",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        false,
-        false
-      ]
-    }
-  },
   "6d883ea05aead20f571a0f63bfd63f1d432717ec7a0fb9ab29e01fcb061b3afc": {
     "query": "\n                    UPDATE files\n                    SET is_primary = FALSE\n                    WHERE (version_id = $1)\n                    ",
     "describe": {
@@ -4328,6 +4302,32 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "cdd51904a4617d8a2616d9ad4b4274fa2e66e87db1825496854021a26798207c": {
+    "query": "\n            SELECT version_number, release_channels.channel channel\n            FROM versions\n            LEFT JOIN release_channels ON release_channels.id = versions.release_channel\n            WHERE mod_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "version_number",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 1,
+          "name": "channel",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false,
+        false
+      ]
     }
   },
   "cdd7f8f95c308d9474e214d584c03be0466214da1e157f6bc577b76dbef7df86": {
