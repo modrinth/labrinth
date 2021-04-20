@@ -1,6 +1,6 @@
 use crate::auth::get_user_from_headers;
 use crate::database;
-use crate::models::mods::ModId;
+use crate::models::projects::ProjectId;
 use crate::routes::ApiError;
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use sqlx::PgPool;
@@ -55,22 +55,22 @@ pub async fn maven_metadata(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
-    let id_option: Option<ModId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
+    let id_option: Option<ProjectId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let mod_data = if let Some(id) = id_option {
-        match database::models::Mod::get_full(id.into(), &**pool).await {
+    let project_data = if let Some(id) = id_option {
+        match database::models::Project::get_full(id.into(), &**pool).await {
             Ok(Some(data)) => Ok(Some(data)),
-            Ok(None) => database::models::Mod::get_full_from_slug(&string, &**pool).await,
+            Ok(None) => database::models::Project::get_full_from_slug(&string, &**pool).await,
             Err(e) => Err(e),
         }
     } else {
-        database::models::Mod::get_full_from_slug(&string, &**pool).await
+        database::models::Project::get_full_from_slug(&string, &**pool).await
     }
     .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    let data = if let Some(data) = mod_data {
+    let data = if let Some(data) = project_data {
         data
     } else {
         return Ok(HttpResponse::NotFound().body(""));
@@ -85,7 +85,7 @@ pub async fn maven_metadata(
             } else {
                 let user_id: database::models::ids::UserId = user.id.into();
 
-                let mod_exists = sqlx::query!(
+                let project_exists = sqlx::query!(
                     "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
                     data.inner.team_id as database::models::ids::TeamId,
                     user_id as database::models::ids::UserId,
@@ -95,7 +95,7 @@ pub async fn maven_metadata(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?
                 .exists;
 
-                authorized = mod_exists.unwrap_or(false);
+                authorized = project_exists.unwrap_or(false);
             }
         }
     }
@@ -110,7 +110,7 @@ pub async fn maven_metadata(
             LEFT JOIN release_channels ON release_channels.id = versions.release_channel
             WHERE mod_id = $1
             ",
-        data.inner.id as database::models::ids::ModId
+        data.inner.id as database::models::ids::ProjectId
     )
     .fetch_all(&**pool)
     .await
@@ -150,22 +150,22 @@ pub async fn version_file(
     web::Path((string, vnum, file)): web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id_option: Option<ModId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
+    let id_option: Option<ProjectId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let mod_data = if let Some(id) = id_option {
-        match database::models::Mod::get_full(id.into(), &**pool).await {
+    let project_data = if let Some(id) = id_option {
+        match database::models::Project::get_full(id.into(), &**pool).await {
             Ok(Some(data)) => Ok(Some(data)),
-            Ok(None) => database::models::Mod::get_full_from_slug(&string, &**pool).await,
+            Ok(None) => database::models::Project::get_full_from_slug(&string, &**pool).await,
             Err(e) => Err(e),
         }
     } else {
-        database::models::Mod::get_full_from_slug(&string, &**pool).await
+        database::models::Project::get_full_from_slug(&string, &**pool).await
     }
     .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    let data = if let Some(data) = mod_data {
+    let data = if let Some(data) = project_data {
         data
     } else {
         return Ok(HttpResponse::NotFound().body(""));
@@ -180,7 +180,7 @@ pub async fn version_file(
             } else {
                 let user_id: database::models::ids::UserId = user.id.into();
 
-                let mod_exists = sqlx::query!(
+                let project_exists = sqlx::query!(
                     "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
                     data.inner.team_id as database::models::ids::TeamId,
                     user_id as database::models::ids::UserId,
@@ -190,7 +190,7 @@ pub async fn version_file(
                 .map_err(|e| ApiError::DatabaseError(e.into()))?
                 .exists;
 
-                authorized = mod_exists.unwrap_or(false);
+                authorized = project_exists.unwrap_or(false);
             }
         }
     }
@@ -201,7 +201,7 @@ pub async fn version_file(
 
     let vid = if let Some(vid) = sqlx::query!(
         "SELECT id FROM versions WHERE mod_id = $1 AND version_number = $2",
-        data.inner.id as database::models::ids::ModId,
+        data.inner.id as database::models::ids::ProjectId,
         vnum
     )
     .fetch_optional(&**pool)

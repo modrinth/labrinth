@@ -2,7 +2,9 @@ use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::mods::{DonationLink, License, ModId, ModStatus, SearchRequest, SideType};
+use crate::models::projects::{
+    DonationLink, License, ProjectId, ProjectStatus, SearchRequest, SideType,
+};
 use crate::models::teams::Permissions;
 use crate::routes::ApiError;
 use crate::search::indexing::queue::CreationQueue;
@@ -14,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 
-#[get("mod")]
-pub async fn mod_search(
+#[get("project")]
+pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
@@ -24,32 +26,31 @@ pub async fn mod_search(
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct ModIds {
+pub struct ProjectIds {
     pub ids: String,
 }
 
-// TODO: Make this return the full mod struct
-#[get("mods")]
-pub async fn mods_get(
+#[get("projects")]
+pub async fn projects_get(
     req: HttpRequest,
-    web::Query(ids): web::Query<ModIds>,
+    web::Query(ids): web::Query<ProjectIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let mod_ids = serde_json::from_str::<Vec<models::ids::ModId>>(&*ids.ids)?
+    let project_ids = serde_json::from_str::<Vec<models::ids::ProjectId>>(&*ids.ids)?
         .into_iter()
         .map(|x| x.into())
         .collect();
 
-    let mods_data = database::models::Mod::get_many_full(mod_ids, &**pool)
+    let projects_data = database::models::Project::get_many_full(project_ids, &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    let mut mods = Vec::new();
+    let mut projects = Vec::new();
 
-    for mod_data in mods_data {
-        let mut authorized = !mod_data.status.is_hidden();
+    for project_data in projects_data {
+        let mut authorized = !project_data.status.is_hidden();
 
         if let Some(user) = &user_option {
             if !authorized {
@@ -58,9 +59,9 @@ pub async fn mods_get(
                 } else {
                     let user_id: database::models::ids::UserId = user.id.into();
 
-                    let mod_exists = sqlx::query!(
+                    let project_exists = sqlx::query!(
                             "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
-                            mod_data.inner.team_id as database::models::ids::TeamId,
+                            project_data.inner.team_id as database::models::ids::TeamId,
                             user_id as database::models::ids::UserId,
                         )
                         .fetch_one(&**pool)
@@ -68,32 +69,32 @@ pub async fn mods_get(
                         .map_err(|e| ApiError::DatabaseError(e.into()))?
                         .exists;
 
-                    authorized = mod_exists.unwrap_or(false);
+                    authorized = project_exists.unwrap_or(false);
                 }
             }
         }
 
         if authorized {
-            mods.push(convert_mod(mod_data));
+            projects.push(convert_project(project_data));
         }
     }
 
-    Ok(HttpResponse::Ok().json(mods))
+    Ok(HttpResponse::Ok().json(projects))
 }
 
 #[get("@{id}")]
-pub async fn mod_slug_get(
+pub async fn project_slug_get(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let mod_data = database::models::Mod::get_full_from_slug(&id, &**pool)
+    let project_data = database::models::Project::get_full_from_slug(&id, &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    if let Some(data) = mod_data {
+    if let Some(data) = project_data {
         let mut authorized = !data.status.is_hidden();
 
         if let Some(user) = user_option {
@@ -103,7 +104,7 @@ pub async fn mod_slug_get(
                 } else {
                     let user_id: database::models::ids::UserId = user.id.into();
 
-                    let mod_exists = sqlx::query!(
+                    let project_exists = sqlx::query!(
                         "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
                         data.inner.team_id as database::models::ids::TeamId,
                         user_id as database::models::ids::UserId,
@@ -113,13 +114,13 @@ pub async fn mod_slug_get(
                     .map_err(|e| ApiError::DatabaseError(e.into()))?
                     .exists;
 
-                    authorized = mod_exists.unwrap_or(false);
+                    authorized = project_exists.unwrap_or(false);
                 }
             }
         }
 
         if authorized {
-            return Ok(HttpResponse::Ok().json(convert_mod(data)));
+            return Ok(HttpResponse::Ok().json(convert_project(data)));
         }
 
         Ok(HttpResponse::NotFound().body(""))
@@ -129,35 +130,35 @@ pub async fn mod_slug_get(
 }
 
 #[get("{id}")]
-pub async fn mod_get(
+pub async fn project_get(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
-    let id_option: Option<ModId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
+    let id_option: Option<ProjectId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let mut mod_data;
+    let mut project_data;
 
     if let Some(id) = id_option {
-        mod_data = database::models::Mod::get_full(id.into(), &**pool)
+        project_data = database::models::Project::get_full(id.into(), &**pool)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-        if mod_data.is_none() {
-            mod_data = database::models::Mod::get_full_from_slug(&string, &**pool)
+        if project_data.is_none() {
+            project_data = database::models::Project::get_full_from_slug(&string, &**pool)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
         }
     } else {
-        mod_data = database::models::Mod::get_full_from_slug(&string, &**pool)
+        project_data = database::models::Project::get_full_from_slug(&string, &**pool)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?;
     }
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    if let Some(data) = mod_data {
+    if let Some(data) = project_data {
         let mut authorized = !data.status.is_hidden();
 
         if let Some(user) = user_option {
@@ -167,7 +168,7 @@ pub async fn mod_get(
                 } else {
                     let user_id: database::models::ids::UserId = user.id.into();
 
-                    let mod_exists = sqlx::query!(
+                    let project_exists = sqlx::query!(
                         "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
                         data.inner.team_id as database::models::ids::TeamId,
                         user_id as database::models::ids::UserId,
@@ -177,13 +178,13 @@ pub async fn mod_get(
                     .map_err(|e| ApiError::DatabaseError(e.into()))?
                     .exists;
 
-                    authorized = mod_exists.unwrap_or(false);
+                    authorized = project_exists.unwrap_or(false);
                 }
             }
         }
 
         if authorized {
-            return Ok(HttpResponse::Ok().json(convert_mod(data)));
+            return Ok(HttpResponse::Ok().json(convert_project(data)));
         }
 
         Ok(HttpResponse::NotFound().body(""))
@@ -192,10 +193,12 @@ pub async fn mod_get(
     }
 }
 
-pub fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::Mod {
+pub fn convert_project(
+    data: database::models::project_item::QueryProject,
+) -> models::projects::Project {
     let m = data.inner;
 
-    models::mods::Mod {
+    models::projects::Project {
         id: m.id.into(),
         slug: m.slug,
         team: m.team_id.into(),
@@ -235,13 +238,13 @@ pub fn convert_mod(data: database::models::mod_item::QueryMod) -> models::mods::
     }
 }
 
-/// A mod returned from the API
+/// A project returned from the API
 #[derive(Serialize, Deserialize)]
-pub struct EditMod {
+pub struct EditProject {
     pub title: Option<String>,
     pub description: Option<String>,
     pub body: Option<String>,
-    pub status: Option<ModStatus>,
+    pub status: Option<ProjectStatus>,
     pub categories: Option<Vec<String>>,
     #[serde(
         default,
@@ -286,26 +289,26 @@ pub struct EditMod {
 }
 
 #[patch("{id}")]
-pub async fn mod_edit(
+pub async fn project_edit(
     req: HttpRequest,
-    info: web::Path<(models::ids::ModId,)>,
+    info: web::Path<(models::ids::ProjectId,)>,
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
-    new_mod: web::Json<EditMod>,
+    new_project: web::Json<EditProject>,
     indexing_queue: Data<Arc<CreationQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    let mod_id = info.into_inner().0;
-    let id = mod_id.into();
+    let project_id = info.into_inner().0;
+    let id = project_id.into();
 
-    let result = database::models::Mod::get_full(id, &**pool)
+    let result = database::models::Project::get_full(id, &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    if let Some(mod_item) = result {
+    if let Some(project_item) = result {
         let team_member = database::models::TeamMember::get_from_user_id(
-            mod_item.inner.team_id,
+            project_item.inner.team_id,
             user.id.into(),
             &**pool,
         )
@@ -326,17 +329,17 @@ pub async fn mod_edit(
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-            if let Some(title) = &new_mod.title {
+            if let Some(title) = &new_project.title {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the title of this mod!"
+                        "You do not have the permissions to edit the title of this project!"
                             .to_string(),
                     ));
                 }
 
                 if title.len() > 256 || title.len() < 3 {
                     return Err(ApiError::InvalidInputError(
-                        "The mod's title must be within 3-256 characters!".to_string(),
+                        "The project's title must be within 3-256 characters!".to_string(),
                     ));
                 }
 
@@ -347,24 +350,24 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     title,
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(description) = &new_mod.description {
+            if let Some(description) = &new_project.description {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the description of this mod!"
+                        "You do not have the permissions to edit the description of this project!"
                             .to_string(),
                     ));
                 }
 
                 if description.len() > 2048 || description.len() < 3 {
                     return Err(ApiError::InvalidInputError(
-                        "The mod's description must be within 3-256 characters!".to_string(),
+                        "The project's description must be within 3-256 characters!".to_string(),
                     ));
                 }
 
@@ -375,22 +378,22 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     description,
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(status) = &new_mod.status {
+            if let Some(status) = &new_project.status {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the status of this mod!"
+                        "You do not have the permissions to edit the status of this project!"
                             .to_string(),
                     ));
                 }
 
-                if (status == &ModStatus::Rejected || status == &ModStatus::Approved)
+                if (status == &ProjectStatus::Rejected || status == &ProjectStatus::Approved)
                     && !user.role.is_mod()
                 {
                     return Err(ApiError::CustomAuthenticationError(
@@ -413,36 +416,36 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     status_id as database::models::ids::StatusId,
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-                if mod_item.status.is_searchable() && !status.is_searchable() {
-                    delete_from_index(mod_id, config).await?;
-                } else if !mod_item.status.is_searchable() && status.is_searchable() {
-                    let index_mod = crate::search::indexing::local_import::query_one(
-                        mod_id.into(),
+                if project_item.status.is_searchable() && !status.is_searchable() {
+                    delete_from_index(project_id, config).await?;
+                } else if !project_item.status.is_searchable() && status.is_searchable() {
+                    let index_project = crate::search::indexing::local_import::query_one(
+                        project_id.into(),
                         &mut *transaction,
                     )
                     .await?;
 
-                    indexing_queue.add(index_mod);
+                    indexing_queue.add(index_project);
                 }
             }
 
-            if let Some(categories) = &new_mod.categories {
+            if let Some(categories) = &new_project.categories {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the categories of this mod!"
+                        "You do not have the permissions to edit the categories of this project!"
                             .to_string(),
                     ));
                 }
 
                 if categories.len() > 3 {
                     return Err(ApiError::InvalidInputError(
-                        "The maximum number of categories for a mod is four.".to_string(),
+                        "The maximum number of categories for a project is four.".to_string(),
                     ));
                 }
 
@@ -451,7 +454,7 @@ pub async fn mod_edit(
                     DELETE FROM mods_categories
                     WHERE joining_mod_id = $1
                     ",
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
@@ -475,7 +478,7 @@ pub async fn mod_edit(
                         INSERT INTO mods_categories (joining_mod_id, joining_category_id)
                         VALUES ($1, $2)
                         ",
-                        id as database::models::ids::ModId,
+                        id as database::models::ids::ProjectId,
                         category_id as database::models::ids::CategoryId,
                     )
                     .execute(&mut *transaction)
@@ -484,10 +487,10 @@ pub async fn mod_edit(
                 }
             }
 
-            if let Some(issues_url) = &new_mod.issues_url {
+            if let Some(issues_url) = &new_project.issues_url {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the issues URL of this mod!"
+                        "You do not have the permissions to edit the issues URL of this project!"
                             .to_string(),
                     ));
                 }
@@ -495,7 +498,8 @@ pub async fn mod_edit(
                 if let Some(issues) = issues_url {
                     if issues.len() > 2048 {
                         return Err(ApiError::InvalidInputError(
-                            "The mod's issues url must be less than 2048 characters!".to_string(),
+                            "The project's issues url must be less than 2048 characters!"
+                                .to_string(),
                         ));
                     }
                 }
@@ -507,17 +511,17 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     issues_url.as_deref(),
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(source_url) = &new_mod.source_url {
+            if let Some(source_url) = &new_project.source_url {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the source URL of this mod!"
+                        "You do not have the permissions to edit the source URL of this project!"
                             .to_string(),
                     ));
                 }
@@ -525,7 +529,8 @@ pub async fn mod_edit(
                 if let Some(source) = source_url {
                     if source.len() > 2048 {
                         return Err(ApiError::InvalidInputError(
-                            "The mod's source url must be less than 2048 characters!".to_string(),
+                            "The project's source url must be less than 2048 characters!"
+                                .to_string(),
                         ));
                     }
                 }
@@ -537,17 +542,17 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     source_url.as_deref(),
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(wiki_url) = &new_mod.wiki_url {
+            if let Some(wiki_url) = &new_project.wiki_url {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the wiki URL of this mod!"
+                        "You do not have the permissions to edit the wiki URL of this project!"
                             .to_string(),
                     ));
                 }
@@ -555,7 +560,7 @@ pub async fn mod_edit(
                 if let Some(wiki) = wiki_url {
                     if wiki.len() > 2048 {
                         return Err(ApiError::InvalidInputError(
-                            "The mod's wiki url must be less than 2048 characters!".to_string(),
+                            "The project's wiki url must be less than 2048 characters!".to_string(),
                         ));
                     }
                 }
@@ -567,17 +572,17 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     wiki_url.as_deref(),
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(license_url) = &new_mod.license_url {
+            if let Some(license_url) = &new_project.license_url {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the license URL of this mod!"
+                        "You do not have the permissions to edit the license URL of this project!"
                             .to_string(),
                     ));
                 }
@@ -585,7 +590,8 @@ pub async fn mod_edit(
                 if let Some(license) = license_url {
                     if license.len() > 2048 {
                         return Err(ApiError::InvalidInputError(
-                            "The mod's license url must be less than 2048 characters!".to_string(),
+                            "The project's license url must be less than 2048 characters!"
+                                .to_string(),
                         ));
                     }
                 }
@@ -597,17 +603,17 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     license_url.as_deref(),
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(discord_url) = &new_mod.discord_url {
+            if let Some(discord_url) = &new_project.discord_url {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the discord URL of this mod!"
+                        "You do not have the permissions to edit the discord URL of this project!"
                             .to_string(),
                     ));
                 }
@@ -615,7 +621,8 @@ pub async fn mod_edit(
                 if let Some(discord) = discord_url {
                     if discord.len() > 2048 {
                         return Err(ApiError::InvalidInputError(
-                            "The mod's discord url must be less than 2048 characters!".to_string(),
+                            "The project's discord url must be less than 2048 characters!"
+                                .to_string(),
                         ));
                     }
                 }
@@ -627,36 +634,38 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     discord_url.as_deref(),
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(slug) = &new_mod.slug {
+            if let Some(slug) = &new_project.slug {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the slug of this mod!".to_string(),
+                        "You do not have the permissions to edit the slug of this project!"
+                            .to_string(),
                     ));
                 }
 
                 if let Some(slug) = slug {
                     if slug.len() > 64 || slug.len() < 3 {
                         return Err(ApiError::InvalidInputError(
-                            "The mod's slug must be within 3-64 characters!".to_string(),
+                            "The project's slug must be within 3-64 characters!".to_string(),
                         ));
                     }
 
-                    let slug_modid_option: Option<ModId> =
+                    let slug_project_id_option: Option<ProjectId> =
                         serde_json::from_str(&*format!("\"{}\"", slug)).ok();
-                    if let Some(slug_modid) = slug_modid_option {
-                        let slug_modid: database::models::ids::ModId = slug_modid.into();
+                    if let Some(slug_project_id) = slug_project_id_option {
+                        let slug_project_id: database::models::ids::ProjectId =
+                        slug_project_id.into();
                         let results = sqlx::query!(
                             "
                             SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
                             ",
-                            slug_modid as database::models::ids::ModId
+                            slug_project_id as database::models::ids::ProjectId
                         )
                         .fetch_one(&mut *transaction)
                         .await
@@ -664,7 +673,7 @@ pub async fn mod_edit(
 
                         if results.exists.unwrap_or(true) {
                             return Err(ApiError::InvalidInputError(
-                                "Slug collides with other mod's id!".to_string(),
+                                "Slug collides with other project's id!".to_string(),
                             ));
                         }
                     }
@@ -677,14 +686,14 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     slug.as_deref(),
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(new_side) = &new_mod.client_side {
+            if let Some(new_side) = &new_project.client_side {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
                         "You do not have the permissions to edit the side type of this mod!"
@@ -704,17 +713,17 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     side_type_id as database::models::SideTypeId,
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(new_side) = &new_mod.server_side {
+            if let Some(new_side) = &new_project.server_side {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the side type of this mod!"
+                        "You do not have the permissions to edit the side type of this project!"
                             .to_string(),
                     ));
                 }
@@ -731,17 +740,17 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     side_type_id as database::models::SideTypeId,
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(license) = &new_mod.license_id {
+            if let Some(license) = &new_project.license_id {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the license of this mod!"
+                        "You do not have the permissions to edit the license of this project!"
                             .to_string(),
                     ));
                 }
@@ -758,17 +767,17 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     license_id as database::models::LicenseId,
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?;
             }
 
-            if let Some(donations) = &new_mod.donation_urls {
+            if let Some(donations) = &new_project.donation_urls {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the donation links of this mod!"
+                        "You do not have the permissions to edit the donation links of this project!"
                             .to_string(),
                     ));
                 }
@@ -778,7 +787,7 @@ pub async fn mod_edit(
                     DELETE FROM mods_donations
                     WHERE joining_mod_id = $1
                     ",
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
@@ -802,7 +811,7 @@ pub async fn mod_edit(
                         INSERT INTO mods_donations (joining_mod_id, joining_platform_id, url)
                         VALUES ($1, $2, $3)
                         ",
-                        id as database::models::ids::ModId,
+                        id as database::models::ids::ProjectId,
                         platform_id as database::models::ids::DonationPlatformId,
                         donation.url
                     )
@@ -812,16 +821,17 @@ pub async fn mod_edit(
                 }
             }
 
-            if let Some(body) = &new_mod.body {
+            if let Some(body) = &new_project.body {
                 if !perms.contains(Permissions::EDIT_BODY) {
                     return Err(ApiError::CustomAuthenticationError(
-                        "You do not have the permissions to edit the body of this mod!".to_string(),
+                        "You do not have the permissions to edit the body of this project!"
+                            .to_string(),
                     ));
                 }
 
                 if body.len() > 65536 {
                     return Err(ApiError::InvalidInputError(
-                        "The mod's body must be less than 65536 characters!".to_string(),
+                        "The project's body must be less than 65536 characters!".to_string(),
                     ));
                 }
 
@@ -832,7 +842,7 @@ pub async fn mod_edit(
                     WHERE (id = $2)
                     ",
                     body,
-                    id as database::models::ids::ModId,
+                    id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await
@@ -846,7 +856,7 @@ pub async fn mod_edit(
             Ok(HttpResponse::Ok().body(""))
         } else {
             Err(ApiError::CustomAuthenticationError(
-                "You do not have permission to edit this mod!".to_string(),
+                "You do not have permission to edit this project!".to_string(),
             ))
         }
     } else {
@@ -860,42 +870,46 @@ pub struct Extension {
 }
 
 #[patch("{id}/icon")]
-pub async fn mod_icon_edit(
+pub async fn project_icon_edit(
     web::Query(ext): web::Query<Extension>,
     req: HttpRequest,
-    info: web::Path<(models::ids::ModId,)>,
+    info: web::Path<(models::ids::ProjectId,)>,
     pool: web::Data<PgPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
-    if let Some(content_type) = super::mod_creation::get_image_content_type(&*ext.ext) {
+    if let Some(content_type) = super::project_creation::get_image_content_type(&*ext.ext) {
         let cdn_url = dotenv::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let id = info.into_inner().0;
 
-        let mod_item = database::models::Mod::get(id.into(), &**pool)
+        let project_item = database::models::Project::get(id.into(), &**pool)
             .await
             .map_err(|e| ApiError::DatabaseError(e.into()))?
-            .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+            .ok_or_else(|| {
+                ApiError::InvalidInputError("Invalid Project ID specified!".to_string())
+            })?;
 
         if !user.role.is_mod() {
             let team_member = database::models::TeamMember::get_from_user_id(
-                mod_item.team_id,
+                project_item.team_id,
                 user.id.into(),
                 &**pool,
             )
             .await
             .map_err(ApiError::DatabaseError)?
-            .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+            .ok_or_else(|| {
+                ApiError::InvalidInputError("Invalid Project ID specified!".to_string())
+            })?;
 
             if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
                 return Err(ApiError::CustomAuthenticationError(
-                    "You don't have permission to edit this mod's icon.".to_string(),
+                    "You don't have permission to edit this project's icon.".to_string(),
                 ));
             }
         }
 
-        if let Some(icon) = mod_item.icon_url {
+        if let Some(icon) = project_item.icon_url {
             let name = icon.split('/').next();
 
             if let Some(icon_path) = name {
@@ -924,7 +938,7 @@ pub async fn mod_icon_edit(
             )
             .await?;
 
-        let mod_id: database::models::ids::ModId = id.into();
+        let project_id: database::models::ids::ProjectId = id.into();
         sqlx::query!(
             "
             UPDATE mods
@@ -932,7 +946,7 @@ pub async fn mod_icon_edit(
             WHERE (id = $2)
             ",
             format!("{}/{}", cdn_url, upload_data.file_name),
-            mod_id as database::models::ids::ModId,
+            project_id as database::models::ids::ProjectId,
         )
         .execute(&**pool)
         .await
@@ -941,16 +955,16 @@ pub async fn mod_icon_edit(
         Ok(HttpResponse::Ok().body(""))
     } else {
         Err(ApiError::InvalidInputError(format!(
-            "Invalid format for mod icon: {}",
+            "Invalid format for project icon: {}",
             ext.ext
         )))
     }
 }
 
 #[delete("{id}")]
-pub async fn mod_delete(
+pub async fn project_delete(
     req: HttpRequest,
-    info: web::Path<(models::ids::ModId,)>,
+    info: web::Path<(models::ids::ProjectId,)>,
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
@@ -958,22 +972,26 @@ pub async fn mod_delete(
     let id = info.into_inner().0;
 
     if !user.role.is_mod() {
-        let team_member =
-            database::models::TeamMember::get_from_user_id_mod(id.into(), user.id.into(), &**pool)
-                .await
-                .map_err(ApiError::DatabaseError)?
-                .ok_or_else(|| {
-                    ApiError::InvalidInputError("Invalid Mod ID specified!".to_string())
-                })?;
+        let team_member = database::models::TeamMember::get_from_user_id_project(
+            id.into(),
+            user.id.into(),
+            &**pool,
+        )
+        .await
+        .map_err(ApiError::DatabaseError)?
+        .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
 
-        if !team_member.permissions.contains(Permissions::DELETE_MOD) {
+        if !team_member
+            .permissions
+            .contains(Permissions::DELETE_PROJECT)
+        {
             return Err(ApiError::CustomAuthenticationError(
-                "You don't have permission to delete this mod".to_string(),
+                "You don't have permission to delete this project".to_string(),
             ));
         }
     }
 
-    let result = database::models::Mod::remove_full(id.into(), &**pool)
+    let result = database::models::Project::remove_full(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
@@ -987,28 +1005,28 @@ pub async fn mod_delete(
 }
 
 #[post("{id}/follow")]
-pub async fn mod_follow(
+pub async fn project_follow(
     req: HttpRequest,
-    info: web::Path<(models::ids::ModId,)>,
+    info: web::Path<(models::ids::ProjectId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id = info.into_inner().0;
 
-    let _result = database::models::Mod::get(id.into(), &**pool)
+    let _result = database::models::Project::get(id.into(), &**pool)
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?
-        .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+        .ok_or_else(|| ApiError::InvalidInputError("Invalid Project ID specified!".to_string()))?;
 
     let user_id: database::models::ids::UserId = user.id.into();
-    let mod_id: database::models::ids::ModId = id.into();
+    let project_id: database::models::ids::ProjectId = id.into();
 
     let following = sqlx::query!(
         "
         SELECT EXISTS(SELECT 1 FROM mod_follows mf WHERE mf.follower_id = $1 AND mf.mod_id = $2)
         ",
         user_id as database::models::ids::UserId,
-        mod_id as database::models::ids::ModId
+        project_id as database::models::ids::ProjectId
     )
     .fetch_one(&**pool)
     .await
@@ -1023,7 +1041,7 @@ pub async fn mod_follow(
             SET follows = follows + 1
             WHERE id = $1
             ",
-            mod_id as database::models::ids::ModId,
+            project_id as database::models::ids::ProjectId,
         )
         .execute(&**pool)
         .await
@@ -1035,7 +1053,7 @@ pub async fn mod_follow(
             VALUES ($1, $2)
             ",
             user_id as database::models::ids::UserId,
-            mod_id as database::models::ids::ModId
+            project_id as database::models::ids::ProjectId
         )
         .execute(&**pool)
         .await
@@ -1044,29 +1062,29 @@ pub async fn mod_follow(
         Ok(HttpResponse::Ok().body(""))
     } else {
         Err(ApiError::InvalidInputError(
-            "You are already following this mod!".to_string(),
+            "You are already following this project!".to_string(),
         ))
     }
 }
 
 #[delete("{id}/follow")]
-pub async fn mod_unfollow(
+pub async fn project_unfollow(
     req: HttpRequest,
-    info: web::Path<(models::ids::ModId,)>,
+    info: web::Path<(models::ids::ProjectId,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id = info.into_inner().0;
 
     let user_id: database::models::ids::UserId = user.id.into();
-    let mod_id: database::models::ids::ModId = id.into();
+    let project_id: database::models::ids::ProjectId = id.into();
 
     let following = sqlx::query!(
         "
         SELECT EXISTS(SELECT 1 FROM mod_follows mf WHERE mf.follower_id = $1 AND mf.mod_id = $2)
         ",
         user_id as database::models::ids::UserId,
-        mod_id as database::models::ids::ModId
+        project_id as database::models::ids::ProjectId
     )
     .fetch_one(&**pool)
     .await
@@ -1081,7 +1099,7 @@ pub async fn mod_unfollow(
             SET follows = follows - 1
             WHERE id = $1
             ",
-            mod_id as database::models::ids::ModId,
+            project_id as database::models::ids::ProjectId,
         )
         .execute(&**pool)
         .await
@@ -1093,7 +1111,7 @@ pub async fn mod_unfollow(
             WHERE follower_id = $1 AND mod_id = $2
             ",
             user_id as database::models::ids::UserId,
-            mod_id as database::models::ids::ModId
+            project_id as database::models::ids::ProjectId
         )
         .execute(&**pool)
         .await
@@ -1102,13 +1120,13 @@ pub async fn mod_unfollow(
         Ok(HttpResponse::Ok().body(""))
     } else {
         Err(ApiError::InvalidInputError(
-            "You are not following this mod!".to_string(),
+            "You are not following this project!".to_string(),
         ))
     }
 }
 
 pub async fn delete_from_index(
-    id: crate::models::mods::ModId,
+    id: crate::models::projects::ProjectId,
     config: web::Data<SearchConfig>,
 ) -> Result<(), meilisearch_sdk::errors::Error> {
     let client = meilisearch_sdk::client::Client::new(&*config.address, &*config.key);

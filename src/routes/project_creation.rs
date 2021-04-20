@@ -2,7 +2,9 @@ use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
-use crate::models::mods::{DonationLink, License, ModId, ModStatus, SideType, VersionId};
+use crate::models::projects::{
+    DonationLink, License, ProjectId, ProjectStatus, SideType, VersionId,
+};
 use crate::models::users::UserId;
 use crate::routes::version_creation::InitialVersionData;
 use crate::search::indexing::{queue::CreationQueue, IndexingError};
@@ -34,7 +36,7 @@ pub enum CreateError {
     FileHostingError(#[from] FileHostingError),
     #[error("{}", .0)]
     MissingValueError(String),
-    #[error("Invalid format for mod icon: {0}")]
+    #[error("Invalid format for project icon: {0}")]
     InvalidIconFormat(String),
     #[error("Error with multipart data: {0}")]
     InvalidInput(String),
@@ -46,7 +48,7 @@ pub enum CreateError {
     InvalidCategory(String),
     #[error("Invalid file type for version file: {0}")]
     InvalidFileType(String),
-    #[error("Slug collides with other mod's id!")]
+    #[error("Slug collides with other project's id!")]
     SlugCollision,
     #[error("Authentication Error: {0}")]
     Unauthorized(#[from] AuthenticationError),
@@ -104,39 +106,44 @@ impl actix_web::ResponseError for CreateError {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-struct ModCreateData {
-    /// The title or name of the mod.
-    pub mod_name: String,
-    /// The slug of a mod, used for vanity URLs
-    pub mod_slug: String,
-    /// A short description of the mod.
-    pub mod_description: String,
-    /// A long description of the mod, in markdown.
-    pub mod_body: String,
-    /// A list of initial versions to upload with the created mod
-    pub initial_versions: Vec<InitialVersionData>,
-    /// A list of the categories that the mod is in.
-    pub categories: Vec<String>,
-    /// An optional link to where to submit bugs or issues with the mod.
-    pub issues_url: Option<String>,
-    /// An optional link to the source code for the mod.
-    pub source_url: Option<String>,
-    /// An optional link to the mod's wiki page or other relevant information.
-    pub wiki_url: Option<String>,
-    /// An optional link to the mod's license page
-    pub license_url: Option<String>,
-    /// An optional link to the mod's discord.
-    pub discord_url: Option<String>,
-    /// An optional boolean. If true, the mod will be created as a draft.
-    pub is_draft: Option<bool>,
-    /// The support range for the client mod
+struct ProjectCreateData {
+    /// The title or name of the project.
+    pub title: String,
+    /// The slug of a project, used for vanity URLs
+    pub slug: String,
+    /// A short description of the project.
+    pub description: String,
+    /// A long description of the project, in markdown.
+    pub body: String,
+
+    /// The support range for the client project
     pub client_side: SideType,
-    /// The support range for the server mod
+    /// The support range for the server project
     pub server_side: SideType,
-    /// The license id that the mod follows
-    pub license_id: String,
-    /// An optional list of all donation links the mod has
+
+    /// A list of initial versions to upload with the created project
+    pub initial_versions: Vec<InitialVersionData>,
+    /// A list of the categories that the project is in.
+    pub categories: Vec<String>,
+
+    /// An optional link to where to submit bugs or issues with the project.
+    pub issues_url: Option<String>,
+    /// An optional link to the source code for the project.
+    pub source_url: Option<String>,
+    /// An optional link to the project's wiki page or other relevant information.
+    pub wiki_url: Option<String>,
+    /// An optional link to the project's license page
+    pub license_url: Option<String>,
+    /// An optional link to the project's discord.
+    pub discord_url: Option<String>,
+    /// An optional list of all donation links the project has
     pub donation_urls: Option<Vec<DonationLink>>,
+
+    /// An optional boolean. If true, the project will be created as a draft.
+    pub is_draft: Option<bool>,
+
+    /// The license id that the project follows
+    pub license_id: String,
 }
 
 pub struct UploadedFile {
@@ -156,8 +163,8 @@ pub async fn undo_uploads(
     Ok(())
 }
 
-#[post("mod")]
-pub async fn mod_create(
+#[post("project")]
+pub async fn project_create(
     req: HttpRequest,
     payload: Multipart,
     client: Data<PgPool>,
@@ -167,7 +174,7 @@ pub async fn mod_create(
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
 
-    let result = mod_create_inner(
+    let result = project_create_inner(
         req,
         payload,
         &mut transaction,
@@ -196,7 +203,7 @@ pub async fn mod_create(
 
 /*
 
-Mod Creation Steps:
+Project Creation Steps:
 Get logged in user
     Must match the author in the version creation
 
@@ -206,12 +213,12 @@ Get logged in user
     - Create versions
         - Some shared logic with version creation
         - Create list of VersionBuilders
-    - Create ModBuilder
+    - Create ProjectBuilder
 
 2. Upload
     - Icon: check file format & size
         - Upload to backblaze & record URL
-    - Mod files
+    - Project files
         - Check for matching version
         - File size limits?
         - Check file type
@@ -221,10 +228,10 @@ Get logged in user
 
 3. Creation
     - Database stuff
-    - Add mod data to indexing queue
+    - Add project data to indexing queue
 */
 
-async fn mod_create_inner(
+async fn project_create_inner(
     req: HttpRequest,
     mut payload: Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -238,15 +245,15 @@ async fn mod_create_inner(
     // The currently logged in user
     let current_user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
-    let mod_id: ModId = models::generate_mod_id(transaction).await?.into();
+    let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
 
-    let mod_create_data;
+    let project_create_data;
     let mut versions;
     let mut versions_map = std::collections::HashMap::new();
 
     {
         // The first multipart field must be named "data" and contain a
-        // JSON `ModCreateData` object.
+        // JSON `ProjectCreateData` object.
 
         let mut field = payload
             .next()
@@ -275,15 +282,15 @@ async fn mod_create_inner(
         while let Some(chunk) = field.next().await {
             data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
         }
-        let create_data: ModCreateData = serde_json::from_slice(&data)?;
+        let create_data: ProjectCreateData = serde_json::from_slice(&data)?;
 
         {
-            // Verify the lengths of various fields in the mod create data
+            // Verify the lengths of various fields in the project create data
             /*
-            # ModCreateData
-            mod_name: 3..=256
-            mod_description: 3..=2048,
-            mod_body: max of 64KiB?,
+            # ProjectCreateData
+            title: 3..=256
+            description: 3..=2048,
+            body: max of 64KiB?,
             categories: Vec<String>, 1..=256
             issues_url: 0..=2048, (Validate url?)
             source_url: 0..=2048,
@@ -297,14 +304,14 @@ async fn mod_create_inner(
             role: 3..=64
             */
 
-            check_length(3..=256, "mod name", &create_data.mod_name)?;
-            check_length(3..=2048, "mod description", &create_data.mod_description)?;
-            check_length(3..=64, "mod slug", &create_data.mod_slug)?;
-            check_length(..65536, "mod body", &create_data.mod_body)?;
+            check_length(3..=256, "project name", &create_data.title)?;
+            check_length(3..=2048, "project description", &create_data.description)?;
+            check_length(3..=64, "project slug", &create_data.slug)?;
+            check_length(..65536, "project body", &create_data.body)?;
 
             if create_data.categories.len() > 3 {
                 return Err(CreateError::InvalidInput(
-                    "The maximum number of categories for a mod is four.".to_string(),
+                    "The maximum number of categories for a project is four.".to_string(),
                 ));
             }
 
@@ -335,15 +342,16 @@ async fn mod_create_inner(
                 .try_for_each(|v| super::version_creation::check_version(v))?;
         }
 
-        let slug_modid_option: Option<ModId> =
-            serde_json::from_str(&*format!("\"{}\"", create_data.mod_slug)).ok();
-        if let Some(slug_modid) = slug_modid_option {
-            let slug_modid: models::ids::ModId = slug_modid.into();
+        let slug_project_id_option: Option<ProjectId> =
+            serde_json::from_str(&*format!("\"{}\"", create_data.slug)).ok();
+
+        if let Some(slug_project_id) = slug_project_id_option {
+            let slug_project_id: models::ids::ProjectId = slug_project_id.into();
             let results = sqlx::query!(
                 "
                 SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
                 ",
-                slug_modid as models::ids::ModId
+                slug_project_id as models::ids::ProjectId
             )
             .fetch_one(&mut *transaction)
             .await
@@ -366,11 +374,12 @@ async fn mod_create_inner(
                     )));
                 }
             }
-            versions
-                .push(create_initial_version(data, mod_id, current_user.id, transaction).await?);
+            versions.push(
+                create_initial_version(data, project_id, current_user.id, transaction).await?,
+            );
         }
 
-        mod_create_data = create_data;
+        project_create_data = create_data;
     }
 
     let mut icon_url = None;
@@ -391,14 +400,14 @@ async fn mod_create_inner(
         if name == "icon" {
             if icon_url.is_some() {
                 return Err(CreateError::InvalidInput(String::from(
-                    "Mods can only have one icon",
+                    "Projects can only have one icon",
                 )));
             }
             // Upload the icon to the cdn
             icon_url = Some(
                 process_icon_upload(
                     uploaded_files,
-                    mod_id,
+                    project_id,
                     file_extension,
                     file_host,
                     field,
@@ -420,7 +429,7 @@ async fn mod_create_inner(
 
         // `index` is always valid for these lists
         let created_version = versions.get_mut(index).unwrap();
-        let version_data = mod_create_data.initial_versions.get(index).unwrap();
+        let version_data = project_create_data.initial_versions.get(index).unwrap();
 
         // Upload the new jar file
         let file_builder = super::version_creation::upload_file(
@@ -429,7 +438,7 @@ async fn mod_create_inner(
             uploaded_files,
             &cdn_url,
             &content_disposition,
-            mod_id,
+            project_id,
             &version_data.version_number,
         )
         .await?;
@@ -440,7 +449,10 @@ async fn mod_create_inner(
 
     {
         // Check to make sure that all specified files were uploaded
-        for (version_data, builder) in mod_create_data.initial_versions.iter().zip(versions.iter())
+        for (version_data, builder) in project_create_data
+            .initial_versions
+            .iter()
+            .zip(versions.iter())
         {
             if version_data.file_parts.len() != builder.files.len() {
                 return Err(CreateError::InvalidInput(String::from(
@@ -450,8 +462,8 @@ async fn mod_create_inner(
         }
 
         // Convert the list of category names to actual categories
-        let mut categories = Vec::with_capacity(mod_create_data.categories.len());
-        for category in &mod_create_data.categories {
+        let mut categories = Vec::with_capacity(project_create_data.categories.len());
+        for category in &project_create_data.categories {
             let id = models::categories::Category::get_id(&category, &mut *transaction)
                 .await?
                 .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
@@ -470,10 +482,10 @@ async fn mod_create_inner(
         let team_id = team.insert(&mut *transaction).await?;
 
         let status;
-        if mod_create_data.is_draft.unwrap_or(false) {
-            status = ModStatus::Draft;
+        if project_create_data.is_draft.unwrap_or(false) {
+            status = ProjectStatus::Draft;
         } else {
-            status = ModStatus::Processing;
+            status = ProjectStatus::Processing;
         }
 
         let status_id = models::StatusId::get_id(&status, &mut *transaction)
@@ -482,7 +494,7 @@ async fn mod_create_inner(
                 CreateError::InvalidInput(format!("Status {} does not exist.", status.clone()))
             })?;
         let client_side_id =
-            models::SideTypeId::get_id(&mod_create_data.client_side, &mut *transaction)
+            models::SideTypeId::get_id(&project_create_data.client_side, &mut *transaction)
                 .await?
                 .ok_or_else(|| {
                     CreateError::InvalidInput(
@@ -491,7 +503,7 @@ async fn mod_create_inner(
                 })?;
 
         let server_side_id =
-            models::SideTypeId::get_id(&mod_create_data.server_side, &mut *transaction)
+            models::SideTypeId::get_id(&project_create_data.server_side, &mut *transaction)
                 .await?
                 .ok_or_else(|| {
                     CreateError::InvalidInput(
@@ -500,14 +512,14 @@ async fn mod_create_inner(
                 })?;
 
         let license_id =
-            models::categories::License::get_id(&mod_create_data.license_id, &mut *transaction)
+            models::categories::License::get_id(&project_create_data.license_id, &mut *transaction)
                 .await?
                 .ok_or_else(|| {
                     CreateError::InvalidInput("License specified does not exist.".to_string())
                 })?;
         let mut donation_urls = vec![];
 
-        if let Some(urls) = &mod_create_data.donation_urls {
+        if let Some(urls) = &project_create_data.donation_urls {
             for url in urls {
                 let platform_id = models::DonationPlatformId::get_id(&url.id, &mut *transaction)
                     .await?
@@ -518,8 +530,8 @@ async fn mod_create_inner(
                         ))
                     })?;
 
-                donation_urls.push(models::mod_item::DonationUrl {
-                    mod_id: mod_id.into(),
+                donation_urls.push(models::project_item::DonationUrl {
+                    project_id: project_id.into(),
                     platform_id,
                     platform_short: "".to_string(),
                     platform_name: "".to_string(),
@@ -528,72 +540,74 @@ async fn mod_create_inner(
             }
         }
 
-        let mod_builder = models::mod_item::ModBuilder {
-            mod_id: mod_id.into(),
+        let project_builder = models::project_item::ProjectBuilder {
+            project_id: project_id.into(),
             team_id,
-            title: mod_create_data.mod_name,
-            description: mod_create_data.mod_description,
-            body: mod_create_data.mod_body,
+            title: project_create_data.title,
+            description: project_create_data.description,
+            body: project_create_data.body,
             icon_url,
-            issues_url: mod_create_data.issues_url,
-            source_url: mod_create_data.source_url,
-            wiki_url: mod_create_data.wiki_url,
+            issues_url: project_create_data.issues_url,
+            source_url: project_create_data.source_url,
+            wiki_url: project_create_data.wiki_url,
 
-            license_url: mod_create_data.license_url,
-            discord_url: mod_create_data.discord_url,
+            license_url: project_create_data.license_url,
+            discord_url: project_create_data.discord_url,
             categories,
             initial_versions: versions,
             status: status_id,
             client_side: client_side_id,
             server_side: server_side_id,
             license: license_id,
-            slug: Some(mod_create_data.mod_slug),
+            slug: Some(project_create_data.slug),
             donation_urls,
         };
 
         let now = chrono::Utc::now();
 
-        let response = crate::models::mods::Mod {
-            id: mod_id,
-            slug: mod_builder.slug.clone(),
+        let response = crate::models::projects::Project {
+            id: project_id,
+            slug: project_builder.slug.clone(),
             team: team_id.into(),
-            title: mod_builder.title.clone(),
-            description: mod_builder.description.clone(),
-            body: mod_builder.body.clone(),
+            title: project_builder.title.clone(),
+            description: project_builder.description.clone(),
+            body: project_builder.body.clone(),
             body_url: None,
             published: now,
             updated: now,
             status: status.clone(),
             license: License {
-                id: mod_create_data.license_id.clone(),
+                id: project_create_data.license_id.clone(),
                 name: "".to_string(),
-                url: mod_builder.license_url.clone(),
+                url: project_builder.license_url.clone(),
             },
-            client_side: mod_create_data.client_side,
-            server_side: mod_create_data.server_side,
+            client_side: project_create_data.client_side,
+            server_side: project_create_data.server_side,
             downloads: 0,
             followers: 0,
-            categories: mod_create_data.categories,
-            versions: mod_builder
+            categories: project_create_data.categories,
+            versions: project_builder
                 .initial_versions
                 .iter()
                 .map(|v| v.version_id.into())
                 .collect::<Vec<_>>(),
-            icon_url: mod_builder.icon_url.clone(),
-            issues_url: mod_builder.issues_url.clone(),
-            source_url: mod_builder.source_url.clone(),
-            wiki_url: mod_builder.wiki_url.clone(),
-            discord_url: mod_builder.discord_url.clone(),
-            donation_urls: mod_create_data.donation_urls.clone(),
+            icon_url: project_builder.icon_url.clone(),
+            issues_url: project_builder.issues_url.clone(),
+            source_url: project_builder.source_url.clone(),
+            wiki_url: project_builder.wiki_url.clone(),
+            discord_url: project_builder.discord_url.clone(),
+            donation_urls: project_create_data.donation_urls.clone(),
         };
 
-        let _mod_id = mod_builder.insert(&mut *transaction).await?;
+        let _project_id = project_builder.insert(&mut *transaction).await?;
 
         if status.is_searchable() {
-            let index_mod =
-                crate::search::indexing::local_import::query_one(mod_id.into(), &mut *transaction)
-                    .await?;
-            indexing_queue.add(index_mod);
+            let index_project = crate::search::indexing::local_import::query_one(
+                project_id.into(),
+                &mut *transaction,
+            )
+            .await?;
+            indexing_queue.add(index_project);
         }
 
         Ok(HttpResponse::Ok().json(response))
@@ -602,13 +616,13 @@ async fn mod_create_inner(
 
 async fn create_initial_version(
     version_data: &InitialVersionData,
-    mod_id: ModId,
+    project_id: ProjectId,
     author: UserId,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<models::version_item::VersionBuilder, CreateError> {
-    if version_data.mod_id.is_some() {
+    if version_data.project_id.is_some() {
         return Err(CreateError::InvalidInput(String::from(
-            "Found mod id in initial version for new mod",
+            "Found project id in initial version for new project",
         )));
     }
 
@@ -647,7 +661,7 @@ async fn create_initial_version(
 
     let version = models::version_item::VersionBuilder {
         version_id: version_id.into(),
-        mod_id: mod_id.into(),
+        project_id: project_id.into(),
         author_id: author.into(),
         name: version_data.version_title.clone(),
         version_number: version_data.version_number.clone(),
@@ -668,7 +682,7 @@ async fn create_initial_version(
 
 async fn process_icon_upload(
     uploaded_files: &mut Vec<UploadedFile>,
-    mod_id: ModId,
+    project_id: ProjectId,
     file_extension: &str,
     file_host: &dyn FileHost,
     mut field: actix_multipart::Field,
@@ -689,7 +703,7 @@ async fn process_icon_upload(
         let upload_data = file_host
             .upload_file(
                 content_type,
-                &format!("data/{}/icon.{}", mod_id, file_extension),
+                &format!("data/{}/icon.{}", project_id, file_extension),
                 data,
             )
             .await?;

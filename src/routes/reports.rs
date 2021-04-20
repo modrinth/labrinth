@@ -1,5 +1,5 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
-use crate::models::ids::{ModId, UserId, VersionId};
+use crate::models::ids::{ProjectId, UserId, VersionId};
 use crate::models::reports::{ItemType, Report};
 use crate::routes::ApiError;
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
@@ -48,7 +48,7 @@ pub async fn report_create(
     let mut report = crate::database::models::report_item::Report {
         id,
         report_type_id: report_type,
-        mod_id: None,
+        project_id: None,
         version_id: None,
         user_id: None,
         body: new_report.body.clone(),
@@ -57,9 +57,10 @@ pub async fn report_create(
     };
 
     match new_report.item_type {
-        ItemType::Mod => {
-            report.mod_id =
-                Some(serde_json::from_str::<ModId>(&*format!("\"{}\"", new_report.item_id))?.into())
+        ItemType::Project => {
+            report.project_id = Some(
+                serde_json::from_str::<ProjectId>(&*format!("\"{}\"", new_report.item_id))?.into(),
+            )
         }
         ItemType::Version => {
             report.version_id = Some(
@@ -146,9 +147,9 @@ pub async fn reports(
         let mut item_id = "".to_string();
         let mut item_type = ItemType::Unknown;
 
-        if let Some(mod_id) = x.mod_id {
-            item_id = serde_json::to_string::<ModId>(&mod_id.into())?;
-            item_type = ItemType::Mod;
+        if let Some(project_id) = x.project_id {
+            item_id = serde_json::to_string::<ProjectId>(&project_id.into())?;
+            item_type = ItemType::Project;
         } else if let Some(version_id) = x.version_id {
             item_id = serde_json::to_string::<VersionId>(&version_id.into())?;
             item_type = ItemType::Version;

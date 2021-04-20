@@ -3,11 +3,11 @@ use actix_web::web;
 mod auth;
 mod index;
 mod maven;
-mod mod_creation;
 mod moderation;
-mod mods;
 mod not_found;
 mod notifications;
+mod project_creation;
+mod projects;
 mod reports;
 mod tags;
 mod teams;
@@ -23,20 +23,20 @@ pub use self::not_found::not_found;
 use crate::file_hosting::FileHostingError;
 
 pub fn mods_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(mods::mod_search);
-    cfg.service(mods::mods_get);
-    cfg.service(mod_creation::mod_create);
+    cfg.service(projects::project_search);
+    cfg.service(projects::projects_get);
+    cfg.service(project_creation::project_create);
 
     cfg.service(
-        web::scope("mod")
-            .service(mods::mod_slug_get)
-            .service(mods::mod_get)
-            .service(mods::mod_delete)
-            .service(mods::mod_edit)
-            .service(mods::mod_icon_edit)
-            .service(mods::mod_follow)
-            .service(mods::mod_unfollow)
-            .service(web::scope("{mod_id}").service(versions::version_list)),
+        web::scope("project")
+            .service(projects::project_slug_get)
+            .service(projects::project_get)
+            .service(projects::project_delete)
+            .service(projects::project_edit)
+            .service(projects::project_icon_edit)
+            .service(projects::project_follow)
+            .service(projects::project_unfollow)
+            .service(web::scope("{project_id}").service(versions::version_list)),
     );
 }
 
@@ -71,7 +71,7 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
         web::scope("user")
             .service(users::user_username_get)
             .service(users::user_get)
-            .service(users::mods_list)
+            .service(users::projects_list)
             .service(users::user_delete)
             .service(users::user_edit)
             .service(users::user_icon_edit)
@@ -102,7 +102,7 @@ pub fn notifications_config(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn moderation_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("moderation").service(moderation::mods));
+    cfg.service(web::scope("moderation").service(moderation::get_projects));
 }
 
 pub fn reports_config(cfg: &mut web::ServiceConfig) {

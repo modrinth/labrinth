@@ -1,5 +1,5 @@
 use crate::models::error::ApiError;
-use crate::models::mods::SearchRequest;
+use crate::models::projects::SearchRequest;
 use actix_web::http::StatusCode;
 use actix_web::web::HttpResponse;
 use chrono::{DateTime, Utc};

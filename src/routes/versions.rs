@@ -2,7 +2,7 @@ use super::ApiError;
 use crate::auth::get_user_from_headers;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::mods::{Dependency, DependencyType};
+use crate::models::projects::{Dependency, DependencyType};
 use crate::models::teams::Permissions;
 use crate::{database, Pepper};
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
@@ -20,23 +20,23 @@ pub struct VersionListFilters {
 
 #[get("version")]
 pub async fn version_list(
-    info: web::Path<(models::ids::ModId,)>,
+    info: web::Path<(models::ids::ProjectId,)>,
     web::Query(filters): web::Query<VersionListFilters>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0.into();
 
-    let mod_exists = sqlx::query!(
+    let project_exists = sqlx::query!(
         "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)",
-        id as database::models::ModId,
+        id as database::models::ProjectId,
     )
     .fetch_one(&**pool)
     .await
     .map_err(|e| ApiError::DatabaseError(e.into()))?
     .exists;
 
-    if mod_exists.unwrap_or(false) {
-        let version_ids = database::models::Version::get_mod_versions(
+    if project_exists.unwrap_or(false) {
+        let version_ids = database::models::Version::get_project_versions(
             id,
             filters
                 .game_versions
@@ -154,12 +154,14 @@ pub async fn version_get(
     }
 }
 
-fn convert_version(data: database::models::version_item::QueryVersion) -> models::mods::Version {
-    use models::mods::VersionType;
+fn convert_version(
+    data: database::models::version_item::QueryVersion,
+) -> models::projects::Version {
+    use models::projects::VersionType;
 
-    models::mods::Version {
+    models::projects::Version {
         id: data.id.into(),
-        mod_id: data.mod_id.into(),
+        project_id: data.project_id.into(),
         author_id: data.author_id.into(),
 
         featured: data.featured,
@@ -180,7 +182,7 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
             .files
             .into_iter()
             .map(|f| {
-                models::mods::VersionFile {
+                models::projects::VersionFile {
                     url: f.url,
                     filename: f.filename,
                     // FIXME: Hashes are currently stored as an ascii byte slice instead
@@ -206,12 +208,12 @@ fn convert_version(data: database::models::version_item::QueryVersion) -> models
         game_versions: data
             .game_versions
             .into_iter()
-            .map(models::mods::GameVersion)
+            .map(models::projects::GameVersion)
             .collect(),
         loaders: data
             .loaders
             .into_iter()
-            .map(models::mods::ModLoader)
+            .map(models::projects::Loader)
             .collect(),
     }
 }
@@ -221,10 +223,10 @@ pub struct EditVersion {
     pub name: Option<String>,
     pub version_number: Option<String>,
     pub changelog: Option<String>,
-    pub version_type: Option<models::mods::VersionType>,
+    pub version_type: Option<models::projects::VersionType>,
     pub dependencies: Option<Vec<Dependency>>,
-    pub game_versions: Option<Vec<models::mods::GameVersion>>,
-    pub loaders: Option<Vec<models::mods::ModLoader>>,
+    pub game_versions: Option<Vec<models::projects::GameVersion>>,
+    pub loaders: Option<Vec<models::projects::Loader>>,
     pub featured: Option<bool>,
     pub primary_file: Option<(String, String)>,
 }
@@ -654,7 +656,7 @@ pub async fn download_version(
 
     let result = sqlx::query!(
         "
-        SELECT f.url url, f.id id, f.version_id version_id, v.mod_id mod_id FROM hashes h
+        SELECT f.url url, f.id id, f.version_id version_id, v.mod_id project_id FROM hashes h
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
         WHERE h.algorithm = $2 AND h.hash = $1
@@ -718,7 +720,7 @@ pub async fn download_version(
                     SET downloads = downloads + 1
                     WHERE id = $1
                     ",
-                    id.mod_id,
+                    id.project_id,
                 )
                 .execute(&**pool)
                 .await
@@ -748,7 +750,7 @@ pub async fn delete_file(
 
     let result = sqlx::query!(
         "
-        SELECT f.id id, f.version_id version_id, f.filename filename, v.version_number version_number, v.mod_id mod_id FROM hashes h
+        SELECT f.id id, f.version_id version_id, f.filename filename, v.version_number version_number, v.mod_id project_id FROM hashes h
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
         WHERE h.algorithm = $2 AND h.hash = $1
@@ -812,13 +814,14 @@ pub async fn delete_file(
         .await
         .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-        let mod_id: models::mods::ModId = database::models::ids::ModId(row.mod_id).into();
+        let project_id: models::projects::ProjectId =
+            database::models::ids::ProjectId(row.project_id).into();
         file_host
             .delete_file_version(
                 "",
                 &format!(
                     "data/{}/versions/{}/{}",
-                    mod_id, row.version_number, row.filename
+                    project_id, row.version_number, row.filename
                 ),
             )
             .await?;

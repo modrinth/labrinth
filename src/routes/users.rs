@@ -1,9 +1,9 @@
 use crate::auth::get_user_from_headers;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
-use crate::models::ids::ModId;
-use crate::models::mods::ModStatus;
+use crate::models::ids::ProjectId;
 use crate::models::notifications::Notification;
+use crate::models::projects::ProjectStatus;
 use crate::models::users::{Role, UserId};
 use crate::routes::notifications::convert_notification;
 use crate::routes::ApiError;
@@ -120,8 +120,8 @@ fn convert_user(data: crate::database::models::user_item::User) -> crate::models
     }
 }
 
-#[get("{user_id}/mods")]
-pub async fn mods_list(
+#[get("{user_id}/[projects]")]
+pub async fn projects_list(
     req: HttpRequest,
     info: web::Path<(UserId,)>,
     pool: web::Data<PgPool>,
@@ -142,26 +142,26 @@ pub async fn mods_list(
     if user_exists.unwrap_or(false) {
         let user_id: UserId = id.into();
 
-        let mod_data = if let Some(current_user) = user {
+        let project_data = if let Some(current_user) = user {
             if current_user.role.is_mod() || current_user.id == user_id {
-                User::get_mods_private(id, &**pool)
+                User::get_projects_private(id, &**pool)
                     .await
                     .map_err(|e| ApiError::DatabaseError(e.into()))?
             } else {
-                User::get_mods(id, ModStatus::Approved.as_str(), &**pool)
+                User::get_projects(id, ProjectStatus::Approved.as_str(), &**pool)
                     .await
                     .map_err(|e| ApiError::DatabaseError(e.into()))?
             }
         } else {
-            User::get_mods(id, ModStatus::Approved.as_str(), &**pool)
+            User::get_projects(id, ProjectStatus::Approved.as_str(), &**pool)
                 .await
                 .map_err(|e| ApiError::DatabaseError(e.into()))?
         };
 
-        let response = mod_data
+        let response = project_data
             .into_iter()
             .map(|v| v.into())
-            .collect::<Vec<crate::models::ids::ModId>>();
+            .collect::<Vec<crate::models::ids::ProjectId>>();
 
         Ok(HttpResponse::Ok().json(response))
     } else {
@@ -320,7 +320,7 @@ pub async fn user_icon_edit(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
-    if let Some(content_type) = super::mod_creation::get_image_content_type(&*ext.ext) {
+    if let Some(content_type) = super::project_creation::get_image_content_type(&*ext.ext) {
         let cdn_url = dotenv::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let id = info.into_inner().0;
@@ -376,7 +376,7 @@ pub async fn user_icon_edit(
             )
             .await?;
 
-        let mod_id: crate::database::models::ids::UserId = id.into();
+        let user_id: crate::database::models::ids::UserId = id.into();
         sqlx::query!(
             "
             UPDATE users
@@ -384,7 +384,7 @@ pub async fn user_icon_edit(
             WHERE (id = $2)
             ",
             format!("{}/{}", cdn_url, upload_data.file_name),
-            mod_id as crate::database::models::ids::UserId,
+            user_id as crate::database::models::ids::UserId,
         )
         .execute(&**pool)
         .await
@@ -453,14 +453,14 @@ pub async fn user_follows(
 
     if !user.role.is_mod() && user.id != id {
         return Err(ApiError::CustomAuthenticationError(
-            "You do not have permission to see the mods this user follows!".to_string(),
+            "You do not have permission to see the projects this user follows!".to_string(),
         ));
     }
 
     use futures::TryStreamExt;
 
     let user_id: crate::database::models::UserId = id.into();
-    let mods: Vec<ModId> = sqlx::query!(
+    let projects: Vec<ProjectId> = sqlx::query!(
         "
         SELECT mf.mod_id FROM mod_follows mf
         WHERE mf.follower_id = $1
@@ -468,12 +468,12 @@ pub async fn user_follows(
         user_id as crate::database::models::ids::UserId,
     )
     .fetch_many(&**pool)
-    .try_filter_map(|e| async { Ok(e.right().map(|m| ModId(m.mod_id as u64))) })
-    .try_collect::<Vec<ModId>>()
+    .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.mod_id as u64))) })
+    .try_collect::<Vec<ProjectId>>()
     .await
     .map_err(|e| ApiError::DatabaseError(e.into()))?;
 
-    Ok(HttpResponse::Ok().json(mods))
+    Ok(HttpResponse::Ok().json(projects))
 }
 
 #[get("{id}/notifications")]
@@ -487,7 +487,7 @@ pub async fn user_notifications(
 
     if !user.role.is_mod() && user.id != id {
         return Err(ApiError::CustomAuthenticationError(
-            "You do not have permission to see the mods this user follows!".to_string(),
+            "You do not have permission to see the notifications of this user!".to_string(),
         ));
     }
 

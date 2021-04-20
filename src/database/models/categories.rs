@@ -226,7 +226,7 @@ impl Loader {
         Ok(result)
     }
 
-    // TODO: remove loaders with mods using them
+    // TODO: remove loaders with projects using them
     pub async fn remove<'a, E>(name: &str, exec: E) -> Result<Option<()>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -867,7 +867,6 @@ impl ReportType {
         Ok(result)
     }
 
-    // TODO: remove loaders with mods using them
     pub async fn remove<'a, E>(name: &str, exec: E) -> Result<Option<()>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,

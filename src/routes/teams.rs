@@ -1,7 +1,7 @@
 use crate::auth::get_user_from_headers;
 use crate::database::models::notification_item::{NotificationActionBuilder, NotificationBuilder};
 use crate::database::models::TeamMember;
-use crate::models::ids::ModId;
+use crate::models::ids::ProjectId;
 use crate::models::teams::{Permissions, TeamId};
 use crate::models::users::UserId;
 use crate::routes::ApiError;
@@ -213,10 +213,10 @@ pub async fn add_team_member(
     NotificationBuilder {
         title: "You have been invited to join a team!".to_string(),
         text: format!(
-            "Team invite from {} to join the team for mod {}",
+            "Team invite from {} to join the team for project {}",
             current_user.username, result.title
         ),
-        link: format!("mod/{}", ModId(result.id as u64)),
+        link: format!("project/{}", ProjectId(result.id as u64)),
         actions: vec![
             NotificationActionBuilder {
                 title: "Accept".to_string(),

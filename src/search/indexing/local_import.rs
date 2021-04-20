@@ -2,7 +2,7 @@ use futures::{StreamExt, TryStreamExt};
 use log::info;
 
 use super::IndexingError;
-use crate::models::mods::SideType;
+use crate::models::projects::SideType;
 use crate::search::UploadSearchMod;
 use sqlx::postgres::PgPool;
 use std::borrow::Cow;
@@ -21,7 +21,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
 
     while let Some(result) = mods.next().await {
         if let Ok(mod_data) = result {
-            let status = crate::models::mods::ModStatus::from_str(
+            let status = crate::models::projects::ProjectStatus::from_str(
                 &sqlx::query!(
                     "
                 SELECT status FROM statuses
@@ -101,7 +101,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
                 icon_url = url;
             }
 
-            let mod_id = crate::models::ids::ModId(mod_data.id as u64);
+            let mod_id = crate::models::ids::ProjectId(mod_data.id as u64);
             let author_id = crate::models::ids::UserId(user.id as u64);
 
             // TODO: is this correct? This just gets the latest version of
@@ -175,7 +175,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchMod>, IndexingE
 }
 
 pub async fn query_one(
-    id: crate::database::models::ModId,
+    id: crate::database::models::ProjectId,
     exec: &mut sqlx::PgConnection,
 ) -> Result<UploadSearchMod, IndexingError> {
     let mod_data = sqlx::query!(
@@ -250,7 +250,7 @@ pub async fn query_one(
         icon_url = url;
     }
 
-    let mod_id = crate::models::ids::ModId(mod_data.id as u64);
+    let mod_id = crate::models::ids::ProjectId(mod_data.id as u64);
     let author_id = crate::models::ids::UserId(user.id as u64);
 
     // TODO: is this correct? This just gets the latest version of
