@@ -329,26 +329,6 @@
       ]
     }
   },
-  "1220d15a56dbf823eaa452fbafa17442ab0568bc81a31fa38e16e3df3278e5f9": {
-    "query": "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "exists",
-          "type_info": "Bool"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        null
-      ]
-    }
-  },
   "153100dc632392c4d446cc768235d071bac26a0818a4a72d203d8e549f969eea": {
     "query": "SELECT id FROM versions WHERE mod_id = $1 AND version_number = $2",
     "describe": {
@@ -727,6 +707,19 @@
       "parameters": {
         "Left": [
           "Int4",
+          "Int8"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "1ab781d26c93aa74bf90b78b74b99e50004d25d42d56b734e5e83f2333d0c0d2": {
+    "query": "\n                UPDATE users\n                SET avatar_url = $1\n                WHERE (id = $2)\n                ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
           "Int8"
         ]
       },
@@ -2472,17 +2465,24 @@
       ]
     }
   },
-  "7269f523a289e9d0dfe710074492e2eb547359e62d42234abed698871905edd6": {
-    "query": "\n            UPDATE users\n            SET avatar_url = $1\n            WHERE (id = $2)\n            ",
+  "72ad6f4be40d7620a0ec557e3806da41ce95335aeaa910fe35aca2ec7c3f09b6": {
+    "query": "\n                SELECT id FROM users\n                WHERE id = $1\n                ",
     "describe": {
-      "columns": [],
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
       "parameters": {
         "Left": [
-          "Varchar",
           "Int8"
         ]
       },
-      "nullable": []
+      "nullable": [
+        false
+      ]
     }
   },
   "72c1e6de8f2c8d89be030454eeab6d5c9695164af2ebfb8d7e94b2deee4f130d": {
@@ -2621,6 +2621,26 @@
       "nullable": []
     }
   },
+  "75a860ca8087536a9fcf932846341c8bd322d314231bb8acac124d1cea93270b": {
+    "query": "\n            SELECT mf.mod_id FROM mod_follows mf\n            WHERE mf.follower_id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "mod_id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "76db1c204139e18002e5751c3dcefff79791a1dd852b62d34fcf008151e8945a": {
     "query": "\n            SELECT id, short, name FROM donation_platforms\n            ",
     "describe": {
@@ -2718,26 +2738,6 @@
         "Left": [
           "Bytea",
           "Text"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
-  "7d760d046292b81a88c5551ce8cde776719ce9d647f04d2928c6f6c122a8ee70": {
-    "query": "\n        SELECT mf.mod_id FROM mod_follows mf\n        WHERE mf.follower_id = $1\n        ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "mod_id",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
         ]
       },
       "nullable": [
@@ -3488,6 +3488,26 @@
         false,
         true,
         false,
+        false
+      ]
+    }
+  },
+  "ac2d17b7d7147b14f072c15ffa214c14f32f27ffa6a3c2b2a5f80f3ad49ca5e9": {
+    "query": "\n                    SELECT id FROM users\n                    WHERE LOWER(username) = LOWER($1)\n                    ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
         false
       ]
     }
@@ -4901,6 +4921,26 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "f3a8ad4a802dde0eb9304078e0368066e7d48121dfe73a63b2911b0998840a79": {
+    "query": "\n                SELECT id FROM users\n                WHERE LOWER(username) = LOWER($1)\n                ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
     }
   },
   "f453b43772c4d2d9d09dc389eb95482cc75e7f0eaf9dc7ff48cf40f22f1497cc": {

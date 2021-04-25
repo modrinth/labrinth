@@ -439,4 +439,56 @@ impl User {
 
         Ok(Some(()))
     }
+
+    pub async fn get_id_from_username_or_id<'a, 'b, E>(
+        username_or_id: String,
+        executor: E,
+    ) -> Result<Option<UserId>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let id_option = crate::models::ids::base62_impl::parse_base62(&*username_or_id).ok();
+
+        if let Some(id) = id_option {
+            let id = UserId(id as i64);
+
+            let mut user_id = sqlx::query!(
+                "
+                SELECT id FROM users
+                WHERE id = $1
+                ",
+                id as UserId
+            )
+            .fetch_optional(executor)
+            .await?
+            .map(|x| UserId(x.id));
+
+            if user_id.is_none() {
+                user_id = sqlx::query!(
+                    "
+                    SELECT id FROM users
+                    WHERE LOWER(username) = LOWER($1)
+                    ",
+                    username_or_id
+                )
+                .fetch_optional(executor)
+                .await?
+                .map(|x| UserId(x.id));
+            }
+
+            Ok(user_id)
+        } else {
+            let id = sqlx::query!(
+                "
+                SELECT id FROM users
+                WHERE LOWER(username) = LOWER($1)
+                ",
+                username_or_id
+            )
+            .fetch_optional(executor)
+            .await?;
+
+            Ok(id.map(|x| UserId(x.id)))
+        }
+    }
 }

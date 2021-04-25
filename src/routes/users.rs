@@ -89,22 +89,16 @@ fn convert_user(data: crate::database::models::user_item::User) -> crate::models
 #[get("{user_id}/[projects]")]
 pub async fn projects_list(
     req: HttpRequest,
-    info: web::Path<(UserId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    let id: crate::database::models::UserId = info.into_inner().0.into();
+    let id_option =
+        crate::database::models::User::get_id_from_username_or_id(info.into_inner().0, &**pool)
+            .await?;
 
-    let user_exists = sqlx::query!(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
-        id as crate::database::models::UserId,
-    )
-    .fetch_one(&**pool)
-    .await?
-    .exists;
-
-    if user_exists.unwrap_or(false) {
+    if let Some(id) = id_option {
         let user_id: UserId = id.into();
 
         let project_data = if let Some(current_user) = user {
@@ -155,102 +149,110 @@ pub struct EditUser {
 #[patch("{id}")]
 pub async fn user_edit(
     req: HttpRequest,
-    info: web::Path<(UserId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     new_user: web::Json<EditUser>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    let user_id = info.into_inner().0;
-    let id: crate::database::models::ids::UserId = user_id.into();
+    let id_option =
+        crate::database::models::User::get_id_from_username_or_id(info.into_inner().0, &**pool)
+            .await?;
 
-    if user.id == user_id || user.role.is_mod() {
-        let mut transaction = pool.begin().await?;
+    if let Some(id) = id_option {
+        let user_id: UserId = id.into();
 
-        if let Some(username) = &new_user.username {
-            sqlx::query!(
-                "
+        if user.id == user_id || user.role.is_mod() {
+            let mut transaction = pool.begin().await?;
+
+            if let Some(username) = &new_user.username {
+                sqlx::query!(
+                    "
                     UPDATE users
                     SET username = $1
                     WHERE (id = $2)
                     ",
-                username,
-                id as crate::database::models::ids::UserId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
+                    username,
+                    id as crate::database::models::ids::UserId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
 
-        if let Some(name) = &new_user.name {
-            sqlx::query!(
-                "
+            if let Some(name) = &new_user.name {
+                sqlx::query!(
+                    "
                     UPDATE users
                     SET name = $1
                     WHERE (id = $2)
                     ",
-                name.as_deref(),
-                id as crate::database::models::ids::UserId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
+                    name.as_deref(),
+                    id as crate::database::models::ids::UserId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
 
-        if let Some(bio) = &new_user.bio {
-            sqlx::query!(
-                "
+            if let Some(bio) = &new_user.bio {
+                sqlx::query!(
+                    "
                     UPDATE users
                     SET bio = $1
                     WHERE (id = $2)
                     ",
-                bio.as_deref(),
-                id as crate::database::models::ids::UserId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
+                    bio.as_deref(),
+                    id as crate::database::models::ids::UserId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
 
-        if let Some(email) = &new_user.email {
-            sqlx::query!(
-                "
+            if let Some(email) = &new_user.email {
+                sqlx::query!(
+                    "
                     UPDATE users
                     SET email = $1
                     WHERE (id = $2)
                     ",
-                email.as_deref(),
-                id as crate::database::models::ids::UserId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
-
-        if let Some(role) = &new_user.role {
-            if !user.role.is_mod() {
-                return Err(ApiError::CustomAuthenticationError(
-                    "You do not have the permissions to edit the role of this user!".to_string(),
-                ));
+                    email.as_deref(),
+                    id as crate::database::models::ids::UserId,
+                )
+                .execute(&mut *transaction)
+                .await?;
             }
 
-            let role = Role::from_string(role).to_string();
+            if let Some(role) = &new_user.role {
+                if !user.role.is_mod() {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the role of this user!"
+                            .to_string(),
+                    ));
+                }
 
-            sqlx::query!(
-                "
+                let role = Role::from_string(role).to_string();
+
+                sqlx::query!(
+                    "
                     UPDATE users
                     SET role = $1
                     WHERE (id = $2)
                     ",
-                role,
-                id as crate::database::models::ids::UserId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
+                    role,
+                    id as crate::database::models::ids::UserId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
 
-        transaction.commit().await?;
-        Ok(HttpResponse::NoContent().body(""))
+            transaction.commit().await?;
+            Ok(HttpResponse::NoContent().body(""))
+        } else {
+            Err(ApiError::CustomAuthenticationError(
+                "You do not have permission to edit this user!".to_string(),
+            ))
+        }
     } else {
-        Err(ApiError::CustomAuthenticationError(
-            "You do not have permission to edit this user!".to_string(),
-        ))
+        Ok(HttpResponse::NotFound().body(""))
     }
 }
 
@@ -263,7 +265,7 @@ pub struct Extension {
 pub async fn user_icon_edit(
     web::Query(ext): web::Query<Extension>,
     req: HttpRequest,
-    info: web::Path<(UserId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
@@ -271,70 +273,79 @@ pub async fn user_icon_edit(
     if let Some(content_type) = super::project_creation::get_image_content_type(&*ext.ext) {
         let cdn_url = dotenv::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
-        let id = info.into_inner().0;
+        let id_option =
+            crate::database::models::User::get_id_from_username_or_id(info.into_inner().0, &**pool)
+                .await?;
 
-        if user.id != id && !user.role.is_mod() {
-            return Err(ApiError::CustomAuthenticationError(
-                "You don't have permission to edit this user's icon.".to_string(),
-            ));
-        }
-
-        let mut icon_url = user.avatar_url;
-
-        if user.id != id {
-            let new_user = User::get(id.into(), &**pool).await?;
-
-            if let Some(new) = new_user {
-                icon_url = new.avatar_url;
-            } else {
-                return Ok(HttpResponse::NotFound().body(""));
+        if let Some(id) = id_option {
+            if user.id != id.into() && !user.role.is_mod() {
+                return Err(ApiError::CustomAuthenticationError(
+                    "You don't have permission to edit this user's icon.".to_string(),
+                ));
             }
-        }
 
-        if let Some(icon) = icon_url {
-            if icon.starts_with(&cdn_url) {
-                let name = icon.split('/').next();
+            let mut icon_url = user.avatar_url;
 
-                if let Some(icon_path) = name {
-                    file_host.delete_file_version("", icon_path).await?;
+            let user_id: UserId = id.into();
+
+            if user.id != user_id {
+                let new_user = User::get(id.into(), &**pool).await?;
+
+                if let Some(new) = new_user {
+                    icon_url = new.avatar_url;
+                } else {
+                    return Ok(HttpResponse::NotFound().body(""));
                 }
             }
-        }
 
-        let mut bytes = web::BytesMut::new();
-        while let Some(item) = payload.next().await {
-            bytes.extend_from_slice(&item.map_err(|_| {
-                ApiError::InvalidInputError("Unable to parse bytes in payload sent!".to_string())
-            })?);
-        }
+            if let Some(icon) = icon_url {
+                if icon.starts_with(&cdn_url) {
+                    let name = icon.split('/').next();
 
-        if bytes.len() >= 262144 {
-            return Err(ApiError::InvalidInputError(String::from(
-                "Icons must be smaller than 256KiB",
-            )));
-        }
+                    if let Some(icon_path) = name {
+                        file_host.delete_file_version("", icon_path).await?;
+                    }
+                }
+            }
 
-        let upload_data = file_host
-            .upload_file(
-                content_type,
-                &format!("user/{}/icon.{}", id, ext.ext),
-                bytes.to_vec(),
+            let mut bytes = web::BytesMut::new();
+            while let Some(item) = payload.next().await {
+                bytes.extend_from_slice(&item.map_err(|_| {
+                    ApiError::InvalidInputError(
+                        "Unable to parse bytes in payload sent!".to_string(),
+                    )
+                })?);
+            }
+
+            if bytes.len() >= 262144 {
+                return Err(ApiError::InvalidInputError(String::from(
+                    "Icons must be smaller than 256KiB",
+                )));
+            }
+
+            let upload_data = file_host
+                .upload_file(
+                    content_type,
+                    &format!("user/{}/icon.{}", user_id, ext.ext),
+                    bytes.to_vec(),
+                )
+                .await?;
+
+            sqlx::query!(
+                "
+                UPDATE users
+                SET avatar_url = $1
+                WHERE (id = $2)
+                ",
+                format!("{}/{}", cdn_url, upload_data.file_name),
+                id as crate::database::models::ids::UserId,
             )
+            .execute(&**pool)
             .await?;
-
-        let user_id: crate::database::models::ids::UserId = id.into();
-        sqlx::query!(
-            "
-            UPDATE users
-            SET avatar_url = $1
-            WHERE (id = $2)
-            ",
-            format!("{}/{}", cdn_url, upload_data.file_name),
-            user_id as crate::database::models::ids::UserId,
-        )
-        .execute(&**pool)
-        .await?;
-        Ok(HttpResponse::NoContent().body(""))
+            Ok(HttpResponse::NoContent().body(""))
+        } else {
+            Ok(HttpResponse::NotFound().body(""))
+        }
     } else {
         Err(ApiError::InvalidInputError(format!(
             "Invalid format for user icon: {}",
@@ -356,28 +367,34 @@ fn default_removal() -> String {
 #[delete("{id}")]
 pub async fn user_delete(
     req: HttpRequest,
-    info: web::Path<(UserId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     removal_type: web::Query<RemovalType>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id = info.into_inner().0;
+    let id_option =
+        crate::database::models::User::get_id_from_username_or_id(info.into_inner().0, &**pool)
+            .await?;
 
-    if !user.role.is_mod() && user.id != id {
-        return Err(ApiError::CustomAuthenticationError(
-            "You do not have permission to delete this user!".to_string(),
-        ));
-    }
+    if let Some(id) = id_option {
+        if !user.role.is_mod() && user.id != id.into() {
+            return Err(ApiError::CustomAuthenticationError(
+                "You do not have permission to delete this user!".to_string(),
+            ));
+        }
 
-    let result;
-    if &*removal_type.removal_type == "full" {
-        result = crate::database::models::User::remove_full(id.into(), &**pool).await?;
-    } else {
-        result = crate::database::models::User::remove(id.into(), &**pool).await?;
-    };
+        let result;
+        if &*removal_type.removal_type == "full" {
+            result = crate::database::models::User::remove_full(id, &**pool).await?;
+        } else {
+            result = crate::database::models::User::remove(id, &**pool).await?;
+        };
 
-    if result.is_some() {
-        Ok(HttpResponse::NoContent().body(""))
+        if result.is_some() {
+            Ok(HttpResponse::NoContent().body(""))
+        } else {
+            Ok(HttpResponse::NotFound().body(""))
+        }
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -386,57 +403,68 @@ pub async fn user_delete(
 #[get("{id}/follows")]
 pub async fn user_follows(
     req: HttpRequest,
-    info: web::Path<(UserId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id = info.into_inner().0;
+    let id_option =
+        crate::database::models::User::get_id_from_username_or_id(info.into_inner().0, &**pool)
+            .await?;
 
-    if !user.role.is_mod() && user.id != id {
-        return Err(ApiError::CustomAuthenticationError(
-            "You do not have permission to see the projects this user follows!".to_string(),
-        ));
+    if let Some(id) = id_option {
+        if !user.role.is_mod() && user.id != id.into() {
+            return Err(ApiError::CustomAuthenticationError(
+                "You do not have permission to see the projects this user follows!".to_string(),
+            ));
+        }
+
+        use futures::TryStreamExt;
+
+        let projects: Vec<ProjectId> = sqlx::query!(
+            "
+            SELECT mf.mod_id FROM mod_follows mf
+            WHERE mf.follower_id = $1
+            ",
+            id as crate::database::models::ids::UserId,
+        )
+        .fetch_many(&**pool)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.mod_id as u64))) })
+        .try_collect::<Vec<ProjectId>>()
+        .await?;
+
+        Ok(HttpResponse::Ok().json(projects))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
     }
-
-    use futures::TryStreamExt;
-
-    let user_id: crate::database::models::UserId = id.into();
-    let projects: Vec<ProjectId> = sqlx::query!(
-        "
-        SELECT mf.mod_id FROM mod_follows mf
-        WHERE mf.follower_id = $1
-        ",
-        user_id as crate::database::models::ids::UserId,
-    )
-    .fetch_many(&**pool)
-    .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.mod_id as u64))) })
-    .try_collect::<Vec<ProjectId>>()
-    .await?;
-
-    Ok(HttpResponse::Ok().json(projects))
 }
 
 #[get("{id}/notifications")]
 pub async fn user_notifications(
     req: HttpRequest,
-    info: web::Path<(UserId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id = info.into_inner().0;
+    let id_option =
+        crate::database::models::User::get_id_from_username_or_id(info.into_inner().0, &**pool)
+            .await?;
 
-    if !user.role.is_mod() && user.id != id {
-        return Err(ApiError::CustomAuthenticationError(
-            "You do not have permission to see the notifications of this user!".to_string(),
-        ));
+    if let Some(id) = id_option {
+        if !user.role.is_mod() && user.id != id.into() {
+            return Err(ApiError::CustomAuthenticationError(
+                "You do not have permission to see the notifications of this user!".to_string(),
+            ));
+        }
+
+        let notifications: Vec<Notification> =
+            crate::database::models::notification_item::Notification::get_many_user(id, &**pool)
+                .await?
+                .into_iter()
+                .map(convert_notification)
+                .collect();
+
+        Ok(HttpResponse::Ok().json(notifications))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
     }
-
-    let notifications: Vec<Notification> =
-        crate::database::models::notification_item::Notification::get_many_user(id.into(), &**pool)
-            .await?
-            .into_iter()
-            .map(convert_notification)
-            .collect();
-
-    Ok(HttpResponse::Ok().json(notifications))
 }
