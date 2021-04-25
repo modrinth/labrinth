@@ -1248,26 +1248,6 @@
       ]
     }
   },
-  "3135db1c5309dac7580a731b2829397ae7bdd6c9a67b21e813f26a4f5aa251a9": {
-    "query": "\n                SELECT status FROM statuses\n                WHERE id = $1\n                ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "status",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
   "31853f131eaeb2aaedc2bcc27da387462408409af810337f6a8ef397f674fb44": {
     "query": "\n        SELECT DISTINCT loaders.loader FROM versions\n        INNER JOIN loaders_versions lv ON lv.version_id = versions.id\n        INNER JOIN loaders ON loaders.id = lv.loader_id\n        WHERE versions.mod_id = $1\n        ",
     "describe": {
@@ -1435,6 +1415,26 @@
       "nullable": []
     }
   },
+  "3fdece422b1c54bc0853fa3ddbb4c1d1a45ac7723c906544ea9b4f69e5b29dc1": {
+    "query": "\n                    SELECT name FROM side_types\n                    WHERE id = $1\n                    ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "name",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "413762398111e04074a2d8a1e4e03ed362b9167d397947f8d14e5ae330e3de0b": {
     "query": "\n                    UPDATE versions\n                    SET downloads = downloads + 1\n                    WHERE id = $1\n                    ",
     "describe": {
@@ -1445,6 +1445,26 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "43660c74ef6a72b3fc68006a2f743737f1e4973788a5c954ffeaac151c16d0c1": {
+    "query": "\n                    SELECT status FROM statuses\n                    WHERE id = $1\n                    ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "status",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": [
+        false
+      ]
     }
   },
   "43b793e2df30a6ace9e037e38bb4ea456656cfbe276c151e3a9e0a408d2c249f": {
@@ -1624,26 +1644,6 @@
       },
       "nullable": [
         false
-      ]
-    }
-  },
-  "4c9e2190e2a68ffc093a69aaa1fc9384957138f57ac9cd85cbc6179613c13a08": {
-    "query": "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "exists",
-          "type_info": "Bool"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        null
       ]
     }
   },
@@ -3186,26 +3186,6 @@
       "nullable": []
     }
   },
-  "97143e41c18d191d09d244113b7b6cdf5bd6ab89c62ac46d0980d700ab288f48": {
-    "query": "\n                SELECT name FROM side_types\n                WHERE id = $1\n                ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "name",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
   "97690dda7edea8c985891cae5ad405f628ed81e333bc88df5493c928a4324d43": {
     "query": "SELECT EXISTS(SELECT 1 FROM reports WHERE id=$1)",
     "describe": {
@@ -3223,6 +3203,26 @@
       },
       "nullable": [
         null
+      ]
+    }
+  },
+  "9985165594f04fb1d68e2e415a996b6553e8b5c91f121df3a9194806df10a197": {
+    "query": "\n            SELECT name FROM side_types\n            WHERE id = $1\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "name",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": [
+        false
       ]
     }
   },

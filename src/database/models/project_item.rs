@@ -434,6 +434,74 @@ impl Project {
         }
     }
 
+    pub async fn get_from_slug<'a, 'b, E>(
+        slug: &str,
+        executor: E,
+    ) -> Result<Option<Project>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let id = sqlx::query!(
+            "
+                SELECT id FROM mods
+                WHERE LOWER(slug) = LOWER($1)
+                ",
+            slug
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        if let Some(project_id) = id {
+            Project::get(ProjectId(project_id.id), executor).await
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn get_from_slug_or_project_id<'a, 'b, E>(
+        slug_or_project_id: String,
+        executor: E,
+    ) -> Result<Option<Project>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let id_option = crate::models::ids::base62_impl::parse_base62(&*slug_or_project_id).ok();
+
+        if let Some(id) = id_option {
+            let mut project = Project::get(ProjectId(id as i64), executor).await?;
+
+            if project.is_none() {
+                project = Project::get_from_slug(&slug_or_project_id, executor).await?;
+            }
+
+            Ok(project)
+        } else {
+            Project::get_from_slug(&slug_or_project_id, executor).await
+        }
+    }
+
+    pub async fn get_full_from_slug_or_project_id<'a, 'b, E>(
+        slug_or_project_id: String,
+        executor: E,
+    ) -> Result<Option<QueryProject>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let id_option = crate::models::ids::base62_impl::parse_base62(&*slug_or_project_id).ok();
+
+        if let Some(id) = id_option {
+            let mut project = Project::get_full(ProjectId(id as i64), executor).await?;
+
+            if project.is_none() {
+                project = Project::get_full_from_slug(&slug_or_project_id, executor).await?;
+            }
+
+            Ok(project)
+        } else {
+            Project::get_full_from_slug(&slug_or_project_id, executor).await
+        }
+    }
+
     pub async fn get_full<'a, 'b, E>(
         id: ProjectId,
         executor: E,
@@ -590,7 +658,6 @@ impl Project {
 
 pub struct QueryProject {
     pub inner: Project,
-
     pub categories: Vec<String>,
     pub versions: Vec<VersionId>,
     pub donation_urls: Vec<DonationUrl>,

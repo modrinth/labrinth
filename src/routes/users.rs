@@ -18,16 +18,8 @@ pub async fn user_auth_get(
     req: HttpRequest,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().json(
-        get_user_from_headers(
-            req.headers(),
-            &mut *pool
-                .acquire()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?,
-        )
-        .await?,
-    ))
+    Ok(HttpResponse::Ok()
+        .json(get_user_from_headers(req.headers(), &mut *pool.acquire().await?).await?))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -45,31 +37,11 @@ pub async fn users_get(
         .map(|x| x.into())
         .collect();
 
-    let users_data = User::get_many(user_ids, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let users_data = User::get_many(user_ids, &**pool).await?;
 
     let users: Vec<crate::models::users::User> = users_data.into_iter().map(convert_user).collect();
 
     Ok(HttpResponse::Ok().json(users))
-}
-
-#[get("@{id}")]
-pub async fn user_username_get(
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0;
-    let user_data = User::get_from_username(id, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-    if let Some(data) = user_data {
-        let response = convert_user(data);
-        Ok(HttpResponse::Ok().json(response))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
 }
 
 #[get("{id}")]
@@ -83,19 +55,13 @@ pub async fn user_get(
     let mut user_data;
 
     if let Some(id) = id_option {
-        user_data = User::get(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        user_data = User::get(id.into(), &**pool).await?;
 
         if user_data.is_none() {
-            user_data = User::get_from_username(string, &**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            user_data = User::get_from_username(string, &**pool).await?;
         }
     } else {
-        user_data = User::get_from_username(string, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        user_data = User::get_from_username(string, &**pool).await?;
     }
 
     if let Some(data) = user_data {
@@ -135,8 +101,7 @@ pub async fn projects_list(
         id as crate::database::models::UserId,
     )
     .fetch_one(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?
+    .await?
     .exists;
 
     if user_exists.unwrap_or(false) {
@@ -144,18 +109,12 @@ pub async fn projects_list(
 
         let project_data = if let Some(current_user) = user {
             if current_user.role.is_mod() || current_user.id == user_id {
-                User::get_projects_private(id, &**pool)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?
+                User::get_projects_private(id, &**pool).await?
             } else {
-                User::get_projects(id, ProjectStatus::Approved.as_str(), &**pool)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?
+                User::get_projects(id, ProjectStatus::Approved.as_str(), &**pool).await?
             }
         } else {
-            User::get_projects(id, ProjectStatus::Approved.as_str(), &**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?
+            User::get_projects(id, ProjectStatus::Approved.as_str(), &**pool).await?
         };
 
         let response = project_data
@@ -206,10 +165,7 @@ pub async fn user_edit(
     let id: crate::database::models::ids::UserId = user_id.into();
 
     if user.id == user_id || user.role.is_mod() {
-        let mut transaction = pool
-            .begin()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        let mut transaction = pool.begin().await?;
 
         if let Some(username) = &new_user.username {
             sqlx::query!(
@@ -222,8 +178,7 @@ pub async fn user_edit(
                 id as crate::database::models::ids::UserId,
             )
             .execute(&mut *transaction)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            .await?;
         }
 
         if let Some(name) = &new_user.name {
@@ -237,8 +192,7 @@ pub async fn user_edit(
                 id as crate::database::models::ids::UserId,
             )
             .execute(&mut *transaction)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            .await?;
         }
 
         if let Some(bio) = &new_user.bio {
@@ -252,8 +206,7 @@ pub async fn user_edit(
                 id as crate::database::models::ids::UserId,
             )
             .execute(&mut *transaction)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            .await?;
         }
 
         if let Some(email) = &new_user.email {
@@ -267,8 +220,7 @@ pub async fn user_edit(
                 id as crate::database::models::ids::UserId,
             )
             .execute(&mut *transaction)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            .await?;
         }
 
         if let Some(role) = &new_user.role {
@@ -290,15 +242,11 @@ pub async fn user_edit(
                 id as crate::database::models::ids::UserId,
             )
             .execute(&mut *transaction)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            .await?;
         }
 
-        transaction
-            .commit()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
-        Ok(HttpResponse::Ok().body(""))
+        transaction.commit().await?;
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Err(ApiError::CustomAuthenticationError(
             "You do not have permission to edit this user!".to_string(),
@@ -334,9 +282,7 @@ pub async fn user_icon_edit(
         let mut icon_url = user.avatar_url;
 
         if user.id != id {
-            let new_user = User::get(id.into(), &**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            let new_user = User::get(id.into(), &**pool).await?;
 
             if let Some(new) = new_user {
                 icon_url = new.avatar_url;
@@ -387,9 +333,8 @@ pub async fn user_icon_edit(
             user_id as crate::database::models::ids::UserId,
         )
         .execute(&**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
-        Ok(HttpResponse::Ok().body(""))
+        .await?;
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Err(ApiError::InvalidInputError(format!(
             "Invalid format for user icon: {}",
@@ -426,17 +371,13 @@ pub async fn user_delete(
 
     let result;
     if &*removal_type.removal_type == "full" {
-        result = crate::database::models::User::remove_full(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        result = crate::database::models::User::remove_full(id.into(), &**pool).await?;
     } else {
-        result = crate::database::models::User::remove(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        result = crate::database::models::User::remove(id.into(), &**pool).await?;
     };
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -470,8 +411,7 @@ pub async fn user_follows(
     .fetch_many(&**pool)
     .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.mod_id as u64))) })
     .try_collect::<Vec<ProjectId>>()
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     Ok(HttpResponse::Ok().json(projects))
 }
@@ -493,8 +433,7 @@ pub async fn user_notifications(
 
     let notifications: Vec<Notification> =
         crate::database::models::notification_item::Notification::get_many_user(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .await?
             .into_iter()
             .map(convert_notification)
             .collect();

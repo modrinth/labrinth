@@ -22,14 +22,13 @@ pub use self::index::index_get;
 pub use self::not_found::not_found;
 use crate::file_hosting::FileHostingError;
 
-pub fn mods_config(cfg: &mut web::ServiceConfig) {
+pub fn projects_config(cfg: &mut web::ServiceConfig) {
     cfg.service(projects::project_search);
     cfg.service(projects::projects_get);
     cfg.service(project_creation::project_create);
 
     cfg.service(
         web::scope("project")
-            .service(projects::project_slug_get)
             .service(projects::project_get)
             .service(projects::project_delete)
             .service(projects::project_edit)
@@ -69,7 +68,6 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
     cfg.service(users::users_get);
     cfg.service(
         web::scope("user")
-            .service(users::user_username_get)
             .service(users::user_get)
             .service(users::projects_list)
             .service(users::user_delete)
@@ -117,8 +115,10 @@ pub enum ApiError {
     EnvError(#[from] dotenv::Error),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
-    #[error("Internal server error: {0}")]
+    #[error("Database Error: {0}")]
     DatabaseError(#[from] crate::database::models::DatabaseError),
+    #[error("Database Error: {0}")]
+    SqlxDatabaseError(#[from] sqlx::Error),
     #[error("Internal server error: {0}")]
     XmlError(String),
     #[error("Deserialization error: {0}")]
@@ -140,6 +140,7 @@ impl actix_web::ResponseError for ApiError {
         match self {
             ApiError::EnvError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::DatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::SqlxDatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::AuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::CustomAuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::XmlError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -156,6 +157,7 @@ impl actix_web::ResponseError for ApiError {
             crate::models::error::ApiError {
                 error: match self {
                     ApiError::EnvError(..) => "environment_error",
+                    ApiError::SqlxDatabaseError(..) => "database_error",
                     ApiError::DatabaseError(..) => "database_error",
                     ApiError::AuthenticationError(..) => "unauthorized",
                     ApiError::CustomAuthenticationError(..) => "unauthorized",

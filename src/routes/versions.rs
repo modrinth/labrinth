@@ -20,22 +20,17 @@ pub struct VersionListFilters {
 
 #[get("version")]
 pub async fn version_list(
-    info: web::Path<(models::ids::ProjectId,)>,
+    info: web::Path<(String,)>,
     web::Query(filters): web::Query<VersionListFilters>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0.into();
+    let string = info.into_inner().0;
 
-    let project_exists = sqlx::query!(
-        "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)",
-        id as database::models::ProjectId,
-    )
-    .fetch_one(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?
-    .exists;
+    let result = database::models::Project::get_from_slug_or_project_id(string, &**pool).await?;
 
-    if project_exists.unwrap_or(false) {
+    if let Some(project) = result {
+        let id = project.id;
+
         let version_ids = database::models::Version::get_project_versions(
             id,
             filters
@@ -48,12 +43,9 @@ pub async fn version_list(
                 .map(|x| serde_json::from_str(x).unwrap_or_default()),
             &**pool,
         )
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
-        let mut versions = database::models::Version::get_many_full(version_ids, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        let mut versions = database::models::Version::get_many_full(version_ids, &**pool).await?;
 
         let mut response = versions
             .iter()
@@ -124,9 +116,7 @@ pub async fn versions_get(
         .into_iter()
         .map(|x| x.into())
         .collect();
-    let versions_data = database::models::Version::get_many_full(version_ids, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let versions_data = database::models::Version::get_many_full(version_ids, &**pool).await?;
 
     let mut versions = Vec::new();
 
@@ -143,9 +133,7 @@ pub async fn version_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let version_data = database::models::Version::get_full(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let version_data = database::models::Version::get_full(id.into(), &**pool).await?;
 
     if let Some(data) = version_data {
         Ok(HttpResponse::Ok().json(convert_version(data)))
@@ -243,9 +231,7 @@ pub async fn version_edit(
     let version_id = info.into_inner().0;
     let id = version_id.into();
 
-    let result = database::models::Version::get_full(id, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let result = database::models::Version::get_full(id, &**pool).await?;
 
     if let Some(version_item) = result {
         let team_member = database::models::TeamMember::get_from_user_id_version(
@@ -271,10 +257,7 @@ pub async fn version_edit(
                 ));
             }
 
-            let mut transaction = pool
-                .begin()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            let mut transaction = pool.begin().await?;
 
             if let Some(name) = &new_version.name {
                 if name.len() > 256 || name.len() < 3 {
@@ -293,8 +276,7 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(number) = &new_version.version_number {
@@ -314,8 +296,7 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(version_type) = &new_version.version_type {
@@ -340,8 +321,7 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(dependencies) = &new_version.dependencies {
@@ -352,8 +332,7 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 for dependency in dependencies {
                     let dependency_id: database::models::ids::VersionId =
@@ -369,8 +348,7 @@ pub async fn version_edit(
                         dependency.dependency_type.as_str()
                     )
                     .execute(&mut *transaction)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                    .await?;
                 }
             }
 
@@ -382,8 +360,7 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 for game_version in game_versions {
                     let game_version_id = database::models::categories::GameVersion::get_id(
@@ -406,8 +383,7 @@ pub async fn version_edit(
                         id as database::models::ids::VersionId,
                     )
                     .execute(&mut *transaction)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                    .await?;
                 }
             }
 
@@ -419,8 +395,7 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 for loader in loaders {
                     let loader_id =
@@ -441,8 +416,7 @@ pub async fn version_edit(
                         id as database::models::ids::VersionId,
                     )
                     .execute(&mut *transaction)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                    .await?;
                 }
             }
 
@@ -457,8 +431,7 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(primary_file) = &new_version.primary_file {
@@ -472,8 +445,7 @@ pub async fn version_edit(
                     primary_file.0
                 )
                 .fetch_optional(&**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?
+                .await?
                 .ok_or_else(|| {
                     ApiError::InvalidInputError(format!(
                         "Specified file with hash {} does not exist.",
@@ -490,8 +462,7 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 sqlx::query!(
                     "
@@ -502,8 +473,7 @@ pub async fn version_edit(
                     result.id,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(body) = &new_version.changelog {
@@ -524,15 +494,11 @@ pub async fn version_edit(
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
-            transaction
-                .commit()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
-            Ok(HttpResponse::Ok().body(""))
+            transaction.commit().await?;
+            Ok(HttpResponse::NoContent().body(""))
         } else {
             Err(ApiError::CustomAuthenticationError(
                 "You do not have permission to edit this version!".to_string(),
@@ -576,12 +542,10 @@ pub async fn version_delete(
         }
     }
 
-    let result = database::models::Version::remove_full(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let result = database::models::Version::remove_full(id.into(), &**pool).await?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -616,16 +580,14 @@ pub async fn get_version_from_hash(
         algorithm.algorithm
     )
     .fetch_optional(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     if let Some(id) = result {
         let version_data = database::models::Version::get_full(
             database::models::VersionId(id.version_id),
             &**pool,
         )
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
         if let Some(data) = version_data {
             Ok(HttpResponse::Ok().json(convert_version(data)))
@@ -665,8 +627,7 @@ pub async fn download_version(
         algorithm.algorithm
     )
     .fetch_optional(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     if let Some(id) = result {
         let real_ip = req.connection_info();
@@ -682,7 +643,7 @@ pub async fn download_version(
             )
                 .fetch_one(&**pool)
                 .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?
+                ?
                 .exists.unwrap_or(false);
 
             if !download_exists {
@@ -699,8 +660,7 @@ pub async fn download_version(
                     hash
                 )
                 .execute(&**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 sqlx::query!(
                     "
@@ -711,8 +671,7 @@ pub async fn download_version(
                     id.version_id,
                 )
                 .execute(&**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 sqlx::query!(
                     "
@@ -723,8 +682,7 @@ pub async fn download_version(
                     id.project_id,
                 )
                 .execute(&**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
         }
         Ok(HttpResponse::TemporaryRedirect()
@@ -760,7 +718,7 @@ pub async fn delete_file(
     )
     .fetch_optional(&**pool)
     .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    ?;
 
     if let Some(row) = result {
         if !user.role.is_mod() {
@@ -787,10 +745,7 @@ pub async fn delete_file(
             }
         }
 
-        let mut transaction = pool
-            .begin()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        let mut transaction = pool.begin().await?;
 
         sqlx::query!(
             "
@@ -800,8 +755,7 @@ pub async fn delete_file(
             row.id
         )
         .execute(&mut *transaction)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
         sqlx::query!(
             "
@@ -811,8 +765,7 @@ pub async fn delete_file(
             row.id,
         )
         .execute(&mut *transaction)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
         let project_id: models::projects::ProjectId =
             database::models::ids::ProjectId(row.project_id).into();
@@ -826,12 +779,9 @@ pub async fn delete_file(
             )
             .await?;
 
-        transaction
-            .commit()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        transaction.commit().await?;
 
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

@@ -21,10 +21,7 @@ pub async fn report_create(
     pool: web::Data<PgPool>,
     mut body: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
-    let mut transaction = pool
-        .begin()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let mut transaction = pool.begin().await?;
 
     let current_user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
@@ -80,14 +77,8 @@ pub async fn report_create(
         }
     }
 
-    report
-        .insert(&mut transaction)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
-    transaction
-        .commit()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    report.insert(&mut transaction).await?;
+    transaction.commit().await?;
 
     Ok(HttpResponse::Ok().json(Report {
         id: id.into(),
@@ -134,12 +125,10 @@ pub async fn reports(
             .map(|m| crate::database::models::ids::ReportId(m.id)))
     })
     .try_collect::<Vec<crate::database::models::ids::ReportId>>()
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
-    let query_reports = crate::database::models::report_item::Report::get_many(report_ids, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let query_reports =
+        crate::database::models::report_item::Report::get_many(report_ids, &**pool).await?;
 
     let mut reports = Vec::new();
 
@@ -184,11 +173,10 @@ pub async fn delete_report(
         info.into_inner().0.into(),
         &**pool,
     )
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

@@ -7,7 +7,7 @@ use env_logger::Env;
 use gumdrop::Options;
 use log::{error, info, warn};
 use rand::Rng;
-use search::indexing::index_mods;
+use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
 
@@ -159,13 +159,10 @@ async fn main() -> std::io::Result<()> {
                 return;
             }
             info!("Indexing local database");
-            let settings = IndexingSettings {
-                index_local: true,
-                index_external: false,
-            };
-            let result = index_mods(pool_ref, settings, &thread_search_config).await;
+            let settings = IndexingSettings { index_local: true };
+            let result = index_projects(pool_ref, settings, &thread_search_config).await;
             if let Err(e) = result {
-                warn!("Local mod indexing failed: {:?}", e);
+                warn!("Local project indexing failed: {:?}", e);
             }
             info!("Done indexing local database");
         }
@@ -230,12 +227,12 @@ async fn main() -> std::io::Result<()> {
             if local_skip {
                 return;
             }
-            info!("Indexing created mod queue");
+            info!("Indexing created project queue");
             let result = search::indexing::queue::index_queue(&*queue, &thread_search_config).await;
             if let Err(e) = result {
-                warn!("Indexing created mods failed: {:?}", e);
+                warn!("Indexing created projects failed: {:?}", e);
             }
-            info!("Done indexing created mod queue");
+            info!("Done indexing created project queue");
         }
     });
 
@@ -300,10 +297,10 @@ async fn main() -> std::io::Result<()> {
             .data(ip_salt.clone())
             .service(routes::index_get)
             .service(
-                web::scope("/api/v1/")
+                web::scope("/v1/")
                     .configure(routes::auth_config)
                     .configure(routes::tags_config)
-                    .configure(routes::mods_config)
+                    .configure(routes::projects_config)
                     .configure(routes::versions_config)
                     .configure(routes::teams_config)
                     .configure(routes::users_config)

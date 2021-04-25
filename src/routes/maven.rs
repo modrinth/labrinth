@@ -55,18 +55,9 @@ pub async fn maven_metadata(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
-    let id_option: Option<ProjectId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let project_data = if let Some(id) = id_option {
-        match database::models::Project::get_full(id.into(), &**pool).await {
-            Ok(Some(data)) => Ok(Some(data)),
-            Ok(None) => database::models::Project::get_full_from_slug(&string, &**pool).await,
-            Err(e) => Err(e),
-        }
-    } else {
-        database::models::Project::get_full_from_slug(&string, &**pool).await
-    }
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let project_data =
+        database::models::Project::get_full_from_slug_or_project_id(string, &**pool).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -91,8 +82,7 @@ pub async fn maven_metadata(
                     user_id as database::models::ids::UserId,
                 )
                 .fetch_one(&**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?
+                .await?
                 .exists;
 
                 authorized = project_exists.unwrap_or(false);
@@ -113,12 +103,13 @@ pub async fn maven_metadata(
         data.inner.id as database::models::ids::ProjectId
     )
     .fetch_all(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
+
+    let project_id: ProjectId = data.inner.id.into();
 
     let respdata = Metadata {
         group_id: "maven.modrinth".to_string(),
-        artifact_id: string,
+        artifact_id: format!("{}", project_id),
         versioning: Versioning {
             latest: version_names
                 .last()
@@ -141,7 +132,7 @@ pub async fn maven_metadata(
 
     Ok(HttpResponse::Ok()
         .content_type("text/xml")
-        .body(yaserde::ser::to_string(&respdata).map_err(|e| ApiError::XmlError(e))?))
+        .body(yaserde::ser::to_string(&respdata).map_err(ApiError::XmlError)?))
 }
 
 #[get("maven/modrinth/{id}/{versionnum}/{file}")]
@@ -160,8 +151,7 @@ pub async fn version_file(
         }
     } else {
         database::models::Project::get_full_from_slug(&string, &**pool).await
-    }
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    }?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -186,8 +176,7 @@ pub async fn version_file(
                     user_id as database::models::ids::UserId,
                 )
                 .fetch_one(&**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?
+                .await?
                 .exists;
 
                 authorized = project_exists.unwrap_or(false);
@@ -205,8 +194,7 @@ pub async fn version_file(
         vnum
     )
     .fetch_optional(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?
+    .await?
     {
         vid
     } else {
@@ -215,8 +203,7 @@ pub async fn version_file(
 
     let version = if let Some(version) =
         database::models::Version::get_full(database::models::ids::VersionId(vid.id), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
+            .await?
     {
         version
     } else {
@@ -238,19 +225,17 @@ pub async fn version_file(
         };
         return Ok(HttpResponse::Ok()
             .content_type("text/xml")
-            .body(yaserde::ser::to_string(&respdata).map_err(|e| ApiError::XmlError(e))?));
-    } else {
-        if let Some(selected_file) = version.files.iter().find(|x| x.filename == file) {
+            .body(yaserde::ser::to_string(&respdata).map_err(ApiError::XmlError)?));
+    } else if let Some(selected_file) = version.files.iter().find(|x| x.filename == file) {
+        return Ok(HttpResponse::TemporaryRedirect()
+            .header("Location", &*selected_file.url)
+            .body(""));
+    } else if file == format!("{}-{}.jar", &string, &version.version_number) {
+        if let Some(selected_file) = version.files.iter().last() {
             return Ok(HttpResponse::TemporaryRedirect()
                 .header("Location", &*selected_file.url)
                 .body(""));
-        } else if file == format!("{}-{}.jar", &string, &version.version_number) {
-            if let Some(selected_file) = version.files.iter().last() {
-                return Ok(HttpResponse::TemporaryRedirect()
-                    .header("Location", &*selected_file.url)
-                    .body(""));
-            }
-        };
+        }
     }
 
     Ok(HttpResponse::NotFound().body(""))

@@ -307,6 +307,17 @@ async fn project_create_inner(
             check_length(3..=256, "project name", &create_data.title)?;
             check_length(3..=2048, "project description", &create_data.description)?;
             check_length(3..=64, "project slug", &create_data.slug)?;
+
+            if !&create_data
+                .slug
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(CreateError::InvalidInput(
+                    "The created project's slug contains invalid characters.".to_string(),
+                ));
+            }
+
             check_length(..65536, "project body", &create_data.body)?;
 
             if create_data.categories.len() > 3 {

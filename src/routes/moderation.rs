@@ -41,12 +41,10 @@ pub async fn get_projects(
     .fetch_many(&**pool)
     .try_filter_map(|e| async { Ok(e.right().map(|m| database::models::ProjectId(m.id))) })
     .try_collect::<Vec<database::models::ProjectId>>()
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     let projects: Vec<Project> = database::Project::get_many_full(project_ids, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .await?
         .into_iter()
         .map(super::projects::convert_project)
         .collect();

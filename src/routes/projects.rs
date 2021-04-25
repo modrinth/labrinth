@@ -8,7 +8,7 @@ use crate::models::projects::{
 use crate::models::teams::Permissions;
 use crate::routes::ApiError;
 use crate::search::indexing::queue::CreationQueue;
-use crate::search::{search_for_mod, SearchConfig, SearchError};
+use crate::search::{search_for_project, SearchConfig, SearchError};
 use actix_web::web::Data;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
@@ -16,12 +16,12 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 
-#[get("project")]
+#[get("search")]
 pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
-    let results = search_for_mod(&info, &**config).await?;
+    let results = search_for_project(&info, &**config).await?;
     Ok(HttpResponse::Ok().json(results))
 }
 
@@ -41,9 +41,7 @@ pub async fn projects_get(
         .map(|x| x.into())
         .collect();
 
-    let projects_data = database::models::Project::get_many_full(project_ids, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let projects_data = database::models::Project::get_many_full(project_ids, &**pool).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -65,8 +63,7 @@ pub async fn projects_get(
                             user_id as database::models::ids::UserId,
                         )
                         .fetch_one(&**pool)
-                        .await
-                        .map_err(|e| ApiError::DatabaseError(e.into()))?
+                        .await?
                         .exists;
 
                     authorized = project_exists.unwrap_or(false);
@@ -82,53 +79,6 @@ pub async fn projects_get(
     Ok(HttpResponse::Ok().json(projects))
 }
 
-#[get("@{id}")]
-pub async fn project_slug_get(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0;
-    let project_data = database::models::Project::get_full_from_slug(&id, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
-
-    if let Some(data) = project_data {
-        let mut authorized = !data.status.is_hidden();
-
-        if let Some(user) = user_option {
-            if !authorized {
-                if user.role.is_mod() {
-                    authorized = true;
-                } else {
-                    let user_id: database::models::ids::UserId = user.id.into();
-
-                    let project_exists = sqlx::query!(
-                        "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
-                        data.inner.team_id as database::models::ids::TeamId,
-                        user_id as database::models::ids::UserId,
-                    )
-                    .fetch_one(&**pool)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?
-                    .exists;
-
-                    authorized = project_exists.unwrap_or(false);
-                }
-            }
-        }
-
-        if authorized {
-            return Ok(HttpResponse::Ok().json(convert_project(data)));
-        }
-
-        Ok(HttpResponse::NotFound().body(""))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
-}
-
 #[get("{id}")]
 pub async fn project_get(
     req: HttpRequest,
@@ -136,25 +86,9 @@ pub async fn project_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
-    let id_option: Option<ProjectId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let mut project_data;
-
-    if let Some(id) = id_option {
-        project_data = database::models::Project::get_full(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
-
-        if project_data.is_none() {
-            project_data = database::models::Project::get_full_from_slug(&string, &**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
-        }
-    } else {
-        project_data = database::models::Project::get_full_from_slug(&string, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
-    }
+    let project_data =
+        database::models::Project::get_full_from_slug_or_project_id(string, &**pool).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -174,8 +108,7 @@ pub async fn project_get(
                         user_id as database::models::ids::UserId,
                     )
                     .fetch_one(&**pool)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?
+                    .await?
                     .exists;
 
                     authorized = project_exists.unwrap_or(false);
@@ -291,7 +224,7 @@ pub struct EditProject {
 #[patch("{id}")]
 pub async fn project_edit(
     req: HttpRequest,
-    info: web::Path<(models::ids::ProjectId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
     new_project: web::Json<EditProject>,
@@ -299,14 +232,13 @@ pub async fn project_edit(
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    let project_id = info.into_inner().0;
-    let id = project_id.into();
-
-    let result = database::models::Project::get_full(id, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let string = info.into_inner().0;
+    let result =
+        database::models::Project::get_full_from_slug_or_project_id(string, &**pool).await?;
 
     if let Some(project_item) = result {
+        let id = project_item.inner.id;
+
         let team_member = database::models::TeamMember::get_from_user_id(
             project_item.inner.team_id,
             user.id.into(),
@@ -324,10 +256,7 @@ pub async fn project_edit(
         }
 
         if let Some(perms) = permissions {
-            let mut transaction = pool
-                .begin()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            let mut transaction = pool.begin().await?;
 
             if let Some(title) = &new_project.title {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
@@ -353,8 +282,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(description) = &new_project.description {
@@ -381,8 +309,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(status) = &new_project.status {
@@ -419,17 +346,14 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 if project_item.status.is_searchable() && !status.is_searchable() {
-                    delete_from_index(project_id, config).await?;
+                    delete_from_index(id.into(), config).await?;
                 } else if !project_item.status.is_searchable() && status.is_searchable() {
-                    let index_project = crate::search::indexing::local_import::query_one(
-                        project_id.into(),
-                        &mut *transaction,
-                    )
-                    .await?;
+                    let index_project =
+                        crate::search::indexing::local_import::query_one(id, &mut *transaction)
+                            .await?;
 
                     indexing_queue.add(index_project);
                 }
@@ -457,8 +381,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 for category in categories {
                     let category_id = database::models::categories::Category::get_id(
@@ -482,8 +405,7 @@ pub async fn project_edit(
                         category_id as database::models::ids::CategoryId,
                     )
                     .execute(&mut *transaction)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                    .await?;
                 }
             }
 
@@ -514,8 +436,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(source_url) = &new_project.source_url {
@@ -545,8 +466,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(wiki_url) = &new_project.wiki_url {
@@ -575,8 +495,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(license_url) = &new_project.license_url {
@@ -606,8 +525,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(discord_url) = &new_project.discord_url {
@@ -637,8 +555,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(slug) = &new_project.slug {
@@ -656,11 +573,20 @@ pub async fn project_edit(
                         ));
                     }
 
+                    if !slug
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                    {
+                        return Err(ApiError::InvalidInputError(
+                            "The project's slug contains invalid characters.".to_string(),
+                        ));
+                    }
+
                     let slug_project_id_option: Option<ProjectId> =
                         serde_json::from_str(&*format!("\"{}\"", slug)).ok();
                     if let Some(slug_project_id) = slug_project_id_option {
                         let slug_project_id: database::models::ids::ProjectId =
-                        slug_project_id.into();
+                            slug_project_id.into();
                         let results = sqlx::query!(
                             "
                             SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
@@ -668,8 +594,7 @@ pub async fn project_edit(
                             slug_project_id as database::models::ids::ProjectId
                         )
                         .fetch_one(&mut *transaction)
-                        .await
-                        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                        .await?;
 
                         if results.exists.unwrap_or(true) {
                             return Err(ApiError::InvalidInputError(
@@ -689,8 +614,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(new_side) = &new_project.client_side {
@@ -716,8 +640,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(new_side) = &new_project.server_side {
@@ -743,8 +666,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(license) = &new_project.license_id {
@@ -770,8 +692,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
             if let Some(donations) = &new_project.donation_urls {
@@ -790,8 +711,7 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
 
                 for donation in donations {
                     let platform_id = database::models::DonationPlatformId::get_id(
@@ -816,8 +736,7 @@ pub async fn project_edit(
                         donation.url
                     )
                     .execute(&mut *transaction)
-                    .await
-                    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                    .await?;
                 }
             }
 
@@ -845,15 +764,11 @@ pub async fn project_edit(
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+                .await?;
             }
 
-            transaction
-                .commit()
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
-            Ok(HttpResponse::Ok().body(""))
+            transaction.commit().await?;
+            Ok(HttpResponse::NoContent().body(""))
         } else {
             Err(ApiError::CustomAuthenticationError(
                 "You do not have permission to edit this project!".to_string(),
@@ -873,7 +788,7 @@ pub struct Extension {
 pub async fn project_icon_edit(
     web::Query(ext): web::Query<Extension>,
     req: HttpRequest,
-    info: web::Path<(models::ids::ProjectId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
@@ -881,13 +796,12 @@ pub async fn project_icon_edit(
     if let Some(content_type) = super::project_creation::get_image_content_type(&*ext.ext) {
         let cdn_url = dotenv::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
-        let id = info.into_inner().0;
+        let string = info.into_inner().0;
 
-        let project_item = database::models::Project::get(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?
+        let project_item = database::models::Project::get_from_slug_or_project_id(string, &**pool)
+            .await?
             .ok_or_else(|| {
-                ApiError::InvalidInputError("Invalid Project ID specified!".to_string())
+                ApiError::InvalidInputError("The specified project does not exist!".to_string())
             })?;
 
         if !user.role.is_mod() {
@@ -899,7 +813,7 @@ pub async fn project_icon_edit(
             .await
             .map_err(ApiError::DatabaseError)?
             .ok_or_else(|| {
-                ApiError::InvalidInputError("Invalid Project ID specified!".to_string())
+                ApiError::InvalidInputError("The specified project does not exist!".to_string())
             })?;
 
             if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
@@ -930,15 +844,16 @@ pub async fn project_icon_edit(
             )));
         }
 
+        let project_id: ProjectId = project_item.id.into();
+
         let upload_data = file_host
             .upload_file(
                 content_type,
-                &format!("data/{}/icon.{}", id, ext.ext),
+                &format!("data/{}/icon.{}", project_id, ext.ext),
                 bytes.to_vec(),
             )
             .await?;
 
-        let project_id: database::models::ids::ProjectId = id.into();
         sqlx::query!(
             "
             UPDATE mods
@@ -946,13 +861,12 @@ pub async fn project_icon_edit(
             WHERE (id = $2)
             ",
             format!("{}/{}", cdn_url, upload_data.file_name),
-            project_id as database::models::ids::ProjectId,
+            project_item.id as database::models::ids::ProjectId,
         )
         .execute(&**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Err(ApiError::InvalidInputError(format!(
             "Invalid format for project icon: {}",
@@ -964,41 +878,47 @@ pub async fn project_icon_edit(
 #[delete("{id}")]
 pub async fn project_delete(
     req: HttpRequest,
-    info: web::Path<(models::ids::ProjectId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id = info.into_inner().0;
+    let string = info.into_inner().0;
+
+    let project = database::models::Project::get_from_slug_or_project_id(string, &**pool)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInputError("The specified project does not exist!".to_string())
+        })?;
 
     if !user.role.is_mod() {
         let team_member = database::models::TeamMember::get_from_user_id_project(
-            id.into(),
+            project.id,
             user.id.into(),
             &**pool,
         )
         .await
         .map_err(ApiError::DatabaseError)?
-        .ok_or_else(|| ApiError::InvalidInputError("Invalid Mod ID specified!".to_string()))?;
+        .ok_or_else(|| {
+            ApiError::InvalidInputError("The specified project does not exist!".to_string())
+        })?;
 
         if !team_member
             .permissions
             .contains(Permissions::DELETE_PROJECT)
         {
             return Err(ApiError::CustomAuthenticationError(
-                "You don't have permission to delete this project".to_string(),
+                "You don't have permission to delete this project!".to_string(),
             ));
         }
     }
 
-    let result = database::models::Project::remove_full(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let result = database::models::Project::remove_full(project.id, &**pool).await?;
 
-    delete_from_index(id, config).await?;
+    delete_from_index(project.id.into(), config).await?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -1007,19 +927,20 @@ pub async fn project_delete(
 #[post("{id}/follow")]
 pub async fn project_follow(
     req: HttpRequest,
-    info: web::Path<(models::ids::ProjectId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id = info.into_inner().0;
+    let string = info.into_inner().0;
 
-    let _result = database::models::Project::get(id.into(), &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?
-        .ok_or_else(|| ApiError::InvalidInputError("Invalid Project ID specified!".to_string()))?;
+    let result = database::models::Project::get_from_slug_or_project_id(string, &**pool)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInputError("The specified project does not exist!".to_string())
+        })?;
 
     let user_id: database::models::ids::UserId = user.id.into();
-    let project_id: database::models::ids::ProjectId = id.into();
+    let project_id: database::models::ids::ProjectId = result.id;
 
     let following = sqlx::query!(
         "
@@ -1029,8 +950,7 @@ pub async fn project_follow(
         project_id as database::models::ids::ProjectId
     )
     .fetch_one(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?
+    .await?
     .exists
     .unwrap_or(false);
 
@@ -1044,8 +964,7 @@ pub async fn project_follow(
             project_id as database::models::ids::ProjectId,
         )
         .execute(&**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
         sqlx::query!(
             "
@@ -1056,10 +975,9 @@ pub async fn project_follow(
             project_id as database::models::ids::ProjectId
         )
         .execute(&**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Err(ApiError::InvalidInputError(
             "You are already following this project!".to_string(),
@@ -1070,14 +988,20 @@ pub async fn project_follow(
 #[delete("{id}/follow")]
 pub async fn project_unfollow(
     req: HttpRequest,
-    info: web::Path<(models::ids::ProjectId,)>,
+    info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id = info.into_inner().0;
+    let string = info.into_inner().0;
+
+    let result = database::models::Project::get_from_slug_or_project_id(string, &**pool)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInputError("The specified project does not exist!".to_string())
+        })?;
 
     let user_id: database::models::ids::UserId = user.id.into();
-    let project_id: database::models::ids::ProjectId = id.into();
+    let project_id = result.id;
 
     let following = sqlx::query!(
         "
@@ -1087,8 +1011,7 @@ pub async fn project_unfollow(
         project_id as database::models::ids::ProjectId
     )
     .fetch_one(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?
+    .await?
     .exists
     .unwrap_or(false);
 
@@ -1102,8 +1025,7 @@ pub async fn project_unfollow(
             project_id as database::models::ids::ProjectId,
         )
         .execute(&**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
         sqlx::query!(
             "
@@ -1114,10 +1036,9 @@ pub async fn project_unfollow(
             project_id as database::models::ids::ProjectId
         )
         .execute(&**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        .await?;
 
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Err(ApiError::InvalidInputError(
             "You are not following this project!".to_string(),

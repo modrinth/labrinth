@@ -50,7 +50,7 @@ pub async fn category_create(
 
     let _id = Category::builder().name(&name)?.insert(&**pool).await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("category/{name}")]
@@ -72,7 +72,7 @@ pub async fn category_delete(
         .map_err(models::DatabaseError::from)?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -96,7 +96,7 @@ pub async fn loader_create(
 
     let _id = Loader::builder().name(&name)?.insert(&**pool).await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("loader/{name}")]
@@ -118,7 +118,7 @@ pub async fn loader_delete(
         .map_err(models::DatabaseError::from)?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -177,7 +177,7 @@ pub async fn game_version_create(
 
     let _id = builder.insert(&**pool).await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("game_version/{name}")]
@@ -199,7 +199,7 @@ pub async fn game_version_delete(
         .map_err(models::DatabaseError::from)?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -246,7 +246,7 @@ pub async fn license_create(
         .insert(&**pool)
         .await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("license/{name}")]
@@ -268,7 +268,7 @@ pub async fn license_delete(
         .map_err(models::DatabaseError::from)?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -315,7 +315,7 @@ pub async fn donation_platform_create(
         .insert(&**pool)
         .await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("donation_platform/{name}")]
@@ -337,7 +337,7 @@ pub async fn donation_platform_delete(
         .map_err(models::DatabaseError::from)?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -361,7 +361,7 @@ pub async fn report_type_create(
 
     let _id = ReportType::builder().name(&name)?.insert(&**pool).await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("report_type/{name}")]
@@ -383,7 +383,7 @@ pub async fn report_type_delete(
         .map_err(models::DatabaseError::from)?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
