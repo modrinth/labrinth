@@ -118,6 +118,10 @@ pub struct TeamMemberId(pub i64);
 pub struct ProjectId(pub i64);
 #[derive(Copy, Clone, Debug, Type)]
 #[sqlx(transparent)]
+pub struct ProjectTypeId(pub i32);
+
+#[derive(Copy, Clone, Debug, Type)]
+#[sqlx(transparent)]
 pub struct StatusId(pub i32);
 #[derive(Copy, Clone, Debug, Type)]
 #[sqlx(transparent)]

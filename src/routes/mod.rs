@@ -13,6 +13,7 @@ mod tags;
 mod teams;
 mod users;
 mod version_creation;
+mod version_file;
 mod versions;
 
 pub use auth::config as auth_config;
@@ -56,9 +57,9 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
     );
     cfg.service(
         web::scope("version_file")
-            .service(versions::delete_file)
-            .service(versions::get_version_from_hash)
-            .service(versions::download_version),
+            .service(version_file::delete_file)
+            .service(version_file::get_version_from_hash)
+            .service(version_file::download_version),
     );
 }
 
@@ -129,6 +130,8 @@ pub enum ApiError {
     CustomAuthenticationError(String),
     #[error("Invalid Input: {0}")]
     InvalidInputError(String),
+    #[error("Error while validating input: {0}")]
+    ValidationError(#[from] validator::ValidationErrors),
     #[error("Search Error: {0}")]
     SearchError(#[from] meilisearch_sdk::errors::Error),
     #[error("Indexing Error: {0}")]
@@ -149,6 +152,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::IndexingError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::FileHostingError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::InvalidInputError(..) => actix_web::http::StatusCode::BAD_REQUEST,
+            ApiError::ValidationError(..) => actix_web::http::StatusCode::BAD_REQUEST,
         }
     }
 
@@ -167,6 +171,7 @@ impl actix_web::ResponseError for ApiError {
                     ApiError::IndexingError(..) => "indexing_error",
                     ApiError::FileHostingError(..) => "file_hosting_error",
                     ApiError::InvalidInputError(..) => "invalid_input",
+                    ApiError::ValidationError(..) => "invalid_input",
                 },
                 description: &self.to_string(),
             },

@@ -13,16 +13,19 @@ use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use futures::stream::StreamExt;
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 use thiserror::Error;
+use validator::Validate;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
     #[error("Environment Error")]
     EnvError(#[from] dotenv::Error),
-    #[error("An unknown database error occured")]
+    #[error("An unknown database error occurred")]
     SqlxDatabaseError(#[from] sqlx::Error),
     #[error("Database Error: {0}")]
     DatabaseError(#[from] models::DatabaseError),
@@ -32,6 +35,8 @@ pub enum CreateError {
     MultipartError(actix_multipart::MultipartError),
     #[error("Error while parsing JSON: {0}")]
     SerDeError(#[from] serde_json::Error),
+    #[error("Error while validating input: {0}")]
+    ValidationError(#[from] validator::ValidationErrors),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
     #[error("{}", .0)]
@@ -76,6 +81,7 @@ impl actix_web::ResponseError for CreateError {
             CreateError::Unauthorized(..) => StatusCode::UNAUTHORIZED,
             CreateError::CustomAuthenticationError(..) => StatusCode::UNAUTHORIZED,
             CreateError::SlugCollision => StatusCode::BAD_REQUEST,
+            CreateError::ValidationError(..) => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -99,20 +105,32 @@ impl actix_web::ResponseError for CreateError {
                 CreateError::Unauthorized(..) => "unauthorized",
                 CreateError::CustomAuthenticationError(..) => "unauthorized",
                 CreateError::SlugCollision => "invalid_input",
+                CreateError::ValidationError(..) => "invalid_input",
             },
             description: &self.to_string(),
         })
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+lazy_static! {
+    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
+}
+
+#[derive(Serialize, Deserialize, Validate, Clone)]
 struct ProjectCreateData {
+    #[validate(length(min = 3, max = 256))]
     /// The title or name of the project.
     pub title: String,
+    #[validate(length(min = 1, max = 64))]
+    /// The project type of this mod
+    pub project_type: String,
+    #[validate(length(min = 3, max = 64), regex = "RE_URL_SAFE")]
     /// The slug of a project, used for vanity URLs
     pub slug: String,
+    #[validate(length(min = 3, max = 2048))]
     /// A short description of the project.
     pub description: String,
+    #[validate(length(max = 65536))]
     /// A long description of the project, in markdown.
     pub body: String,
 
@@ -121,22 +139,30 @@ struct ProjectCreateData {
     /// The support range for the server project
     pub server_side: SideType,
 
+    #[validate(length(max = 64))]
     /// A list of initial versions to upload with the created project
     pub initial_versions: Vec<InitialVersionData>,
+    #[validate(length(max = 3))]
     /// A list of the categories that the project is in.
     pub categories: Vec<String>,
 
+    #[validate(url, length(max = 2048))]
     /// An optional link to where to submit bugs or issues with the project.
     pub issues_url: Option<String>,
+    #[validate(url, length(max = 2048))]
     /// An optional link to the source code for the project.
     pub source_url: Option<String>,
+    #[validate(url, length(max = 2048))]
     /// An optional link to the project's wiki page or other relevant information.
     pub wiki_url: Option<String>,
+    #[validate(url, length(max = 2048))]
     /// An optional link to the project's license page
     pub license_url: Option<String>,
+    #[validate(url, length(max = 2048))]
     /// An optional link to the project's discord.
     pub discord_url: Option<String>,
-    /// An optional list of all donation links the project has
+    /// An optional list of all donation links the project has\
+    #[validate]
     pub donation_urls: Option<Vec<DonationLink>>,
 
     /// An optional boolean. If true, the project will be created as a draft.
@@ -284,74 +310,7 @@ async fn project_create_inner(
         }
         let create_data: ProjectCreateData = serde_json::from_slice(&data)?;
 
-        {
-            // Verify the lengths of various fields in the project create data
-            /*
-            # ProjectCreateData
-            title: 3..=256
-            description: 3..=2048,
-            body: max of 64KiB?,
-            categories: Vec<String>, 1..=256
-            issues_url: 0..=2048, (Validate url?)
-            source_url: 0..=2048,
-            wiki_url: 0..=2048,
-
-            initial_versions: Vec<InitialVersionData>,
-            team_members: Vec<TeamMember>,
-
-            # TeamMember:
-            name: 3..=64
-            role: 3..=64
-            */
-
-            check_length(3..=256, "project name", &create_data.title)?;
-            check_length(3..=2048, "project description", &create_data.description)?;
-            check_length(3..=64, "project slug", &create_data.slug)?;
-
-            if !&create_data
-                .slug
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-            {
-                return Err(CreateError::InvalidInput(
-                    "The created project's slug contains invalid characters.".to_string(),
-                ));
-            }
-
-            check_length(..65536, "project body", &create_data.body)?;
-
-            if create_data.categories.len() > 3 {
-                return Err(CreateError::InvalidInput(
-                    "The maximum number of categories for a project is four.".to_string(),
-                ));
-            }
-
-            create_data
-                .categories
-                .iter()
-                .try_for_each(|f| check_length(1..=256, "category", f))?;
-
-            if let Some(url) = &create_data.issues_url {
-                check_length(..=2048, "url", url)?;
-            }
-            if let Some(url) = &create_data.wiki_url {
-                check_length(..=2048, "url", url)?;
-            }
-            if let Some(url) = &create_data.source_url {
-                check_length(..=2048, "url", url)?;
-            }
-            if let Some(url) = &create_data.discord_url {
-                check_length(..=2048, "url", url)?;
-            }
-            if let Some(url) = &create_data.license_url {
-                check_length(..=2048, "url", url)?;
-            }
-
-            create_data
-                .initial_versions
-                .iter()
-                .try_for_each(|v| super::version_creation::check_version(v))?;
-        }
+        create_data.validate()?;
 
         let slug_project_id_option: Option<ProjectId> =
             serde_json::from_str(&*format!("\"{}\"", create_data.slug)).ok();
@@ -392,6 +351,16 @@ async fn project_create_inner(
 
         project_create_data = create_data;
     }
+
+    let project_type_id =
+        models::ProjectTypeId::get_id(project_create_data.project_type.clone(), &mut *transaction)
+            .await?
+            .ok_or_else(|| {
+                CreateError::InvalidInput(format!(
+                    "Project Type {} does not exist.",
+                    project_create_data.project_type.clone()
+                ))
+            })?;
 
     let mut icon_url = None;
 
@@ -451,6 +420,9 @@ async fn project_create_inner(
             &content_disposition,
             project_id,
             &version_data.version_number,
+            &*project_create_data.project_type,
+            version_data.loaders.clone(),
+            version_data.game_versions.clone(),
         )
         .await?;
 
@@ -475,9 +447,13 @@ async fn project_create_inner(
         // Convert the list of category names to actual categories
         let mut categories = Vec::with_capacity(project_create_data.categories.len());
         for category in &project_create_data.categories {
-            let id = models::categories::Category::get_id(&category, &mut *transaction)
-                .await?
-                .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
+            let id = models::categories::Category::get_id_project(
+                &category,
+                project_type_id,
+                &mut *transaction,
+            )
+            .await?
+            .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
             categories.push(id);
         }
 
@@ -553,6 +529,7 @@ async fn project_create_inner(
 
         let project_builder = models::project_item::ProjectBuilder {
             project_id: project_id.into(),
+            project_type_id,
             team_id,
             title: project_create_data.title,
             description: project_create_data.description,
@@ -579,6 +556,7 @@ async fn project_create_inner(
         let response = crate::models::projects::Project {
             id: project_id,
             slug: project_builder.slug.clone(),
+            project_type: project_create_data.project_type.clone(),
             team: team_id.into(),
             title: project_builder.title.clone(),
             description: project_builder.description.clone(),
@@ -637,8 +615,7 @@ async fn create_initial_version(
         )));
     }
 
-    check_length(3..=256, "version name", &version_data.version_title)?;
-    check_length(1..=32, "version number", &version_data.version_number)?;
+    version_data.validate()?;
 
     // Randomly generate a new id to be used for the version
     let version_id: VersionId = models::generate_version_id(transaction).await?.into();
@@ -746,33 +723,5 @@ pub fn get_image_content_type(extension: &str) -> Option<&'static str> {
         Some(content_type)
     } else {
         None
-    }
-}
-
-pub fn check_length(
-    range: impl std::ops::RangeBounds<usize> + std::fmt::Debug,
-    field_name: &str,
-    field: &str,
-) -> Result<(), CreateError> {
-    use std::ops::Bound;
-
-    let length = field.len();
-    if !range.contains(&length) {
-        let bounds = match (range.start_bound(), range.end_bound()) {
-            (Bound::Included(a), Bound::Included(b)) => format!("between {} and {} bytes", a, b),
-            (Bound::Included(a), Bound::Excluded(b)) => {
-                format!("between {} and {} bytes", a, b - 1)
-            }
-            (Bound::Included(a), Bound::Unbounded) => format!("more than {} bytes", a),
-            (Bound::Unbounded, Bound::Included(b)) => format!("less than or equal to {} bytes", b),
-            (Bound::Unbounded, Bound::Excluded(b)) => format!("less than {} bytes", b),
-            _ => format!("{:?}", range),
-        };
-        Err(CreateError::InvalidInput(format!(
-            "The {} must be {}; got {}.",
-            field_name, bounds, length
-        )))
-    } else {
-        Ok(())
     }
 }

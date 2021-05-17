@@ -12,11 +12,11 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actix-web = "3.1.0"
-actix-rt = "1.1.1"
-actix-files = "0.4.0"
+actix-web = "3.3.2"
+actix-rt = "1.1.0"
+actix-files = "0.5.0"
 actix-multipart = "0.3.0"
-actix-cors = "0.4.1"
+actix-cors = "0.5.4"
 actix-ratelimit = "0.3.0"
 
 meilisearch-sdk = "0.6.0"
@@ -36,6 +36,9 @@ sha1 = { version = "0.6.0", features = ["std"] }
 sha2 = "0.9.2"
 bitflags = "1.2.1"
 zip = "0.5.12"
+
+validator = { version = "0.13", features = ["derive"] }
+regex = "1.5.4"
 
 gumdrop = "0.8.0"
 dotenv = "0.15"

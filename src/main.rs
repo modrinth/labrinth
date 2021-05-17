@@ -15,10 +15,10 @@ mod auth;
 mod database;
 mod file_hosting;
 mod models;
-mod pack;
 mod routes;
 mod scheduler;
 mod search;
+mod validate;
 
 #[derive(Debug, Options)]
 struct Config {
@@ -250,13 +250,12 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(
-                Cors::new()
+                Cors::default()
                     .allowed_methods(vec!["GET", "POST", "DELETE", "PATCH", "PUT"])
                     .allowed_headers(vec![http::header::AUTHORIZATION, http::header::ACCEPT])
                     .allowed_header(http::header::CONTENT_TYPE)
                     .send_wildcard()
-                    .max_age(3600)
-                    .finish(),
+                    .max_age(3600),
             )
             .wrap(
                 // This is a hacky workaround to allowing the frontend server-side renderer to have

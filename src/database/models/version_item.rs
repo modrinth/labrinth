@@ -450,6 +450,7 @@ impl Version {
                 v.release_channel, v.featured
             FROM versions v
             WHERE v.id IN (SELECT * FROM UNNEST($1::bigint[]))
+            ORDER BY v.date_published ASC
             ",
             &version_ids_parsed
         )
@@ -480,7 +481,7 @@ impl Version {
         executor: E,
     ) -> Result<Option<QueryVersion>, sqlx::error::Error>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
@@ -625,7 +626,8 @@ impl Version {
             LEFT OUTER JOIN hashes h on f.id = h.file_id
             LEFT OUTER JOIN dependencies d on v.id = d.dependent_id
             WHERE v.id IN (SELECT * FROM UNNEST($1::bigint[]))
-            GROUP BY v.id, rc.id;
+            GROUP BY v.id, rc.id
+            ORDER BY v.date_published ASC;
             ",
             &version_ids_parsed
         )

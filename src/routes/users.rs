@@ -9,9 +9,12 @@ use crate::routes::notifications::convert_notification;
 use crate::routes::ApiError;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
+use validator::Validate;
 
 #[get("user")]
 pub async fn user_auth_get(
@@ -122,28 +125,36 @@ pub async fn projects_list(
     }
 }
 
-#[derive(Serialize, Deserialize)]
+lazy_static! {
+    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
+}
+
+#[derive(Serialize, Deserialize, Validate)]
 pub struct EditUser {
+    #[validate(length(min = 1, max = 255), regex = "RE_URL_SAFE")]
     pub username: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(length(min = 1, max = 255), regex = "RE_URL_SAFE")]
     pub name: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(email)]
     pub email: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(length(max = 160), regex = "RE_URL_SAFE")]
     pub bio: Option<Option<String>>,
-    pub role: Option<String>,
+    pub role: Option<Role>,
 }
 
 #[patch("{id}")]
@@ -154,6 +165,8 @@ pub async fn user_edit(
     new_user: web::Json<EditUser>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    new_user.validate()?;
 
     let id_option =
         crate::database::models::User::get_id_from_username_or_id(info.into_inner().0, &**pool)
@@ -229,7 +242,7 @@ pub async fn user_edit(
                     ));
                 }
 
-                let role = Role::from_string(role).to_string();
+                let role = role.to_string();
 
                 sqlx::query!(
                     "
@@ -289,7 +302,7 @@ pub async fn user_icon_edit(
             let user_id: UserId = id.into();
 
             if user.id != user_id {
-                let new_user = User::get(id.into(), &**pool).await?;
+                let new_user = User::get(id, &**pool).await?;
 
                 if let Some(new) = new_user {
                     icon_url = new.avatar_url;

@@ -3,6 +3,7 @@ use super::teams::TeamId;
 use super::users::UserId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 /// The ID of a specific project, encoded as base62 for usage in the API
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,6 +24,8 @@ pub struct Project {
     pub id: ProjectId,
     /// The slug of a project, used for vanity URLs
     pub slug: Option<String>,
+    /// The project type of the project
+    pub project_type: String,
     /// The team of people that has ownership of this project.
     pub team: TeamId,
     /// The title or name of the project.
@@ -113,10 +116,11 @@ pub struct License {
     pub url: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct DonationLink {
     pub id: String,
     pub platform: String,
+    #[validate(url)]
     pub url: String,
 }
 

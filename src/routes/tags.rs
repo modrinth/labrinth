@@ -30,11 +30,25 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
+#[derive(serde::Serialize)]
+pub struct CategoryQueryData {
+    name: String,
+    project_type: String,
+}
+
 // TODO: searching / filtering? Could be used to implement a live
 // searching category list
 #[get("category")]
 pub async fn category_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
-    let results = Category::list(&**pool).await?;
+    let results = Category::list(&**pool)
+        .await?
+        .into_iter()
+        .map(|x| CategoryQueryData {
+            name: x.category,
+            project_type: x.project_type,
+        })
+        .collect::<Vec<_>>();
+
     Ok(HttpResponse::Ok().json(results))
 }
 
@@ -124,8 +138,15 @@ pub async fn loader_delete(
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize)]
 pub struct GameVersionQueryData {
+    pub version: String,
+    pub version_type: String,
+    pub date: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct GameVersionQuery {
     #[serde(rename = "type")]
     type_: Option<String>,
     major: Option<bool>,
@@ -134,16 +155,22 @@ pub struct GameVersionQueryData {
 #[get("game_version")]
 pub async fn game_version_list(
     pool: web::Data<PgPool>,
-    query: web::Query<GameVersionQueryData>,
+    query: web::Query<GameVersionQuery>,
 ) -> Result<HttpResponse, ApiError> {
-    if query.type_.is_some() || query.major.is_some() {
-        let results =
-            GameVersion::list_filter(query.type_.as_deref(), query.major, &**pool).await?;
-        Ok(HttpResponse::Ok().json(results))
+    let results: Vec<GameVersionQueryData> = if query.type_.is_some() || query.major.is_some() {
+        GameVersion::list_filter(query.type_.as_deref(), query.major, &**pool).await?
     } else {
-        let results = GameVersion::list(&**pool).await?;
-        Ok(HttpResponse::Ok().json(results))
+        GameVersion::list(&**pool).await?
     }
+    .into_iter()
+    .map(|x| GameVersionQueryData {
+        version: x.version,
+        version_type: x.version_type,
+        date: x.date,
+    })
+    .collect();
+
+    Ok(HttpResponse::Ok().json(results))
 }
 
 #[derive(serde::Deserialize)]

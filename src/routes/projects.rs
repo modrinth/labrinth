@@ -12,9 +12,12 @@ use crate::search::{search_for_project, SearchConfig, SearchError};
 use actix_web::web::Data;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
+use validator::Validate;
 
 #[get("search")]
 pub async fn project_search(
@@ -134,6 +137,7 @@ pub fn convert_project(
     models::projects::Project {
         id: m.id.into(),
         slug: m.slug,
+        project_type: data.project_type,
         team: m.team_id.into(),
         title: m.title,
         description: m.description,
@@ -171,44 +175,58 @@ pub fn convert_project(
     }
 }
 
+lazy_static! {
+    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
+}
+
 /// A project returned from the API
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Validate)]
 pub struct EditProject {
+    #[validate(length(min = 3, max = 256))]
     pub title: Option<String>,
+    #[validate(length(min = 3, max = 2048))]
     pub description: Option<String>,
+    #[validate(length(max = 65536))]
     pub body: Option<String>,
     pub status: Option<ProjectStatus>,
+    #[validate(length(max = 3))]
     pub categories: Option<Vec<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(url, length(max = 2048))]
     pub issues_url: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(url, length(max = 2048))]
     pub source_url: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(url, length(max = 2048))]
     pub wiki_url: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(url, length(max = 2048))]
     pub license_url: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(url, length(max = 2048))]
     pub discord_url: Option<Option<String>>,
+    #[validate]
     pub donation_urls: Option<Vec<DonationLink>>,
     pub license_id: Option<String>,
     pub client_side: Option<SideType>,
@@ -218,6 +236,7 @@ pub struct EditProject {
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    #[validate(length(min = 3, max = 64), regex = "RE_URL_SAFE")]
     pub slug: Option<Option<String>>,
 }
 
@@ -231,6 +250,8 @@ pub async fn project_edit(
     indexing_queue: Data<Arc<CreationQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    new_project.validate()?;
 
     let string = info.into_inner().0;
     let result =
@@ -266,12 +287,6 @@ pub async fn project_edit(
                     ));
                 }
 
-                if title.len() > 256 || title.len() < 3 {
-                    return Err(ApiError::InvalidInputError(
-                        "The project's title must be within 3-256 characters!".to_string(),
-                    ));
-                }
-
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -290,12 +305,6 @@ pub async fn project_edit(
                     return Err(ApiError::CustomAuthenticationError(
                         "You do not have the permissions to edit the description of this project!"
                             .to_string(),
-                    ));
-                }
-
-                if description.len() > 2048 || description.len() < 3 {
-                    return Err(ApiError::InvalidInputError(
-                        "The project's description must be within 3-256 characters!".to_string(),
                     ));
                 }
 
@@ -367,12 +376,6 @@ pub async fn project_edit(
                     ));
                 }
 
-                if categories.len() > 3 {
-                    return Err(ApiError::InvalidInputError(
-                        "The maximum number of categories for a project is four.".to_string(),
-                    ));
-                }
-
                 sqlx::query!(
                     "
                     DELETE FROM mods_categories
@@ -417,15 +420,6 @@ pub async fn project_edit(
                     ));
                 }
 
-                if let Some(issues) = issues_url {
-                    if issues.len() > 2048 {
-                        return Err(ApiError::InvalidInputError(
-                            "The project's issues url must be less than 2048 characters!"
-                                .to_string(),
-                        ));
-                    }
-                }
-
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -445,15 +439,6 @@ pub async fn project_edit(
                         "You do not have the permissions to edit the source URL of this project!"
                             .to_string(),
                     ));
-                }
-
-                if let Some(source) = source_url {
-                    if source.len() > 2048 {
-                        return Err(ApiError::InvalidInputError(
-                            "The project's source url must be less than 2048 characters!"
-                                .to_string(),
-                        ));
-                    }
                 }
 
                 sqlx::query!(
@@ -477,14 +462,6 @@ pub async fn project_edit(
                     ));
                 }
 
-                if let Some(wiki) = wiki_url {
-                    if wiki.len() > 2048 {
-                        return Err(ApiError::InvalidInputError(
-                            "The project's wiki url must be less than 2048 characters!".to_string(),
-                        ));
-                    }
-                }
-
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -506,15 +483,6 @@ pub async fn project_edit(
                     ));
                 }
 
-                if let Some(license) = license_url {
-                    if license.len() > 2048 {
-                        return Err(ApiError::InvalidInputError(
-                            "The project's license url must be less than 2048 characters!"
-                                .to_string(),
-                        ));
-                    }
-                }
-
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -534,15 +502,6 @@ pub async fn project_edit(
                         "You do not have the permissions to edit the discord URL of this project!"
                             .to_string(),
                     ));
-                }
-
-                if let Some(discord) = discord_url {
-                    if discord.len() > 2048 {
-                        return Err(ApiError::InvalidInputError(
-                            "The project's discord url must be less than 2048 characters!"
-                                .to_string(),
-                        ));
-                    }
                 }
 
                 sqlx::query!(
@@ -567,21 +526,6 @@ pub async fn project_edit(
                 }
 
                 if let Some(slug) = slug {
-                    if slug.len() > 64 || slug.len() < 3 {
-                        return Err(ApiError::InvalidInputError(
-                            "The project's slug must be within 3-64 characters!".to_string(),
-                        ));
-                    }
-
-                    if !slug
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                    {
-                        return Err(ApiError::InvalidInputError(
-                            "The project's slug contains invalid characters.".to_string(),
-                        ));
-                    }
-
                     let slug_project_id_option: Option<ProjectId> =
                         serde_json::from_str(&*format!("\"{}\"", slug)).ok();
                     if let Some(slug_project_id) = slug_project_id_option {
@@ -745,12 +689,6 @@ pub async fn project_edit(
                     return Err(ApiError::CustomAuthenticationError(
                         "You do not have the permissions to edit the body of this project!"
                             .to_string(),
-                    ));
-                }
-
-                if body.len() > 65536 {
-                    return Err(ApiError::InvalidInputError(
-                        "The project's body must be less than 65536 characters!".to_string(),
                     ));
                 }
 

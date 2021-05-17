@@ -12,16 +12,28 @@ use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use futures::stream::StreamExt;
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
+use validator::Validate;
 
-#[derive(Serialize, Deserialize, Clone)]
+lazy_static! {
+    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
+}
+
+#[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct InitialVersionData {
     pub project_id: Option<ProjectId>,
+    #[validate(length(min = 1, max = 256))]
     pub file_parts: Vec<String>,
+    #[validate(length(min = 1, max = 64), regex = "RE_URL_SAFE")]
     pub version_number: String,
+    #[validate(length(min = 3, max = 256))]
     pub version_title: String,
+    #[validate(length(max = 65536))]
     pub version_body: Option<String>,
+    #[validate(length(min = 1, max = 256))]
     pub dependencies: Vec<Dependency>,
     pub game_versions: Vec<GameVersion>,
     pub release_channel: VersionType,
@@ -32,42 +44,6 @@ pub struct InitialVersionData {
 #[derive(Serialize, Deserialize, Clone)]
 struct InitialFileData {
     // TODO: hashes?
-}
-
-pub fn check_version(version: &InitialVersionData) -> Result<(), CreateError> {
-    /*
-    # InitialVersionData
-    file_parts: Vec<String>, 1..=256
-    version_number: 1..=64,
-    version_title: 3..=256,
-    version_body: max of 64KiB,
-    game_versions: Vec<GameVersion>, 1..=256
-    release_channel: VersionType,
-    loaders: Vec<Loader>, 1..=256
-    */
-    use super::project_creation::check_length;
-
-    version
-        .file_parts
-        .iter()
-        .try_for_each(|f| check_length(1..=256, "file part name", f))?;
-
-    check_length(1..=64, "version number", &version.version_number)?;
-    check_length(3..=256, "version title", &version.version_title)?;
-    if let Some(body) = &version.version_body {
-        check_length(..65536, "version body", body)?;
-    }
-
-    version
-        .game_versions
-        .iter()
-        .try_for_each(|v| check_length(1..=256, "game version", &v.0))?;
-    version
-        .loaders
-        .iter()
-        .try_for_each(|l| check_length(1..=256, "loader name", &l.0))?;
-
-    Ok(())
 }
 
 // under `/api/v1/version`
@@ -146,7 +122,7 @@ async fn version_create_inner(
                 ));
             }
 
-            check_version(version_create_data)?;
+            version_create_data.validate()?;
 
             let project_id: models::ProjectId = version_create_data.project_id.unwrap().into();
 
@@ -236,7 +212,7 @@ async fn version_create_inner(
 
             version_builder = Some(VersionBuilder {
                 version_id: version_id.into(),
-                project_id: version_create_data.project_id.unwrap().into(),
+                project_id,
                 author_id: user.id.into(),
                 name: version_create_data.version_title.clone(),
                 version_number: version_create_data.version_number.clone(),
@@ -259,6 +235,22 @@ async fn version_create_inner(
             CreateError::InvalidInput(String::from("`data` field must come before file fields"))
         })?;
 
+        let project_type = sqlx::query!(
+            "
+            SELECT name FROM project_types pt
+            INNER JOIN mods ON mods.project_type = pt.id
+            WHERE mods.id = $1
+            ",
+            version.project_id as models::ProjectId,
+        )
+        .fetch_one(&mut *transaction)
+        .await?
+        .name;
+
+        let version_data = initial_version_data
+            .clone()
+            .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
+
         let file_builder = upload_file(
             &mut field,
             file_host,
@@ -267,6 +259,9 @@ async fn version_create_inner(
             &content_disposition,
             version.project_id.into(),
             &version.version_number,
+            &*project_type,
+            version_data.loaders,
+            version_data.game_versions,
         )
         .await?;
 
@@ -426,16 +421,7 @@ async fn upload_file_to_version_inner(
 
     let user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
-    let result = sqlx::query!(
-        "
-        SELECT mod_id, version_number, author_id
-        FROM versions
-        WHERE id = $1
-        ",
-        version_id as models::VersionId,
-    )
-    .fetch_optional(&mut *transaction)
-    .await?;
+    let result = models::Version::get_full(version_id, &mut *transaction).await?;
 
     let version = match result {
         Some(v) => v,
@@ -464,8 +450,20 @@ async fn upload_file_to_version_inner(
         ));
     }
 
-    let project_id = ProjectId(version.mod_id as u64);
+    let project_id = ProjectId(version.project_id.0 as u64);
     let version_number = version.version_number;
+
+    let project_type = sqlx::query!(
+        "
+        SELECT name FROM project_types pt
+        INNER JOIN mods ON mods.project_type = pt.id
+        WHERE mods.id = $1
+        ",
+        version.project_id as models::ProjectId,
+    )
+    .fetch_one(&mut *transaction)
+    .await?
+    .name;
 
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
@@ -500,6 +498,14 @@ async fn upload_file_to_version_inner(
             &content_disposition,
             project_id,
             &version_number,
+            &*project_type,
+            version.loaders.clone().into_iter().map(Loader).collect(),
+            version
+                .game_versions
+                .clone()
+                .into_iter()
+                .map(GameVersion)
+                .collect(),
         )
         .await?;
 
@@ -530,6 +536,9 @@ pub async fn upload_file(
     content_disposition: &actix_web::http::header::ContentDisposition,
     project_id: crate::models::ids::ProjectId,
     version_number: &str,
+    project_type: &str,
+    loaders: Vec<Loader>,
+    game_versions: Vec<GameVersion>,
 ) -> Result<models::version_item::VersionFileBuilder, CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
 
@@ -544,7 +553,7 @@ pub async fn upload_file(
     // Project file size limit of 25MiB
     const FILE_SIZE_CAP: usize = 25 * (2 << 30);
 
-    // TODO: override file size cap for authorized users or projecs
+    // TODO: override file size cap for authorized users or projects
     if data.len() >= FILE_SIZE_CAP {
         return Err(CreateError::InvalidInput(
             String::from("Project file exceeds the maximum of 25MiB. Contact a moderator or admin to request permission to upload larger files.")

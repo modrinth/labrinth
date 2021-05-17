@@ -35,6 +35,7 @@ impl DonationUrl {
 
 pub struct ProjectBuilder {
     pub project_id: ProjectId,
+    pub project_type_id: ProjectTypeId,
     pub team_id: TeamId,
     pub title: String,
     pub description: String,
@@ -62,6 +63,7 @@ impl ProjectBuilder {
     ) -> Result<ProjectId, super::DatabaseError> {
         let project_struct = Project {
             id: self.project_id,
+            project_type: self.project_type_id,
             team_id: self.team_id,
             title: self.title,
             description: self.description,
@@ -114,6 +116,7 @@ impl ProjectBuilder {
 
 pub struct Project {
     pub id: ProjectId,
+    pub project_type: ProjectTypeId,
     pub team_id: TeamId,
     pub title: String,
     pub description: String,
@@ -148,14 +151,14 @@ impl Project {
                 published, downloads, icon_url, issues_url,
                 source_url, wiki_url, status, discord_url,
                 client_side, server_side, license_url, license,
-                slug
+                slug, project_type
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8, $9,
                 $10, $11, $12, $13,
                 $14, $15, $16, $17,
-                LOWER($18)
+                LOWER($18), $19
             )
             ",
             self.id as ProjectId,
@@ -175,7 +178,8 @@ impl Project {
             self.server_side as SideTypeId,
             self.license_url.as_ref(),
             self.license as LicenseId,
-            self.slug.as_ref()
+            self.slug.as_ref(),
+            self.project_type as ProjectTypeId
         )
         .execute(&mut *transaction)
         .await?;
@@ -192,7 +196,7 @@ impl Project {
     {
         let result = sqlx::query!(
             "
-            SELECT title, description, downloads, follows,
+            SELECT project_type, title, description, downloads, follows,
                    icon_url, body, body_url, published,
                    updated, status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
@@ -208,6 +212,7 @@ impl Project {
         if let Some(row) = result {
             Ok(Some(Project {
                 id,
+                project_type: ProjectTypeId(row.project_type),
                 team_id: TeamId(row.team_id),
                 title: row.title,
                 description: row.description,
@@ -246,7 +251,7 @@ impl Project {
         let project_ids_parsed: Vec<i64> = project_ids.into_iter().map(|x| x.0).collect();
         let projects = sqlx::query!(
             "
-            SELECT id, title, description, downloads, follows,
+            SELECT id, project_type, title, description, downloads, follows,
                    icon_url, body, body_url, published,
                    updated, status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
@@ -260,6 +265,7 @@ impl Project {
         .try_filter_map(|e| async {
             Ok(e.right().map(|m| Project {
                 id: ProjectId(m.id),
+                project_type: ProjectTypeId(m.project_type),
                 team_id: TeamId(m.team_id),
                 title: m.title,
                 description: m.description,
@@ -511,23 +517,24 @@ impl Project {
     {
         let result = sqlx::query!(
             "
-            SELECT m.id id, m.title title, m.description description, m.downloads downloads, m.follows follows,
+            SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.body body, m.body_url body_url, m.published published,
             m.updated updated, m.status status,
             m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
             m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug,
-            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name,
+            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name, pt.name project_type_name,
             STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT v.id::text, ',') versions
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
             LEFT OUTER JOIN versions v ON v.mod_id = m.id
+            INNER JOIN project_types pt ON pt.id = m.project_type
             INNER JOIN statuses s ON s.id = m.status
             INNER JOIN side_types cs ON m.client_side = cs.id
             INNER JOIN side_types ss ON m.server_side = ss.id
             INNER JOIN licenses l ON m.license = l.id
             WHERE m.id = $1
-            GROUP BY m.id, s.id, cs.id, ss.id, l.id;
+            GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id;
             ",
             id as ProjectId,
         )
@@ -538,6 +545,7 @@ impl Project {
             Ok(Some(QueryProject {
                 inner: Project {
                     id: ProjectId(m.id),
+                    project_type: ProjectTypeId(m.project_type),
                     team_id: TeamId(m.team_id),
                     title: m.title.clone(),
                     description: m.description.clone(),
@@ -559,6 +567,7 @@ impl Project {
                     body: m.body.clone(),
                     follows: m.follows,
                 },
+                project_type: m.project_type_name,
                 categories: m
                     .categories
                     .unwrap_or_default()
@@ -595,23 +604,24 @@ impl Project {
         let project_ids_parsed: Vec<i64> = project_ids.into_iter().map(|x| x.0).collect();
         sqlx::query!(
             "
-            SELECT m.id id, m.title title, m.description description, m.downloads downloads, m.follows follows,
+            SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.body body, m.body_url body_url, m.published published,
             m.updated updated, m.status status,
             m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
             m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug,
-            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name,
+            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name, pt.name project_type_name,
             STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT v.id::text, ',') versions
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
             LEFT OUTER JOIN versions v ON v.mod_id = m.id
+            INNER JOIN project_types pt ON pt.id = m.project_type
             INNER JOIN statuses s ON s.id = m.status
             INNER JOIN side_types cs ON m.client_side = cs.id
             INNER JOIN side_types ss ON m.server_side = ss.id
             INNER JOIN licenses l ON m.license = l.id
             WHERE m.id IN (SELECT * FROM UNNEST($1::bigint[]))
-            GROUP BY m.id, s.id, cs.id, ss.id, l.id;
+            GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id;
             ",
             &project_ids_parsed
         )
@@ -620,6 +630,7 @@ impl Project {
                 Ok(e.right().map(|m| QueryProject {
                     inner: Project {
                         id: ProjectId(m.id),
+                        project_type: ProjectTypeId(m.project_type),
                         team_id: TeamId(m.team_id),
                         title: m.title.clone(),
                         description: m.description.clone(),
@@ -641,6 +652,7 @@ impl Project {
                         body: m.body.clone(),
                         follows: m.follows
                     },
+                    project_type: m.project_type_name,
                     categories: m.categories.unwrap_or_default().split(',').map(|x| x.to_string()).collect(),
                     versions: m.versions.unwrap_or_default().split(',').map(|x| VersionId(x.parse().unwrap_or_default())).collect(),
                     donation_urls: vec![],
@@ -658,6 +670,7 @@ impl Project {
 
 pub struct QueryProject {
     pub inner: Project,
+    pub project_type: String,
     pub categories: Vec<String>,
     pub versions: Vec<VersionId>,
     pub donation_urls: Vec<DonationUrl>,
