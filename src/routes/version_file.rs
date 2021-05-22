@@ -93,12 +93,12 @@ pub async fn download_version(
     if let Some(id) = result {
         download_version_inner(
             database::models::VersionId(id.version_id),
-            database::models::ProjectId(id.
-                project_id),
+            database::models::ProjectId(id.project_id),
             &req,
             &mut transaction,
             &pepper,
-        ).await?;
+        )
+        .await?;
 
         transaction.commit().await?;
 
@@ -424,7 +424,14 @@ pub async fn download_files(
     let mut response = HashMap::new();
 
     for row in result {
-        download_version_inner(database::models::VersionId(row.version_id), database::models::ProjectId(row.project_id), &req, &mut transaction, &pepper).await?;
+        download_version_inner(
+            database::models::VersionId(row.version_id),
+            database::models::ProjectId(row.project_id),
+            &req,
+            &mut transaction,
+            &pepper,
+        )
+        .await?;
         response.insert(row.hash, row.url);
     }
 
@@ -488,7 +495,7 @@ pub async fn update_files(
             ),
             &**pool,
         )
-            .await?;
+        .await?;
 
         if let Some(latest_version) = updated_versions.last() {
             version_ids.push(*latest_version);
@@ -501,7 +508,10 @@ pub async fn update_files(
 
     for row in &result {
         if let Some(version) = versions.iter().find(|x| x.id.0 == row.version_id) {
-            response.insert(row.hash.clone(), super::versions::convert_version(version.clone()));
+            response.insert(
+                row.hash.clone(),
+                super::versions::convert_version(version.clone()),
+            );
         }
     }
 

@@ -221,6 +221,27 @@
       "nullable": []
     }
   },
+  "0a1e0cbcdfe68e111326e2dc070e7903d4abb92180c7957f2408b4d6f810c2e5": {
+    "query": "\n        SELECT v.mod_id project_id FROM hashes h\n        INNER JOIN files f ON h.file_id = f.id\n        INNER JOIN versions v ON v.id = f.version_id\n        WHERE h.algorithm = $2 AND h.hash = $1\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "project_id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Bytea",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "0ca11a32b2860e4f5c3d20892a5be3cb419e084f42ba0f98e09b9995027fcc4e": {
     "query": "\n            SELECT id FROM statuses\n            WHERE status = $1\n            ",
     "describe": {
@@ -408,6 +429,51 @@
         ]
       },
       "nullable": [
+        false
+      ]
+    }
+  },
+  "155910d402d6cd3440a0fee53259ae3c397c6d1d98f97a38880078bd9192b6fa": {
+    "query": "\n        SELECT f.url url, h.hash hash, h.algorithm algorithm, f.version_id version_id, v.mod_id project_id FROM hashes h\n        INNER JOIN files f ON h.file_id = f.id\n        INNER JOIN versions v ON v.id = f.version_id\n        WHERE h.algorithm = $2 AND h.hash IN (SELECT * FROM UNNEST($1::bytea[]))\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "url",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 1,
+          "name": "hash",
+          "type_info": "Bytea"
+        },
+        {
+          "ordinal": 2,
+          "name": "algorithm",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "version_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 4,
+          "name": "project_id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "ByteaArray",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
         false
       ]
     }
@@ -2288,6 +2354,39 @@
         ]
       },
       "nullable": [
+        false
+      ]
+    }
+  },
+  "6ace87c4d5a960ba70eb057f1fb5672f4af6da433a420260a67ebd5ea2f4cb7f": {
+    "query": "\n        SELECT h.hash hash, h.algorithm algorithm, f.version_id version_id FROM hashes h\n        INNER JOIN files f ON h.file_id = f.id\n        WHERE h.algorithm = $2 AND h.hash IN (SELECT * FROM UNNEST($1::bytea[]))\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "hash",
+          "type_info": "Bytea"
+        },
+        {
+          "ordinal": 1,
+          "name": "algorithm",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "version_id",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "ByteaArray",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
         false
       ]
     }
