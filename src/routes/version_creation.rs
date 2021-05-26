@@ -24,6 +24,7 @@ lazy_static! {
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct InitialVersionData {
+    #[serde(alias = "mod_id")]
     pub project_id: Option<ProjectId>,
     #[validate(length(min = 1, max = 256))]
     pub file_parts: Vec<String>,

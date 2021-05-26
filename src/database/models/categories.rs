@@ -3,7 +3,7 @@ use super::DatabaseError;
 use futures::TryStreamExt;
 
 pub struct ProjectType {
-    pub id: LoaderId,
+    pub id: ProjectTypeId,
     pub name: String,
 }
 

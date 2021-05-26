@@ -72,6 +72,10 @@
       <sourceFolder url="file://$MODULE_DIR$/target/debug/build/v_htmlescape-f705d5a87b606c7e/out" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/target/debug/build/value-bag-9890a878f3f6e4ee/out" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/target/debug/build/whoami-9edf4b12be590553/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/const_fn-b8ca4a53a9eb8acd/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/labrinth-175a4aa21ea52414/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/proc-macro2-7094aab0eee55116/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/sentry-contexts-ca4afd3cc95c36c4/out" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

@@ -350,7 +350,7 @@ pub struct FileHashes {
 }
 
 // under /api/v2/version_files
-#[post("version_files")]
+#[post("/")]
 pub async fn get_versions_from_hashes(
     pool: web::Data<PgPool>,
     file_data: web::Json<FileHashes>,
@@ -393,7 +393,7 @@ pub async fn get_versions_from_hashes(
     Ok(HttpResponse::Ok().json(response))
 }
 
-#[post("version_files/download")]
+#[post("download")]
 pub async fn download_files(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -446,7 +446,7 @@ pub struct ManyUpdateData {
     pub game_versions: Vec<GameVersion>,
 }
 
-#[post("version_files/update")]
+#[post("update")]
 pub async fn update_files(
     pool: web::Data<PgPool>,
     update_data: web::Json<ManyUpdateData>,

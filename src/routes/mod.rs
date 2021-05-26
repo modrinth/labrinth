@@ -1,5 +1,8 @@
 use actix_web::web;
 
+mod v1;
+pub use v1::v1_config;
+
 mod auth;
 mod index;
 mod maven;
@@ -22,6 +25,21 @@ pub use tags::config as tags_config;
 pub use self::index::index_get;
 pub use self::not_found::not_found;
 use crate::file_hosting::FileHostingError;
+
+pub fn v2_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/v2/")
+            .configure(auth_config)
+            .configure(tags_config)
+            .configure(projects_config)
+            .configure(versions_config)
+            .configure(teams_config)
+            .configure(users_config)
+            .configure(moderation_config)
+            .configure(reports_config)
+            .configure(notifications_config),
+    );
+}
 
 pub fn projects_config(cfg: &mut web::ServiceConfig) {
     cfg.service(projects::project_search);
@@ -59,7 +77,15 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
         web::scope("version_file")
             .service(version_file::delete_file)
             .service(version_file::get_version_from_hash)
-            .service(version_file::download_version),
+            .service(version_file::download_version)
+            .service(version_file::get_update_from_hash),
+    );
+
+    cfg.service(
+        web::scope("version_files")
+            .service(version_file::get_versions_from_hashes)
+            .service(version_file::download_files)
+            .service(version_file::update_files),
     );
 }
 

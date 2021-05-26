@@ -116,21 +116,30 @@ lazy_static! {
     static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
 }
 
+fn default_project_type() -> String {
+    "mod".to_string()
+}
+
 #[derive(Serialize, Deserialize, Validate, Clone)]
 struct ProjectCreateData {
     #[validate(length(min = 3, max = 256))]
+    #[serde(alias = "mod_name")]
     /// The title or name of the project.
     pub title: String,
     #[validate(length(min = 1, max = 64))]
+    #[serde(default = "default_project_type")]
     /// The project type of this mod
     pub project_type: String,
     #[validate(length(min = 3, max = 64), regex = "RE_URL_SAFE")]
+    #[serde(alias = "mod_slug")]
     /// The slug of a project, used for vanity URLs
     pub slug: String,
     #[validate(length(min = 3, max = 2048))]
+    #[serde(alias = "mod_description")]
     /// A short description of the project.
     pub description: String,
     #[validate(length(max = 65536))]
+    #[serde(alias = "mod_body")]
     /// A long description of the project, in markdown.
     pub body: String,
 
@@ -257,7 +266,7 @@ Get logged in user
     - Add project data to indexing queue
 */
 
-async fn project_create_inner(
+pub async fn project_create_inner(
     req: HttpRequest,
     mut payload: Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
