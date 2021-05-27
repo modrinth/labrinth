@@ -9,7 +9,7 @@ pub async fn category_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiE
     let results = Category::list(&**pool)
         .await?
         .into_iter()
-        .filter(|x| x.project_type == "mod".to_string())
+        .filter(|x| &*x.project_type == "mod")
         .map(|x| x.project_type)
         .collect::<Vec<String>>();
     Ok(HttpResponse::Ok().json(results))

@@ -314,7 +314,7 @@ impl DependencyType {
 }
 
 /// A specific version of Minecraft
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(transparent)]
 pub struct GameVersion(pub String);
 

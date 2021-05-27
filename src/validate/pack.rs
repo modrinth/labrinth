@@ -1,5 +1,5 @@
-use crate::models::projects::{GameVersion, Loader, SideType};
-use crate::validate::{ValidationError, ValidationResult};
+use crate::models::projects::SideType;
+use crate::validate::{SupportedGameVersions, ValidationError, ValidationResult};
 use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
@@ -58,23 +58,24 @@ impl PackDependency {
 pub struct PackValidator {}
 
 impl super::Validator for PackValidator {
-    fn get_file_extensions<'a>() -> Vec<&'a str> {
-        vec!["zip"]
+    fn get_file_extensions<'a>(&self) -> &'a [&'a str] {
+        &["zip"]
     }
 
-    fn get_project_types<'a>() -> Vec<&'a str> {
-        vec!["modpack"]
+    fn get_project_types<'a>(&self) -> &'a [&'a str] {
+        &["modpack"]
     }
 
-    fn get_supported_loaders() -> Vec<Loader> {
-        vec![Loader("forge".to_string()), Loader("fabric".to_string())]
+    fn get_supported_loaders<'a>(&self) -> &'a [&'a str] {
+        &["forge", "fabric"]
     }
 
-    fn get_supported_game_versions() -> Vec<GameVersion> {
-        todo!()
+    fn get_supported_game_versions(&self) -> SupportedGameVersions {
+        SupportedGameVersions::All
     }
 
     fn validate(
+        &self,
         archive: &mut ZipArchive<Cursor<&[u8]>>,
     ) -> Result<ValidationResult, ValidationError> {
         let mut file = archive.by_name("index.json")?;
@@ -84,7 +85,6 @@ impl super::Validator for PackValidator {
 
         let pack: PackFormat = serde_json::from_str(&*contents)?;
 
-        // TODO: Implement games
         if pack.game != *"minecraft" {
             return Err(ValidationError::InvalidInputError(format!(
                 "Game {0} does not exist!",

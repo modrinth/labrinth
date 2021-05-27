@@ -39,6 +39,8 @@ pub enum CreateError {
     ValidationError(#[from] validator::ValidationErrors),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
+    #[error("Error while validating uploaded file")]
+    FileValidationError(#[from] crate::validate::ValidationError),
     #[error("{}", .0)]
     MissingValueError(String),
     #[error("Invalid format for project icon: {0}")]
@@ -82,6 +84,7 @@ impl actix_web::ResponseError for CreateError {
             CreateError::CustomAuthenticationError(..) => StatusCode::UNAUTHORIZED,
             CreateError::SlugCollision => StatusCode::BAD_REQUEST,
             CreateError::ValidationError(..) => StatusCode::BAD_REQUEST,
+            CreateError::FileValidationError(..) => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -106,6 +109,7 @@ impl actix_web::ResponseError for CreateError {
                 CreateError::CustomAuthenticationError(..) => "unauthorized",
                 CreateError::SlugCollision => "invalid_input",
                 CreateError::ValidationError(..) => "invalid_input",
+                CreateError::FileValidationError(..) => "invalid_input",
             },
             description: &self.to_string(),
         })
@@ -286,6 +290,8 @@ pub async fn project_create_inner(
     let mut versions;
     let mut versions_map = std::collections::HashMap::new();
 
+    let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
+
     {
         // The first multipart field must be named "data" and contain a
         // JSON `ProjectCreateData` object.
@@ -354,7 +360,14 @@ pub async fn project_create_inner(
                 }
             }
             versions.push(
-                create_initial_version(data, project_id, current_user.id, transaction).await?,
+                create_initial_version(
+                    data,
+                    project_id,
+                    current_user.id,
+                    &all_game_versions,
+                    transaction,
+                )
+                .await?,
             );
         }
 
@@ -421,10 +434,11 @@ pub async fn project_create_inner(
         let version_data = project_create_data.initial_versions.get(index).unwrap();
 
         // Upload the new jar file
-        let file_builder = super::version_creation::upload_file(
+        super::version_creation::upload_file(
             &mut field,
             file_host,
             uploaded_files,
+            &mut created_version.files,
             &cdn_url,
             &content_disposition,
             project_id,
@@ -432,11 +446,10 @@ pub async fn project_create_inner(
             &*project_create_data.project_type,
             version_data.loaders.clone(),
             version_data.game_versions.clone(),
+            &all_game_versions,
+            false,
         )
         .await?;
-
-        // Add the newly uploaded file to the existing or new version
-        created_version.files.push(file_builder);
     }
 
     {
@@ -616,6 +629,7 @@ async fn create_initial_version(
     version_data: &InitialVersionData,
     project_id: ProjectId,
     author: UserId,
+    all_game_versions: &[models::categories::GameVersion],
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<models::version_item::VersionBuilder, CreateError> {
     if version_data.project_id.is_some() {
@@ -634,13 +648,17 @@ async fn create_initial_version(
             .await?
             .expect("Release Channel not found in database");
 
-    let mut game_versions = Vec::with_capacity(version_data.game_versions.len());
-    for v in &version_data.game_versions {
-        let id = models::categories::GameVersion::get_id(&v.0, &mut *transaction)
-            .await?
-            .ok_or_else(|| CreateError::InvalidGameVersion(v.0.clone()))?;
-        game_versions.push(id);
-    }
+    let game_versions = version_data
+        .game_versions
+        .iter()
+        .map(|x| {
+            all_game_versions
+                .iter()
+                .find(|y| y.version == x.0)
+                .ok_or_else(|| CreateError::InvalidGameVersion(x.0.clone()))
+                .map(|y| y.id)
+        })
+        .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
 
     let mut loaders = Vec::with_capacity(version_data.loaders.len());
     for l in &version_data.loaders {

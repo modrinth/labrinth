@@ -8,6 +8,7 @@ use crate::models::projects::{
 };
 use crate::models::teams::Permissions;
 use crate::routes::project_creation::{CreateError, UploadedFile};
+use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
@@ -96,6 +97,8 @@ async fn version_create_inner(
 
     let mut initial_version_data = None;
     let mut version_builder = None;
+
+    let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
 
     let user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
@@ -189,13 +192,17 @@ async fn version_create_inner(
             .await?
             .expect("Release channel not found in database");
 
-            let mut game_versions = Vec::with_capacity(version_create_data.game_versions.len());
-            for v in &version_create_data.game_versions {
-                let id = models::categories::GameVersion::get_id(&v.0, &mut *transaction)
-                    .await?
-                    .ok_or_else(|| CreateError::InvalidGameVersion(v.0.clone()))?;
-                game_versions.push(id);
-            }
+            let game_versions = version_create_data
+                .game_versions
+                .iter()
+                .map(|x| {
+                    all_game_versions
+                        .iter()
+                        .find(|y| y.version == x.0)
+                        .ok_or_else(|| CreateError::InvalidGameVersion(x.0.clone()))
+                        .map(|y| y.id)
+                })
+                .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
 
             let mut loaders = Vec::with_capacity(version_create_data.loaders.len());
             for l in &version_create_data.loaders {
@@ -252,10 +259,11 @@ async fn version_create_inner(
             .clone()
             .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
 
-        let file_builder = upload_file(
+        upload_file(
             &mut field,
             file_host,
             uploaded_files,
+            &mut version.files,
             &cdn_url,
             &content_disposition,
             version.project_id.into(),
@@ -263,11 +271,10 @@ async fn version_create_inner(
             &*project_type,
             version_data.loaders,
             version_data.game_versions,
+            &all_game_versions,
+            false,
         )
         .await?;
-
-        // Add the newly uploaded file to the existing or new version
-        version.files.push(file_builder);
     }
 
     let version_data = initial_version_data
@@ -466,6 +473,8 @@ async fn upload_file_to_version_inner(
     .await?
     .name;
 
+    let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
+
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
         let content_disposition = field.content_disposition().ok_or_else(|| {
@@ -491,10 +500,11 @@ async fn upload_file_to_version_inner(
             CreateError::InvalidInput(String::from("`data` field must come before file fields"))
         })?;
 
-        let file_builder = upload_file(
+        upload_file(
             &mut field,
             file_host,
             uploaded_files,
+            &mut file_builders,
             &cdn_url,
             &content_disposition,
             project_id,
@@ -507,11 +517,10 @@ async fn upload_file_to_version_inner(
                 .into_iter()
                 .map(GameVersion)
                 .collect(),
+            &all_game_versions,
+            true,
         )
         .await?;
-
-        // TODO: Malware scan + file validation
-        file_builders.push(file_builder);
     }
 
     if file_builders.is_empty() {
@@ -529,10 +538,12 @@ async fn upload_file_to_version_inner(
 
 // This function is used for adding a file to a version, uploading the initial
 // files for a version, and for uploading the initial version files for a project
+#[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
     field: &mut Field,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
+    version_files: &mut Vec<models::version_item::VersionFileBuilder>,
     cdn_url: &str,
     content_disposition: &actix_web::http::header::ContentDisposition,
     project_id: crate::models::ids::ProjectId,
@@ -540,7 +551,9 @@ pub async fn upload_file(
     project_type: &str,
     loaders: Vec<Loader>,
     game_versions: Vec<GameVersion>,
-) -> Result<models::version_item::VersionFileBuilder, CreateError> {
+    all_game_versions: &[models::categories::GameVersion],
+    ignore_primary: bool,
+) -> Result<(), CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
 
     let content_type = project_file_type(file_extension)
@@ -561,6 +574,15 @@ pub async fn upload_file(
         ));
     }
 
+    let validation_result = validate_file(
+        data.as_slice(),
+        file_extension,
+        project_type,
+        loaders,
+        game_versions,
+        all_game_versions,
+    )?;
+
     let upload_data = file_host
         .upload_file(
             content_type,
@@ -578,7 +600,7 @@ pub async fn upload_file(
     });
 
     // TODO: Malware scan + file validation
-    Ok(models::version_item::VersionFileBuilder {
+    version_files.push(models::version_item::VersionFileBuilder {
         filename: file_name.to_string(),
         url: format!("{}/{}", cdn_url, upload_data.file_name),
         hashes: vec![
@@ -595,8 +617,12 @@ pub async fn upload_file(
                 hash: upload_data.content_sha512.into_bytes(),
             },
         ],
-        primary: uploaded_files.len() == 1,
-    })
+        primary: validation_result == ValidationResult::Pass
+            && version_files.iter().all(|x| !x.primary)
+            && !ignore_primary,
+    });
+
+    Ok(())
 }
 
 // Currently we only support jar projects; this may change in the future (datapacks?)
