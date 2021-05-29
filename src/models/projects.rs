@@ -73,7 +73,7 @@ pub struct Project {
     pub donation_urls: Option<Vec<DonationLink>>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub enum SideType {
     Required,
@@ -130,7 +130,7 @@ pub struct DonationLink {
 /// Draft - Project is not displayed on search, and not accessible by URL
 /// Unlisted - Project is not displayed on search, but accessible by URL
 /// Processing - Project is not displayed on search, and not accessible by URL (Temporary state, project under review)
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
     Approved,

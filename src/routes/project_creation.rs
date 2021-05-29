@@ -39,7 +39,7 @@ pub enum CreateError {
     ValidationError(#[from] validator::ValidationErrors),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
-    #[error("Error while validating uploaded file")]
+    #[error("Error while validating uploaded file: {0}")]
     FileValidationError(#[from] crate::validate::ValidationError),
     #[error("{}", .0)]
     MissingValueError(String),

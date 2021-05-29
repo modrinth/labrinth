@@ -89,7 +89,7 @@ fn convert_user(data: crate::database::models::user_item::User) -> crate::models
     }
 }
 
-#[get("{user_id}/[projects]")]
+#[get("{user_id}/projects")]
 pub async fn projects_list(
     req: HttpRequest,
     info: web::Path<(String,)>,

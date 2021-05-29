@@ -254,7 +254,7 @@ async fn main() -> std::io::Result<()> {
                     .allowed_methods(vec!["GET", "POST", "DELETE", "PATCH", "PUT"])
                     .allowed_headers(vec![http::header::AUTHORIZATION, http::header::ACCEPT])
                     .allowed_header(http::header::CONTENT_TYPE)
-                    .send_wildcard()
+                    .allow_any_origin()
                     .max_age(3600),
             )
             .wrap(
