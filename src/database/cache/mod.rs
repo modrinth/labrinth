@@ -15,12 +15,10 @@ macro_rules! generate_cache {
 
             pub async fn $getter_name<'a>(id: $id) -> Option<$val> {
                 let mut cache = $cache_name.lock().await;
-                info!("Querying cache {} for {}", stringify!($name), id);
                 Cached::cache_get(&mut *cache, &id).map(|e| e.clone())
             }
             pub async fn $setter_name<'a>(id: $id, val: &$val) {
                 let mut cache = $cache_name.lock().await;
-                info!("Updating cache {} for {}", stringify!($name), id);
                 Cached::cache_set(&mut *cache, id, val.clone());
             }
         }
