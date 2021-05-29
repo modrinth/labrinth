@@ -20,7 +20,7 @@ use sqlx::postgres::PgPool;
 use validator::Validate;
 
 lazy_static! {
-    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
+    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_\-.]*$").unwrap();
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -35,7 +35,7 @@ pub struct InitialVersionData {
     pub version_title: String,
     #[validate(length(max = 65536))]
     pub version_body: Option<String>,
-    #[validate(length(min = 1, max = 256))]
+    #[validate(length(min = 0, max = 256))]
     pub dependencies: Vec<Dependency>,
     pub game_versions: Vec<GameVersion>,
     pub release_channel: VersionType,

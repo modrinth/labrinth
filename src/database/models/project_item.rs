@@ -1,5 +1,7 @@
 use super::ids::*;
-
+use crate::database::cache::project_cache::{get_cache_project, set_cache_project};
+use crate::database::cache::query_project_cache::{get_cache_query_project, set_cache_query_project};
+#[derive(Clone, Debug)]
 pub struct DonationUrl {
     pub project_id: ProjectId,
     pub platform_id: DonationPlatformId,
@@ -113,7 +115,7 @@ impl ProjectBuilder {
         Ok(self.project_id)
     }
 }
-
+#[derive(Clone, Debug)]
 pub struct Project {
     pub id: ProjectId,
     pub project_type: ProjectTypeId,
@@ -471,7 +473,13 @@ impl Project {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let id_option = crate::models::ids::base62_impl::parse_base62(&*slug_or_project_id).ok();
+        // Check in the cache
+        let cached = get_cache_project(slug_or_project_id.clone()).await;
+        if let Some(data) = cached {
+            return Ok(Some(data));
+        }
+        let id_option =
+            crate::models::ids::base62_impl::parse_base62(&*slug_or_project_id.clone()).ok();
 
         if let Some(id) = id_option {
             let mut project = Project::get(ProjectId(id as i64), executor).await?;
@@ -479,10 +487,22 @@ impl Project {
             if project.is_none() {
                 project = Project::get_from_slug(&slug_or_project_id, executor).await?;
             }
-
-            Ok(project)
+            // Cache the response
+            if let Some(data) = project {
+                set_cache_project(slug_or_project_id.clone(), &data).await;
+                Ok(Some(data))
+            } else {
+                Ok(None)
+            }
         } else {
-            Project::get_from_slug(&slug_or_project_id, executor).await
+            let project = Project::get_from_slug(&slug_or_project_id, executor).await?;
+            // Capture the data, and try to cache it
+            if let Some(data) = project {
+                set_cache_project(slug_or_project_id.clone(), &data).await;
+                Ok(Some(data))
+            } else {
+                Ok(None)
+            }
         }
     }
 
@@ -493,7 +513,12 @@ impl Project {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let id_option = crate::models::ids::base62_impl::parse_base62(&*slug_or_project_id).ok();
+        // Query cache
+        let cached = get_cache_query_project(slug_or_project_id.clone()).await;
+        if let Some(data) = cached {
+            return Ok(Some(data));
+        }
+        let id_option = crate::models::ids::base62_impl::parse_base62(&*slug_or_project_id.clone()).ok();
 
         if let Some(id) = id_option {
             let mut project = Project::get_full(ProjectId(id as i64), executor).await?;
@@ -501,10 +526,21 @@ impl Project {
             if project.is_none() {
                 project = Project::get_full_from_slug(&slug_or_project_id, executor).await?;
             }
-
-            Ok(project)
+            // Save the variable
+            if let Some(data) = project {
+                set_cache_query_project(slug_or_project_id.clone(), &data).await;
+                Ok(Some(data))
+            } else {
+                Ok(None)
+            }
         } else {
-            Project::get_full_from_slug(&slug_or_project_id, executor).await
+            let project = Project::get_full_from_slug(&slug_or_project_id, executor).await?;
+            if let Some(data) = project {
+                set_cache_query_project(slug_or_project_id.clone(), &data).await;
+                Ok(Some(data))
+            } else {
+                Ok(None)
+            }
         }
     }
 
@@ -667,7 +703,7 @@ impl Project {
             .await
     }
 }
-
+#[derive(Clone, Debug)]
 pub struct QueryProject {
     pub inner: Project,
     pub project_type: String,
