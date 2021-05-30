@@ -103,7 +103,7 @@ pub async fn reconfigure_indices(config: &SearchConfig) -> Result<(), IndexingEr
     .await?;
 
     // Alphabetically Index
-    update_index(&client, "alphabetically_mods", {
+    update_index(&client, "alphabetically_projects", {
         let mut alphabetically_rules = default_rules();
         alphabetically_rules.push_front("desc(title)".to_string());
         alphabetically_rules.into()
@@ -219,13 +219,13 @@ pub async fn add_projects(
     add_to_index(follows_index, &projects).await?;
 
     // Alphabetically Index
-    let alphabetically_index = create_index(&client, "alphabetically_mods", || {
+    let alphabetically_index = create_index(&client, "alphabetically_projects", || {
         let mut alphabetically_rules = default_rules();
         alphabetically_rules.push_front("desc(title)".to_string());
         alphabetically_rules.into()
     })
         .await?;
-    add_to_index(alphabetically_index, &mods).await?;
+    add_to_index(alphabetically_index, &projects).await?;
 
     // Updated Index
     let updated_index = create_index(&client, "updated_projects", || {
