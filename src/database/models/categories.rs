@@ -10,6 +10,8 @@ pub struct ProjectType {
 pub struct Loader {
     pub id: LoaderId,
     pub loader: String,
+    pub icon: String,
+    pub supported_project_types: Vec<String>,
 }
 
 pub struct GameVersion {
@@ -23,6 +25,7 @@ pub struct Category {
     pub id: CategoryId,
     pub category: String,
     pub project_type: String,
+    pub icon: String,
 }
 
 pub struct ReportType {
@@ -45,6 +48,7 @@ pub struct DonationPlatform {
 pub struct CategoryBuilder<'a> {
     pub name: Option<&'a str>,
     pub project_type: Option<&'a ProjectTypeId>,
+    pub icon: Option<&'a str>,
 }
 
 impl Category {
@@ -52,6 +56,7 @@ impl Category {
         CategoryBuilder {
             name: None,
             project_type: None,
+            icon: None,
         }
     }
 
@@ -131,7 +136,7 @@ impl Category {
     {
         let result = sqlx::query!(
             "
-            SELECT c.id id, c.category category, pt.name project_type
+            SELECT c.id id, c.category category, c.icon icon, pt.name project_type
             FROM categories c
             INNER JOIN project_types pt ON c.project_type = pt.id
             "
@@ -142,6 +147,7 @@ impl Category {
                 id: CategoryId(c.id),
                 category: c.category,
                 project_type: c.project_type,
+                icon: c.icon,
             }))
         })
         .try_collect::<Vec<Category>>()
@@ -201,6 +207,13 @@ impl<'a> CategoryBuilder<'a> {
         })
     }
 
+    pub fn icon(self, icon: &'a str) -> Result<CategoryBuilder<'a>, DatabaseError> {
+        Ok(Self {
+            icon: Some(icon),
+            ..self
+        })
+    }
+
     pub async fn insert<'b, E>(self, exec: E) -> Result<CategoryId, DatabaseError>
     where
         E: sqlx::Executor<'b, Database = sqlx::Postgres>,
@@ -210,13 +223,14 @@ impl<'a> CategoryBuilder<'a> {
             .ok_or_else(|| DatabaseError::Other("No project type specified.".to_string()))?;
         let result = sqlx::query!(
             "
-            INSERT INTO categories (category, project_type)
-            VALUES ($1, $2)
-            ON CONFLICT (category, project_type) DO NOTHING
+            INSERT INTO categories (category, project_type, icon)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (category, project_type, icon) DO NOTHING
             RETURNING id
             ",
             self.name,
-            id as ProjectTypeId
+            id as ProjectTypeId,
+            self.icon
         )
         .fetch_one(exec)
         .await?;
@@ -227,11 +241,17 @@ impl<'a> CategoryBuilder<'a> {
 
 pub struct LoaderBuilder<'a> {
     pub name: Option<&'a str>,
+    pub icon: Option<&'a str>,
+    pub supported_project_types: Option<&'a [ProjectTypeId]>,
 }
 
 impl Loader {
     pub fn builder() -> LoaderBuilder<'static> {
-        LoaderBuilder { name: None }
+        LoaderBuilder {
+            name: None,
+            icon: None,
+            supported_project_types: None,
+        }
     }
 
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<LoaderId>, DatabaseError>
@@ -275,18 +295,35 @@ impl Loader {
         Ok(result.loader)
     }
 
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<String>, DatabaseError>
+    pub async fn list<'a, E>(exec: E) -> Result<Vec<Loader>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
-            SELECT loader FROM loaders
+            SELECT l.id id, l.loader loader, l.icon icon,
+            STRING_AGG(DISTINCT pt.name, ',') project_types
+            FROM loaders l
+            LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id
+            LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id
+            GROUP BY l.id;
             "
         )
         .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|c| c.loader)) })
-        .try_collect::<Vec<String>>()
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|x| Loader {
+                id: LoaderId(x.id),
+                loader: x.loader,
+                icon: x.icon,
+                supported_project_types: x
+                    .project_types
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|x| x.to_string())
+                    .collect(),
+            }))
+        })
+        .try_collect::<Vec<_>>()
         .await?;
 
         Ok(result)
@@ -325,27 +362,73 @@ impl<'a> LoaderBuilder<'a> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
-            Ok(Self { name: Some(name) })
+            Ok(Self {
+                name: Some(name),
+                ..self
+            })
         } else {
             Err(DatabaseError::InvalidIdentifier(name.to_string()))
         }
     }
 
-    pub async fn insert<'b, E>(self, exec: E) -> Result<LoaderId, DatabaseError>
-    where
-        E: sqlx::Executor<'b, Database = sqlx::Postgres>,
-    {
+    pub fn icon(self, icon: &'a str) -> Result<LoaderBuilder<'a>, DatabaseError> {
+        Ok(Self {
+            icon: Some(icon),
+            ..self
+        })
+    }
+
+    pub fn supported_project_types(
+        self,
+        supported_project_types: &'a [ProjectTypeId],
+    ) -> Result<LoaderBuilder<'a>, DatabaseError> {
+        Ok(Self {
+            supported_project_types: Some(supported_project_types),
+            ..self
+        })
+    }
+
+    pub async fn insert(
+        self,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<LoaderId, super::DatabaseError> {
         let result = sqlx::query!(
             "
-            INSERT INTO loaders (loader)
-            VALUES ($1)
-            ON CONFLICT (loader) DO NOTHING
+            INSERT INTO loaders (loader, icon)
+            VALUES ($1, $2)
+            ON CONFLICT (loader, icon) DO NOTHING
             RETURNING id
             ",
-            self.name
+            self.name,
+            self.icon
         )
-        .fetch_one(exec)
+        .fetch_one(&mut *transaction)
         .await?;
+
+        if let Some(project_types) = self.supported_project_types {
+            sqlx::query!(
+                "
+                    DELETE FROM loaders_project_types
+                    WHERE joining_loader_id = $1
+                    ",
+                result.id
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            for project_type in project_types {
+                sqlx::query!(
+                    "
+                    INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id)
+                    VALUES ($1, $2)
+                    ",
+                    result.id,
+                    project_type.0,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+        }
 
         Ok(LoaderId(result.id))
     }
@@ -1042,6 +1125,33 @@ impl ProjectType {
         .await?;
 
         Ok(result.map(|r| ProjectTypeId(r.id)))
+    }
+
+    pub async fn get_many_id<'a, E>(
+        names: &Vec<String>,
+        exec: E,
+    ) -> Result<Vec<ProjectType>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let project_types = sqlx::query!(
+            "
+            SELECT id, name FROM project_types
+            WHERE name IN (SELECT * FROM UNNEST($1::varchar[]))
+            ",
+            names
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|x| ProjectType {
+                id: ProjectTypeId(x.id),
+                name: x.name,
+            }))
+        })
+        .try_collect::<Vec<ProjectType>>()
+        .await?;
+
+        Ok(project_types)
     }
 
     pub async fn get_name<'a, E>(id: ProjectTypeId, exec: E) -> Result<String, DatabaseError>

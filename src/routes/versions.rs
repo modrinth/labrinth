@@ -80,7 +80,7 @@ pub async fn version_list(
                     .iter()
                     .find(|version| {
                         version.game_versions.contains(&filter.0.version)
-                            && version.loaders.contains(&filter.1)
+                            && version.loaders.contains(&filter.1.loader)
                     })
                     .map(|version| response.push(convert_version(version.clone())))
                     .unwrap_or(());

@@ -7,7 +7,6 @@ macro_rules! generate_cache {
             use cached::async_mutex::Mutex;
             use cached::{Cached, SizedCache};
             use lazy_static::lazy_static;
-            use log::info;
             lazy_static! {
                 static ref $cache_name: Mutex<SizedCache<$id, $val>> =
                     Mutex::new(SizedCache::with_size(400));

@@ -26,10 +26,10 @@ pub fn tags_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/tag/")
             .service(tags::category_list)
-            .service(super::tags::category_create)
+            .service(tags::category_create)
             .service(super::tags::category_delete)
-            .service(super::tags::loader_list)
-            .service(super::tags::loader_create)
+            .service(tags::loader_list)
+            .service(tags::loader_create)
             .service(super::tags::loader_delete)
             .service(super::tags::game_version_list)
             .service(super::tags::game_version_create)

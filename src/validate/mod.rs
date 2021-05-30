@@ -1,10 +1,14 @@
 use crate::models::projects::{GameVersion, Loader};
+use crate::validate::fabric::FabricValidator;
+use crate::validate::forge::{ForgeValidator, LegacyForgeValidator};
 use crate::validate::pack::PackValidator;
 use chrono::{DateTime, Utc};
 use std::io::Cursor;
 use thiserror::Error;
 use zip::ZipArchive;
 
+mod fabric;
+mod forge;
 mod pack;
 
 #[derive(Error, Debug)]
@@ -30,6 +34,7 @@ pub enum ValidationResult {
 pub enum SupportedGameVersions {
     All,
     PastDate(DateTime<Utc>),
+    Range(DateTime<Utc>, DateTime<Utc>),
     Custom(Vec<GameVersion>),
 }
 
@@ -44,7 +49,12 @@ pub trait Validator: Sync {
     ) -> Result<ValidationResult, ValidationError>;
 }
 
-static VALIDATORS: [&dyn Validator; 1] = [&PackValidator {}];
+static VALIDATORS: [&dyn Validator; 4] = [
+    &PackValidator {},
+    &FabricValidator {},
+    &ForgeValidator {},
+    &LegacyForgeValidator {},
+];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
 pub fn validate_file(
@@ -89,6 +99,13 @@ fn game_version_supported(
                 .iter()
                 .find(|y| y.version == x.0)
                 .map(|x| x.date > date)
+                .unwrap_or(false)
+        }),
+        SupportedGameVersions::Range(before, after) => game_versions.iter().any(|x| {
+            all_game_versions
+                .iter()
+                .find(|y| y.version == x.0)
+                .map(|x| x.date > before && x.date < after)
                 .unwrap_or(false)
         }),
         SupportedGameVersions::Custom(versions) => {

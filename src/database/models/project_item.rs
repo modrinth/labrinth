@@ -1,6 +1,8 @@
 use super::ids::*;
 use crate::database::cache::project_cache::{get_cache_project, set_cache_project};
-use crate::database::cache::query_project_cache::{get_cache_query_project, set_cache_query_project};
+use crate::database::cache::query_project_cache::{
+    get_cache_query_project, set_cache_query_project,
+};
 #[derive(Clone, Debug)]
 pub struct DonationUrl {
     pub project_id: ProjectId,
@@ -518,7 +520,8 @@ impl Project {
         if let Some(data) = cached {
             return Ok(Some(data));
         }
-        let id_option = crate::models::ids::base62_impl::parse_base62(&*slug_or_project_id.clone()).ok();
+        let id_option =
+            crate::models::ids::base62_impl::parse_base62(&*slug_or_project_id.clone()).ok();
 
         if let Some(id) = id_option {
             let mut project = Project::get_full(ProjectId(id as i64), executor).await?;

@@ -95,6 +95,25 @@
       "nullable": []
     }
   },
+  "03209c5bda2d704e688439919a7b3903db6ad7caebf7ddafb3ea52d312d47bfb": {
+    "query": "\n            INSERT INTO users (\n                id, github_id, username, name, email,\n                avatar_url, bio, created\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8\n            )\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Varchar",
+          "Varchar",
+          "Varchar",
+          "Timestamptz"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "03c196a6b0c287b9d913559442b1ea679c35634e33f94197f587532757cb7385": {
     "query": "\n            DELETE FROM notifications_actions\n             WHERE notification_id IN (SELECT * FROM UNNEST($1::bigint[]))\n            ",
     "describe": {
@@ -1600,6 +1619,19 @@
       "nullable": []
     }
   },
+  "44bb1034872a80bbea122e04399470fd5f029b819c70cb6e0cb2db6d3193b97e": {
+    "query": "\n                    INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id)\n                    VALUES ($1, $2)\n                    ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int4"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "45f8a06abdd17fc437f5355ad109efcb5d7e247ef397b1a0cd98d7fb6bd9ce17": {
     "query": "\n                        INSERT INTO mods_categories (joining_mod_id, joining_category_id)\n                        VALUES ($1, $2)\n                        ",
     "describe": {
@@ -1633,8 +1665,8 @@
       ]
     }
   },
-  "49e36828e3a0214b48234435e34311735ae32e08d8be1270f8f0db4b27e708ba": {
-    "query": "\n            INSERT INTO loaders (loader)\n            VALUES ($1)\n            ON CONFLICT (loader) DO NOTHING\n            RETURNING id\n            ",
+  "49b2829b22f6ca82b3f62ea7962d8af22098cfa5a1fc1e06312bf1d3df382280": {
+    "query": "\n            INSERT INTO categories (category, project_type, icon)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (category, project_type, icon) DO NOTHING\n            RETURNING id\n            ",
     "describe": {
       "columns": [
         {
@@ -1645,6 +1677,8 @@
       ],
       "parameters": {
         "Left": [
+          "Varchar",
+          "Int4",
           "Varchar"
         ]
       },
@@ -1933,6 +1967,18 @@
         "Left": [
           "Int8",
           "Varchar"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "4fa53dab6de86711825c032077fbe4985d5edf8aeec9003be900d162f46b3631": {
+    "query": "\n                    DELETE FROM loaders_project_types\n                    WHERE joining_loader_id = $1\n                    ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4"
         ]
       },
       "nullable": []
@@ -2244,27 +2290,6 @@
       ]
     }
   },
-  "5f264dfa7b7c4a074fd577b0637b488a9fc14ea23aa6b64b93c3893104c11649": {
-    "query": "\n            INSERT INTO categories (category, project_type)\n            VALUES ($1, $2)\n            ON CONFLICT (category, project_type) DO NOTHING\n            RETURNING id\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Varchar",
-          "Int4"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
   "5ff8fd471ff62f86aa95e52cee2723b31ec3d7fc53c3ef1454df40eef0ceff53": {
     "query": "\n            SELECT version.id FROM (\n                SELECT DISTINCT ON(v.id) v.id, v.date_published FROM versions v\n                INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id\n                INNER JOIN game_versions gv on gvv.game_version_id = gv.id AND (cardinality($2::varchar[]) = 0 OR gv.version = ANY($2::varchar[]))\n                INNER JOIN loaders_versions lv ON lv.version_id = v.id\n                INNER JOIN loaders l on lv.loader_id = l.id AND (cardinality($3::varchar[]) = 0 OR l.loader = ANY($3::varchar[]))\n                WHERE v.mod_id = $1\n            ) AS version\n            ORDER BY version.date_published ASC\n            ",
     "describe": {
@@ -2441,6 +2466,42 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "6dc7ec051df26915ab8ee824c3caa45dbac2bda5e2e55958e463cdc0f8754ce2": {
+    "query": "\n            SELECT l.id id, l.loader loader, l.icon icon,\n            STRING_AGG(DISTINCT pt.name, ',') project_types\n            FROM loaders l\n            LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id\n            LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id\n            GROUP BY l.id;\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "loader",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "icon",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "project_types",
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        null
+      ]
     }
   },
   "6f1fb4c3269b2a8190f328df025be76241eae757d9c4f3e5eb1cc01b191837df": {
@@ -3053,36 +3114,6 @@
         false,
         false,
         false,
-        false,
-        false,
-        false
-      ]
-    }
-  },
-  "8519b639c64670e45d2fafa7f8bef49ed5c9cfaa9976c9fd8f1553be5da8f947": {
-    "query": "\n            SELECT c.id id, c.category category, pt.name project_type\n            FROM categories c\n            INNER JOIN project_types pt ON c.project_type = pt.id\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "category",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "project_type",
-          "type_info": "Varchar"
-        }
-      ],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": [
         false,
         false,
         false
@@ -3733,25 +3764,6 @@
       "parameters": {
         "Left": [
           "Int8"
-        ]
-      },
-      "nullable": []
-    }
-  },
-  "b446a7ddda6860b72517501332a51e64e76f6ab6de6527ad86b4c77db71f6037": {
-    "query": "\n            INSERT INTO users (\n                id, github_id, username, name, email,\n                avatar_url, bio, created\n            )\n            VALUES (\n                $1, $2, LOWER($3), $4, $5,\n                $6, $7, $8\n            )\n            ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Text",
-          "Varchar",
-          "Varchar",
-          "Varchar",
-          "Varchar",
-          "Timestamptz"
         ]
       },
       "nullable": []
@@ -4595,18 +4607,21 @@
       "nullable": []
     }
   },
-  "cc8b672c2733bfd110ed3361c6f477b185b530228c7206cb641dbaa40e41ea9f": {
-    "query": "\n            SELECT loader FROM loaders\n            ",
+  "cc8eeb14e2069b9e4f92b224d42b283e569258d61be3cc3b3f7564f0dadac89b": {
+    "query": "\n            INSERT INTO loaders (loader, icon)\n            VALUES ($1, $2)\n            ON CONFLICT (loader, icon) DO NOTHING\n            RETURNING id\n            ",
     "describe": {
       "columns": [
         {
           "ordinal": 0,
-          "name": "loader",
-          "type_info": "Varchar"
+          "name": "id",
+          "type_info": "Int4"
         }
       ],
       "parameters": {
-        "Left": []
+        "Left": [
+          "Varchar",
+          "Varchar"
+        ]
       },
       "nullable": [
         false
@@ -4833,6 +4848,42 @@
       },
       "nullable": [
         null
+      ]
+    }
+  },
+  "d7744589d9e20c48f6f726a8a540822c1e521b791ebc2fee86a1108d442aedb8": {
+    "query": "\n            SELECT c.id id, c.category category, c.icon icon, pt.name project_type\n            FROM categories c\n            INNER JOIN project_types pt ON c.project_type = pt.id\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "category",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "icon",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "project_type",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false
       ]
     }
   },
@@ -5300,6 +5351,32 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "f23fcac002c2694e8b8ff96708e4178428d24972a120f068b1897981a1ff988b": {
+    "query": "\n            SELECT id, name FROM project_types\n            WHERE name IN (SELECT * FROM UNNEST($1::varchar[]))\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "name",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "VarcharArray"
+        ]
+      },
+      "nullable": [
+        false,
+        false
+      ]
     }
   },
   "f3a8ad4a802dde0eb9304078e0368066e7d48121dfe73a63b2911b0998840a79": {
