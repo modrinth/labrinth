@@ -152,7 +152,7 @@ pub struct EditUser {
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(length(max = 160), regex = "RE_URL_SAFE")]
+    #[validate(length(max = 160))]
     pub bio: Option<Option<String>>,
     pub role: Option<Role>,
 }

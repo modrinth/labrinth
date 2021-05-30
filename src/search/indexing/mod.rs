@@ -108,7 +108,7 @@ pub async fn reconfigure_indices(config: &SearchConfig) -> Result<(), IndexingEr
         alphabetically_rules.push_front("desc(title)".to_string());
         alphabetically_rules.into()
     })
-        .await?;
+    .await?;
 
     // Updated Index
     update_index(&client, "updated_projects", {
@@ -224,7 +224,7 @@ pub async fn add_projects(
         alphabetically_rules.push_front("desc(title)".to_string());
         alphabetically_rules.into()
     })
-        .await?;
+    .await?;
     add_to_index(alphabetically_index, &projects).await?;
 
     // Updated Index

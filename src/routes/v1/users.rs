@@ -7,7 +7,7 @@ use actix_web::web;
 use actix_web::{get, HttpRequest, HttpResponse};
 use sqlx::PgPool;
 
-#[get("{user_id}/[mods]")]
+#[get("{user_id}/mods")]
 pub async fn mods_list(
     req: HttpRequest,
     info: web::Path<(String,)>,

@@ -46,7 +46,7 @@ pub struct SearchResults {
     pub total_hits: usize,
 }
 
-#[get("search")]
+#[get("mod")]
 pub async fn mod_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
