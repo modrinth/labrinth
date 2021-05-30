@@ -158,6 +158,7 @@ pub async fn search_for_project(
         "follows" => "follows_projects",
         "updated" => "updated_projects",
         "newest" => "newest_projects",
+        "alphabetically" => "alphabetically_projects",
         i => return Err(SearchError::InvalidIndex(i.to_string())),
     };
 
