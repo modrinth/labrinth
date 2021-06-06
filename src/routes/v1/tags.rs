@@ -13,7 +13,7 @@ pub async fn category_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiE
         .await?
         .into_iter()
         .filter(|x| &*x.project_type == "mod")
-        .map(|x| x.project_type)
+        .map(|x| x.category)
         .collect::<Vec<String>>();
     Ok(HttpResponse::Ok().json(results))
 }
