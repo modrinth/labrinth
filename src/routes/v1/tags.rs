@@ -67,8 +67,7 @@ pub async fn loader_create(
     let name = loader.into_inner().0;
     let mut transaction = pool.begin().await?;
 
-    let project_types =
-        ProjectType::get_many_id(&vec!["mod".to_string()], &mut *transaction).await?;
+    let project_types = ProjectType::get_many_id(&["mod".to_string()], &mut *transaction).await?;
 
     let _id = Loader::builder()
         .name(&name)?

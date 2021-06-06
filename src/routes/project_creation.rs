@@ -634,7 +634,7 @@ async fn create_initial_version(
     author: UserId,
     all_game_versions: &[models::categories::GameVersion],
     all_loaders: &[models::categories::Loader],
-    project_type: &String,
+    project_type: &str,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<models::version_item::VersionBuilder, CreateError> {
     if version_data.project_id.is_some() {
@@ -671,12 +671,15 @@ async fn create_initial_version(
         .map(|x| {
             all_loaders
                 .iter()
-                .find(|y| y.loader == x.0 && y.supported_project_types.contains(project_type))
+                .find(|y| {
+                    y.loader == x.0
+                        && y.supported_project_types
+                            .contains(&project_type.to_string())
+                })
                 .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
                 .map(|y| y.id)
         })
         .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
-
 
     let dependencies = version_data
         .dependencies

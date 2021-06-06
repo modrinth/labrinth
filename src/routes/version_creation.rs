@@ -201,9 +201,9 @@ async fn version_create_inner(
                 ",
                 project_id as models::ProjectId,
             )
-                .fetch_one(&mut *transaction)
-                .await?
-                .name;
+            .fetch_one(&mut *transaction)
+            .await?
+            .name;
 
             let game_versions = version_create_data
                 .game_versions
@@ -217,13 +217,15 @@ async fn version_create_inner(
                 })
                 .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
 
-            let mut loaders = version_create_data
+            let loaders = version_create_data
                 .loaders
                 .iter()
                 .map(|x| {
                     all_loaders
                         .iter()
-                        .find(|y| y.loader == x.0 && y.supported_project_types.contains(&project_type))
+                        .find(|y| {
+                            y.loader == x.0 && y.supported_project_types.contains(&project_type)
+                        })
                         .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
                         .map(|y| y.id)
                 })
@@ -261,16 +263,16 @@ async fn version_create_inner(
         })?;
 
         let project_type = sqlx::query!(
-                "
+            "
                 SELECT name FROM project_types pt
                 INNER JOIN mods ON mods.project_type = pt.id
                 WHERE mods.id = $1
                 ",
-                version.project_id as models::ProjectId,
-            )
-            .fetch_one(&mut *transaction)
-            .await?
-            .name;
+            version.project_id as models::ProjectId,
+        )
+        .fetch_one(&mut *transaction)
+        .await?
+        .name;
 
         let version_data = initial_version_data
             .clone()

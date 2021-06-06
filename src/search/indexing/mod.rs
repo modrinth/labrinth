@@ -287,7 +287,7 @@ fn default_settings() -> Settings {
             String::from("license"),
             String::from("client_side"),
             String::from("server_side"),
-            String::from("project_type")
+            String::from("project_type"),
         ])
 }
 
