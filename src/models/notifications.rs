@@ -12,6 +12,7 @@ pub struct NotificationId(pub u64);
 pub struct Notification {
     pub id: NotificationId,
     pub user_id: UserId,
+    pub icon: Option<String>,
     pub title: String,
     pub text: String,
     pub link: String,

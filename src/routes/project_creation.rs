@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 use thiserror::Error;
-use validator::Validate;
+use validator::{Validate, ValidationErrors, ValidationErrorsKind};
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -36,7 +36,7 @@ pub enum CreateError {
     #[error("Error while parsing JSON: {0}")]
     SerDeError(#[from] serde_json::Error),
     #[error("Error while validating input: {0}")]
-    ValidationError(#[from] validator::ValidationErrors),
+    ValidationError(String),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
     #[error("Error while validating uploaded file: {0}")]
@@ -153,6 +153,7 @@ struct ProjectCreateData {
     pub server_side: SideType,
 
     #[validate(length(max = 64))]
+    #[validate]
     /// A list of initial versions to upload with the created project
     pub initial_versions: Vec<InitialVersionData>,
     #[validate(length(max = 3))]
@@ -326,7 +327,9 @@ pub async fn project_create_inner(
         }
         let create_data: ProjectCreateData = serde_json::from_slice(&data)?;
 
-        create_data.validate()?;
+        create_data
+            .validate()
+            .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
 
         let slug_project_id_option: Option<ProjectId> =
             serde_json::from_str(&*format!("\"{}\"", create_data.slug)).ok();
@@ -498,6 +501,12 @@ pub async fn project_create_inner(
             status = ProjectStatus::Draft;
         } else {
             status = ProjectStatus::Processing;
+
+            if project_create_data.initial_versions.is_empty() {
+                return Err(CreateError::InvalidInput(String::from(
+                    "Project submitted for review with no initial versions",
+                )));
+            }
         }
 
         let status_id = models::StatusId::get_id(&status, &mut *transaction)
@@ -590,6 +599,7 @@ pub async fn project_create_inner(
             published: now,
             updated: now,
             status: status.clone(),
+            rejection_data: None,
             license: License {
                 id: project_create_data.license_id.clone(),
                 name: "".to_string(),
@@ -622,6 +632,10 @@ pub async fn project_create_inner(
             )
             .await?;
             indexing_queue.add(index_project);
+
+            super::moderation::send_discord_webhook(response.clone())
+                .await
+                .ok();
         }
 
         Ok(HttpResponse::Ok().json(response))
@@ -643,7 +657,9 @@ async fn create_initial_version(
         )));
     }
 
-    version_data.validate()?;
+    version_data
+        .validate()
+        .map_err(|err| CreateError::ValidationError(validation_errors_to_string(err, None)))?;
 
     // Randomly generate a new id to be used for the version
     let version_id: VersionId = models::generate_version_id(transaction).await?.into();
@@ -684,7 +700,11 @@ async fn create_initial_version(
     let dependencies = version_data
         .dependencies
         .iter()
-        .map(|x| ((x.version_id).into(), x.dependency_type.to_string()))
+        .map(|d| models::version_item::DependencyBuilder {
+            version_id: d.version_id.map(|x| x.into()),
+            project_id: d.project_id.map(|x| x.into()),
+            dependency_type: d.dependency_type.to_string(),
+        })
         .collect::<Vec<_>>();
 
     let version = models::version_item::VersionBuilder {
@@ -764,4 +784,48 @@ pub fn get_image_content_type(extension: &str) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+//TODO: In order to ensure readability, only the first error is printed, this may need to be expanded on in the future!
+pub fn validation_errors_to_string(errors: ValidationErrors, adder: Option<String>) -> String {
+    let mut output = String::new();
+
+    for (field, error) in errors.into_errors() {
+        return match error {
+            ValidationErrorsKind::Struct(errors) => {
+                validation_errors_to_string(*errors, Some(format!("of item {}", field)))
+            }
+            ValidationErrorsKind::List(list) => {
+                for (index, errors) in list {
+                    output.push_str(&*validation_errors_to_string(
+                        *errors,
+                        Some(format!("of list {} with index {}", field, index)),
+                    ));
+                    break;
+                }
+
+                output
+            }
+            ValidationErrorsKind::Field(errors) => {
+                for error in errors {
+                    if let Some(adder) = adder {
+                        output.push_str(&*format!(
+                            "Field {} {} failed validation with error {}",
+                            field, adder, error.code
+                        ));
+                    } else {
+                        output.push_str(&*format!(
+                            "Field {} failed validation with error {}",
+                            field, error.code
+                        ));
+                    }
+                    break;
+                }
+
+                output
+            }
+        };
+    }
+
+    "".to_string()
 }

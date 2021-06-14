@@ -277,16 +277,16 @@ async fn main() -> std::io::Result<()> {
 
                         if ignore_ips.contains(&ip) {
                             // At an even distribution of numbers, this will allow at the most
-                            // 3000 requests per minute from the frontend, which is reasonable
-                            // (50 requests per second)
-                            let random = rand::thread_rng().gen_range(1, 15);
+                            // 18000 requests per minute from the frontend, which is reasonable
+                            // (300 requests per second)
+                            let random = rand::thread_rng().gen_range(1, 30);
                             return Ok(format!("{}-{}", ip, random));
                         }
 
                         Ok(ip)
                     })
                     .with_interval(std::time::Duration::from_secs(60))
-                    .with_max_requests(200),
+                    .with_max_requests(600),
             )
             .wrap(sentry_actix::Sentry::new())
             .data(pool.clone())
@@ -335,6 +335,7 @@ fn check_env_vars() -> bool {
         failed |= true;
     }
 
+    failed |= check_var::<String>("SITE_URL");
     failed |= check_var::<String>("CDN_URL");
     failed |= check_var::<String>("DATABASE_URL");
     failed |= check_var::<String>("MEILISEARCH_ADDR");

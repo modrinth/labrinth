@@ -7,7 +7,7 @@ use crate::models::projects::{
     Dependency, GameVersion, Loader, ProjectId, Version, VersionFile, VersionId, VersionType,
 };
 use crate::models::teams::Permissions;
-use crate::routes::project_creation::{CreateError, UploadedFile};
+use crate::routes::project_creation::{validation_errors_to_string, CreateError, UploadedFile};
 use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
@@ -20,7 +20,7 @@ use sqlx::postgres::PgPool;
 use validator::Validate;
 
 lazy_static! {
-    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_\-.]*$").unwrap();
+    static ref RE_URL_SAFE: Regex = Regex::new(r"\S").unwrap();
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -127,7 +127,9 @@ async fn version_create_inner(
                 ));
             }
 
-            version_create_data.validate()?;
+            version_create_data.validate().map_err(|err| {
+                CreateError::ValidationError(validation_errors_to_string(err, None))
+            })?;
 
             let project_id: models::ProjectId = version_create_data.project_id.unwrap().into();
 
@@ -234,7 +236,11 @@ async fn version_create_inner(
             let dependencies = version_create_data
                 .dependencies
                 .iter()
-                .map(|x| ((x.version_id).into(), x.dependency_type.to_string()))
+                .map(|d| models::version_item::DependencyBuilder {
+                    version_id: d.version_id.map(|x| x.into()),
+                    project_id: d.project_id.map(|x| x.into()),
+                    dependency_type: d.dependency_type.to_string(),
+                })
                 .collect::<Vec<_>>();
 
             version_builder = Some(VersionBuilder {
@@ -332,9 +338,14 @@ async fn version_create_inner(
     let version_id: VersionId = builder.version_id.into();
 
     NotificationBuilder {
-        title: "A project you followed has been updated!".to_string(),
+        icon: Some(
+            r#"
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            "#.to_string()
+        ),
+        title: format!("**{}** has been updated!", result.title),
         text: format!(
-            "Project {} has been updated to version {}",
+            "The project, {}, has released a new version: {}",
             result.title,
             version_data.version_number.clone()
         ),

@@ -4,6 +4,7 @@ use crate::database;
 use crate::models;
 use crate::models::projects::{Dependency, DependencyType};
 use crate::models::teams::Permissions;
+use crate::routes::project_creation::validation_errors_to_string;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -189,8 +190,9 @@ pub fn convert_version(
             .dependencies
             .into_iter()
             .map(|d| Dependency {
-                version_id: d.0.into(),
-                dependency_type: DependencyType::from_str(&*d.1),
+                version_id: d.version_id.map(|x| x.into()),
+                project_id: d.project_id.map(|x| x.into()),
+                dependency_type: DependencyType::from_str(&*d.dependency_type),
             })
             .collect(),
         game_versions: data
@@ -236,7 +238,9 @@ pub async fn version_edit(
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    new_version.validate()?;
+    new_version
+        .validate()
+        .map_err(|err| ApiError::ValidationError(validation_errors_to_string(err, None)))?;
 
     let version_id = info.into_inner().0;
     let id = version_id.into();
@@ -332,21 +336,22 @@ pub async fn version_edit(
                 .execute(&mut *transaction)
                 .await?;
 
-                for dependency in dependencies {
-                    let dependency_id: database::models::ids::VersionId =
-                        dependency.version_id.clone().into();
+                let builders = dependencies
+                    .into_iter()
+                    .map(|x| database::models::version_item::DependencyBuilder {
+                        project_id: x.project_id.clone().map(|x| x.into()),
+                        version_id: x.version_id.clone().map(|x| x.into()),
+                        dependency_type: x.dependency_type.to_string(),
+                    })
+                    .collect::<Vec<database::models::version_item::DependencyBuilder>>();
 
-                    sqlx::query!(
-                        "
-                        INSERT INTO dependencies (dependent_id, dependency_id, dependency_type)
-                        VALUES ($1, $2, $3)
-                        ",
-                        id as database::models::ids::VersionId,
-                        dependency_id as database::models::ids::VersionId,
-                        dependency.dependency_type.as_str()
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
+                for dependency in builders {
+                    dependency
+                        .insert(
+                            version_item.id,
+                            &mut transaction,
+                        )
+                        .await?;
                 }
             }
 
@@ -533,7 +538,11 @@ pub async fn version_delete(
         }
     }
 
-    let result = database::models::Version::remove_full(id.into(), &**pool).await?;
+    let mut transaction = pool.begin().await?;
+
+    let result = database::models::Version::remove_full(id.into(), &mut transaction).await?;
+
+    transaction.commit().await?;
 
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))

@@ -119,6 +119,7 @@ pub fn teams_config(cfg: &mut web::ServiceConfig) {
 
 pub fn notifications_config(cfg: &mut web::ServiceConfig) {
     cfg.service(notifications::notifications_get);
+    cfg.service(notifications::notification_delete);
 
     cfg.service(
         web::scope("notification")
@@ -158,7 +159,7 @@ pub enum ApiError {
     #[error("Invalid Input: {0}")]
     InvalidInputError(String),
     #[error("Error while validating input: {0}")]
-    ValidationError(#[from] validator::ValidationErrors),
+    ValidationError(String),
     #[error("Search Error: {0}")]
     SearchError(#[from] meilisearch_sdk::errors::Error),
     #[error("Indexing Error: {0}")]

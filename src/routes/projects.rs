@@ -1,11 +1,14 @@
 use crate::auth::get_user_from_headers;
 use crate::database;
+use crate::database::cache::project_cache::remove_cache_project;
+use crate::database::cache::query_project_cache::remove_cache_query_project;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::projects::{
-    DonationLink, License, ProjectId, ProjectStatus, SearchRequest, SideType,
+    DonationLink, License, ProjectId, ProjectStatus, RejectionReason, SearchRequest, SideType,
 };
 use crate::models::teams::Permissions;
+use crate::routes::project_creation::validation_errors_to_string;
 use crate::routes::ApiError;
 use crate::search::indexing::queue::CreationQueue;
 use crate::search::{search_for_project, SearchConfig, SearchError};
@@ -91,7 +94,8 @@ pub async fn project_get(
     let string = info.into_inner().0;
 
     let project_data =
-        database::models::Project::get_full_from_slug_or_project_id(string, &**pool).await?;
+        database::models::Project::get_full_from_slug_or_project_id(string.clone(), &**pool)
+            .await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -146,6 +150,14 @@ pub fn convert_project(
         published: m.published,
         updated: m.updated,
         status: data.status,
+        rejection_data: if let Some(reason) = m.rejection_reason {
+            Some(RejectionReason {
+                reason,
+                body: m.rejection_body,
+            })
+        } else {
+            None
+        },
         license: License {
             id: data.license_id,
             name: data.license_name,
@@ -176,7 +188,7 @@ pub fn convert_project(
 }
 
 lazy_static! {
-    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
+    static ref RE_URL_SAFE: Regex = Regex::new(r"\S").unwrap();
 }
 
 /// A project returned from the API
@@ -188,7 +200,6 @@ pub struct EditProject {
     pub description: Option<String>,
     #[validate(length(max = 65536))]
     pub body: Option<String>,
-    pub status: Option<ProjectStatus>,
     #[validate(length(max = 3))]
     pub categories: Option<Vec<String>>,
     #[serde(
@@ -238,6 +249,22 @@ pub struct EditProject {
     )]
     #[validate(length(min = 3, max = 64), regex = "RE_URL_SAFE")]
     pub slug: Option<Option<String>>,
+
+    pub status: Option<ProjectStatus>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    #[validate(length(max = 2000))]
+    pub rejection_reason: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    #[validate(length(max = 65536))]
+    pub rejection_body: Option<Option<String>>,
 }
 
 #[patch("{id}")]
@@ -251,11 +278,14 @@ pub async fn project_edit(
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    new_project.validate()?;
+    new_project
+        .validate()
+        .map_err(|err| ApiError::ValidationError(validation_errors_to_string(err, None)))?;
 
     let string = info.into_inner().0;
     let result =
-        database::models::Project::get_full_from_slug_or_project_id(string, &**pool).await?;
+        database::models::Project::get_full_from_slug_or_project_id(string.clone(), &**pool)
+            .await?;
 
     if let Some(project_item) = result {
         let id = project_item.inner.id;
@@ -337,6 +367,12 @@ pub async fn project_edit(
                     ));
                 }
 
+                if status == &ProjectStatus::Processing && project_item.versions.is_empty() {
+                    return Err(ApiError::InvalidInputError(String::from(
+                        "Project submitted for review with no initial versions",
+                    )));
+                }
+
                 let status_id = database::models::StatusId::get_id(&status, &mut *transaction)
                     .await?
                     .ok_or_else(|| {
@@ -365,6 +401,10 @@ pub async fn project_edit(
                             .await?;
 
                     indexing_queue.add(index_project);
+
+                    super::moderation::send_discord_webhook(convert_project(project_item.clone()))
+                        .await
+                        .ok();
                 }
             }
 
@@ -684,6 +724,48 @@ pub async fn project_edit(
                 }
             }
 
+            if let Some(rejection_reason) = &new_project.rejection_reason {
+                if !user.role.is_mod() {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the rejection reason of this project!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET rejection_reason = $1
+                    WHERE (id = $2)
+                    ",
+                    rejection_reason.as_deref(),
+                    id as database::models::ids::ProjectId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+
+            if let Some(rejection_body) = &new_project.rejection_body {
+                if !user.role.is_mod() {
+                    return Err(ApiError::CustomAuthenticationError(
+                        "You do not have the permissions to edit the rejection body of this project!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET rejection_body = $1
+                    WHERE (id = $2)
+                    ",
+                    rejection_body.as_deref(),
+                    id as database::models::ids::ProjectId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+
             if let Some(body) = &new_project.body {
                 if !perms.contains(Permissions::EDIT_BODY) {
                     return Err(ApiError::CustomAuthenticationError(
@@ -704,6 +786,9 @@ pub async fn project_edit(
                 .execute(&mut *transaction)
                 .await?;
             }
+
+            remove_cache_project(string.clone()).await;
+            remove_cache_query_project(string).await;
 
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
@@ -782,12 +867,14 @@ pub async fn project_icon_edit(
             )));
         }
 
+        let hash = sha1::Sha1::from(bytes.clone()).hexdigest();
+
         let project_id: ProjectId = project_item.id.into();
 
         let upload_data = file_host
             .upload_file(
                 content_type,
-                &format!("data/{}/icon.{}", project_id, ext.ext),
+                &format!("data/{}/{}.{}", project_id, hash, ext.ext),
                 bytes.to_vec(),
             )
             .await?;
@@ -851,7 +938,11 @@ pub async fn project_delete(
         }
     }
 
-    let result = database::models::Project::remove_full(project.id, &**pool).await?;
+    let mut transaction = pool.begin().await?;
+
+    let result = database::models::Project::remove_full(project.id, &mut transaction).await?;
+
+    transaction.commit().await?;
 
     delete_from_index(project.id.into(), config).await?;
 
@@ -893,6 +984,8 @@ pub async fn project_follow(
     .unwrap_or(false);
 
     if !following {
+        let mut transaction = pool.begin().await?;
+
         sqlx::query!(
             "
             UPDATE mods
@@ -901,7 +994,7 @@ pub async fn project_follow(
             ",
             project_id as database::models::ids::ProjectId,
         )
-        .execute(&**pool)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -912,8 +1005,10 @@ pub async fn project_follow(
             user_id as database::models::ids::UserId,
             project_id as database::models::ids::ProjectId
         )
-        .execute(&**pool)
+        .execute(&mut *transaction)
         .await?;
+
+        transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
@@ -954,6 +1049,8 @@ pub async fn project_unfollow(
     .unwrap_or(false);
 
     if following {
+        let mut transaction = pool.begin().await?;
+
         sqlx::query!(
             "
             UPDATE mods
@@ -962,7 +1059,7 @@ pub async fn project_unfollow(
             ",
             project_id as database::models::ids::ProjectId,
         )
-        .execute(&**pool)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -973,8 +1070,10 @@ pub async fn project_unfollow(
             user_id as database::models::ids::UserId,
             project_id as database::models::ids::ProjectId
         )
-        .execute(&**pool)
+        .execute(&mut *transaction)
         .await?;
+
+        transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
