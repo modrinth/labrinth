@@ -165,8 +165,8 @@ pub async fn dependency_list(
             Ok(e.right().map(|x| {
                 (
                     database::models::VersionId(x.dependent_id),
-                    x.dependency_id.map(|y| database::models::VersionId(y)),
-                    x.mod_dependency_id.map(|y| database::models::ProjectId(y)),
+                    x.dependency_id.map(database::models::VersionId),
+                    x.mod_dependency_id.map(database::models::ProjectId),
                 )
             }))
         })
