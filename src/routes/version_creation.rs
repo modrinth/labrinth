@@ -1,4 +1,3 @@
-use crate::auth::get_user_from_headers;
 use crate::database::models;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder};
@@ -7,21 +6,17 @@ use crate::models::projects::{
     Dependency, GameVersion, Loader, ProjectId, Version, VersionFile, VersionId, VersionType,
 };
 use crate::models::teams::Permissions;
-use crate::routes::project_creation::{validation_errors_to_string, CreateError, UploadedFile};
+use crate::routes::project_creation::{CreateError, UploadedFile};
+use crate::util::auth::get_user_from_headers;
+use crate::util::validate::validation_errors_to_string;
 use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use futures::stream::StreamExt;
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use validator::Validate;
-
-lazy_static! {
-    static ref RE_URL_SAFE: Regex = Regex::new(r"\S").unwrap();
-}
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct InitialVersionData {
@@ -29,7 +24,10 @@ pub struct InitialVersionData {
     pub project_id: Option<ProjectId>,
     #[validate(length(min = 1, max = 256))]
     pub file_parts: Vec<String>,
-    #[validate(length(min = 1, max = 64), regex = "RE_URL_SAFE")]
+    #[validate(
+        length(min = 1, max = 64),
+        regex = "crate::util::validate::RE_URL_SAFE"
+    )]
     pub version_number: String,
     #[validate(length(min = 3, max = 256))]
     pub version_title: String,
@@ -338,11 +336,7 @@ async fn version_create_inner(
     let version_id: VersionId = builder.version_id.into();
 
     NotificationBuilder {
-        icon: Some(
-            r#"
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-            "#.to_string()
-        ),
+        notification_type: Some("project_update".to_string()),
         title: format!("**{}** has been updated!", result.title),
         text: format!(
             "The project, {}, has released a new version: {}",

@@ -1,7 +1,7 @@
 INSERT INTO statuses (status) VALUES ('archived');
 
 ALTER TABLE notifications
-    ADD COLUMN icon varchar(20000);
+    ADD COLUMN type varchar(256);
 
 ALTER TABLE mods
     ADD COLUMN rejection_reason varchar(2000),

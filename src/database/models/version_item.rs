@@ -154,12 +154,7 @@ impl VersionBuilder {
         }
 
         for dependency in self.dependencies {
-            dependency
-                .insert(
-                    self.version_id,
-                    transaction,
-                )
-                .await?;
+            dependency.insert(self.version_id, transaction).await?;
         }
 
         for loader in self.loaders.clone() {
@@ -221,8 +216,8 @@ impl VersionBuilder {
             &dependencies,
             self.version_id as VersionId,
         )
-            .execute(&mut *transaction)
-            .await?;
+        .execute(&mut *transaction)
+        .await?;
 
         Ok(self.version_id)
     }
@@ -310,28 +305,28 @@ impl Version {
         use futures::TryStreamExt;
 
         let game_versions: Vec<i32> = sqlx::query!(
-                "
+            "
                 SELECT game_version_id id FROM game_versions_versions
                 WHERE joining_version_id = $1
                 ",
-                id as VersionId,
-            )
-            .fetch_many(&mut *transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|c| c.id)) })
-            .try_collect::<Vec<i32>>()
-            .await?;
+            id as VersionId,
+        )
+        .fetch_many(&mut *transaction)
+        .try_filter_map(|e| async { Ok(e.right().map(|c| c.id)) })
+        .try_collect::<Vec<i32>>()
+        .await?;
 
         let loaders: Vec<i32> = sqlx::query!(
-                "
+            "
                 SELECT loader_id id FROM loaders_versions
                 WHERE version_id = $1
                 ",
-                id as VersionId,
-            )
-            .fetch_many(&mut *transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|c| c.id)) })
-            .try_collect::<Vec<i32>>()
-            .await?;
+            id as VersionId,
+        )
+        .fetch_many(&mut *transaction)
+        .try_filter_map(|e| async { Ok(e.right().map(|c| c.id)) })
+        .try_collect::<Vec<i32>>()
+        .await?;
 
         sqlx::query!(
             "
@@ -426,8 +421,8 @@ impl Version {
             ",
             id as VersionId,
         )
-            .fetch_one(&mut *transaction)
-            .await?;
+        .fetch_one(&mut *transaction)
+        .await?;
 
         let new_version_id = sqlx::query!(
             "
@@ -456,8 +451,16 @@ impl Version {
             id as VersionId,
             new_version_id,
         )
-            .execute(&mut *transaction)
-            .await?;
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM dependencies WHERE mod_dependency_id = NULL AND dependency_id = NULL
+            ",
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         // delete version
 
@@ -467,8 +470,8 @@ impl Version {
             ",
             id as VersionId,
         )
-            .execute(&mut *transaction)
-            .await?;
+        .execute(&mut *transaction)
+        .await?;
         Ok(Some(()))
     }
 

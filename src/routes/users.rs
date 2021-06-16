@@ -1,12 +1,12 @@
-use crate::auth::get_user_from_headers;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::projects::{Project, ProjectStatus};
 use crate::models::users::{Role, UserId};
 use crate::routes::notifications::convert_notification;
-use crate::routes::project_creation::validation_errors_to_string;
 use crate::routes::ApiError;
+use crate::util::auth::get_user_from_headers;
+use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
 use lazy_static::lazy_static;

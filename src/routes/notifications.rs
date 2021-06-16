@@ -1,8 +1,8 @@
-use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::models::ids::NotificationId;
 use crate::models::notifications::{Notification, NotificationAction};
 use crate::routes::ApiError;
+use crate::util::auth::get_user_from_headers;
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -70,7 +70,7 @@ pub fn convert_notification(
     Notification {
         id: notif.id.into(),
         user_id: notif.user_id.into(),
-        icon: notif.icon,
+        type_: notif.notification_type,
         title: notif.title,
         text: notif.text,
         link: notif.link,

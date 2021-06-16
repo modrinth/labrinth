@@ -396,6 +396,15 @@ impl Project {
 
         sqlx::query!(
             "
+            DELETE FROM dependencies WHERE mod_dependency_id = $1
+            ",
+            id as ProjectId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
             DELETE FROM mods
             WHERE id = $1
             ",

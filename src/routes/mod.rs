@@ -55,7 +55,8 @@ pub fn projects_config(cfg: &mut web::ServiceConfig) {
             .service(projects::project_follow)
             .service(projects::project_unfollow)
             .service(teams::team_members_get_project)
-            .service(web::scope("{project_id}").service(versions::version_list)),
+            .service(web::scope("{project_id}").service(versions::version_list))
+            .service(projects::dependency_list),
     );
 }
 
@@ -153,7 +154,7 @@ pub enum ApiError {
     #[error("Deserialization error: {0}")]
     JsonError(#[from] serde_json::Error),
     #[error("Authentication Error: {0}")]
-    AuthenticationError(#[from] crate::auth::AuthenticationError),
+    AuthenticationError(#[from] crate::util::auth::AuthenticationError),
     #[error("Authentication Error: {0}")]
     CustomAuthenticationError(String),
     #[error("Invalid Input: {0}")]

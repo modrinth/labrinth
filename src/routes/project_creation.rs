@@ -1,4 +1,3 @@
-use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
@@ -8,18 +7,18 @@ use crate::models::projects::{
 use crate::models::users::UserId;
 use crate::routes::version_creation::InitialVersionData;
 use crate::search::indexing::{queue::CreationQueue, IndexingError};
+use crate::util::auth::{get_user_from_headers, AuthenticationError};
+use crate::util::validate::validation_errors_to_string;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use futures::stream::StreamExt;
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 use thiserror::Error;
-use validator::{Validate, ValidationErrors, ValidationErrorsKind};
+use validator::Validate;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -116,10 +115,6 @@ impl actix_web::ResponseError for CreateError {
     }
 }
 
-lazy_static! {
-    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
-}
-
 fn default_project_type() -> String {
     "mod".to_string()
 }
@@ -134,7 +129,10 @@ struct ProjectCreateData {
     #[serde(default = "default_project_type")]
     /// The project type of this mod
     pub project_type: String,
-    #[validate(length(min = 3, max = 64), regex = "RE_URL_SAFE")]
+    #[validate(
+        length(min = 3, max = 64),
+        regex = "crate::util::validate::RE_URL_SAFE"
+    )]
     #[serde(alias = "mod_slug")]
     /// The slug of a project, used for vanity URLs
     pub slug: String,
@@ -633,9 +631,11 @@ pub async fn project_create_inner(
             .await?;
             indexing_queue.add(index_project);
 
-            super::moderation::send_discord_webhook(response.clone())
-                .await
-                .ok();
+            if let Ok(webhook_url) = dotenv::var("MODERATION_DISCORD_WEBHOOK") {
+                crate::util::webhook::send_discord_webhook(response.clone(), webhook_url)
+                    .await
+                    .ok();
+            }
         }
 
         Ok(HttpResponse::Ok().json(response))
@@ -784,48 +784,4 @@ pub fn get_image_content_type(extension: &str) -> Option<&'static str> {
     } else {
         None
     }
-}
-
-//TODO: In order to ensure readability, only the first error is printed, this may need to be expanded on in the future!
-pub fn validation_errors_to_string(errors: ValidationErrors, adder: Option<String>) -> String {
-    let mut output = String::new();
-
-    for (field, error) in errors.into_errors() {
-        return match error {
-            ValidationErrorsKind::Struct(errors) => {
-                validation_errors_to_string(*errors, Some(format!("of item {}", field)))
-            }
-            ValidationErrorsKind::List(list) => {
-                for (index, errors) in list {
-                    output.push_str(&*validation_errors_to_string(
-                        *errors,
-                        Some(format!("of list {} with index {}", field, index)),
-                    ));
-                    break;
-                }
-
-                output
-            }
-            ValidationErrorsKind::Field(errors) => {
-                for error in errors {
-                    if let Some(adder) = adder {
-                        output.push_str(&*format!(
-                            "Field {} {} failed validation with error {}",
-                            field, adder, error.code
-                        ));
-                    } else {
-                        output.push_str(&*format!(
-                            "Field {} failed validation with error {}",
-                            field, error.code
-                        ));
-                    }
-                    break;
-                }
-
-                output
-            }
-        };
-    }
-
-    "".to_string()
 }

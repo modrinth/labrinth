@@ -1,4 +1,3 @@
-use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::database::cache::project_cache::remove_cache_project;
 use crate::database::cache::query_project_cache::remove_cache_query_project;
@@ -8,17 +7,17 @@ use crate::models::projects::{
     DonationLink, License, ProjectId, ProjectStatus, RejectionReason, SearchRequest, SideType,
 };
 use crate::models::teams::Permissions;
-use crate::routes::project_creation::validation_errors_to_string;
 use crate::routes::ApiError;
 use crate::search::indexing::queue::CreationQueue;
 use crate::search::{search_for_project, SearchConfig, SearchError};
+use crate::util::auth::get_user_from_headers;
+use crate::util::validate::validation_errors_to_string;
 use actix_web::web::Data;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -133,6 +132,94 @@ pub async fn project_get(
     }
 }
 
+struct DependencyInfo {
+    pub project: Option<models::projects::Project>,
+    pub version: Option<models::projects::Version>,
+}
+
+#[get("dependencies")]
+pub async fn dependency_list(
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let string = info.into_inner().0;
+
+    let result = database::models::Project::get_from_slug_or_project_id(string, &**pool).await?;
+
+    if let Some(project) = result {
+        let id = project.id;
+
+        use futures::stream::TryStreamExt;
+
+        let dependencies = sqlx::query!(
+            "
+            SELECT d.dependent_id, d.dependency_id, d.mod_dependency_id
+            FROM versions v
+            INNER JOIN dependencies d ON d.dependent_id = v.id
+            WHERE v.mod_id = $1
+            ",
+            id as database::models::ProjectId
+        )
+        .fetch_many(&**pool)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|x| {
+                (
+                    database::models::VersionId(x.dependent_id),
+                    x.dependency_id.map(|y| database::models::VersionId(y)),
+                    x.mod_dependency_id.map(|y| database::models::ProjectId(y)),
+                )
+            }))
+        })
+        .try_collect::<Vec<(
+            database::models::VersionId,
+            Option<database::models::VersionId>,
+            Option<database::models::ProjectId>,
+        )>>()
+        .await?;
+
+        let projects = database::Project::get_many_full(
+            dependencies.iter().map(|x| x.2).flatten().collect(),
+            &**pool,
+        )
+        .await?;
+        let versions = database::Version::get_many_full(
+            dependencies.iter().map(|x| x.1).flatten().collect(),
+            &**pool,
+        )
+        .await?;
+
+        let mut response: HashMap<models::projects::VersionId, DependencyInfo> = HashMap::new();
+
+        for dependency in dependencies {
+            response.insert(
+                dependency.0.into(),
+                DependencyInfo {
+                    project: if let Some(id) = dependency.2 {
+                        projects
+                            .iter()
+                            .find(|x| x.inner.id == id)
+                            .map(|x| convert_project(x.clone()))
+                    } else {
+                        None
+                    },
+                    version: if let Some(id) = dependency.1 {
+                        versions
+                            .iter()
+                            .find(|x| x.id == id)
+                            .map(|x| super::versions::convert_version(x.clone()))
+                    } else {
+                        None
+                    },
+                },
+            );
+        }
+
+        Ok(HttpResponse::NotFound().body(""))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
 pub fn convert_project(
     data: database::models::project_item::QueryProject,
 ) -> models::projects::Project {
@@ -185,10 +272,6 @@ pub fn convert_project(
                 .collect(),
         ),
     }
-}
-
-lazy_static! {
-    static ref RE_URL_SAFE: Regex = Regex::new(r"\S").unwrap();
 }
 
 /// A project returned from the API
@@ -247,9 +330,11 @@ pub struct EditProject {
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(length(min = 3, max = 64), regex = "RE_URL_SAFE")]
+    #[validate(
+        length(min = 3, max = 64),
+        regex = "crate::util::validate::RE_URL_SAFE"
+    )]
     pub slug: Option<Option<String>>,
-
     pub status: Option<ProjectStatus>,
     #[serde(
         default,
@@ -393,6 +478,30 @@ pub async fn project_edit(
                 .execute(&mut *transaction)
                 .await?;
 
+                if project_item.status == ProjectStatus::Processing {
+                    sqlx::query!(
+                        "
+                        UPDATE mods
+                        SET rejection_reason = NULL
+                        WHERE (id = $1)
+                        ",
+                        id as database::models::ids::ProjectId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+
+                    sqlx::query!(
+                        "
+                        UPDATE mods
+                        SET rejection_body = NULL
+                        WHERE (id = $1)
+                        ",
+                        id as database::models::ids::ProjectId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+
                 if project_item.status.is_searchable() && !status.is_searchable() {
                     delete_from_index(id.into(), config).await?;
                 } else if !project_item.status.is_searchable() && status.is_searchable() {
@@ -402,9 +511,14 @@ pub async fn project_edit(
 
                     indexing_queue.add(index_project);
 
-                    super::moderation::send_discord_webhook(convert_project(project_item.clone()))
+                    if let Ok(webhook_url) = dotenv::var("MODERATION_DISCORD_WEBHOOK") {
+                        crate::util::webhook::send_discord_webhook(
+                            convert_project(project_item.clone()),
+                            webhook_url,
+                        )
                         .await
                         .ok();
+                    }
                 }
             }
 
@@ -821,11 +935,12 @@ pub async fn project_icon_edit(
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let string = info.into_inner().0;
 
-        let project_item = database::models::Project::get_from_slug_or_project_id(string, &**pool)
-            .await?
-            .ok_or_else(|| {
-                ApiError::InvalidInputError("The specified project does not exist!".to_string())
-            })?;
+        let project_item =
+            database::models::Project::get_from_slug_or_project_id(string.clone(), &**pool)
+                .await?
+                .ok_or_else(|| {
+                    ApiError::InvalidInputError("The specified project does not exist!".to_string())
+                })?;
 
         if !user.role.is_mod() {
             let team_member = database::models::TeamMember::get_from_user_id(
@@ -891,6 +1006,9 @@ pub async fn project_icon_edit(
         .execute(&**pool)
         .await?;
 
+        remove_cache_project(string.clone()).await;
+        remove_cache_query_project(string).await;
+
         Ok(HttpResponse::NoContent().body(""))
     } else {
         Err(ApiError::InvalidInputError(format!(
@@ -910,7 +1028,7 @@ pub async fn project_delete(
     let user = get_user_from_headers(req.headers(), &**pool).await?;
     let string = info.into_inner().0;
 
-    let project = database::models::Project::get_from_slug_or_project_id(string, &**pool)
+    let project = database::models::Project::get_from_slug_or_project_id(string.clone(), &**pool)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInputError("The specified project does not exist!".to_string())
@@ -941,6 +1059,9 @@ pub async fn project_delete(
     let mut transaction = pool.begin().await?;
 
     let result = database::models::Project::remove_full(project.id, &mut transaction).await?;
+
+    remove_cache_project(string.clone()).await;
+    remove_cache_query_project(string).await;
 
     transaction.commit().await?;
 

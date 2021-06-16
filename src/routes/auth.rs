@@ -1,9 +1,9 @@
-use crate::auth::get_github_user_from_token;
 use crate::database::models::{generate_state_id, User};
 use crate::models::error::ApiError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
 use crate::models::users::Role;
+use crate::util::auth::get_github_user_from_token;
 use actix_web::http::StatusCode;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, HttpResponse};
@@ -32,7 +32,7 @@ pub enum AuthorizationError {
     #[error("Invalid Authentication credentials")]
     InvalidCredentialsError,
     #[error("Authentication Error: {0}")]
-    AuthenticationError(#[from] crate::auth::AuthenticationError),
+    AuthenticationError(#[from] crate::util::auth::AuthenticationError),
     #[error("Error while decoding Base62")]
     DecodingError(#[from] DecodingError),
 }

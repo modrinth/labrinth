@@ -2,7 +2,7 @@ use super::ids::*;
 use crate::database::models::DatabaseError;
 
 pub struct NotificationBuilder {
-    pub icon: Option<String>,
+    pub notification_type: Option<String>,
     pub title: String,
     pub text: String,
     pub link: String,
@@ -17,7 +17,7 @@ pub struct NotificationActionBuilder {
 pub struct Notification {
     pub id: NotificationId,
     pub user_id: UserId,
-    pub icon: Option<String>,
+    pub notification_type: Option<String>,
     pub title: String,
     pub text: String,
     pub link: String,
@@ -66,7 +66,7 @@ impl NotificationBuilder {
             Notification {
                 id,
                 user_id: user,
-                icon: self.icon.clone(),
+                notification_type: self.notification_type.clone(),
                 title: self.title.clone(),
                 text: self.text.clone(),
                 link: self.link.clone(),
@@ -90,7 +90,7 @@ impl Notification {
         sqlx::query!(
             "
             INSERT INTO notifications (
-                id, user_id, title, text, link, icon
+                id, user_id, title, text, link, type
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6
@@ -101,7 +101,7 @@ impl Notification {
             &self.title,
             &self.text,
             &self.link,
-            self.icon
+            self.notification_type
         )
         .execute(&mut *transaction)
         .await?;
@@ -122,7 +122,7 @@ impl Notification {
     {
         let result = sqlx::query!(
             "
-            SELECT n.user_id, n.title, n.text, n.link, n.created, n.read, n.icon,
+            SELECT n.user_id, n.title, n.text, n.link, n.created, n.read, n.type notification_type,
             STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route || ', ' || na.action_route_method,  ' ,') actions
             FROM notifications n
             LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id
@@ -154,7 +154,7 @@ impl Notification {
             Ok(Some(Notification {
                 id,
                 user_id: UserId(row.user_id),
-                icon: row.icon,
+                notification_type: row.notification_type,
                 title: row.title,
                 text: row.text,
                 link: row.link,
@@ -179,7 +179,7 @@ impl Notification {
         let notification_ids_parsed: Vec<i64> = notification_ids.into_iter().map(|x| x.0).collect();
         sqlx::query!(
             "
-            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read, n.icon,
+            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read, n.type notification_type,
             STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route || ', ' || na.action_route_method,  ' ,') actions
             FROM notifications n
             LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id
@@ -212,7 +212,7 @@ impl Notification {
                 Notification {
                     id,
                     user_id: UserId(row.user_id),
-                    icon: row.icon,
+                    notification_type: row.notification_type,
                     title: row.title,
                     text: row.text,
                     link: row.link,
@@ -237,7 +237,7 @@ impl Notification {
 
         sqlx::query!(
             "
-            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read, n.icon,
+            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read, n.type notification_type,
             STRING_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route || ', ' || na.action_route_method,  ' ,') actions
             FROM notifications n
             LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id
@@ -269,7 +269,7 @@ impl Notification {
                 Notification {
                     id,
                     user_id: UserId(row.user_id),
-                    icon: row.icon,
+                    notification_type: row.notification_type,
                     title: row.title,
                     text: row.text,
                     link: row.link,

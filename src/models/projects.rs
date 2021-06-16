@@ -12,7 +12,7 @@ use validator::Validate;
 pub struct ProjectId(pub u64);
 
 /// The ID of a specific version of a project
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct VersionId(pub u64);

@@ -11,13 +11,13 @@ use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
 
-mod auth;
 mod database;
 mod file_hosting;
 mod models;
 mod routes;
 mod scheduler;
 mod search;
+mod util;
 mod validate;
 
 #[derive(Debug, Options)]
@@ -265,9 +265,23 @@ async fn main() -> std::io::Result<()> {
                     .with_identifier(|req| {
                         let connection_info = req.connection_info();
                         let ip = String::from(
-                            connection_info
-                                .remote_addr()
-                                .ok_or(ARError::IdentificationError)?,
+                            if dotenv::var("CLOUDFLARE_INTEGRATION")
+                                .ok()
+                                .map(|i| i.parse().unwrap())
+                                .unwrap_or(false)
+                            {
+                                if let Some(header) = req.headers().get("CF-Connecting-IP") {
+                                    header.to_str().map_err(|_| ARError::IdentificationError)?
+                                } else {
+                                    connection_info
+                                        .remote_addr()
+                                        .ok_or(ARError::IdentificationError)?
+                                }
+                            } else {
+                                connection_info
+                                    .remote_addr()
+                                    .ok_or(ARError::IdentificationError)?
+                            },
                         );
 
                         let ignore_ips = dotenv::var("RATE_LIMIT_IGNORE_IPS")
@@ -286,7 +300,7 @@ async fn main() -> std::io::Result<()> {
                         Ok(ip)
                     })
                     .with_interval(std::time::Duration::from_secs(60))
-                    .with_max_requests(600),
+                    .with_max_requests(300),
             )
             .wrap(sentry_actix::Sentry::new())
             .data(pool.clone())

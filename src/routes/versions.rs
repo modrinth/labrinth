@@ -1,13 +1,11 @@
 use super::ApiError;
-use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::models;
 use crate::models::projects::{Dependency, DependencyType};
 use crate::models::teams::Permissions;
-use crate::routes::project_creation::validation_errors_to_string;
+use crate::util::auth::get_user_from_headers;
+use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
@@ -208,15 +206,14 @@ pub fn convert_version(
     }
 }
 
-lazy_static! {
-    static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
-}
-
 #[derive(Serialize, Deserialize, Validate)]
 pub struct EditVersion {
     #[validate(length(min = 3, max = 256))]
     pub name: Option<String>,
-    #[validate(length(min = 1, max = 64), regex = "RE_URL_SAFE")]
+    #[validate(
+        length(min = 1, max = 64),
+        regex = "crate::util::validate::RE_URL_SAFE"
+    )]
     pub version_number: Option<String>,
     #[validate(length(max = 65536))]
     pub changelog: Option<String>,
@@ -337,7 +334,7 @@ pub async fn version_edit(
                 .await?;
 
                 let builders = dependencies
-                    .into_iter()
+                    .iter()
                     .map(|x| database::models::version_item::DependencyBuilder {
                         project_id: x.project_id.clone().map(|x| x.into()),
                         version_id: x.version_id.clone().map(|x| x.into()),
@@ -346,12 +343,7 @@ pub async fn version_edit(
                     .collect::<Vec<database::models::version_item::DependencyBuilder>>();
 
                 for dependency in builders {
-                    dependency
-                        .insert(
-                            version_item.id,
-                            &mut transaction,
-                        )
-                        .await?;
+                    dependency.insert(version_item.id, &mut transaction).await?;
                 }
             }
 
