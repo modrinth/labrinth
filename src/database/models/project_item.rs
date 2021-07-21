@@ -660,14 +660,20 @@ impl Project {
                     .split(" ,")
                     .map(|d| {
                         let strings: Vec<&str> = d.split(", ").collect();
-                        DonationUrl {
-                            project_id: id,
-                            platform_id: DonationPlatformId(strings[0].parse().unwrap_or(0)),
-                            platform_short: strings[2].to_string(),
-                            platform_name: strings[3].to_string(),
-                            url: strings[1].to_string(),
+
+                        if strings.len() >= 3 {
+                            Some(DonationUrl {
+                                project_id: id,
+                                platform_id: DonationPlatformId(strings[0].parse().unwrap_or(0)),
+                                platform_short: strings[2].to_string(),
+                                platform_name: strings[3].to_string(),
+                                url: strings[1].to_string(),
+                            })
+                        } else {
+                            None
                         }
                     })
+                    .flatten()
                     .collect(),
                 gallery_items: m
                     .gallery
@@ -765,14 +771,20 @@ impl Project {
                             .split(" ,")
                             .map(|d| {
                                 let strings: Vec<&str> = d.split(", ").collect();
-                                DonationUrl {
-                                    project_id: ProjectId(id),
-                                    platform_id: DonationPlatformId(strings[0].parse().unwrap_or(0)),
-                                    platform_short: strings[2].to_string(),
-                                    platform_name: strings[3].to_string(),
-                                    url: strings[1].to_string(),
+
+                                if strings.len() >= 3 {
+                                    Some(DonationUrl {
+                                        project_id: ProjectId(id),
+                                        platform_id: DonationPlatformId(strings[0].parse().unwrap_or(0)),
+                                        platform_short: strings[2].to_string(),
+                                        platform_name: strings[3].to_string(),
+                                        url: strings[1].to_string(),
+                                    })
+                                } else {
+                                    None
                                 }
                             })
+                            .flatten()
                             .collect(),
                     gallery_items: m.gallery.iter().map(|x| GalleryItem {
                         project_id:  ProjectId(id),
