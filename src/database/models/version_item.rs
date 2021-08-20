@@ -133,7 +133,7 @@ impl VersionBuilder {
             date_published: chrono::Utc::now(),
             downloads: 0,
             featured: self.featured,
-            version_type: self.version_type
+            version_type: self.version_type,
         };
 
         version.insert(&mut *transaction).await?;
@@ -582,7 +582,7 @@ impl Version {
                 date_published: v.date_published,
                 downloads: v.downloads,
                 featured: v.featured,
-                version_type: v.version_type
+                version_type: v.version_type,
             }))
         })
         .try_collect::<Vec<Version>>()
@@ -728,7 +728,7 @@ impl Version {
                     })
                     .flatten()
                     .collect(),
-                version_type: v.version_type
+                version_type: v.version_type,
             }))
         } else {
             Ok(None)

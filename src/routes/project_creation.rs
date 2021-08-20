@@ -782,7 +782,7 @@ async fn create_initial_version(
         game_versions,
         loaders,
         featured: version_data.featured,
-        version_type: version_data.release_channel.to_string()
+        version_type: version_data.release_channel.to_string(),
     };
 
     Ok(version)
