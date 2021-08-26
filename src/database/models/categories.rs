@@ -12,6 +12,7 @@ pub struct Loader {
     pub loader: String,
     pub icon: String,
     pub supported_project_types: Vec<String>,
+    pub supported_loaders: Vec<String>,
 }
 
 pub struct GameVersion {
@@ -39,6 +40,7 @@ pub struct License {
     pub short: String,
     pub name: String,
 }
+
 
 pub struct DonationPlatform {
     pub id: DonationPlatformId,
@@ -303,11 +305,14 @@ impl Loader {
         let result = sqlx::query!(
             "
             SELECT l.id id, l.loader loader, l.icon icon,
-            STRING_AGG(DISTINCT pt.name, ',') project_types
+                   STRING_AGG(DISTINCT pt.name, ',') project_types,
+                   STRING_AGG(DISTINCT lrt.loader, ',') supported_loaders
             FROM loaders l
-            LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id
-            LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id
-            GROUP BY l.id;
+                     LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id
+                     LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id
+                     LEFT OUTER JOIN loaders_relations lr on l.id = lr.child_loader
+                     LEFT OUTER JOIN loaders lrt on lr.parent_loader = lrt.id
+            GROUP BY l.id
             "
         )
         .fetch_many(exec)
@@ -318,6 +323,12 @@ impl Loader {
                 icon: x.icon,
                 supported_project_types: x
                     .project_types
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|x| x.to_string())
+                    .collect(),
+                supported_loaders: x.
+                    supported_loaders
                     .unwrap_or_default()
                     .split(',')
                     .map(|x| x.to_string())
