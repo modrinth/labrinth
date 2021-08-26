@@ -41,7 +41,6 @@ pub struct License {
     pub name: String,
 }
 
-
 pub struct DonationPlatform {
     pub id: DonationPlatformId,
     pub short: String,
@@ -327,8 +326,8 @@ impl Loader {
                     .split(',')
                     .map(|x| x.to_string())
                     .collect(),
-                supported_loaders: x.
-                    supported_loaders
+                supported_loaders: x
+                    .supported_loaders
                     .unwrap_or_default()
                     .split(',')
                     .map(|x| x.to_string())

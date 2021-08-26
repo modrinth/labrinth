@@ -2261,42 +2261,6 @@
       "nullable": []
     }
   },
-  "6dc7ec051df26915ab8ee824c3caa45dbac2bda5e2e55958e463cdc0f8754ce2": {
-    "query": "\n            SELECT l.id id, l.loader loader, l.icon icon,\n            STRING_AGG(DISTINCT pt.name, ',') project_types\n            FROM loaders l\n            LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id\n            LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id\n            GROUP BY l.id;\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "loader",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "icon",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "project_types",
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        null
-      ]
-    }
-  },
   "6f1fb4c3269b2a8190f328df025be76241eae757d9c4f3e5eb1cc01b191837df": {
     "query": "\n                    DELETE FROM mods_categories\n                    WHERE joining_mod_id = $1\n                    ",
     "describe": {
@@ -4091,6 +4055,48 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "beb7524f4349a78b886b085214a63133865c9c71b1d0b749ccbe0a2c5504b982": {
+    "query": "\n            SELECT l.id id, l.loader loader, l.icon icon,\n                   STRING_AGG(DISTINCT pt.name, ',') project_types,\n                   STRING_AGG(DISTINCT lrt.loader, ',') supported_loaders\n            FROM loaders l\n                     LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id\n                     LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id\n                     LEFT OUTER JOIN loaders_relations lr on l.id = lr.child_loader\n                     LEFT OUTER JOIN loaders lrt on lr.parent_loader = lrt.id\n            GROUP BY l.id\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "loader",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "icon",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "project_types",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 4,
+          "name": "supported_loaders",
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        null,
+        null
+      ]
     }
   },
   "bec1612d4929d143bc5d6860a57cc036c5ab23e69d750ca5791c620297953c50": {
