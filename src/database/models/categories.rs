@@ -332,6 +332,7 @@ impl Loader {
                     .unwrap_or_default()
                     .split(',')
                     .map(|x| x.to_string())
+                    .filter(|x| !x.is_empty())
                     .collect(),
             }))
         })
