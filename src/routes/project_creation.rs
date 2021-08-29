@@ -442,7 +442,7 @@ pub async fn project_create_inner(
         }
 
         if let Some(gallery_items) = &project_create_data.gallery_items {
-            if gallery_items.iter().filter(|a|a.featured).count() > 1 {
+            if gallery_items.iter().filter(|a| a.featured).count() > 1 {
                 return Err(CreateError::InvalidInput(String::from(
                     "Only one gallery image can be featured.",
                 )));

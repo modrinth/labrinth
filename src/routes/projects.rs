@@ -1163,8 +1163,8 @@ pub async fn add_gallery_item(
                 project_item.id as database::models::ids::ProjectId,
                 false,
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
         }
 
         database::models::project_item::GalleryItem {
@@ -1280,8 +1280,8 @@ pub async fn edit_gallery_item(
                 project_item.id as database::models::ids::ProjectId,
                 false,
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
         }
 
         sqlx::query!(
