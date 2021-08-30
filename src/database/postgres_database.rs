@@ -3,15 +3,17 @@ use sqlx::migrate::{Migrate, MigrateDatabase, Migrator};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::{Connection, PgConnection, Postgres};
 use std::path::Path;
+use std::convert::TryFrom;
 
 const MIGRATION_FOLDER: &str = "migrations";
 
 pub async fn connect() -> Result<PgPool, sqlx::Error> {
     info!("Initializing database connection");
-
+    let max_conn = dotenv::var("DB_MAX_CONN").unwrap_or("".to_string());
+    let max_conn = u32::try_from(max_conn).unwrap_or(5);
     let database_url = dotenv::var("DATABASE_URL").expect("`DATABASE_URL` not in .env");
     let pool = PgPoolOptions::new()
-        .max_connections(20)
+        .max_connections(max_conn)
         .connect(&database_url)
         .await?;
 
