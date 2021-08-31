@@ -14,6 +14,7 @@ mod teams;
 mod users;
 mod version_creation;
 mod versions;
+mod health;
 
 pub use auth::config as auth_config;
 pub use tags::config as tags_config;

@@ -10,6 +10,11 @@ use rand::Rng;
 use search::indexing::index_mods;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use crate::health::pod::PodInfo;
+use crate::health::scheduler::HealthCounters;
+use actix_web_prom::{PrometheusMetrics, PrometheusMetricsBuilder};
 
 mod auth;
 mod database;
@@ -18,6 +23,7 @@ mod models;
 mod routes;
 mod scheduler;
 mod search;
+mod health;
 
 #[derive(Debug, Options)]
 struct Config {
@@ -235,6 +241,7 @@ async fn main() -> std::io::Result<()> {
                 warn!("Indexing created mods failed: {:?}", e);
             }
             info!("Done indexing created mod queue");
+            crate::health::SEARCH_READY.store(true, Ordering::Release);
         }
     });
 
@@ -245,12 +252,29 @@ async fn main() -> std::io::Result<()> {
     };
 
     let store = MemoryStore::new();
+    // Generate pod id
+    let pod = PodInfo::new();
+    // Init prometheus cluster
+    let mut labels = HashMap::new();
+    labels.insert("pod".to_string(), pod.pod_name);
+    labels.insert("node".to_string(), pod.node_name);
 
+    // Get prometheus service
+    let mut prometheus = PrometheusMetricsBuilder::new("api")
+        .endpoint("/metrics")
+        .build()
+        .unwrap();
+    // Get custom service
+    let health = HealthCounters::new();
+    health.register(&mut prometheus);
+    health.schedule(pool.clone(), &mut scheduler);
     info!("Starting Actix HTTP server!");
 
     // Init App
     HttpServer::new(move || {
         App::new()
+            .wrap(prometheus.clone())
+            .wrap(health.clone())
             .wrap(
                 Cors::new()
                     .allowed_methods(vec!["GET", "POST", "DELETE", "PATCH", "PUT"])
