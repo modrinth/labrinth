@@ -366,7 +366,7 @@ source = "git+https://github.com/nlopes/actix-web-prom?branch=master#05ca96dfb04
 dependencies = [
  "actix-web",
  "futures",
- "pin-project 1.0.4",
+ "pin-project 1.0.7",
  "prometheus",
 ]
 
