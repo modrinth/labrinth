@@ -322,6 +322,7 @@ async fn main() -> std::io::Result<()> {
             .data(search_config.clone())
             .data(ip_salt.clone())
             .service(routes::index_get)
+            .service(routes::health_get)
             .service(
                 web::scope("/api/v1/")
                     .configure(routes::auth_config)

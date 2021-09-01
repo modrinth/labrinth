@@ -1,5 +1,6 @@
 pub mod scheduler;
 pub mod pod;
+pub mod status;
 
 use lazy_static::lazy_static;
 use std::sync::atomic::AtomicBool;
