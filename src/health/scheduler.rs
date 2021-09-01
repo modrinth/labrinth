@@ -1,18 +1,18 @@
 use crate::scheduler::Scheduler;
 use sqlx::{Pool, Postgres};
-use std::sync::{Arc, Mutex};
-use prometheus::{opts, IntCounterVec, IntGaugeVec};
+
+use prometheus::{opts, IntGaugeVec};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::Error;
-use log::info;
+
 use std::pin::Pin;
 use std::future::{Future};
 use std::task::{Context, Poll};
 use futures::future::{ok, Ready};
-use prometheus::core::GenericCounterVec;
+
 use crate::health::pod::PodInfo;
 use actix_web::http::{HeaderName, HeaderValue};
-use actix_web_prom::{PrometheusMetricsBuilder, PrometheusMetrics};
+use actix_web_prom::{PrometheusMetrics};
 
 pub struct HealthCounters {
     pod: PodInfo,

@@ -1,4 +1,4 @@
-use sqlx::{Pool, Postgres, PgPool};
+use sqlx::{PgPool};
 use actix_web::web;
 
 pub async fn test_database(postgres: web::Data<PgPool>) -> Result<(), sqlx::Error> {

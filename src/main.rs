@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use crate::health::pod::PodInfo;
 use crate::health::scheduler::HealthCounters;
-use actix_web_prom::{PrometheusMetrics, PrometheusMetricsBuilder};
+use actix_web_prom::{PrometheusMetricsBuilder};
 
 mod auth;
 mod database;
