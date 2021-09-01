@@ -1,8 +1,8 @@
-use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::models::ids::NotificationId;
 use crate::models::notifications::{Notification, NotificationAction};
 use crate::routes::ApiError;
+use crate::util::auth::get_user_from_headers;
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -27,8 +27,7 @@ pub async fn notifications_get(
 
     let notifications_data =
         database::models::notification_item::Notification::get_many(notification_ids, &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            .await?;
 
     let mut notifications: Vec<Notification> = Vec::new();
 
@@ -52,9 +51,7 @@ pub async fn notification_get(
     let id = info.into_inner().0;
 
     let notification_data =
-        database::models::notification_item::Notification::get(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        database::models::notification_item::Notification::get(id.into(), &**pool).await?;
 
     if let Some(data) = notification_data {
         if user.id == data.user_id.into() || user.role.is_mod() {
@@ -73,6 +70,7 @@ pub fn convert_notification(
     Notification {
         id: notif.id.into(),
         user_id: notif.user_id.into(),
+        type_: notif.notification_type,
         title: notif.title,
         text: notif.text,
         link: notif.link,
@@ -100,17 +98,18 @@ pub async fn notification_delete(
     let id = info.into_inner().0;
 
     let notification_data =
-        database::models::notification_item::Notification::get(id.into(), &**pool)
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        database::models::notification_item::Notification::get(id.into(), &**pool).await?;
 
     if let Some(data) = notification_data {
         if data.user_id == user.id.into() || user.role.is_mod() {
-            database::models::notification_item::Notification::remove(id.into(), &**pool)
-                .await
-                .map_err(|e| ApiError::DatabaseError(e.into()))?;
+            let mut transaction = pool.begin().await?;
 
-            Ok(HttpResponse::Ok().body(""))
+            database::models::notification_item::Notification::remove(id.into(), &mut transaction)
+                .await?;
+
+            transaction.commit().await?;
+
+            Ok(HttpResponse::NoContent().body(""))
         } else {
             Err(ApiError::CustomAuthenticationError(
                 "You are not authorized to delete this notification!".to_string(),
@@ -119,4 +118,39 @@ pub async fn notification_delete(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+#[delete("notifications")]
+pub async fn notifications_delete(
+    req: HttpRequest,
+    web::Query(ids): web::Query<NotificationIds>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    let notification_ids = serde_json::from_str::<Vec<NotificationId>>(&*ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect();
+
+    let mut transaction = pool.begin().await?;
+
+    let notifications_data =
+        database::models::notification_item::Notification::get_many(notification_ids, &**pool)
+            .await?;
+
+    let mut notifications: Vec<database::models::ids::NotificationId> = Vec::new();
+
+    for notification in notifications_data {
+        if notification.user_id == user.id.into() || user.role.is_mod() {
+            notifications.push(notification.id);
+        }
+    }
+
+    database::models::notification_item::Notification::remove_many(notifications, &mut transaction)
+        .await?;
+
+    transaction.commit().await?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }

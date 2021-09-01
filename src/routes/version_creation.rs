@@ -1,73 +1,49 @@
-use crate::auth::get_user_from_headers;
 use crate::database::models;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder};
 use crate::file_hosting::FileHost;
-use crate::models::mods::{
-    Dependency, GameVersion, ModId, ModLoader, Version, VersionFile, VersionId, VersionType,
+use crate::models::projects::{
+    Dependency, GameVersion, Loader, ProjectId, Version, VersionFile, VersionId, VersionType,
 };
 use crate::models::teams::Permissions;
-use crate::routes::mod_creation::{CreateError, UploadedFile};
+use crate::routes::project_creation::{CreateError, UploadedFile};
+use crate::util::auth::get_user_from_headers;
+use crate::util::validate::validation_errors_to_string;
+use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
+use validator::Validate;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct InitialVersionData {
-    pub mod_id: Option<ModId>,
+    #[serde(alias = "mod_id")]
+    pub project_id: Option<ProjectId>,
+    #[validate(length(min = 1, max = 256))]
     pub file_parts: Vec<String>,
+    #[validate(
+        length(min = 1, max = 64),
+        regex = "crate::util::validate::RE_URL_SAFE"
+    )]
     pub version_number: String,
+    #[validate(length(min = 3, max = 256))]
     pub version_title: String,
+    #[validate(length(max = 65536))]
     pub version_body: Option<String>,
+    #[validate(length(min = 0, max = 256))]
     pub dependencies: Vec<Dependency>,
     pub game_versions: Vec<GameVersion>,
     pub release_channel: VersionType,
-    pub loaders: Vec<ModLoader>,
+    pub loaders: Vec<Loader>,
     pub featured: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct InitialFileData {
     // TODO: hashes?
-}
-
-pub fn check_version(version: &InitialVersionData) -> Result<(), CreateError> {
-    /*
-    # InitialVersionData
-    file_parts: Vec<String>, 1..=256
-    version_number: 1..=64,
-    version_title: 3..=256,
-    version_body: max of 64KiB,
-    game_versions: Vec<GameVersion>, 1..=256
-    release_channel: VersionType,
-    loaders: Vec<ModLoader>, 1..=256
-    */
-    use super::mod_creation::check_length;
-
-    version
-        .file_parts
-        .iter()
-        .try_for_each(|f| check_length(1..=256, "file part name", f))?;
-
-    check_length(1..=64, "version number", &version.version_number)?;
-    check_length(3..=256, "version title", &version.version_title)?;
-    if let Some(body) = &version.version_body {
-        check_length(..65536, "version body", body)?;
-    }
-
-    version
-        .game_versions
-        .iter()
-        .try_for_each(|v| check_length(1..=256, "game version", &v.0))?;
-    version
-        .loaders
-        .iter()
-        .try_for_each(|l| check_length(1..=256, "loader name", &l.0))?;
-
-    Ok(())
 }
 
 // under `/api/v1/version`
@@ -91,7 +67,8 @@ pub async fn version_create(
     .await;
 
     if result.is_err() {
-        let undo_result = super::mod_creation::undo_uploads(&***file_host, &uploaded_files).await;
+        let undo_result =
+            super::project_creation::undo_uploads(&***file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
 
         if let Err(e) = undo_result {
@@ -110,7 +87,7 @@ pub async fn version_create(
 async fn version_create_inner(
     req: HttpRequest,
     mut payload: Multipart,
-    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    mut transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
 ) -> Result<HttpResponse, CreateError> {
@@ -118,6 +95,9 @@ async fn version_create_inner(
 
     let mut initial_version_data = None;
     let mut version_builder = None;
+
+    let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
+    let all_loaders = models::categories::Loader::list(&mut *transaction).await?;
 
     let user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
@@ -139,34 +119,38 @@ async fn version_create_inner(
             let version_create_data: InitialVersionData = serde_json::from_slice(&data)?;
             initial_version_data = Some(version_create_data);
             let version_create_data = initial_version_data.as_ref().unwrap();
-            if version_create_data.mod_id.is_none() {
-                return Err(CreateError::MissingValueError("Missing mod id".to_string()));
+            if version_create_data.project_id.is_none() {
+                return Err(CreateError::MissingValueError(
+                    "Missing project id".to_string(),
+                ));
             }
 
-            check_version(version_create_data)?;
+            version_create_data.validate().map_err(|err| {
+                CreateError::ValidationError(validation_errors_to_string(err, None))
+            })?;
 
-            let mod_id: models::ModId = version_create_data.mod_id.unwrap().into();
+            let project_id: models::ProjectId = version_create_data.project_id.unwrap().into();
 
-            // Ensure that the mod this version is being added to exists
+            // Ensure that the project this version is being added to exists
             let results = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)",
-                mod_id as models::ModId
+                project_id as models::ProjectId
             )
             .fetch_one(&mut *transaction)
             .await?;
 
             if !results.exists.unwrap_or(false) {
                 return Err(CreateError::InvalidInput(
-                    "An invalid mod id was supplied".to_string(),
+                    "An invalid project id was supplied".to_string(),
                 ));
             }
 
-            // Check whether there is already a version of this mod with the
+            // Check whether there is already a version of this project with the
             // same version number
             let results = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM versions WHERE (version_number=$1) AND (mod_id=$2))",
                 version_create_data.version_number,
-                mod_id as models::ModId,
+                project_id as models::ProjectId,
             )
             .fetch_one(&mut *transaction)
             .await?;
@@ -178,15 +162,18 @@ async fn version_create_inner(
             }
 
             // Check that the user creating this version is a team member
-            // of the mod the version is being added to.
-            let team_member =
-                models::TeamMember::get_from_user_id_mod(mod_id, user.id.into(), &mut *transaction)
-                    .await?
-                    .ok_or_else(|| {
-                        CreateError::CustomAuthenticationError(
-                            "You don't have permission to upload this version!".to_string(),
-                        )
-                    })?;
+            // of the project the version is being added to.
+            let team_member = models::TeamMember::get_from_user_id_project(
+                project_id,
+                user.id.into(),
+                &mut *transaction,
+            )
+            .await?
+            .ok_or_else(|| {
+                CreateError::CustomAuthenticationError(
+                    "You don't have permission to upload this version!".to_string(),
+                )
+            })?;
 
             if !team_member
                 .permissions
@@ -199,38 +186,57 @@ async fn version_create_inner(
 
             let version_id: VersionId = models::generate_version_id(transaction).await?.into();
 
-            let release_channel = models::ChannelId::get_id(
-                version_create_data.release_channel.as_str(),
-                &mut *transaction,
+            let project_type = sqlx::query!(
+                "
+                SELECT name FROM project_types pt
+                INNER JOIN mods ON mods.project_type = pt.id
+                WHERE mods.id = $1
+                ",
+                project_id as models::ProjectId,
             )
+            .fetch_one(&mut *transaction)
             .await?
-            .expect("Release channel not found in database");
+            .name;
 
-            let mut game_versions = Vec::with_capacity(version_create_data.game_versions.len());
-            for v in &version_create_data.game_versions {
-                let id = models::categories::GameVersion::get_id(&v.0, &mut *transaction)
-                    .await?
-                    .ok_or_else(|| CreateError::InvalidGameVersion(v.0.clone()))?;
-                game_versions.push(id);
-            }
+            let game_versions = version_create_data
+                .game_versions
+                .iter()
+                .map(|x| {
+                    all_game_versions
+                        .iter()
+                        .find(|y| y.version == x.0)
+                        .ok_or_else(|| CreateError::InvalidGameVersion(x.0.clone()))
+                        .map(|y| y.id)
+                })
+                .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
 
-            let mut loaders = Vec::with_capacity(version_create_data.loaders.len());
-            for l in &version_create_data.loaders {
-                let id = models::categories::Loader::get_id(&l.0, &mut *transaction)
-                    .await?
-                    .ok_or_else(|| CreateError::InvalidLoader(l.0.clone()))?;
-                loaders.push(id);
-            }
+            let loaders = version_create_data
+                .loaders
+                .iter()
+                .map(|x| {
+                    all_loaders
+                        .iter()
+                        .find(|y| {
+                            y.loader == x.0 && y.supported_project_types.contains(&project_type)
+                        })
+                        .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
+                        .map(|y| y.id)
+                })
+                .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
 
             let dependencies = version_create_data
                 .dependencies
                 .iter()
-                .map(|x| ((x.version_id).into(), x.dependency_type.to_string()))
+                .map(|d| models::version_item::DependencyBuilder {
+                    version_id: d.version_id.map(|x| x.into()),
+                    project_id: d.project_id.map(|x| x.into()),
+                    dependency_type: d.dependency_type.to_string(),
+                })
                 .collect::<Vec<_>>();
 
             version_builder = Some(VersionBuilder {
                 version_id: version_id.into(),
-                mod_id: version_create_data.mod_id.unwrap().into(),
+                project_id,
                 author_id: user.id.into(),
                 name: version_create_data.version_title.clone(),
                 version_number: version_create_data.version_number.clone(),
@@ -242,7 +248,7 @@ async fn version_create_inner(
                 dependencies,
                 game_versions,
                 loaders,
-                release_channel,
+                version_type: version_create_data.release_channel.to_string(),
                 featured: version_create_data.featured,
             });
 
@@ -253,19 +259,39 @@ async fn version_create_inner(
             CreateError::InvalidInput(String::from("`data` field must come before file fields"))
         })?;
 
-        let file_builder = upload_file(
+        let project_type = sqlx::query!(
+            "
+                SELECT name FROM project_types pt
+                INNER JOIN mods ON mods.project_type = pt.id
+                WHERE mods.id = $1
+                ",
+            version.project_id as models::ProjectId,
+        )
+        .fetch_one(&mut *transaction)
+        .await?
+        .name;
+
+        let version_data = initial_version_data
+            .clone()
+            .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
+
+        upload_file(
             &mut field,
             file_host,
             uploaded_files,
+            &mut version.files,
             &cdn_url,
             &content_disposition,
-            version.mod_id.into(),
+            version.project_id.into(),
             &version.version_number,
+            &*project_type,
+            version_data.loaders,
+            version_data.game_versions,
+            &all_game_versions,
+            false,
+            &mut transaction,
         )
         .await?;
-
-        // Add the newly uploaded file to the existing or new version
-        version.files.push(file_builder);
     }
 
     let version_data = initial_version_data
@@ -273,12 +299,18 @@ async fn version_create_inner(
     let builder = version_builder
         .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
 
+    if builder.files.is_empty() {
+        return Err(CreateError::InvalidInput(
+            "Versions must have at least one file uploaded to them".to_string(),
+        ));
+    }
+
     let result = sqlx::query!(
         "
         SELECT m.title FROM mods m
         WHERE id = $1
         ",
-        builder.mod_id as crate::database::models::ids::ModId
+        builder.project_id as crate::database::models::ids::ProjectId
     )
     .fetch_one(&mut *transaction)
     .await?;
@@ -290,7 +322,7 @@ async fn version_create_inner(
             SELECT follower_id FROM mod_follows
             WHERE mod_id = $1
             ",
-        builder.mod_id as crate::database::models::ids::ModId
+        builder.project_id as crate::database::models::ids::ProjectId
     )
     .fetch_many(&mut *transaction)
     .try_filter_map(|e| async {
@@ -300,17 +332,18 @@ async fn version_create_inner(
     .try_collect::<Vec<crate::database::models::ids::UserId>>()
     .await?;
 
-    let mod_id: ModId = builder.mod_id.into();
+    let project_id: ProjectId = builder.project_id.into();
     let version_id: VersionId = builder.version_id.into();
 
     NotificationBuilder {
-        title: "A mod you followed has been updated!".to_string(),
+        notification_type: Some("project_update".to_string()),
+        title: format!("**{}** has been updated!", result.title),
         text: format!(
-            "Mod {} has been updated to version {}",
+            "The project, {}, has released a new version: {}",
             result.title,
             version_data.version_number.clone()
         ),
-        link: format!("mod/{}/version/{}", mod_id, version_id),
+        link: format!("project/{}/version/{}", project_id, version_id),
         actions: vec![],
     }
     .insert_many(users, &mut *transaction)
@@ -318,7 +351,7 @@ async fn version_create_inner(
 
     let response = Version {
         id: builder.version_id.into(),
-        mod_id: builder.mod_id.into(),
+        project_id: builder.project_id.into(),
         author_id: user.id,
         featured: builder.featured,
         name: builder.name.clone(),
@@ -388,7 +421,8 @@ pub async fn upload_file_to_version(
     .await;
 
     if result.is_err() {
-        let undo_result = super::mod_creation::undo_uploads(&***file_host, &uploaded_files).await;
+        let undo_result =
+            super::project_creation::undo_uploads(&***file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
 
         if let Err(e) = undo_result {
@@ -407,7 +441,7 @@ pub async fn upload_file_to_version(
 async fn upload_file_to_version_inner(
     req: HttpRequest,
     mut payload: Multipart,
-    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    mut transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     version_id: models::VersionId,
@@ -419,16 +453,7 @@ async fn upload_file_to_version_inner(
 
     let user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
-    let result = sqlx::query!(
-        "
-        SELECT mod_id, version_number, author_id
-        FROM versions
-        WHERE id = $1
-        ",
-        version_id as models::VersionId,
-    )
-    .fetch_optional(&mut *transaction)
-    .await?;
+    let result = models::Version::get_full(version_id, &mut *transaction).await?;
 
     let version = match result {
         Some(v) => v,
@@ -457,8 +482,22 @@ async fn upload_file_to_version_inner(
         ));
     }
 
-    let mod_id = ModId(version.mod_id as u64);
+    let project_id = ProjectId(version.project_id.0 as u64);
     let version_number = version.version_number;
+
+    let project_type = sqlx::query!(
+        "
+        SELECT name FROM project_types pt
+        INNER JOIN mods ON mods.project_type = pt.id
+        WHERE mods.id = $1
+        ",
+        version.project_id as models::ProjectId,
+    )
+    .fetch_one(&mut *transaction)
+    .await?
+    .name;
+
+    let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
 
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
@@ -485,19 +524,28 @@ async fn upload_file_to_version_inner(
             CreateError::InvalidInput(String::from("`data` field must come before file fields"))
         })?;
 
-        let file_builder = upload_file(
+        upload_file(
             &mut field,
             file_host,
             uploaded_files,
+            &mut file_builders,
             &cdn_url,
             &content_disposition,
-            mod_id,
+            project_id,
             &version_number,
+            &*project_type,
+            version.loaders.clone().into_iter().map(Loader).collect(),
+            version
+                .game_versions
+                .clone()
+                .into_iter()
+                .map(GameVersion)
+                .collect(),
+            &all_game_versions,
+            true,
+            &mut transaction,
         )
         .await?;
-
-        // TODO: Malware scan + file validation
-        file_builders.push(file_builder);
     }
 
     if file_builders.is_empty() {
@@ -514,40 +562,80 @@ async fn upload_file_to_version_inner(
 }
 
 // This function is used for adding a file to a version, uploading the initial
-// files for a version, and for uploading the initial version files for a mod
+// files for a version, and for uploading the initial version files for a project
+#[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
     field: &mut Field,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
+    version_files: &mut Vec<models::version_item::VersionFileBuilder>,
     cdn_url: &str,
     content_disposition: &actix_web::http::header::ContentDisposition,
-    mod_id: crate::models::ids::ModId,
+    project_id: crate::models::ids::ProjectId,
     version_number: &str,
-) -> Result<models::version_item::VersionFileBuilder, CreateError> {
+    project_type: &str,
+    loaders: Vec<Loader>,
+    game_versions: Vec<GameVersion>,
+    all_game_versions: &[models::categories::GameVersion],
+    ignore_primary: bool,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
 
-    let content_type = mod_file_type(file_extension)
+    let content_type = crate::util::ext::project_file_type(file_extension)
         .ok_or_else(|| CreateError::InvalidFileType(file_extension.to_string()))?;
 
     let mut data = Vec::new();
     while let Some(chunk) = field.next().await {
-        data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
+        // Project file size limit of 100MiB
+        const FILE_SIZE_CAP: usize = 100 * (1 << 20);
+
+        if data.len() >= FILE_SIZE_CAP {
+            return Err(CreateError::InvalidInput(
+                String::from("Project file exceeds the maximum of 100MiB. Contact a moderator or admin to request permission to upload larger files.")
+            ));
+        } else {
+            let bytes = chunk.map_err(CreateError::MultipartError)?;
+            data.append(&mut bytes.to_vec());
+        }
     }
 
-    // Mod file size limit of 25MiB
-    const FILE_SIZE_CAP: usize = 25 * (2 << 30);
+    let hash = sha1::Sha1::from(&data).hexdigest();
+    let exists = sqlx::query!(
+        "
+        SELECT EXISTS(SELECT 1 FROM hashes h
+        WHERE h.algorithm = $2 AND h.hash = $1)
+        ",
+        hash.as_bytes(),
+        "sha1"
+    )
+    .fetch_one(&mut *transaction)
+    .await?
+    .exists
+    .unwrap_or(false);
 
-    // TODO: override file size cap for authorized users or mods
-    if data.len() >= FILE_SIZE_CAP {
+    if exists {
         return Err(CreateError::InvalidInput(
-            String::from("Mod file exceeds the maximum of 25MiB. Contact a moderator or admin to request permission to upload larger files.")
+            "Duplicate files are not allowed to be uploaded to Modrinth!".to_string(),
         ));
     }
+
+    let validation_result = validate_file(
+        data.as_slice(),
+        file_extension,
+        project_type,
+        loaders,
+        game_versions,
+        all_game_versions,
+    )?;
 
     let upload_data = file_host
         .upload_file(
             content_type,
-            &format!("data/{}/versions/{}/{}", mod_id, version_number, file_name),
+            &format!(
+                "data/{}/versions/{}/{}",
+                project_id, version_number, file_name
+            ),
             data.to_vec(),
         )
         .await?;
@@ -558,7 +646,7 @@ pub async fn upload_file(
     });
 
     // TODO: Malware scan + file validation
-    Ok(models::version_item::VersionFileBuilder {
+    version_files.push(models::version_item::VersionFileBuilder {
         filename: file_name.to_string(),
         url: format!("{}/{}", cdn_url, upload_data.file_name),
         hashes: vec![
@@ -575,16 +663,12 @@ pub async fn upload_file(
                 hash: upload_data.content_sha512.into_bytes(),
             },
         ],
-        primary: uploaded_files.len() == 1,
-    })
-}
+        primary: validation_result == ValidationResult::Pass
+            && version_files.iter().all(|x| !x.primary)
+            && !ignore_primary,
+    });
 
-// Currently we only support jar mods; this may change in the future (datapacks?)
-fn mod_file_type(ext: &str) -> Option<&str> {
-    match ext {
-        "jar" => Some("application/java-archive"),
-        _ => None,
-    }
+    Ok(())
 }
 
 pub fn get_name_ext(

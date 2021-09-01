@@ -1,18 +1,22 @@
 use actix_web::web;
 
+mod v1;
+pub use v1::v1_config;
+
 mod auth;
 mod index;
 mod maven;
-mod mod_creation;
 mod moderation;
-mod mods;
 mod not_found;
 mod notifications;
+mod project_creation;
+mod projects;
 mod reports;
 mod tags;
 mod teams;
 mod users;
 mod version_creation;
+mod version_file;
 mod versions;
 mod health;
 
@@ -24,21 +28,44 @@ pub use self::health::health_get;
 pub use self::not_found::not_found;
 use crate::file_hosting::FileHostingError;
 
-pub fn mods_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(mods::mod_search);
-    cfg.service(mods::mods_get);
-    cfg.service(mod_creation::mod_create);
+pub fn v2_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/v2/")
+            .configure(auth_config)
+            .configure(tags_config)
+            .configure(projects_config)
+            .configure(versions_config)
+            .configure(teams_config)
+            .configure(users_config)
+            .configure(moderation_config)
+            .configure(reports_config)
+            .configure(notifications_config),
+    );
+}
+
+pub fn projects_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(projects::project_search);
+    cfg.service(projects::projects_get);
+    cfg.service(project_creation::project_create);
 
     cfg.service(
-        web::scope("mod")
-            .service(mods::mod_slug_get)
-            .service(mods::mod_get)
-            .service(mods::mod_delete)
-            .service(mods::mod_edit)
-            .service(mods::mod_icon_edit)
-            .service(mods::mod_follow)
-            .service(mods::mod_unfollow)
-            .service(web::scope("{mod_id}").service(versions::version_list)),
+        web::scope("project")
+            .service(projects::project_get)
+            .service(projects::project_delete)
+            .service(projects::project_edit)
+            .service(projects::project_icon_edit)
+            .service(projects::delete_project_icon)
+            .service(projects::add_gallery_item)
+            .service(projects::edit_gallery_item)
+            .service(projects::delete_gallery_item)
+            .service(projects::project_follow)
+            .service(projects::project_unfollow)
+            .service(teams::team_members_get_project)
+            .service(
+                web::scope("{project_id}")
+                    .service(versions::version_list)
+                    .service(projects::dependency_list),
+            ),
     );
 }
 
@@ -59,9 +86,17 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
     );
     cfg.service(
         web::scope("version_file")
-            .service(versions::delete_file)
-            .service(versions::get_version_from_hash)
-            .service(versions::download_version),
+            .service(version_file::delete_file)
+            .service(version_file::get_version_from_hash)
+            .service(version_file::download_version)
+            .service(version_file::get_update_from_hash),
+    );
+
+    cfg.service(
+        web::scope("version_files")
+            .service(version_file::get_versions_from_hashes)
+            .service(version_file::download_files)
+            .service(version_file::update_files),
     );
 }
 
@@ -71,9 +106,8 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
     cfg.service(users::users_get);
     cfg.service(
         web::scope("user")
-            .service(users::user_username_get)
             .service(users::user_get)
-            .service(users::mods_list)
+            .service(users::projects_list)
             .service(users::user_delete)
             .service(users::user_edit)
             .service(users::user_icon_edit)
@@ -87,6 +121,7 @@ pub fn teams_config(cfg: &mut web::ServiceConfig) {
         web::scope("team")
             .service(teams::team_members_get)
             .service(teams::edit_team_member)
+            .service(teams::transfer_ownership)
             .service(teams::add_team_member)
             .service(teams::join_team)
             .service(teams::remove_team_member),
@@ -95,6 +130,7 @@ pub fn teams_config(cfg: &mut web::ServiceConfig) {
 
 pub fn notifications_config(cfg: &mut web::ServiceConfig) {
     cfg.service(notifications::notifications_get);
+    cfg.service(notifications::notification_delete);
 
     cfg.service(
         web::scope("notification")
@@ -104,7 +140,7 @@ pub fn notifications_config(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn moderation_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("moderation").service(moderation::mods));
+    cfg.service(web::scope("moderation").service(moderation::get_projects));
 }
 
 pub fn reports_config(cfg: &mut web::ServiceConfig) {
@@ -119,18 +155,22 @@ pub enum ApiError {
     EnvError(#[from] dotenv::Error),
     #[error("Error while uploading file")]
     FileHostingError(#[from] FileHostingError),
-    #[error("Internal server error: {0}")]
+    #[error("Database Error: {0}")]
     DatabaseError(#[from] crate::database::models::DatabaseError),
+    #[error("Database Error: {0}")]
+    SqlxDatabaseError(#[from] sqlx::Error),
     #[error("Internal server error: {0}")]
     XmlError(String),
     #[error("Deserialization error: {0}")]
     JsonError(#[from] serde_json::Error),
     #[error("Authentication Error: {0}")]
-    AuthenticationError(#[from] crate::auth::AuthenticationError),
+    AuthenticationError(#[from] crate::util::auth::AuthenticationError),
     #[error("Authentication Error: {0}")]
     CustomAuthenticationError(String),
     #[error("Invalid Input: {0}")]
     InvalidInputError(String),
+    #[error("Error while validating input: {0}")]
+    ValidationError(String),
     #[error("Search Error: {0}")]
     SearchError(#[from] meilisearch_sdk::errors::Error),
     #[error("Indexing Error: {0}")]
@@ -142,6 +182,7 @@ impl actix_web::ResponseError for ApiError {
         match self {
             ApiError::EnvError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::DatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::SqlxDatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::AuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::CustomAuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::XmlError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -150,6 +191,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::IndexingError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::FileHostingError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::InvalidInputError(..) => actix_web::http::StatusCode::BAD_REQUEST,
+            ApiError::ValidationError(..) => actix_web::http::StatusCode::BAD_REQUEST,
         }
     }
 
@@ -158,6 +200,7 @@ impl actix_web::ResponseError for ApiError {
             crate::models::error::ApiError {
                 error: match self {
                     ApiError::EnvError(..) => "environment_error",
+                    ApiError::SqlxDatabaseError(..) => "database_error",
                     ApiError::DatabaseError(..) => "database_error",
                     ApiError::AuthenticationError(..) => "unauthorized",
                     ApiError::CustomAuthenticationError(..) => "unauthorized",
@@ -167,6 +210,7 @@ impl actix_web::ResponseError for ApiError {
                     ApiError::IndexingError(..) => "indexing_error",
                     ApiError::FileHostingError(..) => "file_hosting_error",
                     ApiError::InvalidInputError(..) => "invalid_input",
+                    ApiError::ValidationError(..) => "invalid_input",
                 },
                 description: &self.to_string(),
             },

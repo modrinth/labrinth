@@ -8,11 +8,22 @@ const MIGRATION_FOLDER: &str = "migrations";
 
 pub async fn connect() -> Result<PgPool, sqlx::Error> {
     info!("Initializing database connection");
-    let max_conn = dotenv::var("DB_MAX_CONN").unwrap_or("".to_string());
-    let max_conn = max_conn.parse().unwrap_or(5);
     let database_url = dotenv::var("DATABASE_URL").expect("`DATABASE_URL` not in .env");
     let pool = PgPoolOptions::new()
-        .max_connections(max_conn)
+        .min_connections(
+            dotenv::var("DATABASE_MIN_CONNECTIONS")
+                .ok()
+                .map(|x| x.parse::<u32>().ok())
+                .flatten()
+                .unwrap_or(16),
+        )
+        .max_connections(
+            dotenv::var("DATABASE_MAX_CONNECTIONS")
+                .ok()
+                .map(|x| x.parse::<u32>().ok())
+                .flatten()
+                .unwrap_or(16),
+        )
         .connect(&database_url)
         .await?;
 

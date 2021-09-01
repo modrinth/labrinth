@@ -7,7 +7,7 @@ use env_logger::Env;
 use gumdrop::Options;
 use log::{error, info, warn};
 use rand::Rng;
-use search::indexing::index_mods;
+use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -16,7 +16,6 @@ use crate::health::pod::PodInfo;
 use crate::health::scheduler::HealthCounters;
 use actix_web_prom::{PrometheusMetricsBuilder};
 
-mod auth;
 mod database;
 mod file_hosting;
 mod models;
@@ -24,6 +23,8 @@ mod routes;
 mod scheduler;
 mod search;
 mod health;
+mod util;
+mod validate;
 
 #[derive(Debug, Options)]
 struct Config {
@@ -164,13 +165,10 @@ async fn main() -> std::io::Result<()> {
                 return;
             }
             info!("Indexing local database");
-            let settings = IndexingSettings {
-                index_local: true,
-                index_external: false,
-            };
-            let result = index_mods(pool_ref, settings, &thread_search_config).await;
+            let settings = IndexingSettings { index_local: true };
+            let result = index_projects(pool_ref, settings, &thread_search_config).await;
             if let Err(e) = result {
-                warn!("Local mod indexing failed: {:?}", e);
+                warn!("Local project indexing failed: {:?}", e);
             }
             info!("Done indexing local database");
         }
@@ -235,13 +233,13 @@ async fn main() -> std::io::Result<()> {
             if local_skip {
                 return;
             }
-            info!("Indexing created mod queue");
+            info!("Indexing created project queue");
             let result = search::indexing::queue::index_queue(&*queue, &thread_search_config).await;
             if let Err(e) = result {
-                warn!("Indexing created mods failed: {:?}", e);
+                warn!("Indexing created projects failed: {:?}", e);
             }
-            info!("Done indexing created mod queue");
             crate::health::SEARCH_READY.store(true, Ordering::Release);
+            info!("Done indexing created project queue");
         }
     });
 
@@ -276,13 +274,12 @@ async fn main() -> std::io::Result<()> {
             .wrap(prometheus.clone())
             .wrap(health.clone())
             .wrap(
-                Cors::new()
+                Cors::default()
                     .allowed_methods(vec!["GET", "POST", "DELETE", "PATCH", "PUT"])
                     .allowed_headers(vec![http::header::AUTHORIZATION, http::header::ACCEPT])
                     .allowed_header(http::header::CONTENT_TYPE)
-                    .send_wildcard()
-                    .max_age(3600)
-                    .finish(),
+                    .allow_any_origin()
+                    .max_age(3600),
             )
             .wrap(
                 // This is a hacky workaround to allowing the frontend server-side renderer to have
@@ -292,9 +289,23 @@ async fn main() -> std::io::Result<()> {
                     .with_identifier(|req| {
                         let connection_info = req.connection_info();
                         let ip = String::from(
-                            connection_info
-                                .remote_addr()
-                                .ok_or(ARError::IdentificationError)?,
+                            if dotenv::var("CLOUDFLARE_INTEGRATION")
+                                .ok()
+                                .map(|i| i.parse().unwrap())
+                                .unwrap_or(false)
+                            {
+                                if let Some(header) = req.headers().get("CF-Connecting-IP") {
+                                    header.to_str().map_err(|_| ARError::IdentificationError)?
+                                } else {
+                                    connection_info
+                                        .remote_addr()
+                                        .ok_or(ARError::IdentificationError)?
+                                }
+                            } else {
+                                connection_info
+                                    .remote_addr()
+                                    .ok_or(ARError::IdentificationError)?
+                            },
                         );
 
                         let ignore_ips = dotenv::var("RATE_LIMIT_IGNORE_IPS")
@@ -304,16 +315,16 @@ async fn main() -> std::io::Result<()> {
 
                         if ignore_ips.contains(&ip) {
                             // At an even distribution of numbers, this will allow at the most
-                            // 3000 requests per minute from the frontend, which is reasonable
-                            // (50 requests per second)
-                            let random = rand::thread_rng().gen_range(1, 15);
+                            // 18000 requests per minute from the frontend, which is reasonable
+                            // (300 requests per second)
+                            let random = rand::thread_rng().gen_range(1, 30);
                             return Ok(format!("{}-{}", ip, random));
                         }
 
                         Ok(ip)
                     })
                     .with_interval(std::time::Duration::from_secs(60))
-                    .with_max_requests(200),
+                    .with_max_requests(300),
             )
             .wrap(sentry_actix::Sentry::new())
             .data(pool.clone())
@@ -321,20 +332,10 @@ async fn main() -> std::io::Result<()> {
             .data(indexing_queue.clone())
             .data(search_config.clone())
             .data(ip_salt.clone())
+            .configure(routes::v1_config)
+            .configure(routes::v2_config)
             .service(routes::index_get)
             .service(routes::health_get)
-            .service(
-                web::scope("/api/v1/")
-                    .configure(routes::auth_config)
-                    .configure(routes::tags_config)
-                    .configure(routes::mods_config)
-                    .configure(routes::versions_config)
-                    .configure(routes::teams_config)
-                    .configure(routes::users_config)
-                    .configure(routes::moderation_config)
-                    .configure(routes::reports_config)
-                    .configure(routes::notifications_config),
-            )
             .service(web::scope("/maven/").configure(routes::maven_config))
             .default_service(web::get().to(routes::not_found))
     })
@@ -373,6 +374,7 @@ fn check_env_vars() -> bool {
         failed |= true;
     }
 
+    failed |= check_var::<String>("SITE_URL");
     failed |= check_var::<String>("CDN_URL");
     failed |= check_var::<String>("DATABASE_URL");
     failed |= check_var::<String>("MEILISEARCH_ADDR");

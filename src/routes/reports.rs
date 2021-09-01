@@ -1,7 +1,7 @@
-use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
-use crate::models::ids::{ModId, UserId, VersionId};
+use crate::models::ids::{ProjectId, UserId, VersionId};
 use crate::models::reports::{ItemType, Report};
 use crate::routes::ApiError;
+use crate::util::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
 use serde::Deserialize;
@@ -21,10 +21,7 @@ pub async fn report_create(
     pool: web::Data<PgPool>,
     mut body: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
-    let mut transaction = pool
-        .begin()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let mut transaction = pool.begin().await?;
 
     let current_user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
@@ -48,7 +45,7 @@ pub async fn report_create(
     let mut report = crate::database::models::report_item::Report {
         id,
         report_type_id: report_type,
-        mod_id: None,
+        project_id: None,
         version_id: None,
         user_id: None,
         body: new_report.body.clone(),
@@ -57,9 +54,10 @@ pub async fn report_create(
     };
 
     match new_report.item_type {
-        ItemType::Mod => {
-            report.mod_id =
-                Some(serde_json::from_str::<ModId>(&*format!("\"{}\"", new_report.item_id))?.into())
+        ItemType::Project => {
+            report.project_id = Some(
+                serde_json::from_str::<ProjectId>(&*format!("\"{}\"", new_report.item_id))?.into(),
+            )
         }
         ItemType::Version => {
             report.version_id = Some(
@@ -79,14 +77,8 @@ pub async fn report_create(
         }
     }
 
-    report
-        .insert(&mut transaction)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
-    transaction
-        .commit()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    report.insert(&mut transaction).await?;
+    transaction.commit().await?;
 
     Ok(HttpResponse::Ok().json(Report {
         id: id.into(),
@@ -133,12 +125,10 @@ pub async fn reports(
             .map(|m| crate::database::models::ids::ReportId(m.id)))
     })
     .try_collect::<Vec<crate::database::models::ids::ReportId>>()
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
-    let query_reports = crate::database::models::report_item::Report::get_many(report_ids, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let query_reports =
+        crate::database::models::report_item::Report::get_many(report_ids, &**pool).await?;
 
     let mut reports = Vec::new();
 
@@ -146,9 +136,9 @@ pub async fn reports(
         let mut item_id = "".to_string();
         let mut item_type = ItemType::Unknown;
 
-        if let Some(mod_id) = x.mod_id {
-            item_id = serde_json::to_string::<ModId>(&mod_id.into())?;
-            item_type = ItemType::Mod;
+        if let Some(project_id) = x.project_id {
+            item_id = serde_json::to_string::<ProjectId>(&project_id.into())?;
+            item_type = ItemType::Project;
         } else if let Some(version_id) = x.version_id {
             item_id = serde_json::to_string::<VersionId>(&version_id.into())?;
             item_type = ItemType::Version;
@@ -183,11 +173,10 @@ pub async fn delete_report(
         info.into_inner().0.into(),
         &**pool,
     )
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     if result.is_some() {
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

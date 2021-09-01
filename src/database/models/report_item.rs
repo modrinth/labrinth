@@ -3,7 +3,7 @@ use super::ids::*;
 pub struct Report {
     pub id: ReportId,
     pub report_type_id: ReportTypeId,
-    pub mod_id: Option<ModId>,
+    pub project_id: Option<ProjectId>,
     pub version_id: Option<VersionId>,
     pub user_id: Option<UserId>,
     pub body: String,
@@ -14,7 +14,7 @@ pub struct Report {
 pub struct QueryReport {
     pub id: ReportId,
     pub report_type: String,
-    pub mod_id: Option<ModId>,
+    pub project_id: Option<ProjectId>,
     pub version_id: Option<VersionId>,
     pub user_id: Option<UserId>,
     pub body: String,
@@ -40,7 +40,7 @@ impl Report {
             ",
             self.id as ReportId,
             self.report_type_id as ReportTypeId,
-            self.mod_id.map(|x| x.0 as i64),
+            self.project_id.map(|x| x.0 as i64),
             self.version_id.map(|x| x.0 as i64),
             self.user_id.map(|x| x.0 as i64),
             self.body,
@@ -72,7 +72,7 @@ impl Report {
             Ok(Some(QueryReport {
                 id,
                 report_type: row.name,
-                mod_id: row.mod_id.map(ModId),
+                project_id: row.mod_id.map(ProjectId),
                 version_id: row.version_id.map(VersionId),
                 user_id: row.user_id.map(UserId),
                 body: row.body,
@@ -85,7 +85,7 @@ impl Report {
     }
 
     pub async fn get_many<'a, E>(
-        version_ids: Vec<ReportId>,
+        report_ids: Vec<ReportId>,
         exec: E,
     ) -> Result<Vec<QueryReport>, sqlx::Error>
     where
@@ -93,22 +93,22 @@ impl Report {
     {
         use futures::stream::TryStreamExt;
 
-        let version_ids_parsed: Vec<i64> = version_ids.into_iter().map(|x| x.0).collect();
-        let versions = sqlx::query!(
+        let report_ids_parsed: Vec<i64> = report_ids.into_iter().map(|x| x.0).collect();
+        let reports = sqlx::query!(
             "
             SELECT r.id, rt.name, r.mod_id, r.version_id, r.user_id, r.body, r.reporter, r.created
             FROM reports r
             INNER JOIN report_types rt ON rt.id = r.report_type_id
-            WHERE r.id IN (SELECT * FROM UNNEST($1::bigint[]))
+            WHERE r.id = ANY($1)
             ",
-            &version_ids_parsed
+            &report_ids_parsed
         )
         .fetch_many(exec)
         .try_filter_map(|e| async {
             Ok(e.right().map(|row| QueryReport {
                 id: ReportId(row.id),
                 report_type: row.name,
-                mod_id: row.mod_id.map(ModId),
+                project_id: row.mod_id.map(ProjectId),
                 version_id: row.version_id.map(VersionId),
                 user_id: row.user_id.map(UserId),
                 body: row.body,
@@ -119,7 +119,7 @@ impl Report {
         .try_collect::<Vec<QueryReport>>()
         .await?;
 
-        Ok(versions)
+        Ok(reports)
     }
 
     pub async fn remove_full<'a, E>(id: ReportId, exec: E) -> Result<Option<()>, sqlx::Error>

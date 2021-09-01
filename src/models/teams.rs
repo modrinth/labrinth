@@ -1,5 +1,5 @@
 use super::ids::Base62Id;
-use crate::models::users::UserId;
+use crate::models::users::User;
 use serde::{Deserialize, Serialize};
 
 /// The ID of a team
@@ -9,9 +9,10 @@ use serde::{Deserialize, Serialize};
 pub struct TeamId(pub u64);
 
 pub const OWNER_ROLE: &str = "Owner";
+pub const DEFAULT_ROLE: &str = "Member";
 
 // TODO: permissions, role names, etc
-/// A team of users who control a mod
+/// A team of users who control a project
 #[derive(Serialize, Deserialize)]
 pub struct Team {
     /// The id of the team
@@ -31,7 +32,7 @@ bitflags::bitflags! {
         const MANAGE_INVITES = 1 << 4;
         const REMOVE_MEMBER = 1 << 5;
         const EDIT_MEMBER = 1 << 6;
-        const DELETE_MOD = 1 << 7;
+        const DELETE_PROJECT = 1 << 7;
         const ALL = 0b11111111;
     }
 }
@@ -47,8 +48,8 @@ impl Default for Permissions {
 pub struct TeamMember {
     /// The ID of the team this team member is a member of
     pub team_id: TeamId,
-    /// The ID of the user associated with the member
-    pub user_id: UserId,
+    /// The user associated with the member
+    pub user: User,
     /// The role of the user in the team
     pub role: String,
     /// A bitset containing the user's permissions in this team

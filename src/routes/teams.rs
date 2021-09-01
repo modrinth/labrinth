@@ -1,13 +1,74 @@
-use crate::auth::get_user_from_headers;
 use crate::database::models::notification_item::{NotificationActionBuilder, NotificationBuilder};
+use crate::database::models::team_item::QueryTeamMember;
 use crate::database::models::TeamMember;
-use crate::models::ids::ModId;
+use crate::models::ids::ProjectId;
 use crate::models::teams::{Permissions, TeamId};
 use crate::models::users::UserId;
 use crate::routes::ApiError;
+use crate::util::auth::get_user_from_headers;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+
+#[get("{id}/members")]
+pub async fn team_members_get_project(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let string = info.into_inner().0;
+    let project_data =
+        crate::database::models::Project::get_from_slug_or_project_id(string, &**pool).await?;
+
+    if let Some(project) = project_data {
+        let members_data = TeamMember::get_from_team_full(project.team_id, &**pool).await?;
+
+        let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
+
+        if let Some(user) = current_user {
+            let team_member =
+                TeamMember::get_from_user_id(project.team_id, user.id.into(), &**pool)
+                    .await
+                    .map_err(ApiError::DatabaseError)?;
+
+            if team_member.is_some() {
+                let team_members: Vec<crate::models::teams::TeamMember> = members_data
+                    .into_iter()
+                    .map(|data| convert_team_member(data, false))
+                    .collect();
+
+                return Ok(HttpResponse::Ok().json(team_members));
+            }
+        }
+
+        let team_members: Vec<crate::models::teams::TeamMember> = members_data
+            .into_iter()
+            .filter(|x| x.accepted)
+            .map(|data| convert_team_member(data, true))
+            .collect();
+
+        Ok(HttpResponse::Ok().json(team_members))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+pub fn convert_team_member(
+    data: QueryTeamMember,
+    override_permissions: bool,
+) -> crate::models::teams::TeamMember {
+    crate::models::teams::TeamMember {
+        team_id: data.team_id.into(),
+        user: super::users::convert_user(data.user),
+        role: data.role,
+        permissions: if override_permissions {
+            None
+        } else {
+            Some(data.permissions)
+        },
+        accepted: data.accepted,
+    }
+}
 
 #[get("{id}/members")]
 pub async fn team_members_get(
@@ -16,7 +77,7 @@ pub async fn team_members_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let members_data = TeamMember::get_from_team(id.into(), &**pool).await?;
+    let members_data = TeamMember::get_from_team_full(id.into(), &**pool).await?;
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -28,32 +89,18 @@ pub async fn team_members_get(
         if team_member.is_some() {
             let team_members: Vec<crate::models::teams::TeamMember> = members_data
                 .into_iter()
-                .map(|data| crate::models::teams::TeamMember {
-                    team_id: id,
-                    user_id: data.user_id.into(),
-                    role: data.role,
-                    permissions: Some(data.permissions),
-                    accepted: data.accepted,
-                })
+                .map(|data| convert_team_member(data, false))
                 .collect();
 
             return Ok(HttpResponse::Ok().json(team_members));
         }
     }
 
-    let mut team_members: Vec<crate::models::teams::TeamMember> = Vec::new();
-
-    for team_member in members_data {
-        if team_member.accepted {
-            team_members.push(crate::models::teams::TeamMember {
-                team_id: id,
-                user_id: team_member.user_id.into(),
-                role: team_member.role,
-                permissions: None,
-                accepted: team_member.accepted,
-            })
-        }
-    }
+    let team_members: Vec<crate::models::teams::TeamMember> = members_data
+        .into_iter()
+        .filter(|x| x.accepted)
+        .map(|data| convert_team_member(data, true))
+        .collect();
 
     Ok(HttpResponse::Ok().json(team_members))
 }
@@ -76,10 +123,7 @@ pub async fn join_team(
                 "You are already a member of this team".to_string(),
             ));
         }
-        let mut transaction = pool
-            .begin()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        let mut transaction = pool.begin().await?;
 
         // Edit Team Member to set Accepted to True
         TeamMember::edit_team_member(
@@ -92,17 +136,14 @@ pub async fn join_team(
         )
         .await?;
 
-        transaction
-            .commit()
-            .await
-            .map_err(|e| ApiError::DatabaseError(e.into()))?;
+        transaction.commit().await?;
     } else {
         return Err(ApiError::InvalidInputError(
             "There is no pending request from this team".to_string(),
         ));
     }
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 fn default_role() -> String {
@@ -127,10 +168,7 @@ pub async fn add_team_member(
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
 
-    let mut transaction = pool
-        .begin()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let mut transaction = pool.begin().await?;
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await?;
     let team_member =
@@ -181,8 +219,7 @@ pub async fn add_team_member(
     }
 
     crate::database::models::User::get(member.user_id, &**pool)
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?
+        .await?
         .ok_or_else(|| ApiError::InvalidInputError("An invalid User ID specified".to_string()))?;
 
     let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
@@ -195,8 +232,7 @@ pub async fn add_team_member(
         accepted: false,
     }
     .insert(&mut transaction)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     let result = sqlx::query!(
         "
@@ -206,17 +242,17 @@ pub async fn add_team_member(
         team_id as crate::database::models::ids::TeamId
     )
     .fetch_one(&**pool)
-    .await
-    .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    .await?;
 
     let team: TeamId = team_id.into();
     NotificationBuilder {
+        notification_type: Some("team_invite".to_string()),
         title: "You have been invited to join a team!".to_string(),
         text: format!(
-            "Team invite from {} to join the team for mod {}",
+            "Team invite from {} to join the team for project {}",
             current_user.username, result.title
         ),
-        link: format!("mod/{}", ModId(result.id as u64)),
+        link: format!("project/{}", ProjectId(result.id as u64)),
         actions: vec![
             NotificationActionBuilder {
                 title: "Accept".to_string(),
@@ -234,12 +270,9 @@ pub async fn add_team_member(
     .insert(new_member.user_id.into(), &mut transaction)
     .await?;
 
-    transaction
-        .commit()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    transaction.commit().await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -262,10 +295,7 @@ pub async fn edit_team_member(
     let current_user = get_user_from_headers(req.headers(), &**pool).await?;
     let team_member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
-    let mut transaction = pool
-        .begin()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    let mut transaction = pool.begin().await?;
 
     let member = match team_member {
         Some(m) => m,
@@ -306,12 +336,69 @@ pub async fn edit_team_member(
     )
     .await?;
 
-    transaction
-        .commit()
-        .await
-        .map_err(|e| ApiError::DatabaseError(e.into()))?;
+    transaction.commit().await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(HttpResponse::NoContent().body(""))
+}
+
+#[derive(Deserialize)]
+pub struct TransferOwnership {
+    pub user_id: UserId,
+}
+
+#[patch("{id}/owner")]
+pub async fn transfer_ownership(
+    req: HttpRequest,
+    info: web::Path<(TeamId,)>,
+    pool: web::Data<PgPool>,
+    new_owner: web::Json<TransferOwnership>,
+) -> Result<HttpResponse, ApiError> {
+    let id = info.into_inner().0;
+
+    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
+    let team_member =
+        TeamMember::get_from_user_id(id.into(), current_user.id.into(), &**pool).await?;
+
+    let member = match team_member {
+        Some(m) => m,
+        None => {
+            return Err(ApiError::CustomAuthenticationError(
+                "You don't have permission to edit members of this team".to_string(),
+            ))
+        }
+    };
+
+    if member.role != crate::models::teams::OWNER_ROLE {
+        return Err(ApiError::CustomAuthenticationError(
+            "You don't have permission to edit the ownership of this team".to_string(),
+        ));
+    }
+
+    let mut transaction = pool.begin().await?;
+
+    TeamMember::edit_team_member(
+        id.into(),
+        current_user.id.into(),
+        None,
+        Some(crate::models::teams::DEFAULT_ROLE.to_string()),
+        None,
+        &mut transaction,
+    )
+    .await?;
+
+    TeamMember::edit_team_member(
+        id.into(),
+        new_owner.user_id.into(),
+        None,
+        Some(crate::models::teams::OWNER_ROLE.to_string()),
+        None,
+        &mut transaction,
+    )
+    .await?;
+
+    transaction.commit().await?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("{id}/members/{user_id}")]
@@ -371,7 +458,7 @@ pub async fn remove_team_member(
                 "You do not have permission to cancel a team invite".to_string(),
             ));
         }
-        Ok(HttpResponse::Ok().body(""))
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

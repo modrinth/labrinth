@@ -1,4 +1,4 @@
-use super::ids::{ModId, UserId};
+use super::ids::{ProjectId, UserId};
 
 pub struct User {
     pub id: UserId,
@@ -24,7 +24,7 @@ impl User {
                 avatar_url, bio, created
             )
             VALUES (
-                $1, $2, LOWER($3), $4, $5,
+                $1, $2, $3, $4, $5,
                 $6, $7, $8
             )
             ",
@@ -162,7 +162,7 @@ impl User {
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role FROM users u
-            WHERE u.id IN (SELECT * FROM UNNEST($1::bigint[]))
+            WHERE u.id = ANY($1)
             ",
             &user_ids_parsed
         )
@@ -186,62 +186,62 @@ impl User {
         Ok(users)
     }
 
-    pub async fn get_mods<'a, E>(
+    pub async fn get_projects<'a, E>(
         user_id: UserId,
         status: &str,
         exec: E,
-    ) -> Result<Vec<ModId>, sqlx::Error>
+    ) -> Result<Vec<ProjectId>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
-        let mods = sqlx::query!(
+        let projects = sqlx::query!(
             "
             SELECT m.id FROM mods m
-            INNER JOIN team_members tm ON tm.team_id = m.team_id
+            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.accepted = TRUE
             WHERE tm.user_id = $1 AND m.status = (SELECT s.id FROM statuses s WHERE s.status = $2)
             ",
             user_id as UserId,
             status,
         )
         .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| ModId(m.id))) })
-        .try_collect::<Vec<ModId>>()
+        .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.id))) })
+        .try_collect::<Vec<ProjectId>>()
         .await?;
 
-        Ok(mods)
+        Ok(projects)
     }
 
-    pub async fn get_mods_private<'a, E>(
+    pub async fn get_projects_private<'a, E>(
         user_id: UserId,
         exec: E,
-    ) -> Result<Vec<ModId>, sqlx::Error>
+    ) -> Result<Vec<ProjectId>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
-        let mods = sqlx::query!(
+        let projects = sqlx::query!(
             "
             SELECT m.id FROM mods m
-            INNER JOIN team_members tm ON tm.team_id = m.team_id
+            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.accepted = TRUE
             WHERE tm.user_id = $1
             ",
             user_id as UserId,
         )
         .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| ModId(m.id))) })
-        .try_collect::<Vec<ModId>>()
+        .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.id))) })
+        .try_collect::<Vec<ProjectId>>()
         .await?;
 
-        Ok(mods)
+        Ok(projects)
     }
 
-    pub async fn remove<'a, 'b, E>(id: UserId, exec: E) -> Result<Option<()>, sqlx::error::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
-    {
+    pub async fn remove(
+        id: UserId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Option<()>, sqlx::error::Error> {
         let deleted_user: UserId = crate::models::users::DELETED_USER.into();
 
         sqlx::query!(
@@ -254,7 +254,7 @@ impl User {
             id as UserId,
             crate::models::teams::OWNER_ROLE
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -266,7 +266,7 @@ impl User {
             deleted_user as UserId,
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         use futures::TryStreamExt;
@@ -277,7 +277,7 @@ impl User {
             ",
             id as UserId,
         )
-        .fetch_many(exec)
+        .fetch_many(&mut *transaction)
         .try_filter_map(|e| async { Ok(e.right().map(|m| m.id as i64)) })
         .try_collect::<Vec<i64>>()
         .await?;
@@ -289,7 +289,7 @@ impl User {
             ",
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -299,7 +299,7 @@ impl User {
             ",
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -309,17 +309,17 @@ impl User {
             ",
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
             "
             DELETE FROM notifications_actions
-             WHERE notification_id IN (SELECT * FROM UNNEST($1::bigint[]))
+             WHERE notification_id = ANY($1)
             ",
             &notifications
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -329,7 +329,7 @@ impl User {
             ",
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -339,21 +339,18 @@ impl User {
             ",
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         Ok(Some(()))
     }
 
-    pub async fn remove_full<'a, 'b, E>(
+    pub async fn remove_full(
         id: UserId,
-        exec: E,
-    ) -> Result<Option<()>, sqlx::error::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
-    {
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Option<()>, sqlx::error::Error> {
         use futures::TryStreamExt;
-        let mods: Vec<ModId> = sqlx::query!(
+        let projects: Vec<ProjectId> = sqlx::query!(
             "
             SELECT m.id FROM mods m
             INNER JOIN team_members tm ON tm.team_id = m.team_id
@@ -362,13 +359,14 @@ impl User {
             id as UserId,
             crate::models::teams::OWNER_ROLE
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| ModId(m.id))) })
-        .try_collect::<Vec<ModId>>()
+        .fetch_many(&mut *transaction)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.id))) })
+        .try_collect::<Vec<ProjectId>>()
         .await?;
 
-        for mod_id in mods {
-            let _result = super::mod_item::Mod::remove_full(mod_id, exec).await?;
+        for project_id in projects {
+            let _result =
+                super::project_item::Project::remove_full(project_id, transaction).await?;
         }
 
         let notifications: Vec<i64> = sqlx::query!(
@@ -378,7 +376,7 @@ impl User {
             ",
             id as UserId,
         )
-        .fetch_many(exec)
+        .fetch_many(&mut *transaction)
         .try_filter_map(|e| async { Ok(e.right().map(|m| m.id as i64)) })
         .try_collect::<Vec<i64>>()
         .await?;
@@ -390,17 +388,17 @@ impl User {
             ",
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
             "
             DELETE FROM notifications_actions
-             WHERE notification_id IN (SELECT * FROM UNNEST($1::bigint[]))
+             WHERE notification_id = ANY($1)
             ",
             &notifications
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         let deleted_user: UserId = crate::models::users::DELETED_USER.into();
@@ -414,7 +412,7 @@ impl User {
             deleted_user as UserId,
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -424,7 +422,7 @@ impl User {
             ",
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         sqlx::query!(
@@ -434,9 +432,61 @@ impl User {
             ",
             id as UserId,
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         Ok(Some(()))
+    }
+
+    pub async fn get_id_from_username_or_id<'a, 'b, E>(
+        username_or_id: &str,
+        executor: E,
+    ) -> Result<Option<UserId>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let id_option = crate::models::ids::base62_impl::parse_base62(username_or_id).ok();
+
+        if let Some(id) = id_option {
+            let id = UserId(id as i64);
+
+            let mut user_id = sqlx::query!(
+                "
+                SELECT id FROM users
+                WHERE id = $1
+                ",
+                id as UserId
+            )
+            .fetch_optional(executor)
+            .await?
+            .map(|x| UserId(x.id));
+
+            if user_id.is_none() {
+                user_id = sqlx::query!(
+                    "
+                    SELECT id FROM users
+                    WHERE LOWER(username) = LOWER($1)
+                    ",
+                    username_or_id
+                )
+                .fetch_optional(executor)
+                .await?
+                .map(|x| UserId(x.id));
+            }
+
+            Ok(user_id)
+        } else {
+            let id = sqlx::query!(
+                "
+                SELECT id FROM users
+                WHERE LOWER(username) = LOWER($1)
+                ",
+                username_or_id
+            )
+            .fetch_optional(executor)
+            .await?;
+
+            Ok(id.map(|x| UserId(x.id)))
+        }
     }
 }
