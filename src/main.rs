@@ -15,6 +15,7 @@ use std::sync::atomic::Ordering;
 use crate::health::pod::PodInfo;
 use crate::health::scheduler::HealthCounters;
 use actix_web_prom::{PrometheusMetricsBuilder};
+use std::net::{ToSocketAddrs, SocketAddr, IpAddr};
 
 mod auth;
 mod database;
@@ -268,10 +269,32 @@ async fn main() -> std::io::Result<()> {
     let health = HealthCounters::new();
     health.register(&mut prometheus);
     health.schedule(pool.clone(), &mut scheduler);
+
+    let mut ignore_ips: Vec<String> = dotenv::var("RATE_LIMIT_IGNORE_IPS")
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_else(Vec::new);
+
+    let mut ignore_hosts: Vec<String> = dotenv::var("RATE_LIMIT_IGNORE_HOSTS")
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_else(Vec::new)
+        .iter()
+        .filter_map(|s| format!("{}:443", s).to_socket_addrs().ok())
+        .map(|e| e.collect::<Vec<SocketAddr>>())
+        .flatten()
+        .map(|e| e.ip().to_string())
+        .collect();
+
+    ignore_ips.append(&mut ignore_hosts);
+    let ignore_ips: Arc<Vec<String>> = Arc::new(ignore_ips);
+    println!("{:#?}", ignore_ips);
+
     info!("Starting Actix HTTP server!");
 
     // Init App
     HttpServer::new(move || {
+        let ignored_ips = ignore_ips.clone();
         App::new()
             .wrap(prometheus.clone())
             .wrap(health.clone())
@@ -289,20 +312,15 @@ async fn main() -> std::io::Result<()> {
                 // an unlimited rate limit, since there is no current way with this library to
                 // have dynamic rate-limit max requests
                 RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
-                    .with_identifier(|req| {
+                    .with_identifier(move |req| {
                         let connection_info = req.connection_info();
-                        let ip = String::from(
+                        let ip= String::from(
                             connection_info
                                 .remote_addr()
                                 .ok_or(ARError::IdentificationError)?,
                         );
 
-                        let ignore_ips = dotenv::var("RATE_LIMIT_IGNORE_IPS")
-                            .ok()
-                            .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
-                            .unwrap_or_else(Vec::new);
-
-                        if ignore_ips.contains(&ip) {
+                        if ignored_ips.contains(&ip) {
                             // At an even distribution of numbers, this will allow at the most
                             // 3000 requests per minute from the frontend, which is reasonable
                             // (50 requests per second)
@@ -310,7 +328,7 @@ async fn main() -> std::io::Result<()> {
                             return Ok(format!("{}-{}", ip, random));
                         }
 
-                        Ok(ip)
+                        Ok(ip.to_string())
                     })
                     .with_interval(std::time::Duration::from_secs(60))
                     .with_max_requests(200),
