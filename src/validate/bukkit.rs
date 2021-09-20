@@ -1,6 +1,6 @@
 use crate::validate::{SupportedGameVersions, ValidationResult, ValidationError};
 use zip::ZipArchive;
-use std::io::{Cursor, Read};
+use std::io::{Cursor};
 
 pub struct BukkitValidator {}
 
