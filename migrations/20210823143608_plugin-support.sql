@@ -33,7 +33,7 @@ VALUES (6, 'sponge',
 ON CONFLICT DO NOTHING;
 INSERT INTO loaders (id, loader, icon)
 VALUES (7, 'paper',
-        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>')
+        '<svg width="326" height="325" viewBox="0 0 326 325" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M136.476 50.4146H51.4146V93.4024L13 113.524L51.4146 188.524V273.585H94.4024L114.524 312L189.524 273.585H274.585V230.598L313 210.476L274.585 135.476V50.4146H231.14L211.476 12L136.476 50.4146Z" stroke="currentColor" stroke-width="24" stroke-linejoin="round"/><path d="M89.8293 175.262L238 88.8291L212.39 224.652L175.805 210.475L151.567 239.744L149.738 213.677L188.153 149.652L123.213 188.524L89.8293 175.262Z" stroke="currentColor" stroke-width="24" stroke-linejoin="round"/></svg>')
 ON CONFLICT DO NOTHING;
 -- 1 -> Mod
 -- 2 -> Modpack
