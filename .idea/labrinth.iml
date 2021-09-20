@@ -144,7 +144,13 @@
       <sourceFolder url="file://$MODULE_DIR$/target/debug/build/v_htmlescape-2dcc3d8195b1decd/out" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/target/debug/build/value-bag-61e3e358d251e1a5/out" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/target/debug/build/whoami-7d9ebcbbb2371986/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/utils/rate_limiting/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/utils/rate_limiting_common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/utils/rate_limiting_derive/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
+      <excludeFolder url="file://$MODULE_DIR$/utils/rate_limiting/target" />
+      <excludeFolder url="file://$MODULE_DIR$/utils/rate_limiting_derive/target" />
+      <excludeFolder url="file://$MODULE_DIR$/utils/rate_limiting_common/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

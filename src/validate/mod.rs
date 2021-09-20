@@ -6,9 +6,12 @@ use chrono::{DateTime, Utc};
 use std::io::Cursor;
 use thiserror::Error;
 use zip::ZipArchive;
+use crate::validate::bukkit::BukkitValidator;
 
 mod fabric;
 mod forge;
+mod bukkit;
+mod sponge;
 mod pack;
 
 #[derive(Error, Debug)]
@@ -54,6 +57,8 @@ static VALIDATORS: [&dyn Validator; 4] = [
     &FabricValidator {},
     &ForgeValidator {},
     &LegacyForgeValidator {},
+    &BukkitValidator {},
+
 ];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
