@@ -4,7 +4,7 @@ use std::io::{Cursor, Read};
 
 pub struct SpongeValidator {}
 
-impl super::Validator for SpongeValidatorValidator {
+impl super::Validator for SpongeValidator {
     fn get_file_extensions<'a>(&self) -> &'a [&'a str] {
         &["jar"]
     }
