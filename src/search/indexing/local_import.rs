@@ -7,7 +7,7 @@ use crate::models::projects::ProjectStatus;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
-// TODO: only loaders for recent versions? For projects that have moved from forge to fabric
+// TODO: Move this away from STRING_AGG to multiple queries - however this may be more efficient?
 pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, IndexingError> {
     info!("Indexing local projects!");
     Ok(
@@ -76,8 +76,8 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
                     }
                 }))
             })
-        .try_collect::<Vec<UploadSearchProject>>()
-        .await?
+            .try_collect::<Vec<UploadSearchProject>>()
+            .await?
     )
 }
 
@@ -116,8 +116,8 @@ pub async fn query_one(
             id as ProjectId,
             crate::models::teams::OWNER_ROLE,
         )
-           .fetch_one(exec)
-           .await?;
+        .fetch_one(exec)
+        .await?;
 
     let mut categories = m
         .categories

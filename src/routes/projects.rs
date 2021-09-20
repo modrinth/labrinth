@@ -1076,9 +1076,9 @@ pub async fn delete_project_icon(
 #[derive(Serialize, Deserialize, Validate)]
 pub struct GalleryCreateQuery {
     pub featured: bool,
-    #[validate(url, length(min = 1, max = 255))]
+    #[validate(length(min = 1, max = 255))]
     pub title: Option<String>,
-    #[validate(url, length(min = 1, max = 2048))]
+    #[validate(length(min = 1, max = 2048))]
     pub description: Option<String>,
 }
 
@@ -1153,6 +1153,20 @@ pub async fn add_gallery_item(
 
         let mut transaction = pool.begin().await?;
 
+        if item.featured {
+            sqlx::query!(
+                "
+                UPDATE mods_gallery
+                SET featured = $2
+                WHERE mod_id = $1
+                ",
+                project_item.id as database::models::ids::ProjectId,
+                false,
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
         database::models::project_item::GalleryItem {
             project_id: project_item.id,
             image_url: format!("{}/{}", cdn_url, url),
@@ -1185,14 +1199,14 @@ pub struct GalleryEditQuery {
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(url, length(min = 1, max = 255))]
+    #[validate(length(min = 1, max = 255))]
     pub title: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(url, length(min = 1, max = 2048))]
+    #[validate(length(min = 1, max = 2048))]
     pub description: Option<Option<String>>,
 }
 
@@ -1256,6 +1270,20 @@ pub async fn edit_gallery_item(
     let mut transaction = pool.begin().await?;
 
     if let Some(featured) = item.featured {
+        if featured {
+            sqlx::query!(
+                "
+                UPDATE mods_gallery
+                SET featured = $2
+                WHERE mod_id = $1
+                ",
+                project_item.id as database::models::ids::ProjectId,
+                false,
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
         sqlx::query!(
             "
             UPDATE mods_gallery

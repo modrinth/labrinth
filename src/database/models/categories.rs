@@ -304,8 +304,8 @@ impl Loader {
         let result = sqlx::query!(
             "
             SELECT l.id id, l.loader loader, l.icon icon,
-                   STRING_AGG(DISTINCT pt.name, ',') project_types,
-                   STRING_AGG(DISTINCT lrt.loader, ',') supported_loaders
+            ARRAY_AGG(DISTINCT lrt.loader) supported_loaders
+            ARRAY_AGG(DISTINCT pt.name) project_types
             FROM loaders l
                      LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id
                      LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id
@@ -323,7 +323,7 @@ impl Loader {
                 supported_project_types: x
                     .project_types
                     .unwrap_or_default()
-                    .split(',')
+                    .iter()
                     .map(|x| x.to_string())
                     .collect(),
                 supported_loaders: x
