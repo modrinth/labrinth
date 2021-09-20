@@ -7,6 +7,7 @@ use std::io::Cursor;
 use thiserror::Error;
 use zip::ZipArchive;
 use crate::validate::bukkit::BukkitValidator;
+use crate::validate::sponge::SpongeValidator;
 
 mod fabric;
 mod forge;
@@ -52,13 +53,13 @@ pub trait Validator: Sync {
     ) -> Result<ValidationResult, ValidationError>;
 }
 
-static VALIDATORS: [&dyn Validator; 4] = [
+static VALIDATORS: [&dyn Validator; 6] = [
     &PackValidator {},
     &FabricValidator {},
     &ForgeValidator {},
     &LegacyForgeValidator {},
     &BukkitValidator {},
-
+    &SpongeValidator {},
 ];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
