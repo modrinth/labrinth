@@ -709,6 +709,48 @@
       ]
     }
   },
+  "252b0d23ca9e5ddfc6890020835f83656d153ebb76a3aeff5fb79a323a62835f": {
+    "query": "\n            SELECT l.id id, l.loader loader, l.icon icon,\n            ARRAY_AGG(DISTINCT lrt.loader) supported_loaders,\n            ARRAY_AGG(DISTINCT pt.name) project_types\n            FROM loaders l\n                     LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id\n                     LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id\n                     LEFT OUTER JOIN loaders_relations lr on l.id = lr.child_loader\n                     LEFT OUTER JOIN loaders lrt on lr.parent_loader = lrt.id\n            GROUP BY l.id\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "loader",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 2,
+          "name": "icon",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 3,
+          "name": "supported_loaders",
+          "type_info": "VarcharArray"
+        },
+        {
+          "ordinal": 4,
+          "name": "project_types",
+          "type_info": "VarcharArray"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        null,
+        null
+      ]
+    }
+  },
   "26a4ea4c0bbe4aea0d4db17bb7f80e6b6336ee7d4df503915cd6494ab72c05f2": {
     "query": "\n                SELECT l.loader loader\n                FROM loaders_versions lv\n                INNER JOIN loaders l on lv.loader_id = l.id\n                WHERE lv.version_id = $1\n                ",
     "describe": {
@@ -4138,48 +4180,6 @@
       "nullable": []
     }
   },
-  "beb7524f4349a78b886b085214a63133865c9c71b1d0b749ccbe0a2c5504b982": {
-    "query": "\n            SELECT l.id id, l.loader loader, l.icon icon,\n                   STRING_AGG(DISTINCT pt.name, ',') project_types,\n                   STRING_AGG(DISTINCT lrt.loader, ',') supported_loaders\n            FROM loaders l\n                     LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id\n                     LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id\n                     LEFT OUTER JOIN loaders_relations lr on l.id = lr.child_loader\n                     LEFT OUTER JOIN loaders lrt on lr.parent_loader = lrt.id\n            GROUP BY l.id\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "loader",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "icon",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "project_types",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 4,
-          "name": "supported_loaders",
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        null,
-        null
-      ]
-    }
-  },
   "bec1612d4929d143bc5d6860a57cc036c5ab23e69d750ca5791c620297953c50": {
     "query": "\n            SELECT team_id FROM mods WHERE id = $1\n            ",
     "describe": {
@@ -4441,42 +4441,6 @@
         ]
       },
       "nullable": [
-        null
-      ]
-    }
-  },
-  "c7bbfdef1c45f91debdbf8e7d377eae647152d74e4f2e70a344349e21752a34e": {
-    "query": "\n            SELECT l.id id, l.loader loader, l.icon icon,\n            ARRAY_AGG(DISTINCT pt.name) project_types\n            FROM loaders l\n            LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id\n            LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id\n            GROUP BY l.id;\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "loader",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 2,
-          "name": "icon",
-          "type_info": "Varchar"
-        },
-        {
-          "ordinal": 3,
-          "name": "project_types",
-          "type_info": "VarcharArray"
-        }
-      ],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": [
-        false,
-        false,
-        false,
         null
       ]
     }

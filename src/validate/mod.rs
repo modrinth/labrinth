@@ -1,19 +1,19 @@
 use crate::models::projects::{GameVersion, Loader};
+use crate::validate::bukkit::BukkitValidator;
 use crate::validate::fabric::FabricValidator;
 use crate::validate::forge::{ForgeValidator, LegacyForgeValidator};
 use crate::validate::pack::PackValidator;
+use crate::validate::sponge::SpongeValidator;
 use chrono::{DateTime, Utc};
 use std::io::Cursor;
 use thiserror::Error;
 use zip::ZipArchive;
-use crate::validate::bukkit::BukkitValidator;
-use crate::validate::sponge::SpongeValidator;
 
+mod bukkit;
 mod fabric;
 mod forge;
-mod bukkit;
-mod sponge;
 mod pack;
+mod sponge;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
