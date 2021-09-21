@@ -111,7 +111,7 @@ pub struct LoaderData {
     icon: String,
     name: String,
     supported_project_types: Vec<String>,
-    supported_loaders: Vec<String>,
+    child_loaders: Vec<String>,
 }
 
 #[get("loader")]
@@ -123,7 +123,7 @@ pub async fn loader_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiErr
             icon: x.icon,
             name: x.loader,
             supported_project_types: x.supported_project_types,
-            supported_loaders: x.supported_loaders,
+            child_loaders: x.child_loaders,
         })
         .collect::<Vec<_>>();
 

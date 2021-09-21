@@ -12,7 +12,7 @@ pub struct Loader {
     pub loader: String,
     pub icon: String,
     pub supported_project_types: Vec<String>,
-    pub supported_loaders: Vec<String>,
+    pub child_loaders: Vec<String>,
 }
 
 pub struct GameVersion {
@@ -326,7 +326,7 @@ impl Loader {
                     .iter()
                     .map(|x| x.to_string())
                     .collect(),
-                supported_loaders: x
+                child_loaders: x
                     .supported_loaders
                     .unwrap_or_default()
                     .iter()
