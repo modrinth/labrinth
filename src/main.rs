@@ -234,7 +234,7 @@ async fn main() -> std::io::Result<()> {
                 return;
             }
             info!("Indexing created project queue");
-            let result = search::indexing::queue::index_queue(&*queue, &thread_search_config).await;
+            let result = queue.index(&thread_search_config).await;
             if let Err(e) = result {
                 warn!("Indexing created projects failed: {:?}", e);
             }

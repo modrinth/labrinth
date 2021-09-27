@@ -12,11 +12,13 @@ pub async fn connect() -> Result<PgPool, sqlx::Error> {
     let pool = PgPoolOptions::new()
         .min_connections(
             dotenv::var("DATABASE_MIN_CONNECTIONS")
-                .and_then(|x| x.parse())
+                .ok()
+                .and_then(|x| x.parse().ok())
                 .unwrap_or(16))
         .max_connections(
             dotenv::var("DATABASE_MAX_CONNECTIONS")
-                .and_then(|x| x.parse())
+                .ok()
+                .and_then(|x| x.parse().ok())
                 .unwrap_or(16))
         .connect(&database_url)
         .await?;
@@ -24,9 +26,8 @@ pub async fn connect() -> Result<PgPool, sqlx::Error> {
     Ok(pool)
 }
 pub async fn check_for_migrations() -> Result<(), sqlx::Error> {
-    let uri = dotenv::var("DATABASE_URL")
-        .expect("`DATABASE_URL` not in .env")
-        .as_str();
+    let uri = dotenv::var("DATABASE_URL").expect("`DATABASE_URL` not in .env");
+    let uri = uri.as_str();
     if !Postgres::database_exists(uri).await? {
         info!("Creating database...");
         Postgres::create_database(uri).await?;

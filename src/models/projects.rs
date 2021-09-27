@@ -146,7 +146,7 @@ pub struct DonationLink {
     pub url: String,
 }
 
-/// A status decides the visbility of a project in search, URLs, and the whole site itself.
+/// A status decides the visibility of a project in search, URLs, and the whole site itself.
 /// Approved - Project is displayed on search, and accessible by URL
 /// Rejected - Project is not displayed on search, and not accessible by URL (Temporary state, project can reapply)
 /// Draft - Project is not displayed on search, and not accessible by URL

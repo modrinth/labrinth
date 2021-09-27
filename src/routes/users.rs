@@ -3,7 +3,6 @@ use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::projects::{Project, ProjectStatus};
 use crate::models::users::{Role, UserId};
-use crate::routes::notifications::convert_notification;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use crate::util::validate::validation_errors_to_string;
@@ -488,7 +487,7 @@ pub async fn user_notifications(
             crate::database::models::notification_item::Notification::get_many_user(id, &**pool)
                 .await?
                 .into_iter()
-                .map(convert_notification)
+                .map(Into::into)
                 .collect();
 
         notifications.sort_by(|a, b| b.created.cmp(&a.created));
