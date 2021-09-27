@@ -17,6 +17,7 @@ use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use validator::Validate;
+use bytes::Buf;
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct InitialVersionData {
@@ -587,20 +588,10 @@ pub async fn upload_file(
     let content_type = crate::util::ext::project_file_type(file_extension)
         .ok_or_else(|| CreateError::InvalidFileType(file_extension.to_string()))?;
 
-    let mut data = Vec::new();
-    while let Some(chunk) = field.next().await {
-        // Project file size limit of 100MiB
-        const FILE_SIZE_CAP: usize = 100 * (1 << 20);
-
-        if data.len() >= FILE_SIZE_CAP {
-            return Err(CreateError::InvalidInput(
-                String::from("Project file exceeds the maximum of 100MiB. Contact a moderator or admin to request permission to upload larger files.")
-            ));
-        } else {
-            let bytes = chunk.map_err(CreateError::MultipartError)?;
-            data.append(&mut bytes.to_vec());
-        }
-    }
+    let data = super::read_from_field(
+        field, 100 * (1 << 20),
+        "Project file exceeds the maximum of 100MiB. Contact a moderator or admin to request permission to upload larger files."
+    ).await?;
 
     let hash = sha1::Sha1::from(&data).hexdigest();
     let exists = sqlx::query!(
@@ -611,10 +602,10 @@ pub async fn upload_file(
         hash.as_bytes(),
         "sha1"
     )
-    .fetch_one(&mut *transaction)
-    .await?
-    .exists
-    .unwrap_or(false);
+        .fetch_one(&mut *transaction)
+        .await?
+        .exists
+        .unwrap_or(false);
 
     if exists {
         return Err(CreateError::InvalidInput(
@@ -623,7 +614,7 @@ pub async fn upload_file(
     }
 
     let validation_result = validate_file(
-        data.as_slice(),
+        data.bytes(),
         file_extension,
         project_type,
         loaders,
@@ -638,7 +629,7 @@ pub async fn upload_file(
                 "data/{}/versions/{}/{}",
                 project_id, version_number, file_name
             ),
-            data.to_vec(),
+            data.freeze(),
         )
         .await?;
 

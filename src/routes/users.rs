@@ -7,7 +7,6 @@ use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
-use futures::StreamExt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -322,26 +321,16 @@ pub async fn user_icon_edit(
                 }
             }
 
-            let mut bytes = web::BytesMut::new();
-            while let Some(item) = payload.next().await {
-                if bytes.len() >= 262144 {
-                    return Err(ApiError::InvalidInputError(String::from(
-                        "Icons must be smaller than 256KiB",
-                    )));
-                } else {
-                    bytes.extend_from_slice(&item.map_err(|_| {
-                        ApiError::InvalidInputError(
-                            "Unable to parse bytes in payload sent!".to_string(),
-                        )
-                    })?);
-                }
-            }
+            let bytes = super::read_from_payload(
+                &mut payload, 262144,
+                "Icons must be smaller than 256KiB"
+            ).await?;
 
             let upload_data = file_host
                 .upload_file(
                     content_type,
                     &format!("user/{}/icon.{}", user_id, ext.ext),
-                    bytes.to_vec(),
+                    bytes.freeze(),
                 )
                 .await?;
 

@@ -13,7 +13,6 @@ use crate::util::auth::get_user_from_headers;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::web::Data;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -959,30 +958,17 @@ pub async fn project_icon_edit(
             }
         }
 
-        let mut bytes = web::BytesMut::new();
-        while let Some(item) = payload.next().await {
-            if bytes.len() >= 262144 {
-                return Err(ApiError::InvalidInputError(String::from(
-                    "Icons must be smaller than 256KiB",
-                )));
-            } else {
-                bytes.extend_from_slice(&item.map_err(|_| {
-                    ApiError::InvalidInputError(
-                        "Unable to parse bytes in payload sent!".to_string(),
-                    )
-                })?);
-            }
-        }
-
+        let bytes = super::read_from_payload(
+            &mut payload, 262144,
+            "Icons must be smaller than 256KiB"
+        ).await?;
         let hash = sha1::Sha1::from(&bytes).hexdigest();
-
         let project_id: ProjectId = project_item.id.into();
-
         let upload_data = file_host
             .upload_file(
                 content_type,
                 &format!("data/{}/{}.{}", project_id, hash, ext.ext),
-                bytes.to_vec(),
+                bytes.freeze(),
             )
             .await?;
 
@@ -1126,29 +1112,16 @@ pub async fn add_gallery_item(
             }
         }
 
-        let mut bytes = web::BytesMut::new();
-        while let Some(item) = payload.next().await {
-            const FILE_SIZE_CAP: usize = 5 * (1 << 20);
-
-            if bytes.len() >= FILE_SIZE_CAP {
-                return Err(ApiError::InvalidInputError(String::from(
-                    "Gallery image exceeds the maximum of 5MiB.",
-                )));
-            } else {
-                bytes.extend_from_slice(&item.map_err(|_| {
-                    ApiError::InvalidInputError(
-                        "Unable to parse bytes in payload sent!".to_string(),
-                    )
-                })?);
-            }
-        }
-
+        let bytes = super::read_from_payload(
+            &mut payload, 5 * (1 << 20),
+            "Gallery image exceeds the maximum of 5MiB."
+        ).await?;
         let hash = sha1::Sha1::from(&bytes).hexdigest();
 
         let id: ProjectId = project_item.id.into();
         let url = format!("data/{}/images/{}.{}", id, hash, &*ext.ext);
         file_host
-            .upload_file(content_type, &url, bytes.to_vec())
+            .upload_file(content_type, &url, bytes.freeze())
             .await?;
 
         let mut transaction = pool.begin().await?;

@@ -1,6 +1,7 @@
 use super::{DeleteFileData, FileHost, FileHostingError, UploadFileData};
 use async_trait::async_trait;
 use sha2::Digest;
+use bytes::Bytes;
 
 mod authorization;
 mod delete;
@@ -31,7 +32,7 @@ impl FileHost for BackblazeHost {
         &self,
         content_type: &str,
         file_name: &str,
-        file_bytes: Vec<u8>,
+        file_bytes: Bytes,
     ) -> Result<UploadFileData, FileHostingError> {
         let content_sha512 = format!("{:x}", sha2::Sha512::digest(&file_bytes));
 

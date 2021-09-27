@@ -1,6 +1,7 @@
 use super::authorization::UploadUrlData;
 use crate::file_hosting::FileHostingError;
 use serde::{Deserialize, Serialize};
+use bytes::Bytes;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +22,7 @@ pub async fn upload_file(
     url_data: &UploadUrlData,
     content_type: &str,
     file_name: &str,
-    file_bytes: Vec<u8>,
+    file_bytes: Bytes,
 ) -> Result<UploadFileData, FileHostingError> {
     let response = reqwest::Client::new()
         .post(&url_data.upload_url)

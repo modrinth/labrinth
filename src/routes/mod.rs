@@ -27,6 +27,11 @@ pub use self::index::index_get;
 pub use self::health::health_get;
 pub use self::not_found::not_found;
 use crate::file_hosting::FileHostingError;
+use bytes::BytesMut;
+use actix_multipart::Field;
+use crate::routes::project_creation::CreateError;
+use actix_web::web::Payload;
+use futures::stream::StreamExt;
 
 pub fn v2_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -216,4 +221,33 @@ impl actix_web::ResponseError for ApiError {
             },
         )
     }
+}
+
+
+pub async fn read_from_payload(payload: &mut Payload, cap: usize, err_msg: &'static str) -> Result<BytesMut, ApiError> {
+    let mut bytes = BytesMut::new();
+    while let Some(item) = payload.next().await {
+        if bytes.len() >= cap {
+            return Err(ApiError::InvalidInputError(String::from(err_msg)));
+        } else {
+            bytes.extend_from_slice(&item.map_err(|_| {
+                ApiError::InvalidInputError(
+                    "Unable to parse bytes in payload sent!".to_string(),
+                )
+            })?);
+        }
+    }
+    Ok(bytes)
+}
+
+pub async fn read_from_field(field: &mut Field, cap: usize, err_msg: &'static str) -> Result<BytesMut, CreateError> {
+    let mut bytes = BytesMut::new();
+    while let Some(chunk) = field.next().await {
+        if bytes.len() >= cap {
+            return Err(CreateError::InvalidInput(String::from(err_msg)));
+        } else {
+            bytes.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
+        }
+    }
+    Ok(bytes)
 }
