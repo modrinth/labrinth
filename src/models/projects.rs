@@ -284,11 +284,7 @@ pub enum VersionType {
 
 impl std::fmt::Display for VersionType {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            VersionType::Release => write!(fmt, "release"),
-            VersionType::Beta => write!(fmt, "beta"),
-            VersionType::Alpha => write!(fmt, "alpha"),
-        }
+        fmt.write_str(self.as_str())
     }
 }
 
@@ -313,11 +309,7 @@ pub enum DependencyType {
 
 impl std::fmt::Display for DependencyType {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            DependencyType::Required => write!(fmt, "required"),
-            DependencyType::Optional => write!(fmt, "optional"),
-            DependencyType::Incompatible => write!(fmt, "incompatible"),
-        }
+        fmt.write_str(self.as_str())
     }
 }
 

@@ -59,7 +59,7 @@ pub fn convert_team_member(
 ) -> crate::models::teams::TeamMember {
     crate::models::teams::TeamMember {
         team_id: data.team_id.into(),
-        user: super::users::convert_user(data.user),
+        user: data.user.into(),
         role: data.role,
         permissions: if override_permissions {
             None

@@ -42,7 +42,7 @@ pub async fn users_get(
 
     let users_data = User::get_many(user_ids, &**pool).await?;
 
-    let users: Vec<crate::models::users::User> = users_data.into_iter().map(convert_user).collect();
+    let users: Vec<crate::models::users::User> = users_data.into_iter().map(From::from).collect();
 
     Ok(HttpResponse::Ok().json(users))
 }
@@ -68,24 +68,10 @@ pub async fn user_get(
     }
 
     if let Some(data) = user_data {
-        let response = convert_user(data);
+        let response: crate::models::users::User = data.into();
         Ok(HttpResponse::Ok().json(response))
     } else {
         Ok(HttpResponse::NotFound().body(""))
-    }
-}
-
-pub fn convert_user(data: crate::database::models::user_item::User) -> crate::models::users::User {
-    crate::models::users::User {
-        id: data.id.into(),
-        github_id: data.github_id.map(|i| i as u64),
-        username: data.username,
-        name: data.name,
-        email: None,
-        avatar_url: data.avatar_url,
-        bio: data.bio,
-        created: data.created,
-        role: Role::from_string(&*data.role),
     }
 }
 

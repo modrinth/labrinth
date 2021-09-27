@@ -11,7 +11,7 @@ pub enum AuthenticationError {
     #[error("Database Error: {0}")]
     DatabaseError(#[from] crate::database::models::DatabaseError),
     #[error("Error while parsing JSON: {0}")]
-    SerDeError(#[from] serde_json::Error),
+    SerdeError(#[from] serde_json::Error),
     #[error("Error while communicating to GitHub OAuth2: {0}")]
     GithubError(#[from] reqwest::Error),
     #[error("Invalid Authentication Credentials")]
@@ -65,7 +65,7 @@ where
             avatar_url: result.avatar_url,
             bio: result.bio,
             created: result.created,
-            role: Role::from_string(&*result.role),
+            role: Role::from_string(&result.role),
         }),
         None => Err(AuthenticationError::InvalidCredentialsError),
     }

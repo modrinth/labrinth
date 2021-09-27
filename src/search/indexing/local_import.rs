@@ -12,46 +12,22 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
     info!("Indexing local projects!");
     Ok(
         sqlx::query!(
-            "
-            SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
-            m.icon_url icon_url, m.published published,
-            m.updated updated,
-            m.team_id team_id, m.license license, m.slug slug,
-            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
-            STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT lo.loader, ',') loaders, STRING_AGG(DISTINCT gv.version, ',') versions,
-            STRING_AGG(DISTINCT mg.image_url, ',') gallery
-            FROM mods m
-            LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
-            LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
-            LEFT OUTER JOIN versions v ON v.mod_id = m.id
-            LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
-            LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
-            LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
-            LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id
-            LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
-            INNER JOIN statuses s ON s.id = m.status
-            INNER JOIN project_types pt ON pt.id = m.project_type
-            INNER JOIN side_types cs ON m.client_side = cs.id
-            INNER JOIN side_types ss ON m.server_side = ss.id
-            INNER JOIN licenses l ON m.license = l.id
-            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $2
-            INNER JOIN users u ON tm.user_id = u.id
-            WHERE s.status = $1
-            GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id, u.id;
-            ",
+            INDEX_LOCAL,
             ProjectStatus::Approved.as_str(),
             crate::models::teams::OWNER_ROLE,
         )
             .fetch_many(&pool)
             .try_filter_map(|e| async {
                 Ok(e.right().map(|m| {
-                    let mut categories = m.categories.map(|x| x.split(',').map(|x| x.to_string()).collect::<Vec<String>>()).unwrap_or_default();
-                    categories.append(&mut m.loaders.map(|x| x.split(',').map(|x| x.to_string()).collect::<Vec<String>>()).unwrap_or_default());
+                    let mut categories = split_to_strings(m.categories);
+                    categories.append(&mut split_to_strings(m.loaders));
+                    let versions = split_to_strings(m.versions);
 
-                    let versions : Vec<String> =  m.versions.map(|x| x.split(',').map(|x| x.to_string()).collect()).unwrap_or_default();
+                    let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
 
-                    let project_id : crate::models::projects::ProjectId = ProjectId(m.id).into();
-
+                    // TODO: Cleanup - This method has a lot of code in common with the method below.
+                    // But, since the macro returns an (de facto) unnamed struct,
+                    // We cannot reuse the code easily. Ugh.
                     UploadSearchProject {
                         project_id: format!("{}", project_id),
                         title: m.title,
@@ -76,64 +52,25 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
                     }
                 }))
             })
-            .try_collect::<Vec<UploadSearchProject>>()
+            .try_collect::<Vec<_>>()
             .await?
     )
 }
-
 pub async fn query_one(
     id: ProjectId,
     exec: &mut sqlx::PgConnection,
 ) -> Result<UploadSearchProject, IndexingError> {
     let m = sqlx::query!(
-            "
-            SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
-            m.icon_url icon_url, m.published published,
-            m.updated updated,
-            m.team_id team_id, m.license license, m.slug slug,
-            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
-            STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT lo.loader, ',') loaders, STRING_AGG(DISTINCT gv.version, ',') versions,
-            STRING_AGG(DISTINCT mg.image_url, ',') gallery
-            FROM mods m
-            LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
-            LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
-            LEFT OUTER JOIN versions v ON v.mod_id = m.id
-            LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
-            LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
-            LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
-            LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id
-            LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
-            INNER JOIN statuses s ON s.id = m.status
-            INNER JOIN project_types pt ON pt.id = m.project_type
-            INNER JOIN side_types cs ON m.client_side = cs.id
-            INNER JOIN side_types ss ON m.server_side = ss.id
-            INNER JOIN licenses l ON m.license = l.id
-            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $2
-            INNER JOIN users u ON tm.user_id = u.id
-            WHERE m.id = $1
-            GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id, u.id;
-            ",
-            id as ProjectId,
-            crate::models::teams::OWNER_ROLE,
-        )
+        QUERY_ONE,
+        id as ProjectId,
+        crate::models::teams::OWNER_ROLE
+    )
         .fetch_one(exec)
         .await?;
 
-    let mut categories = m
-        .categories
-        .map(|x| x.split(',').map(|x| x.to_string()).collect::<Vec<String>>())
-        .unwrap_or_default();
-    categories.append(
-        &mut m
-            .loaders
-            .map(|x| x.split(',').map(|x| x.to_string()).collect::<Vec<String>>())
-            .unwrap_or_default(),
-    );
-
-    let versions: Vec<String> = m
-        .versions
-        .map(|x| x.split(',').map(|x| x.to_string()).collect())
-        .unwrap_or_default();
+    let mut categories = split_to_strings(m.categories);
+    categories.append(&mut split_to_strings(m.loaders));
+    let versions = split_to_strings(m.versions);
 
     let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
 
@@ -160,9 +97,44 @@ pub async fn query_one(
         server_side: m.server_side_type,
         slug: m.slug,
         project_type: m.project_type_name,
-        gallery: m
-            .gallery
-            .map(|x| x.split(',').map(|x| x.to_string()).collect())
-            .unwrap_or_default(),
+        gallery: split_to_strings(m.gallery)
     })
 }
+
+fn split_to_strings(x: &str) -> Vec<String> {
+    x.split(',')
+        .map(ToString::to_string)
+        .collect()
+        .unwrap_or_default()
+}
+
+const QUERY: &str =
+    "
+    SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
+    m.icon_url icon_url, m.published published,
+    m.updated updated,
+    m.team_id team_id, m.license license, m.slug slug,
+    s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
+    STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT lo.loader, ',') loaders, STRING_AGG(DISTINCT gv.version, ',') versions,
+    STRING_AGG(DISTINCT mg.image_url, ',') gallery
+    FROM mods m
+    LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
+    LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
+    LEFT OUTER JOIN versions v ON v.mod_id = m.id
+    LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
+    LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
+    LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
+    LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id
+    LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
+    INNER JOIN statuses s ON s.id = m.status
+    INNER JOIN project_types pt ON pt.id = m.project_type
+    INNER JOIN side_types cs ON m.client_side = cs.id
+    INNER JOIN side_types ss ON m.server_side = ss.id
+    INNER JOIN licenses l ON m.license = l.id
+    INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $2
+    INNER JOIN users u ON tm.user_id = u.id
+    ";
+
+const GROUP_BY: &str = "GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id, u.id;";
+const INDEX_LOCAL: &str = concat!(QUERY, "WHERE s.status = $1", GROUP_BY);
+const QUERY_ONE: &str = concat!(QUERY, "WHERE m.id = $1", GROUP_BY);
