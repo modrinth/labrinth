@@ -64,8 +64,8 @@ impl super::Validator for LegacyForgeValidator {
     fn get_supported_game_versions(&self) -> SupportedGameVersions {
         // Times between versions 1.5.2 to 1.12.2, which all use the legacy way of defining mods
         SupportedGameVersions::Range(
-            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(1366818300, 0), Utc),
-            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(1505810340, 0), Utc),
+            DateTime::from_utc(NaiveDateTime::from_timestamp(1366818300, 0), Utc),
+            DateTime::from_utc(NaiveDateTime::from_timestamp(1505810340, 0), Utc),
         )
     }
 

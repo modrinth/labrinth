@@ -37,10 +37,7 @@ pub fn schedule_versions(
     skip_initial: bool,
 ) {
     let version_index_interval = std::time::Duration::from_secs(
-        dotenv::var("VERSION_INDEX_INTERVAL")
-            .ok()
-            .map(|i| i.parse().unwrap())
-            .unwrap_or(1800),
+        parse_var("VERSION_INDEX_INTERVAL").unwrap_or(1800),
     );
 
     let mut skip = skip_initial;
@@ -75,6 +72,7 @@ pub enum VersionIndexingError {
 }
 
 use serde::Deserialize;
+use crate::util::env::parse_var;
 
 #[derive(Deserialize)]
 struct InputFormat<'a> {
