@@ -44,7 +44,7 @@ pub async fn authorize_account(
         .send()
         .await?;
 
-    super::handle_response_errors(&response)
+    super::process_response(response).await
 }
 
 pub async fn get_upload_url(
@@ -67,5 +67,5 @@ pub async fn get_upload_url(
         .send()
         .await?;
 
-    super::handle_response_errors(&response)
+    super::process_response(response).await
 }

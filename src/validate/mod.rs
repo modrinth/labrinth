@@ -89,10 +89,13 @@ pub fn validate_file(
     }
 
     if visited {
-        Err(ValidationError::InvalidInputError(format!(
-            "File extension {} is invalid for input file",
-            file_extension
-        ).into()))
+        Err(ValidationError::InvalidInputError(
+            format!(
+                "File extension {} is invalid for input file",
+                file_extension
+            )
+            .into(),
+        ))
     } else {
         Ok(ValidationResult::Pass)
     }

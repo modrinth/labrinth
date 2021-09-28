@@ -1,7 +1,7 @@
 use super::{DeleteFileData, FileHost, FileHostingError, UploadFileData};
 use async_trait::async_trait;
+use bytes::{Buf, Bytes};
 use sha2::Digest;
-use bytes::{Bytes, Buf};
 
 pub struct MockHost(());
 

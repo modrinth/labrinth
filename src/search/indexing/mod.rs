@@ -78,8 +78,8 @@ pub async fn reset_indices(config: &SearchConfig) -> Result<(), IndexingError> {
 async fn update_index_helper<'a>(
     client: &'a Client<'a>,
     name: &'static str,
-    rule: &'static str
-) ->  Result<Index<'a>, IndexingError> {
+    rule: &'static str,
+) -> Result<Index<'a>, IndexingError> {
     update_index(&client, name, {
         let mut rules = default_rules();
         rules.push_back(rule);
@@ -87,7 +87,6 @@ async fn update_index_helper<'a>(
     })
     .await
 }
-
 
 pub async fn reconfigure_indices(config: &SearchConfig) -> Result<(), IndexingError> {
     let client = config.make_client();
@@ -162,9 +161,8 @@ async fn create_and_add_to_index<'a>(
     client: &'a Client<'a>,
     projects: &'a Vec<UploadSearchProject>,
     name: &'static str,
-    rule: &'static str
-) -> Result<(), IndexingError>
-{
+    rule: &'static str,
+) -> Result<(), IndexingError> {
     let index = create_index(&client, name, || {
         let mut relevance_rules = default_rules();
         relevance_rules.push_back(rule);
@@ -184,8 +182,20 @@ pub async fn add_projects(
     create_and_add_to_index(&client, &projects, "relevance_projects", "desc(downloads)").await?;
     create_and_add_to_index(&client, &projects, "downloads_projects", "desc(downloads)").await?;
     create_and_add_to_index(&client, &projects, "follows_projects", "desc(follows)").await?;
-    create_and_add_to_index(&client, &projects, "updated_projects", "desc(modified_timestamp)").await?;
-    create_and_add_to_index(&client, &projects, "newest_projects", "desc(created_timestamp)").await?;
+    create_and_add_to_index(
+        &client,
+        &projects,
+        "updated_projects",
+        "desc(modified_timestamp)",
+    )
+    .await?;
+    create_and_add_to_index(
+        &client,
+        &projects,
+        "newest_projects",
+        "desc(created_timestamp)",
+    )
+    .await?;
 
     Ok(())
 }
@@ -199,7 +209,8 @@ fn default_rules() -> VecDeque<&'static str> {
         "attribute",
         "wordsPosition",
         "exactness",
-    ].into()
+    ]
+    .into()
 }
 
 fn default_settings() -> Settings {
@@ -232,13 +243,8 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "gallery",
 ];
 
-const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &[
-    "title",
-    "description",
-    "categories",
-    "versions",
-    "author",
-];
+const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] =
+    &["title", "description", "categories", "versions", "author"];
 
 const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "categories",
@@ -303,7 +309,7 @@ pub fn sort_projects(a: &str, b: &str) -> std::cmp::Ordering {
             (false, false) => a.0.cmp(&b.0),
             (true, false) => Ordering::Greater,
             (false, true) => Ordering::Less,
-            (true, true) => unreachable!()
+            (true, true) => unreachable!(),
         }
     }
 }

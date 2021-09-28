@@ -36,10 +36,7 @@ impl From<DBNotification> for Notification {
             link: notif.link,
             read: notif.read,
             created: notif.created,
-            actions: notif.actions
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            actions: notif.actions.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -55,7 +52,7 @@ impl From<DBNotificationAction> for NotificationAction {
     fn from(act: DBNotificationAction) -> Self {
         Self {
             title: act.title,
-            action_route: (act.action_route_method, act.action_route)
+            action_route: (act.action_route_method, act.action_route),
         }
     }
 }

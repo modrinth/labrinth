@@ -38,7 +38,6 @@ impl From<DBUser> for User {
     }
 }
 
-
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -66,7 +65,7 @@ impl Role {
         match self {
             Role::Developer => "developer",
             Role::Moderator => "moderator",
-            Role::Admin => "admin"
+            Role::Admin => "admin",
         }
     }
 

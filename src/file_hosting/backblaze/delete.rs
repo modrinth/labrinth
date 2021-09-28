@@ -34,5 +34,5 @@ pub async fn delete_file_version(
         .send()
         .await?;
 
-    super::handle_response_errors(&response)
+    super::process_response(response).await
 }

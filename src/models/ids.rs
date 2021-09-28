@@ -152,7 +152,8 @@ pub mod base62_impl {
         }
     }
 
-    const BASE62_CHARS: [u8; 62] = *b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    const BASE62_CHARS: [u8; 62] =
+        *b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     pub fn to_base62(mut num: u64) -> String {
         let length = (num as f64).log(62.0).ceil() as usize;

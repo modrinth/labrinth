@@ -1,28 +1,28 @@
 use crate::file_hosting::S3Host;
+use crate::health::pod::PodInfo;
+use crate::health::scheduler::HealthCounters;
 use actix_cors::Cors;
 use actix_ratelimit::errors::ARError;
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
 use actix_web::{http, web, App, HttpServer};
+use actix_web_prom::PrometheusMetricsBuilder;
 use env_logger::Env;
 use gumdrop::Options;
 use log::{error, info, warn};
 use rand::Rng;
 use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
-use std::sync::Arc;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
-use crate::health::pod::PodInfo;
-use crate::health::scheduler::HealthCounters;
-use actix_web_prom::{PrometheusMetricsBuilder};
+use std::sync::Arc;
 
 mod database;
 mod file_hosting;
+mod health;
 mod models;
 mod routes;
 mod scheduler;
 mod search;
-mod health;
 mod util;
 mod validate;
 

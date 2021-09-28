@@ -62,9 +62,9 @@ impl super::Validator for PackValidator {
         &self,
         archive: &mut ZipArchive<Cursor<&[u8]>>,
     ) -> Result<ValidationResult, ValidationError> {
-        let mut file = archive.by_name("index.json").map_err(|_|
-            ValidationError::InvalidInputError("Pack manifest is missing.".into())
-        )?;
+        let mut file = archive
+            .by_name("index.json")
+            .map_err(|_| ValidationError::InvalidInputError("Pack manifest is missing.".into()))?;
 
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
@@ -72,9 +72,9 @@ impl super::Validator for PackValidator {
         let pack: PackFormat = serde_json::from_str(&contents)?;
 
         if pack.game != "minecraft" {
-            return Err(ValidationError::InvalidInputError(format!(
-                "Game {0} does not exist!", pack.game
-            ).into()));
+            return Err(ValidationError::InvalidInputError(
+                format!("Game {0} does not exist!", pack.game).into(),
+            ));
         }
 
         Ok(ValidationResult::Pass)

@@ -13,11 +13,11 @@ use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
+use bytes::Buf;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use validator::Validate;
-use bytes::Buf;
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct InitialVersionData {
@@ -602,10 +602,10 @@ pub async fn upload_file(
         hash.as_bytes(),
         "sha1"
     )
-        .fetch_one(&mut *transaction)
-        .await?
-        .exists
-        .unwrap_or(false);
+    .fetch_one(&mut *transaction)
+    .await?
+    .exists
+    .unwrap_or(false);
 
     if exists {
         return Err(CreateError::InvalidInput(

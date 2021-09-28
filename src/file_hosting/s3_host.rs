@@ -1,10 +1,10 @@
 use crate::file_hosting::{DeleteFileData, FileHost, FileHostingError, UploadFileData};
 use async_trait::async_trait;
+use bytes::{Buf, Bytes};
 use s3::bucket::Bucket;
 use s3::creds::Credentials;
 use s3::region::Region;
 use sha2::Digest;
-use bytes::{Bytes, Buf};
 
 pub struct S3Host {
     bucket: Bucket,

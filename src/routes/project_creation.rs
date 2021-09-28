@@ -255,7 +255,6 @@ pub async fn project_create(
 
     result
 }
-
 /*
 
 Project Creation Steps:
@@ -450,9 +449,11 @@ pub async fn project_create_inner(
 
             if let Some(item) = gallery_items.iter().find(|x| x.item == name) {
                 let data = super::read_from_field(
-                    &mut field, 5 * (1 << 20),
-                    "Gallery image exceeds the maximum of 5MiB."
-                ).await?;
+                    &mut field,
+                    5 * (1 << 20),
+                    "Gallery image exceeds the maximum of 5MiB.",
+                )
+                .await?;
 
                 let hash = sha1::Sha1::from(&data).hexdigest();
                 let (_, file_extension) =
@@ -796,10 +797,8 @@ async fn process_icon_upload(
     cdn_url: &str,
 ) -> Result<String, CreateError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(file_extension) {
-        let data = super::read_from_field(
-            &mut field, 262144,
-            "Icons must be smaller than 256KiB"
-        ).await?;
+        let data =
+            super::read_from_field(&mut field, 262144, "Icons must be smaller than 256KiB").await?;
 
         let upload_data = file_host
             .upload_file(

@@ -153,14 +153,11 @@ pub async fn query_one(
         server_side: m.server_side_type,
         slug: m.slug,
         project_type: m.project_type_name,
-        gallery: split_to_strings(m.gallery)
+        gallery: split_to_strings(m.gallery),
     })
 }
 
 fn split_to_strings(s: Option<String>) -> Vec<String> {
-    s.map(|x|
-        x.split(',')
-            .map(ToString::to_string)
-            .collect()
-    ).unwrap_or_default()
+    s.map(|x| x.split(',').map(ToString::to_string).collect())
+        .unwrap_or_default()
 }

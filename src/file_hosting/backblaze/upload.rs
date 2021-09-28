@@ -1,8 +1,7 @@
 use super::authorization::UploadUrlData;
 use crate::file_hosting::FileHostingError;
-use serde::{Deserialize, Serialize};
 use bytes::Bytes;
-use reqwest::Response;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +41,5 @@ pub async fn upload_file(
         .send()
         .await?;
 
-    super::handle_response_errors(&response)
+    super::process_response(response).await
 }
-

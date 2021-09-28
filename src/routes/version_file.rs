@@ -1,7 +1,7 @@
 use super::ApiError;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::projects::{GameVersion, Loader};
+use crate::models::projects::{GameVersion, Loader, Version};
 use crate::models::teams::Permissions;
 use crate::util::auth::get_user_from_headers;
 use crate::{database, Pepper};
@@ -11,6 +11,7 @@ use sqlx::PgPool;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::database::models::version_item::QueryVersion;
 
 #[derive(Deserialize)]
 pub struct Algorithm {
@@ -51,7 +52,7 @@ pub async fn get_version_from_hash(
         .await?;
 
         if let Some(data) = version_data {
-            Ok(HttpResponse::Ok().json(super::versions::convert_version(data)))
+            Ok(HttpResponse::Ok().json(models::projects::Version::from(data)))
         } else {
             Ok(HttpResponse::NotFound().body(""))
         }
@@ -361,11 +362,7 @@ pub async fn get_update_from_hash(
         if let Some(version_id) = version_ids.last() {
             let version_data = database::models::Version::get_full(*version_id, &**pool).await?;
 
-            if let Some(data) = version_data {
-                Ok(HttpResponse::Ok().json(super::versions::convert_version(data)))
-            } else {
-                Ok(HttpResponse::NotFound().body(""))
-            }
+            super::ok_or_not_found::<QueryVersion, Version>(version_data)
         } else {
             Ok(HttpResponse::NotFound().body(""))
         }
@@ -414,14 +411,15 @@ pub async fn get_versions_from_hashes(
     )
     .await?;
 
-    let mut response = HashMap::new();
-
-    for row in result {
-        if let Some(version) = versions_data.iter().find(|x| x.id.0 == row.version_id) {
-            response.insert(row.hash, super::versions::convert_version(version.clone()));
-        }
-    }
-
+    let response: Vec<_> = result
+        .into_iter()
+        .filter_map(|row| {
+            versions_data.clone()
+                .into_iter()
+                .find(|x| x.id.0 == row.version_id)
+                .map(|v| (row.hash, crate::models::projects::Version::from(v)))
+        })
+        .collect();
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -542,7 +540,7 @@ pub async fn update_files(
         if let Some(version) = versions.iter().find(|x| x.id.0 == row.version_id) {
             response.insert(
                 row.hash.clone(),
-                super::versions::convert_version(version.clone()),
+                models::projects::Version::from(version.clone()),
             );
         }
     }

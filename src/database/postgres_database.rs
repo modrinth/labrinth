@@ -14,12 +14,14 @@ pub async fn connect() -> Result<PgPool, sqlx::Error> {
             dotenv::var("DATABASE_MIN_CONNECTIONS")
                 .ok()
                 .and_then(|x| x.parse().ok())
-                .unwrap_or(16))
+                .unwrap_or(16),
+        )
         .max_connections(
             dotenv::var("DATABASE_MAX_CONNECTIONS")
                 .ok()
                 .and_then(|x| x.parse().ok())
-                .unwrap_or(16))
+                .unwrap_or(16),
+        )
         .connect(&database_url)
         .await?;
 
@@ -44,8 +46,7 @@ pub async fn run_migrations(uri: &str) -> Result<(), sqlx::Error> {
 
     conn.ensure_migrations_table().await?;
 
-    let (version, dirty) = conn.version().await?
-        .unwrap_or((0, false));
+    let (version, dirty) = conn.version().await?.unwrap_or((0, false));
 
     if dirty {
         panic!("The database is dirty! Please check your database status.");

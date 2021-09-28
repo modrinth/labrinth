@@ -1,9 +1,9 @@
 use super::{DeleteFileData, FileHost, FileHostingError, UploadFileData};
 use async_trait::async_trait;
-use sha2::Digest;
 use bytes::Bytes;
-use serde::Deserialize;
 use reqwest::Response;
+use serde::Deserialize;
+use sha2::Digest;
 
 mod authorization;
 mod delete;
@@ -83,7 +83,10 @@ impl FileHost for BackblazeHost {
     }
 }
 
-pub fn handle_response_errors<T: Deserialize>(response: &Response) -> Result<T, FileHostingError> {
+pub async fn process_response<T>(response: Response) -> Result<T, FileHostingError>
+where
+    T: for<'de> Deserialize<'de>,
+{
     if response.status().is_success() {
         Ok(response.json().await?)
     } else {

@@ -1,7 +1,12 @@
+use crate::database;
 use crate::database::models;
+use crate::database::models::project_item::QueryProject;
 use crate::models::users::{Role, User, UserId};
+use crate::routes::ApiError;
 use actix_web::http::HeaderMap;
+use actix_web::web;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -115,4 +120,34 @@ where
         Role::Admin => Ok(user),
         _ => Err(AuthenticationError::InvalidCredentialsError),
     }
+}
+
+pub async fn is_authorized(
+    project_data: &QueryProject,
+    user_option: &Option<User>,
+    pool: &web::Data<PgPool>,
+) -> Result<bool, ApiError> {
+    let mut authorized = !project_data.status.is_hidden();
+
+    if let Some(user) = &user_option {
+        if !authorized {
+            if user.role.is_mod() {
+                authorized = true;
+            } else {
+                let user_id: database::models::ids::UserId = user.id.into();
+
+                let project_exists = sqlx::query!(
+                    "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
+                    project_data.inner.team_id as database::models::ids::TeamId,
+                    user_id as database::models::ids::UserId,
+                )
+                .fetch_one(&***pool)
+                .await?
+                .exists;
+
+                authorized = project_exists.unwrap_or(false);
+            }
+        }
+    }
+    Ok(authorized)
 }

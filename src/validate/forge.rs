@@ -35,7 +35,9 @@ impl super::Validator for ForgeValidator {
         })?;
 
         if !archive.file_names().any(|name| name.ends_with(".class")) {
-            return Ok(ValidationResult::Warning("Forge mod file is a source file!".into()));
+            return Ok(ValidationResult::Warning(
+                "Forge mod file is a source file!".into(),
+            ));
         }
 
         //TODO: Check if file is a dev JAR?
@@ -76,7 +78,9 @@ impl super::Validator for LegacyForgeValidator {
         })?;
 
         if !archive.file_names().any(|name| name.ends_with(".class")) {
-            return Ok(ValidationResult::Warning("Forge mod file is a source file!".into()));
+            return Ok(ValidationResult::Warning(
+                "Forge mod file is a source file!".into(),
+            ));
         }
 
         //TODO: Check if file is a dev JAR?

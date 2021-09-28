@@ -98,11 +98,11 @@ pub async fn projects_list(
             User::get_projects(id, ProjectStatus::Approved.as_str(), &**pool).await?
         };
 
-        let response = crate::database::Project::get_many_full(project_data, &**pool)
+        let response: Vec<_> = crate::database::Project::get_many_full(project_data, &**pool)
             .await?
             .into_iter()
-            .map(super::projects::convert_project)
-            .collect::<Vec<Project>>();
+            .map(Project::from)
+            .collect();
 
         Ok(HttpResponse::Ok().json(response))
     } else {
@@ -321,10 +321,9 @@ pub async fn user_icon_edit(
                 }
             }
 
-            let bytes = super::read_from_payload(
-                &mut payload, 262144,
-                "Icons must be smaller than 256KiB"
-            ).await?;
+            let bytes =
+                super::read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB")
+                    .await?;
 
             let upload_data = file_host
                 .upload_file(
@@ -442,11 +441,11 @@ pub async fn user_follows(
         .try_collect::<Vec<crate::database::models::ProjectId>>()
         .await?;
 
-        let projects = crate::database::Project::get_many_full(project_ids, &**pool)
+        let projects: Vec<_> = crate::database::Project::get_many_full(project_ids, &**pool)
             .await?
             .into_iter()
-            .map(super::projects::convert_project)
-            .collect::<Vec<Project>>();
+            .map(Project::from)
+            .collect();
 
         Ok(HttpResponse::Ok().json(projects))
     } else {

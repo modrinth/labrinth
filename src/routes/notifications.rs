@@ -1,11 +1,11 @@
 use crate::database;
 use crate::models::ids::NotificationId;
+use crate::models::notifications::Notification;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use crate::models::notifications::Notification;
 
 #[derive(Serialize, Deserialize)]
 pub struct NotificationIds {
@@ -21,13 +21,14 @@ pub async fn notifications_get(
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
     // TODO: this is really confusingly named.
-    use database::models::NotificationId as DBNotificationId;
     use database::models::notification_item::Notification as DBNotification;
+    use database::models::NotificationId as DBNotificationId;
 
-    let notification_ids: Vec<DBNotificationId> = serde_json::from_str::<Vec<NotificationId>>(ids.ids.as_str())?
-        .into_iter()
-        .map(DBNotificationId::from)
-        .collect();
+    let notification_ids: Vec<DBNotificationId> =
+        serde_json::from_str::<Vec<NotificationId>>(ids.ids.as_str())?
+            .into_iter()
+            .map(DBNotificationId::from)
+            .collect();
 
     let notifications_data: Vec<DBNotification> =
         database::models::notification_item::Notification::get_many(notification_ids, &**pool)

@@ -1,9 +1,10 @@
-use actix_web::web;
+use actix_web::{web, HttpResponse};
 
 mod v1;
 pub use v1::v1_config;
 
 mod auth;
+mod health;
 mod index;
 mod maven;
 mod moderation;
@@ -18,20 +19,20 @@ mod users;
 mod version_creation;
 mod version_file;
 mod versions;
-mod health;
 
 pub use auth::config as auth_config;
 pub use tags::config as tags_config;
 
-pub use self::index::index_get;
 pub use self::health::health_get;
+pub use self::index::index_get;
 pub use self::not_found::not_found;
 use crate::file_hosting::FileHostingError;
-use bytes::BytesMut;
-use actix_multipart::Field;
 use crate::routes::project_creation::CreateError;
+use actix_multipart::Field;
 use actix_web::web::Payload;
+use bytes::BytesMut;
 use futures::stream::StreamExt;
+use serde::Serialize;
 
 pub fn v2_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -223,24 +224,30 @@ impl actix_web::ResponseError for ApiError {
     }
 }
 
-
-pub async fn read_from_payload(payload: &mut Payload, cap: usize, err_msg: &'static str) -> Result<BytesMut, ApiError> {
+// Utilities
+pub async fn read_from_payload(
+    payload: &mut Payload,
+    cap: usize,
+    err_msg: &'static str,
+) -> Result<BytesMut, ApiError> {
     let mut bytes = BytesMut::new();
     while let Some(item) = payload.next().await {
         if bytes.len() >= cap {
             return Err(ApiError::InvalidInputError(String::from(err_msg)));
         } else {
             bytes.extend_from_slice(&item.map_err(|_| {
-                ApiError::InvalidInputError(
-                    "Unable to parse bytes in payload sent!".to_string(),
-                )
+                ApiError::InvalidInputError("Unable to parse bytes in payload sent!".to_string())
             })?);
         }
     }
     Ok(bytes)
 }
 
-pub async fn read_from_field(field: &mut Field, cap: usize, err_msg: &'static str) -> Result<BytesMut, CreateError> {
+pub async fn read_from_field(
+    field: &mut Field,
+    cap: usize,
+    err_msg: &'static str,
+) -> Result<BytesMut, CreateError> {
     let mut bytes = BytesMut::new();
     while let Some(chunk) = field.next().await {
         if bytes.len() >= cap {
@@ -250,4 +257,15 @@ pub async fn read_from_field(field: &mut Field, cap: usize, err_msg: &'static st
         }
     }
     Ok(bytes)
+}
+
+pub(crate) fn ok_or_not_found<T, U>(version_data: Option<T>) -> Result<HttpResponse, ApiError>
+where
+    U: From<T> + Serialize
+{
+    if let Some(data) = version_data {
+        Ok(HttpResponse::Ok().json(U::from(data)))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
 }
