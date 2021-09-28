@@ -172,21 +172,16 @@ pub enum SideType {
 
 impl std::fmt::Display for SideType {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "{}", self.as_str())
-    }
-}
-
-impl SideType {
-    // These are constant, so this can remove unneccessary allocations (`to_string`)
-    pub fn as_str(&self) -> &'static str {
-        match self {
+        fmt.write_str(match self {
             SideType::Required => "required",
             SideType::Optional => "optional",
             SideType::Unsupported => "unsupported",
             SideType::Unknown => "unknown",
-        }
+        })
     }
+}
 
+impl SideType {
     pub fn from_str(string: &str) -> SideType {
         match string {
             "required" => SideType::Required,
@@ -405,18 +400,11 @@ pub enum VersionType {
 
 impl std::fmt::Display for VersionType {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        fmt.write_str(self.as_str())
-    }
-}
-
-impl VersionType {
-    // These are constant, so this can remove unneccessary allocations (`to_string`)
-    pub fn as_str(&self) -> &'static str {
-        match self {
+        fmt.write_str(match self {
             VersionType::Release => "release",
             VersionType::Beta => "beta",
             VersionType::Alpha => "alpha",
-        }
+        })
     }
 }
 
@@ -430,20 +418,15 @@ pub enum DependencyType {
 
 impl std::fmt::Display for DependencyType {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        fmt.write_str(self.as_str())
+        fmt.write_str(match self {
+            DependencyType::Required => "required",
+            DependencyType::Optional => "optional",
+            DependencyType::Incompatible => "incompatible",
+        })
     }
 }
 
 impl DependencyType {
-    // These are constant, so this can remove unneccessary allocations (`to_string`)
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            DependencyType::Required => "required",
-            DependencyType::Optional => "optional",
-            DependencyType::Incompatible => "incompatible",
-        }
-    }
-
     pub fn from_str(string: &str) -> DependencyType {
         match string {
             "required" => DependencyType::Required,

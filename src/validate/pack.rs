@@ -24,18 +24,11 @@ pub enum PackDependency {
 
 impl std::fmt::Display for PackDependency {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        fmt.write_str(self.as_str())
-    }
-}
-
-impl PackDependency {
-    // These are constant, so this can remove unnecessary allocations (`to_string`)
-    pub fn as_str(&self) -> &'static str {
-        match self {
+        fmt.write_str(match self {
             PackDependency::Forge => "forge",
             PackDependency::FabricLoader => "fabric-loader",
             PackDependency::Minecraft => "minecraft",
-        }
+        })
     }
 }
 
