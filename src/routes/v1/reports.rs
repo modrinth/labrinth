@@ -9,7 +9,6 @@ use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::fmt::{Display, Formatter};
 
 #[derive(Serialize, Deserialize)]
 pub struct Report {
@@ -31,17 +30,16 @@ pub enum ItemType {
     Unknown,
 }
 
-impl Display for ItemType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+impl ItemType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
             ItemType::Mod => "mod",
             ItemType::Version => "version",
             ItemType::User => "user",
             ItemType::Unknown => "unknown",
-        })
+        }
     }
 }
-
 #[derive(Deserialize)]
 pub struct CreateReport {
     pub report_type: String,
@@ -107,7 +105,7 @@ pub async fn report_create(
         ItemType::Unknown => {
             return Err(ApiError::InvalidInputError(format!(
                 "Invalid report item type: {}",
-                new_report.item_type
+                new_report.item_type.as_str()
             )))
         }
     }
