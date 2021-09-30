@@ -9,6 +9,7 @@ use crate::routes::ApiError;
 use crate::search::indexing::queue::CreationQueue;
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::auth::{get_user_from_headers, is_authorized};
+use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::web::Data;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
@@ -844,8 +845,7 @@ pub async fn project_icon_edit(
         }
 
         let bytes =
-            super::read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB")
-                .await?;
+            read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB").await?;
         let hash = sha1::Sha1::from(&bytes).hexdigest();
         let project_id: ProjectId = project_item.id.into();
         let upload_data = file_host
@@ -996,7 +996,7 @@ pub async fn add_gallery_item(
             }
         }
 
-        let bytes = super::read_from_payload(
+        let bytes = read_from_payload(
             &mut payload,
             5 * (1 << 20),
             "Gallery image exceeds the maximum of 5MiB.",

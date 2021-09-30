@@ -36,9 +36,8 @@ pub fn schedule_versions(
     pool: sqlx::Pool<sqlx::Postgres>,
     skip_initial: bool,
 ) {
-    let version_index_interval = std::time::Duration::from_secs(
-        parse_var("VERSION_INDEX_INTERVAL").unwrap_or(1800),
-    );
+    let version_index_interval =
+        std::time::Duration::from_secs(parse_var("VERSION_INDEX_INTERVAL").unwrap_or(1800));
 
     let mut skip = skip_initial;
     scheduler.run(version_index_interval, move || {
@@ -71,8 +70,8 @@ pub enum VersionIndexingError {
     DatabaseError(#[from] crate::database::models::DatabaseError),
 }
 
-use serde::Deserialize;
 use crate::util::env::parse_var;
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct InputFormat<'a> {

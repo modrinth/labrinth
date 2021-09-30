@@ -8,6 +8,7 @@ use crate::models::users::UserId;
 use crate::routes::version_creation::InitialVersionData;
 use crate::search::indexing::IndexingError;
 use crate::util::auth::{get_user_from_headers, AuthenticationError};
+use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
@@ -448,7 +449,7 @@ pub async fn project_create_inner(
             }
 
             if let Some(item) = gallery_items.iter().find(|x| x.item == name) {
-                let data = super::read_from_field(
+                let data = read_from_field(
                     &mut field,
                     5 * (1 << 20),
                     "Gallery image exceeds the maximum of 5MiB.",
@@ -797,8 +798,7 @@ async fn process_icon_upload(
     cdn_url: &str,
 ) -> Result<String, CreateError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(file_extension) {
-        let data =
-            super::read_from_field(&mut field, 262144, "Icons must be smaller than 256KiB").await?;
+        let data = read_from_field(&mut field, 262144, "Icons must be smaller than 256KiB").await?;
 
         let upload_data = file_host
             .upload_file(

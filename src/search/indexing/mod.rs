@@ -202,7 +202,7 @@ pub async fn add_projects(
 
 //region Utils
 fn default_rules() -> VecDeque<&'static str> {
-    [
+    vec![
         "typo",
         "words",
         "proximity",

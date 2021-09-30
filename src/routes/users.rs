@@ -5,6 +5,7 @@ use crate::models::projects::{Project, ProjectStatus};
 use crate::models::users::{Role, UserId};
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
+use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use lazy_static::lazy_static;
@@ -322,7 +323,7 @@ pub async fn user_icon_edit(
             }
 
             let bytes =
-                super::read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB")
+                read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB")
                     .await?;
 
             let upload_data = file_host

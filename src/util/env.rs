@@ -1,9 +1,7 @@
 use std::str::FromStr;
 
 pub fn parse_var<T: FromStr>(var: &'static str) -> Option<T> {
-    dotenv::var(var)
-        .ok()
-        .and_then(|i| i.parse().ok())
+    dotenv::var(var).ok().and_then(|i| i.parse().ok())
 }
 pub fn parse_strings_from_var(var: &'static str) -> Option<Vec<String>> {
     dotenv::var(var)

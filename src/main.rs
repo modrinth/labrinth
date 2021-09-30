@@ -1,5 +1,6 @@
 use crate::file_hosting::S3Host;
 use crate::health::scheduler::HealthCounters;
+use crate::util::env::{parse_strings_from_var, parse_var};
 use actix_cors::Cors;
 use actix_ratelimit::errors::ARError;
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
@@ -13,7 +14,6 @@ use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use crate::util::env::{parse_var, parse_strings_from_var};
 
 mod database;
 mod file_hosting;
@@ -117,7 +117,8 @@ async fn main() -> std::io::Result<()> {
                 &dotenv::var("BACKBLAZE_KEY_ID").unwrap(),
                 &dotenv::var("BACKBLAZE_KEY").unwrap(),
                 &dotenv::var("BACKBLAZE_BUCKET_ID").unwrap(),
-            ).await
+            )
+            .await,
         ),
         "s3" => Arc::new(
             S3Host::new(
@@ -126,7 +127,8 @@ async fn main() -> std::io::Result<()> {
                 &*dotenv::var("S3_URL").unwrap(),
                 &*dotenv::var("S3_ACCESS_TOKEN").unwrap(),
                 &*dotenv::var("S3_SECRET").unwrap(),
-            ).unwrap()
+            )
+            .unwrap(),
         ),
         "local" => Arc::new(file_hosting::MockHost::new()),
         _ => panic!("Invalid storage backend specified. Aborting startup!"),
@@ -136,9 +138,8 @@ async fn main() -> std::io::Result<()> {
 
     // The interval in seconds at which the local database is indexed
     // for searching.  Defaults to 1 hour if unset.
-    let local_index_interval = std::time::Duration::from_secs(
-        parse_var("LOCAL_INDEX_INTERVAL").unwrap_or(3600),
-    );
+    let local_index_interval =
+        std::time::Duration::from_secs(parse_var("LOCAL_INDEX_INTERVAL").unwrap_or(3600));
 
     let mut skip = skip_initial;
     let pool_ref = pool.clone();
@@ -272,8 +273,8 @@ async fn main() -> std::io::Result<()> {
                 RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
                     .with_identifier(|req| {
                         let connection_info = req.connection_info();
-                        let ip = String::from(
-                            if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
+                        let ip =
+                            String::from(if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
                                 if let Some(header) = req.headers().get("CF-Connecting-IP") {
                                     header.to_str().map_err(|_| ARError::IdentificationError)?
                                 } else {
@@ -285,11 +286,10 @@ async fn main() -> std::io::Result<()> {
                                 connection_info
                                     .remote_addr()
                                     .ok_or(ARError::IdentificationError)?
-                            },
-                        );
+                            });
 
-                        let ignore_ips = parse_strings_from_var("RATE_LIMIT_IGNORE_IPS")
-                            .unwrap_or_default();
+                        let ignore_ips =
+                            parse_strings_from_var("RATE_LIMIT_IGNORE_IPS").unwrap_or_default();
 
                         if ignore_ips.contains(&ip) {
                             // At an even distribution of numbers, this will allow at the most
@@ -358,14 +358,14 @@ fn check_env_vars() -> bool {
             failed |= check_var::<String>("BACKBLAZE_KEY_ID");
             failed |= check_var::<String>("BACKBLAZE_KEY");
             failed |= check_var::<String>("BACKBLAZE_BUCKET_ID");
-        },
+        }
         Some("s3") => {
             failed |= check_var::<String>("S3_ACCESS_TOKEN");
             failed |= check_var::<String>("S3_SECRET");
             failed |= check_var::<String>("S3_URL");
             failed |= check_var::<String>("S3_REGION");
             failed |= check_var::<String>("S3_BUCKET_NAME");
-        },
+        }
         Some("local") => {
             failed |= check_var::<String>("MOCK_FILE_PATH");
         }

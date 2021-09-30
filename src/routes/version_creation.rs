@@ -8,12 +8,12 @@ use crate::models::projects::{
 use crate::models::teams::Permissions;
 use crate::routes::project_creation::{CreateError, UploadedFile};
 use crate::util::auth::get_user_from_headers;
+use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
-use bytes::Buf;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
@@ -588,7 +588,7 @@ pub async fn upload_file(
     let content_type = crate::util::ext::project_file_type(file_extension)
         .ok_or_else(|| CreateError::InvalidFileType(file_extension.to_string()))?;
 
-    let data = super::read_from_field(
+    let data = read_from_field(
         field, 100 * (1 << 20),
         "Project file exceeds the maximum of 100MiB. Contact a moderator or admin to request permission to upload larger files."
     ).await?;
@@ -614,7 +614,7 @@ pub async fn upload_file(
     }
 
     let validation_result = validate_file(
-        data.bytes(),
+        &data,
         file_extension,
         project_type,
         loaders,
