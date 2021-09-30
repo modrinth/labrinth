@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use validator::Validate;
+use futures::StreamExt;
 
 #[get("search")]
 pub async fn project_search(
@@ -47,13 +48,16 @@ pub async fn projects_get(
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    // FIXME: async functions don't work in iterators
-    let mut projects = Vec::with_capacity(projects_data.len());
-    for data in projects_data {
-        if is_authorized(&data, &user_option, &pool).await? {
-            projects.push(Project::from(data))
-        }
-    }
+    let projects: Vec<_> = futures::stream::iter(projects_data)
+        .filter_map(|data| async {
+            if is_authorized(&data, &user_option, &pool).await.ok()? {
+                Some(Project::from(data))
+            } else {
+                None
+            }
+        })
+        .collect()
+        .await;
 
     Ok(HttpResponse::Ok().json(projects))
 }
