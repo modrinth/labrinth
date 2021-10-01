@@ -230,7 +230,7 @@ pub async fn version_file(
             .header("Location", &*selected_file.url)
             .body(""));
     } else if file == format!("{}-{}.jar", &string, &version.version_number) {
-        if let Some(selected_file) = version.files.iter().last() {
+        if let Some(selected_file) = version.files.iter().find(|x| x.primary) {
             return Ok(HttpResponse::TemporaryRedirect()
                 .header("Location", &*selected_file.url)
                 .body(""));
