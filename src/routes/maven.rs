@@ -234,6 +234,10 @@ pub async fn version_file(
             return Ok(HttpResponse::TemporaryRedirect()
                 .header("Location", &*selected_file.url)
                 .body(""));
+        } else if let Some(selected_file) = version.files.iter().last() {
+            return Ok(HttpResponse::TemporaryRedirect()
+                .header("Location", &*selected_file.url)
+                .body(""));
         }
     }
 
