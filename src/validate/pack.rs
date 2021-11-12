@@ -60,7 +60,7 @@ impl super::Validator for PackValidator {
 
     fn validate(
         &self,
-        archive: &mut ZipArchive<Cursor<&[u8]>>,
+        archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
         let mut file = archive
             .by_name("index.json")
