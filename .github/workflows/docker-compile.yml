@@ -20,9 +20,7 @@ jobs:
         id: docker_meta
         uses: crazy-max/ghaction-docker-meta@v1
         with:
-          images: |
-            ghcr.io/modrinth/labrinth
-            docker.io/modrinth/labrinth
+          images: ghcr.io/modrinth/labrinth
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v1
