@@ -343,6 +343,11 @@ fn check_env_vars() -> bool {
         failed |= true;
     }
 
+    if parse_strings_from_var("WHITELISTED_MODPACK_DOMAINS").is_none() {
+        warn!("Variable `WHITELISTED_MODPACK_DOMAINS` missing in dotenv or not a json array of strings");
+        failed |= true;
+    }
+
     failed |= check_var::<String>("SITE_URL");
     failed |= check_var::<String>("CDN_URL");
     failed |= check_var::<String>("DATABASE_URL");

@@ -75,13 +75,13 @@ pub async fn validate_file(
         for validator in &VALIDATORS {
             if validator.get_project_types().contains(&&*project_type)
                 && loaders
-                .iter()
-                .any(|x| validator.get_supported_loaders().contains(&&*x.0))
+                    .iter()
+                    .any(|x| validator.get_supported_loaders().contains(&&*x.0))
                 && game_version_supported(
-                &game_versions,
-                &all_game_versions,
-                validator.get_supported_game_versions(),
-            )
+                    &game_versions,
+                    &all_game_versions,
+                    validator.get_supported_game_versions(),
+                )
             {
                 if validator.get_file_extensions().contains(&&*file_extension) {
                     return validator.validate(&mut zip);
@@ -97,22 +97,20 @@ pub async fn validate_file(
                     "File extension {} is invalid for input file",
                     file_extension
                 )
-                    .into(),
+                .into(),
             ))
         } else {
             Ok(ValidationResult::Pass)
         }
     })
-        .await;
+    .await;
 
     match res {
         Ok(x) => Ok(x),
-        Err(err) => {
-            match err {
-                actix_web::error::BlockingError::Canceled => Err(ValidationError::BlockingError),
-                actix_web::error::BlockingError::Error(err) => Err(err)
-            }
-        }
+        Err(err) => match err {
+            actix_web::error::BlockingError::Canceled => Err(ValidationError::BlockingError),
+            actix_web::error::BlockingError::Error(err) => Err(err),
+        },
     }
 }
 

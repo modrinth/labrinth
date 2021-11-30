@@ -1993,6 +1993,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "thiserror",
+ "url",
  "validator",
  "xml-rs",
  "yaserde",
