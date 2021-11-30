@@ -42,10 +42,11 @@ fn validate_download_url(values: &Vec<&str>) -> Result<(), validator::Validation
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", from="String")]
 pub enum FileHash {
     Sha1,
     Sha512,
+    Unknown(String),
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -120,6 +121,12 @@ impl super::Validator for PackValidator {
             return Err(ValidationError::InvalidInputError(
                 format!("Game {0} does not exist!", pack.game).into(),
             ));
+        }
+
+        for file in pack.files {
+            if file.hashes.get(&FileHash::Sha1).is_none() {
+                return Err(ValidationError::InvalidInputError("All pack files must provide a SHA1 hash!".into()))
+            }
         }
 
         Ok(ValidationResult::Pass)
