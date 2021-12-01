@@ -1,11 +1,9 @@
 use crate::file_hosting::S3Host;
-use crate::health::scheduler::HealthCounters;
 use crate::util::env::{parse_strings_from_var, parse_var};
 use actix_cors::Cors;
 use actix_ratelimit::errors::ARError;
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
 use actix_web::{http, web, App, HttpServer};
-use actix_web_prom::PrometheusMetricsBuilder;
 use env_logger::Env;
 use gumdrop::Options;
 use log::{error, info, warn};
@@ -242,22 +240,11 @@ async fn main() -> std::io::Result<()> {
 
     let store = MemoryStore::new();
 
-    // Get prometheus service
-    let mut prometheus = PrometheusMetricsBuilder::new("api")
-        .endpoint("/metrics")
-        .build()
-        .unwrap();
-    // Get custom service
-    let health = HealthCounters::new();
-    health.register(&mut prometheus);
-    health.schedule(pool.clone(), &mut scheduler);
     info!("Starting Actix HTTP server!");
 
     // Init App
     HttpServer::new(move || {
         App::new()
-            .wrap(prometheus.clone())
-            .wrap(health.clone())
             .wrap(
                 Cors::default()
                     .allowed_methods(["GET", "POST", "DELETE", "PATCH", "PUT"])
