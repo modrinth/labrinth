@@ -1,4 +1,5 @@
 use crate::models::projects::SideType;
+use crate::util::env::parse_strings_from_var;
 use crate::util::validate::validation_errors_to_string;
 use crate::validate::{SupportedGameVersions, ValidationError, ValidationResult};
 use serde::{Deserialize, Serialize};
@@ -26,15 +27,30 @@ pub struct PackFormat<'a> {
 pub struct PackFile<'a> {
     pub path: &'a str,
     pub hashes: std::collections::HashMap<FileHash, &'a str>,
-    pub env: std::collections::HashMap<EnvType, SideType>,
+    pub env: Option<std::collections::HashMap<EnvType, SideType>>,
     #[validate(custom(function = "validate_download_url"))]
     pub downloads: Vec<&'a str>,
 }
 
 fn validate_download_url(values: &Vec<&str>) -> Result<(), validator::ValidationError> {
     for value in values {
-        if !validator::validate_url(*value) {
+        let url = url::Url::parse(value)
+            .ok()
+            .ok_or_else(|| validator::ValidationError::new("invalid URL"))?;
+
+        if &url.as_str() != value {
             return Err(validator::ValidationError::new("invalid URL"));
+        }
+
+        let domains = parse_strings_from_var("WHITELISTED_MODPACK_DOMAINS").unwrap_or_default();
+        if !domains.contains(
+            &url.domain()
+                .ok_or_else(|| validator::ValidationError::new("invalid URL"))?
+                .to_string(),
+        ) {
+            return Err(validator::ValidationError::new(
+                "File download source is not from allowed sources",
+            ));
         }
     }
 
@@ -42,10 +58,21 @@ fn validate_download_url(values: &Vec<&str>) -> Result<(), validator::Validation
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", from = "String")]
 pub enum FileHash {
     Sha1,
     Sha512,
+    Unknown(String),
+}
+
+impl From<String> for FileHash {
+    fn from(s: String) -> Self {
+        return match s.as_str() {
+            "sha1" => FileHash::Sha1,
+            "sha512" => FileHash::Sha512,
+            _ => FileHash::Unknown(s),
+        };
+    }
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -84,7 +111,7 @@ pub struct PackValidator;
 
 impl super::Validator for PackValidator {
     fn get_file_extensions(&self) -> &[&str] {
-        &["zip"]
+        &["mrpack"]
     }
 
     fn get_project_types(&self) -> &[&str] {
@@ -104,7 +131,7 @@ impl super::Validator for PackValidator {
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
         let mut file = archive
-            .by_name("index.json")
+            .by_name("modrinth.index.json")
             .map_err(|_| ValidationError::InvalidInputError("Pack manifest is missing.".into()))?;
 
         let mut contents = String::new();
@@ -120,6 +147,14 @@ impl super::Validator for PackValidator {
             return Err(ValidationError::InvalidInputError(
                 format!("Game {0} does not exist!", pack.game).into(),
             ));
+        }
+
+        for file in pack.files {
+            if file.hashes.get(&FileHash::Sha1).is_none() {
+                return Err(ValidationError::InvalidInputError(
+                    "All pack files must provide a SHA1 hash!".into(),
+                ));
+            }
         }
 
         Ok(ValidationResult::Pass)

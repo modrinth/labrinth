@@ -1792,28 +1792,6 @@
       ]
     }
   },
-  "5b5faec59e516d031aaef88dd991fecddde53c1272d63a4eb43e80f8cedf1f2d": {
-    "query": "\n            SELECT d.id id\n            FROM versions v\n            INNER JOIN dependencies d ON d.dependent_id = v.id\n            INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id AND gvv.game_version_id = ANY($2)\n            INNER JOIN loaders_versions lv ON lv.version_id = v.id AND lv.loader_id = ANY($3)\n            WHERE v.mod_id = $1\n            ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int4Array",
-          "Int4Array"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
   "5c3b340d278c356b6bc2cd7110e5093a7d1ad982ae0f468f8fff7c54e4e6603a": {
     "query": "\n            SELECT id FROM project_types\n            WHERE name = $1\n            ",
     "describe": {
@@ -3058,6 +3036,26 @@
         "Left": []
       },
       "nullable": []
+    }
+  },
+  "94ca18bf5244b0add2e6a12edfdc8d67159eed8c5afdf690f9b702faed249a4c": {
+    "query": "\n                SELECT gv.version game_version\n                FROM game_versions_versions gvv\n                INNER JOIN game_versions gv on gvv.game_version_id = gv.id\n                WHERE gvv.joining_version_id = $1\n                ORDER BY gv.created\n                ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "game_version",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      },
+      "nullable": [
+        false
+      ]
     }
   },
   "97690dda7edea8c985891cae5ad405f628ed81e333bc88df5493c928a4324d43": {
@@ -5189,24 +5187,16 @@
       ]
     }
   },
-  "dd785c80c372e6d199099e839a481a0cd63de8161a6acd41cf615a6818d1ae38": {
-    "query": "\n                SELECT gv.version game_version\n                FROM game_versions_versions gvv\n                INNER JOIN game_versions gv on gvv.game_version_id = gv.id\n                WHERE gvv.joining_version_id = $1\n                ",
+  "e1f910af9153befd7faed7ae9db87d2886f211cb43f61b6bb093ac2bfb8a0555": {
+    "query": "\n            DELETE FROM dependencies WHERE dependent_id = $1 AND dependency_id = $1\n            ",
     "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "game_version",
-          "type_info": "Varchar"
-        }
-      ],
+      "columns": [],
       "parameters": {
         "Left": [
           "Int8"
         ]
       },
-      "nullable": [
-        false
-      ]
+      "nullable": []
     }
   },
   "e29da865af4a0a110275b9756394546a3bb88bff40e18c66029651f515caed98": {
@@ -5780,6 +5770,28 @@
       "parameters": {
         "Left": [
           "Int4"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "f17df1295edfaa1cac400ce705181b14a9e763f5e515c6913d0152717b89ceaa": {
+    "query": "\n            SELECT d.id id\n            FROM versions v\n            INNER JOIN dependencies d ON d.mod_dependency_id = $1\n            INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id AND gvv.game_version_id = ANY($2)\n            INNER JOIN loaders_versions lv ON lv.version_id = v.id AND lv.loader_id = ANY($3)\n            ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int4Array",
+          "Int4Array"
         ]
       },
       "nullable": [
