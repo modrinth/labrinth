@@ -160,11 +160,9 @@ impl super::Validator for PackValidator {
             let path = std::path::Path::new(file.path)
                 .components()
                 .next()
-                .ok_or_else(||
-                    ValidationError::InvalidInputError(
-                        "Invalid pack file path!".into(),
-                    )
-                )?;
+                .ok_or_else(|| {
+                    ValidationError::InvalidInputError("Invalid pack file path!".into())
+                })?;
 
             match path {
                 Component::CurDir | Component::Normal(_) => {}

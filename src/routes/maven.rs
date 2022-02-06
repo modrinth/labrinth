@@ -1,3 +1,5 @@
+use crate::database::models::project_item::QueryProject;
+use crate::database::models::version_item::{QueryFile, QueryVersion};
 use crate::models::projects::ProjectId;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
@@ -200,7 +202,7 @@ pub async fn version_file(
             .body(yaserde::ser::to_string(&respdata).map_err(ApiError::XmlError)?));
     } else if let Some(selected_file) = find_file(&project_id, &project, &version, &file) {
         return Ok(HttpResponse::TemporaryRedirect()
-            .append_header("location", &*selected_file.url)
+            .append_header(("location", &*selected_file.url))
             .body(""));
     }
 
