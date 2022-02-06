@@ -1,4 +1,3 @@
-use crate::database::models::version_item::{QueryFile, QueryVersion};
 use crate::models::projects::ProjectId;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
@@ -52,11 +51,12 @@ pub struct MavenPom {
 #[get("maven/modrinth/{id}/maven-metadata.xml")]
 pub async fn maven_metadata(
     req: HttpRequest,
-    web::Path((project_id,)): web::Path<(String,)>,
+    params: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
+    let project_id = params.into_inner().0;
     let project_data =
-        database::models::Project::get_full_from_slug_or_project_id(&project_id, &**pool).await?;
+        database::models::Project::get_full_from_slug_or_project_id(&*project_id, &**pool).await?;
 
     let data = if let Some(data) = project_data {
         data
@@ -114,9 +114,10 @@ pub async fn maven_metadata(
 #[get("maven/modrinth/{id}/{versionnum}/{file}")]
 pub async fn version_file(
     req: HttpRequest,
-    web::Path((project_id, vnum, file)): web::Path<(String, String, String)>,
+    params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
+    let (project_id, vnum, file) = params.into_inner();
     let project_data =
         database::models::Project::get_full_from_slug_or_project_id(&project_id, &**pool).await?;
 
@@ -172,16 +173,16 @@ pub async fn version_file(
             .body(yaserde::ser::to_string(&respdata).map_err(ApiError::XmlError)?));
     } else if let Some(selected_file) = version.files.iter().find(|x| x.filename == file) {
         return Ok(HttpResponse::TemporaryRedirect()
-            .header("Location", &*selected_file.url)
+            .append_header(("Location", &*selected_file.url))
             .body(""));
     } else if file == format!("{}-{}.jar", &project_id, &version.version_number) {
         if let Some(selected_file) = version.files.iter().find(|x| x.primary) {
             return Ok(HttpResponse::TemporaryRedirect()
-                .header("Location", &*selected_file.url)
+                .append_header(("Location", &*selected_file.url))
                 .body(""));
         } else if let Some(selected_file) = version.files.iter().last() {
             return Ok(HttpResponse::TemporaryRedirect()
-                .header("Location", &*selected_file.url)
+                .append_header(("Location", &*selected_file.url))
                 .body(""));
         }
     }
@@ -192,9 +193,10 @@ pub async fn version_file(
 #[get("maven/modrinth/{id}/{versionnum}/{file}.sha1")]
 pub async fn version_file_sha1(
     req: HttpRequest,
-    web::Path((project_id, vnum, file)): web::Path<(String, String, String)>,
+    params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
+    let (project_id, vnum, file) = params.into_inner();
     let project_data =
         database::models::Project::get_full_from_slug_or_project_id(&project_id, &**pool).await?;
 
@@ -263,9 +265,10 @@ pub async fn version_file_sha1(
 #[get("maven/modrinth/{id}/{versionnum}/{file}.sha512")]
 pub async fn version_file_sha512(
     req: HttpRequest,
-    web::Path((project_id, vnum, file)): web::Path<(String, String, String)>,
+    params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
+    let (project_id, vnum, file) = params.into_inner();
     let project_data =
         database::models::Project::get_full_from_slug_or_project_id(&project_id, &**pool).await?;
 
