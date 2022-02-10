@@ -379,7 +379,7 @@ pub struct FileHashes {
 }
 
 // under /api/v2/version_files
-#[post("/")]
+#[post("")]
 pub async fn get_versions_from_hashes(
     pool: web::Data<PgPool>,
     file_data: web::Json<FileHashes>,
