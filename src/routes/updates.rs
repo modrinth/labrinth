@@ -1,29 +1,37 @@
 use std::collections::HashMap;
 
-use actix_web::{get, web, HttpResponse};
+use actix_web::{get, web, HttpRequest, HttpResponse};
 use serde::Serialize;
 use sqlx::PgPool;
 
 use crate::database;
 use crate::models::projects::{Version, VersionType};
+use crate::util::auth::{get_user_from_headers, is_authorized};
 
 use super::ApiError;
 
 #[get("{id}/forge_updates.json")]
 pub async fn forge_updates(
+    req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let string = info.into_inner().0;
+    const ERROR: &str = "The specified project does not exist!";
 
-    let project = database::models::Project::get_from_slug_or_project_id(string.clone(), &**pool)
+    let (id,) = info.into_inner();
+
+    let project = database::models::Project::get_full_from_slug_or_project_id(&id, &**pool)
         .await?
-        .ok_or_else(|| {
-            ApiError::InvalidInputError("The specified project does not exist!".to_string())
-        })?;
+        .ok_or_else(|| ApiError::InvalidInputError(ERROR.to_string()))?;
+
+    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+
+    if !is_authorized(&project, &user_option, &pool).await? {
+        return Err(ApiError::InvalidInputError(ERROR.to_string()));
+    }
 
     let version_ids = database::models::Version::get_project_versions(
-        project.id,
+        project.inner.id,
         None,
         Some(vec!["forge".to_string()]),
         &**pool,
@@ -40,11 +48,7 @@ pub async fn forge_updates(
     }
 
     let mut response = ForgeUpdates {
-        homepage: format!(
-            "{}/mod/{}",
-            dotenv::var("SITE_URL").unwrap_or_default(),
-            string
-        ),
+        homepage: format!("{}/mod/{}", dotenv::var("SITE_URL").unwrap_or_default(), id),
         promos: HashMap::new(),
     };
 
