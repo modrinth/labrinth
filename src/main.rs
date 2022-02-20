@@ -246,33 +246,33 @@ async fn main() -> std::io::Result<()> {
                     .max_age(3600)
                     .send_wildcard(),
             )
-            .wrap(
-                RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
-                    .with_identifier(|req| {
-                        let connection_info = req.connection_info();
-                        let ip =
-                            String::from(if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
-                                if let Some(header) = req.headers().get("CF-Connecting-IP") {
-                                    header.to_str().map_err(|_| ARError::IdentificationError)?
-                                } else {
-                                    connection_info
-                                        .peer_addr()
-                                        .ok_or(ARError::IdentificationError)?
-                                }
-                            } else {
-                                connection_info
-                                    .peer_addr()
-                                    .ok_or(ARError::IdentificationError)?
-                            });
-
-                        Ok(ip)
-                    })
-                    .with_interval(std::time::Duration::from_secs(60))
-                    .with_max_requests(300)
-                    .with_ignore_ips(
-                        parse_strings_from_var("RATE_LIMIT_IGNORE_IPS").unwrap_or_default(),
-                    ),
-            )
+            // .wrap(
+            //     RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
+            //         .with_identifier(|req| {
+            //             let connection_info = req.connection_info();
+            //             let ip =
+            //                 String::from(if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
+            //                     if let Some(header) = req.headers().get("CF-Connecting-IP") {
+            //                         header.to_str().map_err(|_| ARError::IdentificationError)?
+            //                     } else {
+            //                         connection_info
+            //                             .peer_addr()
+            //                             .ok_or(ARError::IdentificationError)?
+            //                     }
+            //                 } else {
+            //                     connection_info
+            //                         .peer_addr()
+            //                         .ok_or(ARError::IdentificationError)?
+            //                 });
+            //
+            //             Ok(ip)
+            //         })
+            //         .with_interval(std::time::Duration::from_secs(60))
+            //         .with_max_requests(300)
+            //         .with_ignore_ips(
+            //             parse_strings_from_var("RATE_LIMIT_IGNORE_IPS").unwrap_or_default(),
+            //         ),
+            // )
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(file_host.clone()))
             .app_data(web::Data::new(indexing_queue.clone()))
@@ -283,6 +283,7 @@ async fn main() -> std::io::Result<()> {
             .service(routes::index_get)
             .service(routes::health_get)
             .service(web::scope("maven").configure(routes::maven_config))
+            .service(web::scope("updates").configure(routes::updates))
             .default_service(web::get().to(routes::not_found))
     })
     .bind(dotenv::var("BIND_ADDR").unwrap())?
