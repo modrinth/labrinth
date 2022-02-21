@@ -4,7 +4,7 @@ use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use crate::ratelimit::middleware::RateLimiter;
 use crate::util::env::{parse_strings_from_var, parse_var};
 use actix_cors::Cors;
-use actix_web::{http, web, App, HttpServer};
+use actix_web::{web, App, HttpServer};
 use env_logger::Env;
 use gumdrop::Options;
 use log::{error, info, warn};
