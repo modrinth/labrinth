@@ -4,7 +4,7 @@
 }:
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    fenix.minimal.toolchain
+    fenix.default.toolchain
     docker docker-compose
     git
     openssl pkg-config

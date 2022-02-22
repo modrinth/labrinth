@@ -229,11 +229,9 @@ pub struct DownloadRedirect {
 #[allow(clippy::await_holding_refcell_ref)]
 #[get("{version_id}/download")]
 pub async fn download_version(
-    req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     algorithm: web::Query<Algorithm>,
-    pepper: web::Data<Pepper>,
 ) -> Result<HttpResponse, ApiError> {
     let hash = info.into_inner().0;
 

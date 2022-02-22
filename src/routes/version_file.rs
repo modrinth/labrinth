@@ -1,12 +1,11 @@
 use super::ApiError;
 use crate::database::models::version_item::QueryVersion;
 use crate::file_hosting::FileHost;
-use crate::models;
+use crate::{models, database};
 use crate::models::projects::{GameVersion, Loader, Version};
 use crate::models::teams::Permissions;
 use crate::util::auth::get_user_from_headers;
 use crate::util::routes::ok_or_not_found;
-use crate::{database, Pepper};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -69,11 +68,9 @@ pub struct DownloadRedirect {
 // under /api/v1/version_file/{hash}/download
 #[get("{version_id}/download")]
 pub async fn download_version(
-    req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     algorithm: web::Query<Algorithm>,
-    pepper: web::Data<Pepper>,
 ) -> Result<HttpResponse, ApiError> {
     let hash = info.into_inner().0.to_lowercase();
     let mut transaction = pool.begin().await?;
@@ -343,10 +340,8 @@ pub async fn get_versions_from_hashes(
 
 #[post("download")]
 pub async fn download_files(
-    req: HttpRequest,
     pool: web::Data<PgPool>,
     file_data: web::Json<FileHashes>,
-    pepper: web::Data<Pepper>,
 ) -> Result<HttpResponse, ApiError> {
     let hashes_parsed: Vec<Vec<u8>> = file_data
         .hashes
@@ -369,9 +364,10 @@ pub async fn download_files(
     .fetch_all(&mut *transaction)
     .await?;
 
-    let response = result.into_iter()
-	.map(|row| (hex::encode(row.hash), row.url))
-	.collect::<HashMap<String, String>>();
+    let response = result
+        .into_iter()
+        .map(|row| (hex::encode(row.hash), row.url))
+        .collect::<HashMap<String, String>>();
 
     Ok(HttpResponse::Ok().json(response))
 }

@@ -64,7 +64,7 @@ async fn main() -> std::io::Result<()> {
             ));
         }
     }
-    
+
     info!("Starting Labrinth on {}", dotenv::var("BIND_ADDR").unwrap());
 
     let search_config = search::SearchConfig {
