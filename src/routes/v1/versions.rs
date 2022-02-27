@@ -5,7 +5,7 @@ use crate::models::teams::Permissions;
 use crate::routes::versions::{VersionIds, VersionListFilters};
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
-use crate::{database, models, Pepper};
+use crate::{database, models};
 use actix_web::{delete, get, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
