@@ -32,7 +32,8 @@ impl TeamBuilder {
         .await?;
 
         for member in self.members {
-            let team_member_id = generate_team_member_id(&mut *transaction).await?;
+            let team_member_id =
+                generate_team_member_id(&mut *transaction).await?;
             let team_member = TeamMember {
                 id: team_member_id,
                 team_id,
@@ -403,7 +404,6 @@ impl TeamMember {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        use sqlx::Done;
         let result = sqlx::query!(
             "
             DELETE FROM team_members
@@ -439,12 +439,11 @@ impl TeamMember {
                 "
                 UPDATE team_members
                 SET permissions = $1
-                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)
+                WHERE (team_id = $2 AND user_id = $3)
                 ",
                 permissions.bits() as i64,
                 id as TeamId,
                 user_id as UserId,
-                crate::models::teams::OWNER_ROLE,
             )
             .execute(&mut *transaction)
             .await?;
@@ -455,12 +454,11 @@ impl TeamMember {
                 "
                 UPDATE team_members
                 SET role = $1
-                WHERE (team_id = $2 AND user_id = $3 AND NOT role = $4)
+                WHERE (team_id = $2 AND user_id = $3)
                 ",
                 role,
                 id as TeamId,
                 user_id as UserId,
-                crate::models::teams::OWNER_ROLE,
             )
             .execute(&mut *transaction)
             .await?;
@@ -472,11 +470,10 @@ impl TeamMember {
                     "
                     UPDATE team_members
                     SET accepted = TRUE
-                    WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
+                    WHERE (team_id = $1 AND user_id = $2)
                     ",
                     id as TeamId,
                     user_id as UserId,
-                    crate::models::teams::OWNER_ROLE,
                 )
                 .execute(&mut *transaction)
                 .await?;

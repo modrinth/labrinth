@@ -1,19 +1,19 @@
-use actix_web::web;
-
 mod v1;
 pub use v1::v1_config;
 
 mod auth;
+mod health;
 mod index;
 mod maven;
 mod moderation;
 mod not_found;
 mod notifications;
-mod project_creation;
+pub(crate) mod project_creation;
 mod projects;
 mod reports;
 mod tags;
 mod teams;
+mod updates;
 mod users;
 mod version_creation;
 mod version_file;
@@ -22,13 +22,15 @@ mod versions;
 pub use auth::config as auth_config;
 pub use tags::config as tags_config;
 
+pub use self::health::health_get;
 pub use self::index::index_get;
 pub use self::not_found::not_found;
 use crate::file_hosting::FileHostingError;
+use actix_web::web;
 
 pub fn v2_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/v2/")
+        web::scope("v2")
             .configure(auth_config)
             .configure(tags_config)
             .configure(projects_config)
@@ -69,7 +71,13 @@ pub fn projects_config(cfg: &mut web::ServiceConfig) {
 
 pub fn maven_config(cfg: &mut web::ServiceConfig) {
     cfg.service(maven::maven_metadata);
+    cfg.service(maven::version_file_sha512);
+    cfg.service(maven::version_file_sha1);
     cfg.service(maven::version_file);
+}
+
+pub fn updates(cfg: &mut web::ServiceConfig) {
+    cfg.service(updates::forge_updates);
 }
 
 pub fn versions_config(cfg: &mut web::ServiceConfig) {
@@ -79,6 +87,7 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
         web::scope("version")
             .service(versions::version_get)
             .service(versions::version_delete)
+            .service(versions::version_count_patch)
             .service(version_creation::upload_file_to_version)
             .service(versions::version_edit),
     );
@@ -128,7 +137,7 @@ pub fn teams_config(cfg: &mut web::ServiceConfig) {
 
 pub fn notifications_config(cfg: &mut web::ServiceConfig) {
     cfg.service(notifications::notifications_get);
-    cfg.service(notifications::notification_delete);
+    cfg.service(notifications::notifications_delete);
 
     cfg.service(
         web::scope("notification")
@@ -178,23 +187,45 @@ pub enum ApiError {
 impl actix_web::ResponseError for ApiError {
     fn status_code(&self) -> actix_web::http::StatusCode {
         match self {
-            ApiError::EnvError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::DatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::SqlxDatabaseError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::AuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
-            ApiError::CustomAuthenticationError(..) => actix_web::http::StatusCode::UNAUTHORIZED,
-            ApiError::XmlError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::EnvError(..) => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+            ApiError::DatabaseError(..) => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+            ApiError::SqlxDatabaseError(..) => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+            ApiError::AuthenticationError(..) => {
+                actix_web::http::StatusCode::UNAUTHORIZED
+            }
+            ApiError::CustomAuthenticationError(..) => {
+                actix_web::http::StatusCode::UNAUTHORIZED
+            }
+            ApiError::XmlError(..) => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
             ApiError::JsonError(..) => actix_web::http::StatusCode::BAD_REQUEST,
-            ApiError::SearchError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::IndexingError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::FileHostingError(..) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::InvalidInputError(..) => actix_web::http::StatusCode::BAD_REQUEST,
-            ApiError::ValidationError(..) => actix_web::http::StatusCode::BAD_REQUEST,
+            ApiError::SearchError(..) => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+            ApiError::IndexingError(..) => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+            ApiError::FileHostingError(..) => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+            ApiError::InvalidInputError(..) => {
+                actix_web::http::StatusCode::BAD_REQUEST
+            }
+            ApiError::ValidationError(..) => {
+                actix_web::http::StatusCode::BAD_REQUEST
+            }
         }
     }
 
-    fn error_response(&self) -> actix_web::web::HttpResponse {
-        actix_web::web::HttpResponse::build(self.status_code()).json(
+    fn error_response(&self) -> actix_web::HttpResponse {
+        actix_web::HttpResponse::build(self.status_code()).json(
             crate::models::error::ApiError {
                 error: match self {
                     ApiError::EnvError(..) => "environment_error",

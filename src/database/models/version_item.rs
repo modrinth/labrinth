@@ -29,24 +29,31 @@ impl DependencyBuilder {
         version_id: VersionId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), DatabaseError> {
-        let version_dependency_id = if let Some(project_id) = self.project_id {
-            sqlx::query!(
-                "
-                SELECT version.id id FROM (
-                    SELECT DISTINCT ON(v.id) v.id, v.date_published FROM versions v
-                    INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id AND gvv.game_version_id IN (SELECT game_version_id FROM game_versions_versions WHERE joining_version_id = $2)
-                    INNER JOIN loaders_versions lv ON lv.version_id = v.id AND lv.loader_id IN (SELECT loader_id FROM loaders_versions WHERE version_id = $2)
-                    WHERE v.mod_id = $1
-                ) AS version
-                ORDER BY version.date_published DESC
-                LIMIT 1
-                ",
-                project_id as ProjectId,
-                version_id as VersionId,
-            )
-                .fetch_optional(&mut *transaction).await?.map(|x| VersionId(x.id))
+        let (version_dependency_id, project_dependency_id): (
+            Option<VersionId>,
+            Option<ProjectId>,
+        ) = if self.version_id.is_some() {
+            (self.version_id, None)
+        } else if let Some(project_id) = self.project_id {
+            let version_id = sqlx::query!(
+                    "
+                    SELECT version.id id FROM (
+                        SELECT DISTINCT ON(v.id) v.id, v.date_published FROM versions v
+                        INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id AND gvv.game_version_id IN (SELECT game_version_id FROM game_versions_versions WHERE joining_version_id = $2)
+                        INNER JOIN loaders_versions lv ON lv.version_id = v.id AND lv.loader_id IN (SELECT loader_id FROM loaders_versions WHERE version_id = $2)
+                        WHERE v.mod_id = $1
+                    ) AS version
+                    ORDER BY version.date_published DESC
+                    LIMIT 1
+                    ",
+                    project_id as ProjectId,
+                    version_id as VersionId,
+                )
+                .fetch_optional(&mut *transaction).await?.map(|x| VersionId(x.id));
+
+            (version_id, Some(project_id))
         } else {
-            self.version_id
+            (None, None)
         };
 
         sqlx::query!(
@@ -57,7 +64,7 @@ impl DependencyBuilder {
             version_id as VersionId,
             self.dependency_type,
             version_dependency_id.map(|x| x.0),
-            self.project_id.map(|x| x.0),
+            project_dependency_id.map(|x| x.0),
         )
         .execute(&mut *transaction)
         .await?;
@@ -83,13 +90,14 @@ impl VersionFileBuilder {
 
         sqlx::query!(
             "
-            INSERT INTO files (id, version_id, url, filename)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO files (id, version_id, url, filename, is_primary)
+            VALUES ($1, $2, $3, $4, $5)
             ",
             file_id as FileId,
             version_id as VersionId,
             self.url,
             self.filename,
+            self.primary
         )
         .execute(&mut *transaction)
         .await?;
@@ -191,10 +199,9 @@ impl VersionBuilder {
             "
             SELECT d.id id
             FROM versions v
-            INNER JOIN dependencies d ON d.dependent_id = v.id
+            INNER JOIN dependencies d ON d.mod_dependency_id = $1
             INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id AND gvv.game_version_id = ANY($2)
             INNER JOIN loaders_versions lv ON lv.version_id = v.id AND lv.loader_id = ANY($3)
-            WHERE v.mod_id = $1
             ",
             self.project_id as ProjectId,
             &self.game_versions.iter().map(|x| x.0).collect::<Vec<i32>>(),
@@ -347,16 +354,6 @@ impl Version {
         .execute(&mut *transaction)
         .await?;
 
-        sqlx::query!(
-            "
-            DELETE FROM downloads
-            WHERE downloads.version_id = $1
-            ",
-            id as VersionId,
-        )
-        .execute(&mut *transaction)
-        .await?;
-
         let files = sqlx::query!(
             "
             SELECT files.id, files.url, files.filename, files.is_primary FROM files
@@ -461,6 +458,15 @@ impl Version {
         .execute(&mut *transaction)
         .await?;
 
+        sqlx::query!(
+            "
+            DELETE FROM dependencies WHERE dependent_id = $1 AND dependency_id = $1
+            ",
+            id as VersionId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
         // delete version
 
         sqlx::query!(
@@ -557,7 +563,8 @@ impl Version {
     {
         use futures::stream::TryStreamExt;
 
-        let version_ids_parsed: Vec<i64> = version_ids.into_iter().map(|x| x.0).collect();
+        let version_ids_parsed: Vec<i64> =
+            version_ids.into_iter().map(|x| x.0).collect();
         let versions = sqlx::query!(
             "
             SELECT v.id, v.mod_id, v.author_id, v.name, v.version_number,
@@ -617,6 +624,7 @@ impl Version {
                 FROM game_versions_versions gvv
                 INNER JOIN game_versions gv on gvv.game_version_id = gv.id
                 WHERE gvv.joining_version_id = $1
+                ORDER BY gv.created
                 ",
                 id as VersionId,
             ).fetch_all(executor),
@@ -657,12 +665,13 @@ impl Version {
         );
 
         if let Some(v) = version? {
-            let mut hashes_map: HashMap<FileId, HashMap<String, Vec<u8>>> = HashMap::new();
+            let mut hashes_map: HashMap<FileId, HashMap<String, Vec<u8>>> =
+                HashMap::new();
 
             for hash in hashes? {
                 let entry = hashes_map
                     .entry(FileId(hash.file_id))
-                    .or_insert(HashMap::new());
+                    .or_insert_with(HashMap::new);
 
                 if let Some(raw_hash) = hash.hash {
                     entry.insert(hash.algorithm, raw_hash.into_bytes());
@@ -685,18 +694,24 @@ impl Version {
                         id: FileId(x.id),
                         url: x.url,
                         filename: x.filename,
-                        hashes: hashes_map.entry(FileId(x.id)).or_default().clone(),
+                        hashes: hashes_map
+                            .entry(FileId(x.id))
+                            .or_default()
+                            .clone(),
                         primary: x.is_primary,
                     })
                     .collect(),
-                game_versions: game_versions?.into_iter().map(|x| x.game_version).collect(),
+                game_versions: game_versions?
+                    .into_iter()
+                    .map(|x| x.game_version)
+                    .collect(),
                 loaders: loaders?.into_iter().map(|x| x.loader).collect(),
                 featured: v.featured,
                 dependencies: dependencies?
                     .into_iter()
                     .map(|x| QueryDependency {
-                        project_id: x.mod_dependency_id.map(|x| ProjectId(x)),
-                        version_id: x.dependency_id.map(|x| VersionId(x)),
+                        project_id: x.mod_dependency_id.map(ProjectId),
+                        version_id: x.dependency_id.map(VersionId),
                         dependency_type: x.dependency_type,
                     })
                     .collect(),
@@ -714,9 +729,11 @@ impl Version {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        futures::future::try_join_all(version_ids.into_iter().map(|id| Self::get_full(id, exec)))
-            .await
-            .map(|x| x.into_iter().flatten().collect())
+        futures::future::try_join_all(
+            version_ids.into_iter().map(|id| Self::get_full(id, exec)),
+        )
+        .await
+        .map(|x| x.into_iter().flatten().collect())
     }
 }
 

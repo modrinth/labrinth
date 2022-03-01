@@ -1,14 +1,14 @@
 use super::ApiError;
+use crate::database::models::version_item::QueryVersion;
 use crate::file_hosting::FileHost;
-use crate::models;
-use crate::models::projects::{GameVersion, Loader};
+use crate::models::projects::{GameVersion, Loader, Version};
 use crate::models::teams::Permissions;
 use crate::util::auth::get_user_from_headers;
-use crate::{database, Pepper};
+use crate::util::routes::ok_or_not_found;
+use crate::{database, models};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -51,7 +51,7 @@ pub async fn get_version_from_hash(
         .await?;
 
         if let Some(data) = version_data {
-            Ok(HttpResponse::Ok().json(super::versions::convert_version(data)))
+            Ok(HttpResponse::Ok().json(models::projects::Version::from(data)))
         } else {
             Ok(HttpResponse::NotFound().body(""))
         }
@@ -68,11 +68,9 @@ pub struct DownloadRedirect {
 // under /api/v1/version_file/{hash}/download
 #[get("{version_id}/download")]
 pub async fn download_version(
-    req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     algorithm: web::Query<Algorithm>,
-    pepper: web::Data<Pepper>,
 ) -> Result<HttpResponse, ApiError> {
     let hash = info.into_inner().0.to_lowercase();
     let mut transaction = pool.begin().await?;
@@ -91,101 +89,14 @@ pub async fn download_version(
     .await?;
 
     if let Some(id) = result {
-        download_version_inner(
-            database::models::VersionId(id.version_id),
-            database::models::ProjectId(id.project_id),
-            &req,
-            &mut transaction,
-            &pepper,
-        )
-        .await?;
-
         transaction.commit().await?;
 
         Ok(HttpResponse::TemporaryRedirect()
-            .header("Location", &*id.url)
+            .append_header(("Location", &*id.url))
             .json(DownloadRedirect { url: id.url }))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
-}
-
-async fn download_version_inner(
-    version_id: database::models::VersionId,
-    project_id: database::models::ProjectId,
-    req: &HttpRequest,
-    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    pepper: &web::Data<Pepper>,
-) -> Result<(), ApiError> {
-    let real_ip = req.connection_info();
-    let ip_option = if dotenv::var("CLOUDFLARE_INTEGRATION")
-        .ok()
-        .map(|i| i.parse().unwrap())
-        .unwrap_or(false)
-    {
-        if let Some(header) = req.headers().get("CF-Connecting-IP") {
-            header.to_str().ok()
-        } else {
-            real_ip.borrow().remote_addr()
-        }
-    } else {
-        real_ip.borrow().remote_addr()
-    };
-
-    if let Some(ip) = ip_option {
-        let hash = sha1::Sha1::from(format!("{}{}", ip, pepper.pepper)).hexdigest();
-
-        let download_exists = sqlx::query!(
-                "SELECT EXISTS(SELECT 1 FROM downloads WHERE version_id = $1 AND date > (CURRENT_DATE - INTERVAL '30 minutes ago') AND identifier = $2)",
-                version_id as database::models::VersionId,
-                hash,
-            )
-            .fetch_one(&mut *transaction)
-            .await
-            ?
-            .exists.unwrap_or(false);
-
-        if !download_exists {
-            sqlx::query!(
-                "
-                    INSERT INTO downloads (
-                        version_id, identifier
-                    )
-                    VALUES (
-                        $1, $2
-                    )
-                    ",
-                version_id as database::models::VersionId,
-                hash
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            sqlx::query!(
-                "
-                    UPDATE versions
-                    SET downloads = downloads + 1
-                    WHERE id = $1
-                    ",
-                version_id as database::models::VersionId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            sqlx::query!(
-                "
-                    UPDATE mods
-                    SET downloads = downloads + 1
-                    WHERE id = $1
-                    ",
-                project_id as database::models::ProjectId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
-    }
-
-    Ok(())
 }
 
 // under /api/v1/version_file/{hash}
@@ -217,25 +128,28 @@ pub async fn delete_file(
 
     if let Some(row) = result {
         if !user.role.is_mod() {
-            let team_member = database::models::TeamMember::get_from_user_id_version(
-                database::models::ids::VersionId(row.version_id),
-                user.id.into(),
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::DatabaseError)?
-            .ok_or_else(|| {
-                ApiError::CustomAuthenticationError(
-                    "You don't have permission to delete this file!".to_string(),
+            let team_member =
+                database::models::TeamMember::get_from_user_id_version(
+                    database::models::ids::VersionId(row.version_id),
+                    user.id.into(),
+                    &**pool,
                 )
-            })?;
+                .await
+                .map_err(ApiError::DatabaseError)?
+                .ok_or_else(|| {
+                    ApiError::CustomAuthenticationError(
+                        "You don't have permission to delete this file!"
+                            .to_string(),
+                    )
+                })?;
 
             if !team_member
                 .permissions
                 .contains(Permissions::DELETE_VERSION)
             {
                 return Err(ApiError::CustomAuthenticationError(
-                    "You don't have permission to delete this file!".to_string(),
+                    "You don't have permission to delete this file!"
+                        .to_string(),
                 ));
             }
         }
@@ -256,7 +170,8 @@ pub async fn delete_file(
 
         if files.len() < 2 {
             return Err(ApiError::InvalidInputError(
-                "Versions must have at least one file uploaded to them".to_string(),
+                "Versions must have at least one file uploaded to them"
+                    .to_string(),
             ));
         }
 
@@ -304,7 +219,6 @@ pub async fn delete_file(
 
 #[derive(Deserialize)]
 pub struct UpdateData {
-    pub hash: (String, String),
     pub loaders: Vec<Loader>,
     pub game_versions: Vec<GameVersion>,
 }
@@ -359,13 +273,11 @@ pub async fn get_update_from_hash(
         .await?;
 
         if let Some(version_id) = version_ids.last() {
-            let version_data = database::models::Version::get_full(*version_id, &**pool).await?;
+            let version_data =
+                database::models::Version::get_full(*version_id, &**pool)
+                    .await?;
 
-            if let Some(data) = version_data {
-                Ok(HttpResponse::Ok().json(super::versions::convert_version(data)))
-            } else {
-                Ok(HttpResponse::NotFound().body(""))
-            }
+            ok_or_not_found::<QueryVersion, Version>(version_data)
         } else {
             Ok(HttpResponse::NotFound().body(""))
         }
@@ -382,7 +294,7 @@ pub struct FileHashes {
 }
 
 // under /api/v2/version_files
-#[post("/")]
+#[post("")]
 pub async fn get_versions_from_hashes(
     pool: web::Data<PgPool>,
     file_data: web::Json<FileHashes>,
@@ -414,23 +326,28 @@ pub async fn get_versions_from_hashes(
     )
     .await?;
 
-    let mut response = HashMap::new();
-
-    for row in result {
-        if let Some(version) = versions_data.iter().find(|x| x.id.0 == row.version_id) {
-            response.insert(row.hash, super::versions::convert_version(version.clone()));
-        }
-    }
-
+    let response: Vec<_> = result
+        .into_iter()
+        .filter_map(|row| {
+            versions_data
+                .clone()
+                .into_iter()
+                .find(|x| x.id.0 == row.version_id)
+                .map(|v| {
+                    (
+                        hex::encode(row.hash),
+                        crate::models::projects::Version::from(v),
+                    )
+                })
+        })
+        .collect();
     Ok(HttpResponse::Ok().json(response))
 }
 
 #[post("download")]
 pub async fn download_files(
-    req: HttpRequest,
     pool: web::Data<PgPool>,
     file_data: web::Json<FileHashes>,
-    pepper: web::Data<Pepper>,
 ) -> Result<HttpResponse, ApiError> {
     let hashes_parsed: Vec<Vec<u8>> = file_data
         .hashes
@@ -453,19 +370,10 @@ pub async fn download_files(
     .fetch_all(&mut *transaction)
     .await?;
 
-    let mut response = HashMap::new();
-
-    for row in result {
-        download_version_inner(
-            database::models::VersionId(row.version_id),
-            database::models::ProjectId(row.project_id),
-            &req,
-            &mut transaction,
-            &pepper,
-        )
-        .await?;
-        response.insert(row.hash, row.url);
-    }
+    let response = result
+        .into_iter()
+        .map(|row| (hex::encode(row.hash), row.url))
+        .collect::<HashMap<String, String>>();
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -534,15 +442,18 @@ pub async fn update_files(
         }
     }
 
-    let versions = database::models::Version::get_many_full(version_ids, &**pool).await?;
+    let versions =
+        database::models::Version::get_many_full(version_ids, &**pool).await?;
 
     let mut response = HashMap::new();
 
     for row in &result {
-        if let Some(version) = versions.iter().find(|x| x.id.0 == row.version_id) {
+        if let Some(version) =
+            versions.iter().find(|x| x.id.0 == row.version_id)
+        {
             response.insert(
-                row.hash.clone(),
-                super::versions::convert_version(version.clone()),
+                hex::encode(&row.hash),
+                models::projects::Version::from(version.clone()),
             );
         }
     }

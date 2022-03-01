@@ -1,7 +1,9 @@
-use crate::database;
+use crate::database::models::project_item::QueryProject;
+use crate::database::models::version_item::{QueryFile, QueryVersion};
 use crate::models::projects::ProjectId;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
+use crate::{database, util::auth::is_authorized};
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use sqlx::PgPool;
 use yaserde_derive::YaSerialize;
@@ -51,15 +53,16 @@ pub struct MavenPom {
 #[get("maven/modrinth/{id}/maven-metadata.xml")]
 pub async fn maven_metadata(
     req: HttpRequest,
-    info: web::Path<(String,)>,
+    params: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let string = info.into_inner().0;
-
+    let project_id = params.into_inner().0;
     let project_data =
-        database::models::Project::get_full_from_slug_or_project_id(string, &**pool).await?;
-
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+        database::models::Project::get_full_from_slug_or_project_id(
+            &*project_id,
+            &**pool,
+        )
+        .await?;
 
     let data = if let Some(data) = project_data {
         data
@@ -67,32 +70,12 @@ pub async fn maven_metadata(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let mut authorized = !data.status.is_hidden();
+    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    if let Some(user) = user_option {
-        if !authorized {
-            if user.role.is_mod() {
-                authorized = true;
-            } else {
-                let user_id: database::models::ids::UserId = user.id.into();
-
-                let project_exists = sqlx::query!(
-                    "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
-                    data.inner.team_id as database::models::ids::TeamId,
-                    user_id as database::models::ids::UserId,
-                )
-                .fetch_one(&**pool)
-                .await?
-                .exists;
-
-                authorized = project_exists.unwrap_or(false);
-            }
-        }
-    }
-
-    if !authorized {
+    if !is_authorized(&data, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
     }
+
     let version_names = sqlx::query!(
         "
             SELECT version_number, version_type
@@ -134,62 +117,66 @@ pub async fn maven_metadata(
         .body(yaserde::ser::to_string(&respdata).map_err(ApiError::XmlError)?))
 }
 
+fn find_file<'a>(
+    project_id: &str,
+    project: &QueryProject,
+    version: &'a QueryVersion,
+    file: &str,
+) -> Option<&'a QueryFile> {
+    if let Some(selected_file) =
+        version.files.iter().find(|x| x.filename == file)
+    {
+        return Some(selected_file);
+    }
+
+    let fileext = match project.project_type.as_str() {
+        "mod" => "jar",
+        "modpack" => "mrpack",
+        _ => return None,
+    };
+
+    if file
+        == format!("{}-{}.{}", &project_id, &version.version_number, fileext)
+    {
+        version
+            .files
+            .iter()
+            .find(|x| x.primary)
+            .or_else(|| version.files.iter().last())
+    } else {
+        None
+    }
+}
+
 #[get("maven/modrinth/{id}/{versionnum}/{file}")]
 pub async fn version_file(
     req: HttpRequest,
-    web::Path((string, vnum, file)): web::Path<(String, String, String)>,
+    params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let id_option: Option<ProjectId> = serde_json::from_str(&*format!("\"{}\"", string)).ok();
+    let (project_id, vnum, file) = params.into_inner();
+    let project_data =
+        database::models::Project::get_full_from_slug_or_project_id(
+            &project_id,
+            &**pool,
+        )
+        .await?;
 
-    let project_data = if let Some(id) = id_option {
-        match database::models::Project::get_full(id.into(), &**pool).await {
-            Ok(Some(data)) => Ok(Some(data)),
-            Ok(None) => database::models::Project::get_full_from_slug(&string, &**pool).await,
-            Err(e) => Err(e),
-        }
-    } else {
-        database::models::Project::get_full_from_slug(&string, &**pool).await
-    }?;
-
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
-
-    let data = if let Some(data) = project_data {
+    let project = if let Some(data) = project_data {
         data
     } else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let mut authorized = !data.status.is_hidden();
+    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-    if let Some(user) = user_option {
-        if !authorized {
-            if user.role.is_mod() {
-                authorized = true;
-            } else {
-                let user_id: database::models::ids::UserId = user.id.into();
-
-                let project_exists = sqlx::query!(
-                    "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
-                    data.inner.team_id as database::models::ids::TeamId,
-                    user_id as database::models::ids::UserId,
-                )
-                .fetch_one(&**pool)
-                .await?
-                .exists;
-
-                authorized = project_exists.unwrap_or(false);
-            }
-        }
-    }
-
-    if !authorized {
+    if !is_authorized(&project, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
     }
 
     let vid = if let Some(vid) = sqlx::query!(
         "SELECT id FROM versions WHERE mod_id = $1 AND version_number = $2",
-        data.inner.id as database::models::ids::ProjectId,
+        project.inner.id as database::models::ids::ProjectId,
         vnum
     )
     .fetch_optional(&**pool)
@@ -200,16 +187,18 @@ pub async fn version_file(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let version = if let Some(version) =
-        database::models::Version::get_full(database::models::ids::VersionId(vid.id), &**pool)
-            .await?
+    let version = if let Some(version) = database::models::Version::get_full(
+        database::models::ids::VersionId(vid.id),
+        &**pool,
+    )
+    .await?
     {
         version
     } else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    if file == format!("{}-{}.pom", &string, &version.version_number) {
+    if file == format!("{}-{}.pom", &project_id, &version.version_number) {
         let respdata = MavenPom {
             schema_location:
                 "http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
@@ -217,25 +206,135 @@ pub async fn version_file(
             xsi: "http://www.w3.org/2001/XMLSchema-instance".to_string(),
             model_version: "4.0.0".to_string(),
             group_id: "maven.modrinth".to_string(),
-            artifact_id: string,
+            artifact_id: project_id,
             version: version.version_number,
-            name: data.inner.title,
-            description: data.inner.description,
+            name: project.inner.title,
+            description: project.inner.description,
         };
-        return Ok(HttpResponse::Ok()
-            .content_type("text/xml")
-            .body(yaserde::ser::to_string(&respdata).map_err(ApiError::XmlError)?));
-    } else if let Some(selected_file) = version.files.iter().find(|x| x.filename == file) {
+        return Ok(HttpResponse::Ok().content_type("text/xml").body(
+            yaserde::ser::to_string(&respdata).map_err(ApiError::XmlError)?,
+        ));
+    } else if let Some(selected_file) =
+        find_file(&project_id, &project, &version, &file)
+    {
         return Ok(HttpResponse::TemporaryRedirect()
-            .header("Location", &*selected_file.url)
+            .append_header(("location", &*selected_file.url))
             .body(""));
-    } else if file == format!("{}-{}.jar", &string, &version.version_number) {
-        if let Some(selected_file) = version.files.iter().last() {
-            return Ok(HttpResponse::TemporaryRedirect()
-                .header("Location", &*selected_file.url)
-                .body(""));
-        }
     }
 
     Ok(HttpResponse::NotFound().body(""))
+}
+
+#[get("maven/modrinth/{id}/{versionnum}/{file}.sha1")]
+pub async fn version_file_sha1(
+    req: HttpRequest,
+    params: web::Path<(String, String, String)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let (project_id, vnum, file) = params.into_inner();
+    let project_data =
+        database::models::Project::get_full_from_slug_or_project_id(
+            &project_id,
+            &**pool,
+        )
+        .await?;
+
+    let project = if let Some(data) = project_data {
+        data
+    } else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+
+    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+
+    if !is_authorized(&project, &user_option, &pool).await? {
+        return Ok(HttpResponse::NotFound().body(""));
+    }
+
+    let vid = if let Some(vid) = sqlx::query!(
+        "SELECT id FROM versions WHERE mod_id = $1 AND version_number = $2",
+        project.inner.id as database::models::ids::ProjectId,
+        vnum
+    )
+    .fetch_optional(&**pool)
+    .await?
+    {
+        vid
+    } else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+
+    let version = if let Some(version) = database::models::Version::get_full(
+        database::models::ids::VersionId(vid.id),
+        &**pool,
+    )
+    .await?
+    {
+        version
+    } else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+
+    Ok(find_file(&project_id, &project, &version, &file)
+        .and_then(|file| file.hashes.get("sha1"))
+        .and_then(|hash_bytes| std::str::from_utf8(hash_bytes).ok())
+        .map(|hash_str| HttpResponse::Ok().body(hash_str.to_string()))
+        .unwrap_or_else(|| HttpResponse::NotFound().body("")))
+}
+
+#[get("maven/modrinth/{id}/{versionnum}/{file}.sha512")]
+pub async fn version_file_sha512(
+    req: HttpRequest,
+    params: web::Path<(String, String, String)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let (project_id, vnum, file) = params.into_inner();
+    let project_data =
+        database::models::Project::get_full_from_slug_or_project_id(
+            &project_id,
+            &**pool,
+        )
+        .await?;
+
+    let project = if let Some(data) = project_data {
+        data
+    } else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+
+    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+
+    if !is_authorized(&project, &user_option, &pool).await? {
+        return Ok(HttpResponse::NotFound().body(""));
+    }
+
+    let vid = if let Some(vid) = sqlx::query!(
+        "SELECT id FROM versions WHERE mod_id = $1 AND version_number = $2",
+        project.inner.id as database::models::ids::ProjectId,
+        vnum
+    )
+    .fetch_optional(&**pool)
+    .await?
+    {
+        vid
+    } else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+
+    let version = if let Some(version) = database::models::Version::get_full(
+        database::models::ids::VersionId(vid.id),
+        &**pool,
+    )
+    .await?
+    {
+        version
+    } else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+
+    Ok(find_file(&project_id, &project, &version, &file)
+        .and_then(|file| file.hashes.get("sha512"))
+        .and_then(|hash_bytes| std::str::from_utf8(hash_bytes).ok())
+        .map(|hash_str| HttpResponse::Ok().body(hash_str.to_string()))
+        .unwrap_or_else(|| HttpResponse::NotFound().body("")))
 }

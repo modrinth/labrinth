@@ -1,4 +1,4 @@
-FROM rust:1.52.1 as build
+FROM rust:1.55.0 as build
 ENV PKG_CONFIG_ALLOW_CROSS=1
 
 WORKDIR /usr/src/labrinth
@@ -23,8 +23,15 @@ ARG SQLX_OFFLINE=true
 RUN cargo build --release
 
 
-FROM bitnami/minideb:latest
-RUN install_packages openssl ca-certificates
+FROM debian:bullseye-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN update-ca-certificates
+
 COPY --from=build /usr/src/labrinth/target/release/labrinth /labrinth/labrinth
 COPY --from=build /usr/src/labrinth/migrations/* /labrinth/migrations/
 COPY --from=build /wait /wait

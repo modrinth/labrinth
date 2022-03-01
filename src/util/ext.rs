@@ -1,20 +1,14 @@
 pub fn get_image_content_type(extension: &str) -> Option<&'static str> {
-    let content_type = match &*extension {
-        "bmp" => "image/bmp",
-        "gif" => "image/gif",
-        "jpeg" | "jpg" | "jpe" => "image/jpeg",
-        "png" => "image/png",
-        "svg" | "svgz" => "image/svg+xml",
-        "webp" => "image/webp",
-        "rgb" => "image/x-rgb",
-        "mp4" => "video/mp4",
-        _ => "",
-    };
-
-    if !content_type.is_empty() {
-        Some(content_type)
-    } else {
-        None
+    match extension {
+        "bmp" => Some("image/bmp"),
+        "gif" => Some("image/gif"),
+        "jpeg" | "jpg" | "jpe" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "svg" | "svgz" => Some("image/svg+xml"),
+        "webp" => Some("image/webp"),
+        "rgb" => Some("image/x-rgb"),
+        "mp4" => Some("video/mp4"),
+        _ => None,
     }
 }
 
@@ -22,6 +16,7 @@ pub fn project_file_type(ext: &str) -> Option<&str> {
     match ext {
         "jar" => Some("application/java-archive"),
         "zip" => Some("application/zip"),
+        "mrpack" => Some("application/x-modrinth-modpack+zip"),
         _ => None,
     }
 }

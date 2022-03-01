@@ -1,19 +1,23 @@
 use crate::file_hosting::S3Host;
+use crate::ratelimit::errors::ARError;
+use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
+use crate::ratelimit::middleware::RateLimiter;
+use crate::util::env::{parse_strings_from_var, parse_var};
 use actix_cors::Cors;
-use actix_ratelimit::errors::ARError;
-use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
-use actix_web::{http, web, App, HttpServer};
+use actix_web::{web, App, HttpServer};
 use env_logger::Env;
 use gumdrop::Options;
 use log::{error, info, warn};
-use rand::Rng;
 use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 mod database;
 mod file_hosting;
+mod health;
 mod models;
+mod ratelimit;
 mod routes;
 mod scheduler;
 mod search;
@@ -47,7 +51,8 @@ pub struct Pepper {
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+        .init();
 
     let config = Config::parse_args_default_or_exit();
 
@@ -60,6 +65,8 @@ async fn main() -> std::io::Result<()> {
             ));
         }
     }
+
+    info!("Starting Labrinth on {}", dotenv::var("BIND_ADDR").unwrap());
 
     let search_config = search::SearchConfig {
         address: dotenv::var("MEILISEARCH_ADDR").unwrap(),
@@ -87,14 +94,6 @@ async fn main() -> std::io::Result<()> {
         info!("Skipping initial indexing");
     }
 
-    // DSN is from SENTRY_DSN env variable.
-    // Has no effect if not set.
-    let sentry = sentry::init(());
-    if sentry.is_enabled() {
-        info!("Enabled Sentry integration");
-        std::env::set_var("RUST_BACKTRACE", "1");
-    }
-
     database::check_for_migrations()
         .await
         .expect("An error occurred while running migrations.");
@@ -104,52 +103,47 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Database connection failed");
 
-    let storage_backend = dotenv::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
+    let storage_backend =
+        dotenv::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
 
-    let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> = if storage_backend == "backblaze"
-    {
-        Arc::new(
-            file_hosting::BackblazeHost::new(
-                &dotenv::var("BACKBLAZE_KEY_ID").unwrap(),
-                &dotenv::var("BACKBLAZE_KEY").unwrap(),
-                &dotenv::var("BACKBLAZE_BUCKET_ID").unwrap(),
-            )
-            .await,
-        )
-    } else if storage_backend == "s3" {
-        Arc::new(
-            S3Host::new(
-                &*dotenv::var("S3_BUCKET_NAME").unwrap(),
-                &*dotenv::var("S3_REGION").unwrap(),
-                &*dotenv::var("S3_URL").unwrap(),
-                &*dotenv::var("S3_ACCESS_TOKEN").unwrap(),
-                &*dotenv::var("S3_SECRET").unwrap(),
-            )
-            .unwrap(),
-        )
-    } else if storage_backend == "local" {
-        Arc::new(file_hosting::MockHost::new())
-    } else {
-        panic!("Invalid storage backend specified. Aborting startup!")
-    };
+    let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> =
+        match storage_backend.as_str() {
+            "backblaze" => Arc::new(
+                file_hosting::BackblazeHost::new(
+                    &dotenv::var("BACKBLAZE_KEY_ID").unwrap(),
+                    &dotenv::var("BACKBLAZE_KEY").unwrap(),
+                    &dotenv::var("BACKBLAZE_BUCKET_ID").unwrap(),
+                )
+                .await,
+            ),
+            "s3" => Arc::new(
+                S3Host::new(
+                    &*dotenv::var("S3_BUCKET_NAME").unwrap(),
+                    &*dotenv::var("S3_REGION").unwrap(),
+                    &*dotenv::var("S3_URL").unwrap(),
+                    &*dotenv::var("S3_ACCESS_TOKEN").unwrap(),
+                    &*dotenv::var("S3_SECRET").unwrap(),
+                )
+                .unwrap(),
+            ),
+            "local" => Arc::new(file_hosting::MockHost::new()),
+            _ => panic!("Invalid storage backend specified. Aborting startup!"),
+        };
 
     let mut scheduler = scheduler::Scheduler::new();
 
     // The interval in seconds at which the local database is indexed
     // for searching.  Defaults to 1 hour if unset.
     let local_index_interval = std::time::Duration::from_secs(
-        dotenv::var("LOCAL_INDEX_INTERVAL")
-            .ok()
-            .map(|i| i.parse().unwrap())
-            .unwrap_or(3600),
+        parse_var("LOCAL_INDEX_INTERVAL").unwrap_or(3600),
     );
 
-    let pool_ref = pool.clone();
-    let thread_search_config = search_config.clone();
     let mut skip = skip_initial;
+    let pool_ref = pool.clone();
+    let search_config_ref = search_config.clone();
     scheduler.run(local_index_interval, move || {
         let pool_ref = pool_ref.clone();
-        let thread_search_config = thread_search_config.clone();
+        let search_config_ref = search_config_ref.clone();
         let local_skip = skip;
         if skip {
             skip = false;
@@ -160,7 +154,8 @@ async fn main() -> std::io::Result<()> {
             }
             info!("Indexing local database");
             let settings = IndexingSettings { index_local: true };
-            let result = index_projects(pool_ref, settings, &thread_search_config).await;
+            let result =
+                index_projects(pool_ref, settings, &search_config_ref).await;
             if let Err(e) = result {
                 warn!("Local project indexing failed: {:?}", e);
             }
@@ -175,22 +170,6 @@ async fn main() -> std::io::Result<()> {
         info!("Deleting old records from temporary tables");
 
         async move {
-            let downloads_result = sqlx::query!(
-                "
-                DELETE FROM downloads
-                WHERE date < (CURRENT_DATE - INTERVAL '30 minutes ago')
-                "
-            )
-            .execute(&pool_ref)
-            .await;
-
-            if let Err(e) = downloads_result {
-                warn!(
-                    "Deleting old records from temporary table downloads failed: {:?}",
-                    e
-                );
-            }
-
             let states_result = sqlx::query!(
                 "
                 DELETE FROM states
@@ -211,14 +190,15 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    let indexing_queue = Arc::new(search::indexing::queue::CreationQueue::new());
+    let indexing_queue =
+        Arc::new(search::indexing::queue::CreationQueue::new());
 
-    let queue_ref = indexing_queue.clone();
-    let thread_search_config = search_config.clone();
     let mut skip = skip_initial;
+    let queue_ref = indexing_queue.clone();
+    let search_config_ref = search_config.clone();
     scheduler.run(std::time::Duration::from_secs(15 * 60), move || {
-        let queue = queue_ref.clone();
-        let thread_search_config = thread_search_config.clone();
+        let queue_ref = queue_ref.clone();
+        let search_config_ref = search_config_ref.clone();
         let local_skip = skip;
         if skip {
             skip = false;
@@ -228,10 +208,11 @@ async fn main() -> std::io::Result<()> {
                 return;
             }
             info!("Indexing created project queue");
-            let result = search::indexing::queue::index_queue(&*queue, &thread_search_config).await;
+            let result = queue_ref.index(&search_config_ref).await;
             if let Err(e) = result {
                 warn!("Indexing created projects failed: {:?}", e);
             }
+            crate::health::SEARCH_READY.store(true, Ordering::Release);
             info!("Done indexing created project queue");
         }
     });
@@ -239,7 +220,10 @@ async fn main() -> std::io::Result<()> {
     scheduler::schedule_versions(&mut scheduler, pool.clone(), skip_initial);
 
     let ip_salt = Pepper {
-        pepper: crate::models::ids::Base62Id(crate::models::ids::random_base62(11)).to_string(),
+        pepper: crate::models::ids::Base62Id(
+            crate::models::ids::random_base62(11),
+        )
+        .to_string(),
     };
 
     let store = MemoryStore::new();
@@ -251,67 +235,58 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(
                 Cors::default()
-                    .allowed_methods(vec!["GET", "POST", "DELETE", "PATCH", "PUT"])
-                    .allowed_headers(vec![http::header::AUTHORIZATION, http::header::ACCEPT])
-                    .allowed_header(http::header::CONTENT_TYPE)
                     .allow_any_origin()
-                    .max_age(3600),
+                    .allow_any_header()
+                    .allow_any_method()
+                    .max_age(3600)
+                    .send_wildcard(),
             )
             .wrap(
-                // This is a hacky workaround to allowing the frontend server-side renderer to have
-                // an unlimited rate limit, since there is no current way with this library to
-                // have dynamic rate-limit max requests
                 RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
                     .with_identifier(|req| {
                         let connection_info = req.connection_info();
                         let ip = String::from(
-                            if dotenv::var("CLOUDFLARE_INTEGRATION")
-                                .ok()
-                                .map(|i| i.parse().unwrap())
+                            if parse_var("CLOUDFLARE_INTEGRATION")
                                 .unwrap_or(false)
                             {
-                                if let Some(header) = req.headers().get("CF-Connecting-IP") {
-                                    header.to_str().map_err(|_| ARError::IdentificationError)?
+                                if let Some(header) =
+                                    req.headers().get("CF-Connecting-IP")
+                                {
+                                    header.to_str().map_err(|_| {
+                                        ARError::IdentificationError
+                                    })?
                                 } else {
                                     connection_info
-                                        .remote_addr()
+                                        .peer_addr()
                                         .ok_or(ARError::IdentificationError)?
                                 }
                             } else {
                                 connection_info
-                                    .remote_addr()
+                                    .peer_addr()
                                     .ok_or(ARError::IdentificationError)?
                             },
                         );
 
-                        let ignore_ips = dotenv::var("RATE_LIMIT_IGNORE_IPS")
-                            .ok()
-                            .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
-                            .unwrap_or_else(Vec::new);
-
-                        if ignore_ips.contains(&ip) {
-                            // At an even distribution of numbers, this will allow at the most
-                            // 18000 requests per minute from the frontend, which is reasonable
-                            // (300 requests per second)
-                            let random = rand::thread_rng().gen_range(1, 30);
-                            return Ok(format!("{}-{}", ip, random));
-                        }
-
                         Ok(ip)
                     })
                     .with_interval(std::time::Duration::from_secs(60))
-                    .with_max_requests(300),
+                    .with_max_requests(300)
+                    .with_ignore_ips(
+                        parse_strings_from_var("RATE_LIMIT_IGNORE_IPS")
+                            .unwrap_or_default(),
+                    ),
             )
-            .wrap(sentry_actix::Sentry::new())
-            .data(pool.clone())
-            .data(file_host.clone())
-            .data(indexing_queue.clone())
-            .data(search_config.clone())
-            .data(ip_salt.clone())
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(file_host.clone()))
+            .app_data(web::Data::new(indexing_queue.clone()))
+            .app_data(web::Data::new(search_config.clone()))
+            .app_data(web::Data::new(ip_salt.clone()))
             .configure(routes::v1_config)
             .configure(routes::v2_config)
             .service(routes::index_get)
-            .service(web::scope("/maven/").configure(routes::maven_config))
+            .service(routes::health_get)
+            .service(web::scope("maven").configure(routes::maven_config))
+            .service(web::scope("updates").configure(routes::updates))
             .default_service(web::get().to(routes::not_found))
     })
     .bind(dotenv::var("BIND_ADDR").unwrap())?
@@ -323,34 +298,31 @@ async fn main() -> std::io::Result<()> {
 fn check_env_vars() -> bool {
     let mut failed = false;
 
-    fn check_var<T: std::str::FromStr>(var: &str) -> bool {
-        if dotenv::var(var)
-            .ok()
-            .and_then(|s| s.parse::<T>().ok())
-            .is_none()
-        {
+    fn check_var<T: std::str::FromStr>(var: &'static str) -> bool {
+        let check = parse_var::<T>(var).is_none();
+        if check {
             warn!(
                 "Variable `{}` missing in dotenv or not of type `{}`",
                 var,
                 std::any::type_name::<T>()
             );
-            true
-        } else {
-            false
         }
+        check
     }
 
-    if dotenv::var("RATE_LIMIT_IGNORE_IPS")
-        .ok()
-        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
-        .is_none()
-    {
+    if parse_strings_from_var("RATE_LIMIT_IGNORE_IPS").is_none() {
         warn!("Variable `RATE_LIMIT_IGNORE_IPS` missing in dotenv or not a json array of strings");
+        failed |= true;
+    }
+
+    if parse_strings_from_var("WHITELISTED_MODPACK_DOMAINS").is_none() {
+        warn!("Variable `WHITELISTED_MODPACK_DOMAINS` missing in dotenv or not a json array of strings");
         failed |= true;
     }
 
     failed |= check_var::<String>("SITE_URL");
     failed |= check_var::<String>("CDN_URL");
+    failed |= check_var::<String>("LABRINTH_ADMIN_KEY");
     failed |= check_var::<String>("DATABASE_URL");
     failed |= check_var::<String>("MEILISEARCH_ADDR");
     failed |= check_var::<String>("MEILISEARCH_KEY");
@@ -359,24 +331,31 @@ fn check_env_vars() -> bool {
     failed |= check_var::<String>("STORAGE_BACKEND");
 
     let storage_backend = dotenv::var("STORAGE_BACKEND").ok();
-
-    if storage_backend.as_deref() == Some("backblaze") {
-        failed |= check_var::<String>("BACKBLAZE_KEY_ID");
-        failed |= check_var::<String>("BACKBLAZE_KEY");
-        failed |= check_var::<String>("BACKBLAZE_BUCKET_ID");
-    } else if storage_backend.as_deref() == Some("s3") {
-        failed |= check_var::<String>("S3_ACCESS_TOKEN");
-        failed |= check_var::<String>("S3_SECRET");
-        failed |= check_var::<String>("S3_URL");
-        failed |= check_var::<String>("S3_REGION");
-        failed |= check_var::<String>("S3_BUCKET_NAME");
-    } else if storage_backend.as_deref() == Some("local") {
-        failed |= check_var::<String>("MOCK_FILE_PATH");
-    } else if let Some(backend) = storage_backend {
-        warn!("Variable `STORAGE_BACKEND` contains an invalid value: {}. Expected \"backblaze\", \"s3\", or \"local\".", backend);
-        failed |= true;
+    match storage_backend.as_deref() {
+        Some("backblaze") => {
+            failed |= check_var::<String>("BACKBLAZE_KEY_ID");
+            failed |= check_var::<String>("BACKBLAZE_KEY");
+            failed |= check_var::<String>("BACKBLAZE_BUCKET_ID");
+        }
+        Some("s3") => {
+            failed |= check_var::<String>("S3_ACCESS_TOKEN");
+            failed |= check_var::<String>("S3_SECRET");
+            failed |= check_var::<String>("S3_URL");
+            failed |= check_var::<String>("S3_REGION");
+            failed |= check_var::<String>("S3_BUCKET_NAME");
+        }
+        Some("local") => {
+            failed |= check_var::<String>("MOCK_FILE_PATH");
+        }
+        Some(backend) => {
+            warn!("Variable `STORAGE_BACKEND` contains an invalid value: {}. Expected \"backblaze\", \"s3\", or \"local\".", backend);
+            failed |= true;
+        }
+        _ => {
+            warn!("Variable `STORAGE_BACKEND` is not set!");
+            failed |= true;
+        }
     }
-
     failed |= check_var::<usize>("LOCAL_INDEX_INTERVAL");
 
     failed |= check_var::<usize>("VERSION_INDEX_INTERVAL");

@@ -1,13 +1,17 @@
 use crate::database::models;
 use crate::database::models::notification_item::NotificationBuilder;
-use crate::database::models::version_item::{VersionBuilder, VersionFileBuilder};
+use crate::database::models::version_item::{
+    VersionBuilder, VersionFileBuilder,
+};
 use crate::file_hosting::FileHost;
 use crate::models::projects::{
-    Dependency, GameVersion, Loader, ProjectId, Version, VersionFile, VersionId, VersionType,
+    Dependency, GameVersion, Loader, ProjectId, Version, VersionFile,
+    VersionId, VersionType,
 };
 use crate::models::teams::Permissions;
 use crate::routes::project_creation::{CreateError, UploadedFile};
 use crate::util::auth::get_user_from_headers;
+use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
@@ -33,12 +37,18 @@ pub struct InitialVersionData {
     pub version_title: String,
     #[validate(length(max = 65536))]
     pub version_body: Option<String>,
-    #[validate(length(min = 0, max = 256))]
+    #[validate(
+        length(min = 0, max = 256),
+        custom(function = "crate::util::validate::validate_deps")
+    )]
     pub dependencies: Vec<Dependency>,
+    #[validate(length(min = 1))]
     pub game_versions: Vec<GameVersion>,
     pub release_channel: VersionType,
+    #[validate(length(min = 1))]
     pub loaders: Vec<Loader>,
     pub featured: bool,
+    pub primary_file: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -67,8 +77,11 @@ pub async fn version_create(
     .await;
 
     if result.is_err() {
-        let undo_result =
-            super::project_creation::undo_uploads(&***file_host, &uploaded_files).await;
+        let undo_result = super::project_creation::undo_uploads(
+            &***file_host,
+            &uploaded_files,
+        )
+        .await;
         let rollback_result = transaction.rollback().await;
 
         if let Err(e) = undo_result {
@@ -96,27 +109,30 @@ async fn version_create_inner(
     let mut initial_version_data = None;
     let mut version_builder = None;
 
-    let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
-    let all_loaders = models::categories::Loader::list(&mut *transaction).await?;
+    let all_game_versions =
+        models::categories::GameVersion::list(&mut *transaction).await?;
+    let all_loaders =
+        models::categories::Loader::list(&mut *transaction).await?;
 
     let user = get_user_from_headers(req.headers(), &mut *transaction).await?;
 
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
-        let content_disposition = field.content_disposition().ok_or_else(|| {
-            CreateError::MissingValueError("Missing content disposition".to_string())
+        let content_disposition = field.content_disposition().clone();
+        let name = content_disposition.get_name().ok_or_else(|| {
+            CreateError::MissingValueError("Missing content name".to_string())
         })?;
-        let name = content_disposition
-            .get_name()
-            .ok_or_else(|| CreateError::MissingValueError("Missing content name".to_string()))?;
 
         if name == "data" {
             let mut data = Vec::new();
             while let Some(chunk) = field.next().await {
-                data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
+                data.extend_from_slice(
+                    &chunk.map_err(CreateError::MultipartError)?,
+                );
             }
 
-            let version_create_data: InitialVersionData = serde_json::from_slice(&data)?;
+            let version_create_data: InitialVersionData =
+                serde_json::from_slice(&data)?;
             initial_version_data = Some(version_create_data);
             let version_create_data = initial_version_data.as_ref().unwrap();
             if version_create_data.project_id.is_none() {
@@ -126,10 +142,13 @@ async fn version_create_inner(
             }
 
             version_create_data.validate().map_err(|err| {
-                CreateError::ValidationError(validation_errors_to_string(err, None))
+                CreateError::ValidationError(validation_errors_to_string(
+                    err, None,
+                ))
             })?;
 
-            let project_id: models::ProjectId = version_create_data.project_id.unwrap().into();
+            let project_id: models::ProjectId =
+                version_create_data.project_id.unwrap().into();
 
             // Ensure that the project this version is being added to exists
             let results = sqlx::query!(
@@ -157,7 +176,8 @@ async fn version_create_inner(
 
             if results.exists.unwrap_or(true) {
                 return Err(CreateError::InvalidInput(
-                    "A version with that version_number already exists".to_string(),
+                    "A version with that version_number already exists"
+                        .to_string(),
                 ));
             }
 
@@ -171,7 +191,8 @@ async fn version_create_inner(
             .await?
             .ok_or_else(|| {
                 CreateError::CustomAuthenticationError(
-                    "You don't have permission to upload this version!".to_string(),
+                    "You don't have permission to upload this version!"
+                        .to_string(),
                 )
             })?;
 
@@ -180,11 +201,13 @@ async fn version_create_inner(
                 .contains(Permissions::UPLOAD_VERSION)
             {
                 return Err(CreateError::CustomAuthenticationError(
-                    "You don't have permission to upload this version!".to_string(),
+                    "You don't have permission to upload this version!"
+                        .to_string(),
                 ));
             }
 
-            let version_id: VersionId = models::generate_version_id(transaction).await?.into();
+            let version_id: VersionId =
+                models::generate_version_id(transaction).await?.into();
 
             let project_type = sqlx::query!(
                 "
@@ -205,7 +228,9 @@ async fn version_create_inner(
                     all_game_versions
                         .iter()
                         .find(|y| y.version == x.0)
-                        .ok_or_else(|| CreateError::InvalidGameVersion(x.0.clone()))
+                        .ok_or_else(|| {
+                            CreateError::InvalidGameVersion(x.0.clone())
+                        })
                         .map(|y| y.id)
                 })
                 .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
@@ -217,7 +242,9 @@ async fn version_create_inner(
                     all_loaders
                         .iter()
                         .find(|y| {
-                            y.loader == x.0 && y.supported_project_types.contains(&project_type)
+                            y.loader == x.0
+                                && y.supported_project_types
+                                    .contains(&project_type)
                         })
                         .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
                         .map(|y| y.id)
@@ -256,7 +283,9 @@ async fn version_create_inner(
         }
 
         let version = version_builder.as_mut().ok_or_else(|| {
-            CreateError::InvalidInput(String::from("`data` field must come before file fields"))
+            CreateError::InvalidInput(String::from(
+                "`data` field must come before file fields",
+            ))
         })?;
 
         let project_type = sqlx::query!(
@@ -271,9 +300,9 @@ async fn version_create_inner(
         .await?
         .name;
 
-        let version_data = initial_version_data
-            .clone()
-            .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
+        let version_data = initial_version_data.clone().ok_or_else(|| {
+            CreateError::InvalidInput("`data` field is required".to_string())
+        })?;
 
         upload_file(
             &mut field,
@@ -287,17 +316,20 @@ async fn version_create_inner(
             &*project_type,
             version_data.loaders,
             version_data.game_versions,
-            &all_game_versions,
-            false,
+            all_game_versions.clone(),
+            version_data.primary_file.is_some(),
+            version_data.primary_file.as_deref() == Some(name),
             &mut transaction,
         )
         .await?;
     }
 
-    let version_data = initial_version_data
-        .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
-    let builder = version_builder
-        .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
+    let version_data = initial_version_data.ok_or_else(|| {
+        CreateError::InvalidInput("`data` field is required".to_string())
+    })?;
+    let builder = version_builder.ok_or_else(|| {
+        CreateError::InvalidInput("`data` field is required".to_string())
+    })?;
 
     if builder.files.is_empty() {
         return Err(CreateError::InvalidInput(
@@ -307,8 +339,10 @@ async fn version_create_inner(
 
     let result = sqlx::query!(
         "
-        SELECT m.title FROM mods m
-        WHERE id = $1
+        SELECT m.title title, pt.name project_type
+        FROM mods m
+        INNER JOIN project_types pt ON pt.id = m.project_type
+        WHERE m.id = $1
         ",
         builder.project_id as crate::database::models::ids::ProjectId
     )
@@ -343,7 +377,10 @@ async fn version_create_inner(
             result.title,
             version_data.version_number.clone()
         ),
-        link: format!("project/{}/version/{}", project_id, version_id),
+        link: format!(
+            "/{}/{}/version/{}",
+            result.project_type, project_id, version_id
+        ),
         actions: vec![],
     }
     .insert_many(users, &mut *transaction)
@@ -422,8 +459,11 @@ pub async fn upload_file_to_version(
     .await;
 
     if result.is_err() {
-        let undo_result =
-            super::project_creation::undo_uploads(&***file_host, &uploaded_files).await;
+        let undo_result = super::project_creation::undo_uploads(
+            &***file_host,
+            &uploaded_files,
+        )
+        .await;
         let rollback_result = transaction.rollback().await;
 
         if let Err(e) = undo_result {
@@ -466,21 +506,26 @@ async fn upload_file_to_version_inner(
         }
     };
 
-    let team_member =
-        models::TeamMember::get_from_user_id_version(version_id, user.id.into(), &mut *transaction)
-            .await?
-            .ok_or_else(|| {
-                CreateError::CustomAuthenticationError(
-                    "You don't have permission to upload files to this version!".to_string(),
-                )
-            })?;
+    let team_member = models::TeamMember::get_from_user_id_version(
+        version_id,
+        user.id.into(),
+        &mut *transaction,
+    )
+    .await?
+    .ok_or_else(|| {
+        CreateError::CustomAuthenticationError(
+            "You don't have permission to upload files to this version!"
+                .to_string(),
+        )
+    })?;
 
     if !team_member
         .permissions
         .contains(Permissions::UPLOAD_VERSION)
     {
         return Err(CreateError::CustomAuthenticationError(
-            "You don't have permission to upload files to this version!".to_string(),
+            "You don't have permission to upload files to this version!"
+                .to_string(),
         ));
     }
 
@@ -499,21 +544,22 @@ async fn upload_file_to_version_inner(
     .await?
     .name;
 
-    let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
+    let all_game_versions =
+        models::categories::GameVersion::list(&mut *transaction).await?;
 
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
-        let content_disposition = field.content_disposition().ok_or_else(|| {
-            CreateError::MissingValueError("Missing content disposition".to_string())
+        let content_disposition = field.content_disposition().clone();
+        let name = content_disposition.get_name().ok_or_else(|| {
+            CreateError::MissingValueError("Missing content name".to_string())
         })?;
-        let name = content_disposition
-            .get_name()
-            .ok_or_else(|| CreateError::MissingValueError("Missing content name".to_string()))?;
 
         if name == "data" {
             let mut data = Vec::new();
             while let Some(chunk) = field.next().await {
-                data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
+                data.extend_from_slice(
+                    &chunk.map_err(CreateError::MultipartError)?,
+                );
             }
             let file_data: InitialFileData = serde_json::from_slice(&data)?;
             // TODO: currently no data here, but still required
@@ -523,7 +569,9 @@ async fn upload_file_to_version_inner(
         }
 
         let _file_data = initial_file_data.as_ref().ok_or_else(|| {
-            CreateError::InvalidInput(String::from("`data` field must come before file fields"))
+            CreateError::InvalidInput(String::from(
+                "`data` field must come before file fields",
+            ))
         })?;
 
         upload_file(
@@ -543,8 +591,9 @@ async fn upload_file_to_version_inner(
                 .into_iter()
                 .map(GameVersion)
                 .collect(),
-            &all_game_versions,
+            all_game_versions.clone(),
             true,
+            false,
             &mut transaction,
         )
         .await?;
@@ -578,29 +627,22 @@ pub async fn upload_file(
     project_type: &str,
     loaders: Vec<Loader>,
     game_versions: Vec<GameVersion>,
-    all_game_versions: &[models::categories::GameVersion],
+    all_game_versions: Vec<models::categories::GameVersion>,
     ignore_primary: bool,
+    force_primary: bool,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<(), CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
 
     let content_type = crate::util::ext::project_file_type(file_extension)
-        .ok_or_else(|| CreateError::InvalidFileType(file_extension.to_string()))?;
+        .ok_or_else(|| {
+            CreateError::InvalidFileType(file_extension.to_string())
+        })?;
 
-    let mut data = Vec::new();
-    while let Some(chunk) = field.next().await {
-        // Project file size limit of 100MiB
-        const FILE_SIZE_CAP: usize = 100 * (1 << 20);
-
-        if data.len() >= FILE_SIZE_CAP {
-            return Err(CreateError::InvalidInput(
-                String::from("Project file exceeds the maximum of 100MiB. Contact a moderator or admin to request permission to upload larger files.")
-            ));
-        } else {
-            let bytes = chunk.map_err(CreateError::MultipartError)?;
-            data.append(&mut bytes.to_vec());
-        }
-    }
+    let data = read_from_field(
+        field, 100 * (1 << 20),
+        "Project file exceeds the maximum of 100MiB. Contact a moderator or admin to request permission to upload larger files."
+    ).await?;
 
     let hash = sha1::Sha1::from(&data).hexdigest();
     let exists = sqlx::query!(
@@ -618,39 +660,44 @@ pub async fn upload_file(
 
     if exists {
         return Err(CreateError::InvalidInput(
-            "Duplicate files are not allowed to be uploaded to Modrinth!".to_string(),
+            "Duplicate files are not allowed to be uploaded to Modrinth!"
+                .to_string(),
         ));
     }
 
     let validation_result = validate_file(
-        data.as_slice(),
-        file_extension,
-        project_type,
+        data.clone().into(),
+        file_extension.to_string(),
+        project_type.to_string(),
         loaders,
         game_versions,
         all_game_versions,
-    )?;
+    )
+    .await?;
+
+    let file_path_encode = format!(
+        "data/{}/versions/{}/{}",
+        project_id,
+        version_number,
+        urlencoding::encode(file_name)
+    );
+    let file_path = format!(
+        "data/{}/versions/{}/{}",
+        project_id, version_number, &file_name
+    );
 
     let upload_data = file_host
-        .upload_file(
-            content_type,
-            &format!(
-                "data/{}/versions/{}/{}",
-                project_id, version_number, file_name
-            ),
-            data.to_vec(),
-        )
+        .upload_file(content_type, &file_path, data.freeze())
         .await?;
 
     uploaded_files.push(UploadedFile {
         file_id: upload_data.file_id,
-        file_name: upload_data.file_name.clone(),
+        file_name: file_path,
     });
 
-    // TODO: Malware scan + file validation
     version_files.push(models::version_item::VersionFileBuilder {
         filename: file_name.to_string(),
-        url: format!("{}/{}", cdn_url, upload_data.file_name),
+        url: format!("{}/{}", cdn_url, file_path_encode),
         hashes: vec![
             models::version_item::HashBuilder {
                 algorithm: "sha1".to_string(),
@@ -665,9 +712,10 @@ pub async fn upload_file(
                 hash: upload_data.content_sha512.into_bytes(),
             },
         ],
-        primary: validation_result == ValidationResult::Pass
+        primary: (validation_result == ValidationResult::Pass
             && version_files.iter().all(|x| !x.primary)
-            && !ignore_primary,
+            && !ignore_primary)
+            || force_primary,
     });
 
     Ok(())
@@ -676,9 +724,9 @@ pub async fn upload_file(
 pub fn get_name_ext(
     content_disposition: &actix_web::http::header::ContentDisposition,
 ) -> Result<(&str, &str), CreateError> {
-    let file_name = content_disposition
-        .get_filename()
-        .ok_or_else(|| CreateError::MissingValueError("Missing content file name".to_string()))?;
+    let file_name = content_disposition.get_filename().ok_or_else(|| {
+        CreateError::MissingValueError("Missing content file name".to_string())
+    })?;
     let file_extension = if let Some(last_period) = file_name.rfind('.') {
         file_name.get((last_period + 1)..).unwrap_or("")
     } else {

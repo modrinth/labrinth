@@ -123,10 +123,8 @@ impl Notification {
         let (notifications, actions) = futures::join!(
             sqlx::query!(
                 "
-                SELECT n.user_id, n.title, n.text, n.link, n.created, n.read, n.type notification_type,
-                ARRAY_AGG(DISTINCT na.id || ', ' || na.title || ', ' || na.action_route || ', ' || na.action_route_method) actions
+                SELECT n.user_id, n.title, n.text, n.link, n.created, n.read, n.type notification_type
                 FROM notifications n
-                LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id
                 WHERE n.id = $1
                 GROUP BY n.id, n.user_id;
                 ",
@@ -176,9 +174,11 @@ impl Notification {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        futures::future::try_join_all(notification_ids.into_iter().map(|id| Self::get(id, exec)))
-            .await
-            .map(|x| x.into_iter().flatten().collect())
+        futures::future::try_join_all(
+            notification_ids.into_iter().map(|id| Self::get(id, exec)),
+        )
+        .await
+        .map(|x| x.into_iter().flatten().collect())
     }
 
     pub async fn get_many_user<'a, E>(
@@ -236,7 +236,8 @@ impl Notification {
         notification_ids: Vec<NotificationId>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Option<()>, sqlx::error::Error> {
-        let notification_ids_parsed: Vec<i64> = notification_ids.into_iter().map(|x| x.0).collect();
+        let notification_ids_parsed: Vec<i64> =
+            notification_ids.into_iter().map(|x| x.0).collect();
 
         sqlx::query!(
             "

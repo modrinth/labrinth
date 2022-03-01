@@ -15,7 +15,7 @@ struct DiscordEmbed {
 
 #[derive(Serialize)]
 struct DiscordEmbedField {
-    pub name: String,
+    pub name: &'static str,
     pub value: String,
     pub inline: bool,
 }
@@ -36,44 +36,45 @@ pub async fn send_discord_webhook(
 ) -> Result<(), reqwest::Error> {
     let mut fields = vec![
         DiscordEmbedField {
-            name: "id".to_string(),
+            name: "id",
             value: project.id.to_string(),
             inline: true,
         },
         DiscordEmbedField {
-            name: "project_type".to_string(),
-            value: project.project_type.to_string(),
+            name: "project_type",
+            value: project.project_type.clone(),
             inline: true,
         },
         DiscordEmbedField {
-            name: "client_side".to_string(),
+            name: "client_side",
             value: project.client_side.to_string(),
             inline: true,
         },
         DiscordEmbedField {
-            name: "server_side".to_string(),
+            name: "server_side",
             value: project.server_side.to_string(),
             inline: true,
         },
         DiscordEmbedField {
-            name: "categories".to_string(),
+            name: "categories",
             value: project.categories.join(", "),
             inline: true,
         },
     ];
 
-    if let Some(slug) = project.slug.clone() {
+    if let Some(ref slug) = project.slug {
         fields.push(DiscordEmbedField {
-            name: "slug".to_string(),
-            value: slug,
+            name: "slug",
+            value: slug.clone(),
             inline: true,
         });
     }
 
     let embed = DiscordEmbed {
         url: format!(
-            "{}/mod/{}",
+            "{}/{}/{}",
             dotenv::var("SITE_URL").unwrap_or_default(),
+            project.project_type,
             project
                 .clone()
                 .slug
@@ -82,7 +83,7 @@ pub async fn send_discord_webhook(
         title: project.title,
         description: project.description,
         timestamp: project.published,
-        color: 6137157,
+        color: 0x1bd96a,
         fields,
         image: DiscordEmbedImage {
             url: project.icon_url,
