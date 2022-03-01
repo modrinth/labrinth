@@ -2,18 +2,18 @@ use crate::validate::{SupportedGameVersions, ValidationError, ValidationResult};
 use std::io::Cursor;
 use zip::ZipArchive;
 
-pub struct BukkitValidator {}
+pub struct BukkitValidator;
 
 impl super::Validator for BukkitValidator {
-    fn get_file_extensions<'a>(&self) -> &'a [&'a str] {
+    fn get_file_extensions(&self) -> &[&str] {
         &["jar"]
     }
 
-    fn get_project_types<'a>(&self) -> &'a [&'a str] {
+    fn get_project_types(&self) -> &[&str] {
         &["plugin"]
     }
 
-    fn get_supported_loaders<'a>(&self) -> &'a [&'a str] {
+    fn get_supported_loaders(&self) -> &[&str] {
         &["bukkit", "spigot", "paper", "purpur"]
     }
 
@@ -23,12 +23,12 @@ impl super::Validator for BukkitValidator {
 
     fn validate(
         &self,
-        archive: &mut ZipArchive<Cursor<&[u8]>>,
+        archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
         // TODO: Add schema validation in order to make sure that it won't error out
         archive.by_name("plugin.yml").map_err(|_| {
             ValidationError::InvalidInputError(
-                "No plugin.yml file is present in your file.".to_string(),
+                "No plugin.yml file is present in your file.".into(),
             )
         })?;
 
