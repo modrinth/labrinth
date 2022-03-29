@@ -423,7 +423,7 @@ async fn version_create_inner(
                 url: file.url.clone(),
                 filename: file.filename.clone(),
                 primary: file.primary,
-                size: file.size
+                size: file.size,
             })
             .collect::<Vec<_>>(),
         dependencies: version_data.dependencies,

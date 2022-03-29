@@ -358,7 +358,7 @@ impl From<QueryVersion> for Version {
                             .collect::<Option<_>>()
                             .unwrap_or_default(),
                         primary: f.primary,
-                        size: f.size
+                        size: f.size,
                     }
                 })
                 .collect(),

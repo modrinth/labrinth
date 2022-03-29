@@ -702,7 +702,7 @@ impl Version {
                             .or_default()
                             .clone(),
                         primary: x.is_primary,
-                        size: x.size as u32
+                        size: x.size as u32,
                     })
                     .collect(),
                 game_versions: game_versions?
