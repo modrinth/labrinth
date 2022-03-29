@@ -33,6 +33,7 @@ pub struct PackFile<'a> {
     pub env: Option<std::collections::HashMap<EnvType, SideType>>,
     #[validate(custom(function = "validate_download_url"))]
     pub downloads: Vec<&'a str>,
+    pub file_size: Option<u32>,
 }
 
 fn validate_download_url(
