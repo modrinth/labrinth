@@ -927,8 +927,8 @@ pub async fn project_icon_edit(
 
         let bytes = read_from_payload(
             &mut payload,
-            262144,
-            "Icons must be smaller than 256KiB",
+            1048576,
+            "Icons must be smaller than 1MiB",
         )
         .await?;
         let hash = sha1::Sha1::from(&bytes).hexdigest();

@@ -845,8 +845,8 @@ async fn process_icon_upload(
     {
         let data = read_from_field(
             &mut field,
-            262144,
-            "Icons must be smaller than 256KiB",
+            1048576,
+            "Icons must be smaller than 1MiB",
         )
         .await?;
 
