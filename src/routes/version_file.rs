@@ -326,7 +326,7 @@ pub async fn get_versions_from_hashes(
     )
     .await?;
 
-    let response: Vec<_> = result
+    let response: HashMap<String, Version> = result
         .into_iter()
         .filter_map(|row| {
             versions_data
@@ -335,7 +335,7 @@ pub async fn get_versions_from_hashes(
                 .find(|x| x.id.0 == row.version_id)
                 .map(|v| {
                     (
-                        hex::encode(row.hash),
+                        String::from_utf8(row.hash).unwrap(),
                         crate::models::projects::Version::from(v),
                     )
                 })
@@ -372,7 +372,7 @@ pub async fn download_files(
 
     let response = result
         .into_iter()
-        .map(|row| (hex::encode(row.hash), row.url))
+        .map(|row| (String::from_utf8(row.hash).unwrap(), row.url))
         .collect::<HashMap<String, String>>();
 
     Ok(HttpResponse::Ok().json(response))
@@ -452,7 +452,7 @@ pub async fn update_files(
             versions.iter().find(|x| x.id.0 == row.version_id)
         {
             response.insert(
-                hex::encode(&row.hash),
+                String::from_utf8(row.hash.clone()).unwrap(),
                 models::projects::Version::from(version.clone()),
             );
         }
