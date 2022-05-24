@@ -1410,7 +1410,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "gumdrop",
- "hex",
  "itertools",
  "lazy_static",
  "log",
