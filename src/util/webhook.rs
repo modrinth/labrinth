@@ -4,6 +4,7 @@ use time::OffsetDateTime;
 
 #[derive(Serialize)]
 struct DiscordEmbed {
+    pub author: Option<DiscordEmbedAuthor>,
     pub title: String,
     pub description: String,
     pub url: String,
@@ -11,7 +12,7 @@ struct DiscordEmbed {
     pub timestamp: OffsetDateTime,
     pub color: u32,
     pub fields: Vec<DiscordEmbedField>,
-    pub image: DiscordEmbedImage,
+    pub thumbnail: DiscordEmbedThumbnail,
 }
 
 #[derive(Serialize)]
@@ -22,8 +23,13 @@ struct DiscordEmbedField {
 }
 
 #[derive(Serialize)]
-struct DiscordEmbedImage {
+struct DiscordEmbedThumbnail {
     pub url: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct DiscordEmbedAuthor {
+    name: String,
 }
 
 #[derive(Serialize)]
@@ -31,7 +37,7 @@ struct DiscordWebhook {
     pub embeds: Vec<DiscordEmbed>,
 }
 
-pub async fn send_discord_webhook(
+pub async fn send_discord_moderation_webhook(
     project: Project,
     webhook_url: String,
 ) -> Result<(), reqwest::Error> {
@@ -84,12 +90,79 @@ pub async fn send_discord_webhook(
                 .slug
                 .unwrap_or_else(|| project.id.to_string())
         ),
+        author: None,
         title: project.title,
         description: project.description,
         timestamp: project.published,
         color: 0x1bd96a,
         fields,
-        image: DiscordEmbedImage {
+        thumbnail: DiscordEmbedThumbnail {
+            url: project.icon_url,
+        },
+    };
+
+    let client = reqwest::Client::new();
+
+    client
+        .post(&webhook_url)
+        .json(&DiscordWebhook {
+            embeds: vec![embed],
+        })
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+pub async fn send_discord_public_webhook(
+    project: Project,
+    webhook_url: String,
+) -> Result<(), reqwest::Error> {
+    let mut fields = vec![
+        DiscordEmbedField {
+            name: "Project Type",
+            value: project.project_type.clone(),
+            inline: true,
+        },
+        DiscordEmbedField {
+            name: "Client side",
+            value: project.client_side.to_string(),
+            inline: true,
+        },
+        DiscordEmbedField {
+            name: "Server side",
+            value: project.server_side.to_string(),
+            inline: true,
+        },
+    ];
+
+    if !project.categories.is_empty() {
+        fields.push(DiscordEmbedField {
+            name: "Categories",
+            value: project.categories.join(", "),
+            inline: true,
+        });
+    }
+
+    let embed = DiscordEmbed {
+        url: format!(
+            "{}/{}/{}",
+            dotenv::var("SITE_URL").unwrap_or_default(),
+            project.project_type,
+            project
+                .clone()
+                .slug
+                .unwrap_or_else(|| project.id.to_string())
+        ),
+        author: Some(DiscordEmbedAuthor {
+            name: String::from("New on Modrinth!"),
+        }),
+        title: project.title,
+        description: project.description,
+        timestamp: project.published,
+        color: 0x1bd96a,
+        fields,
+        thumbnail: DiscordEmbedThumbnail {
             url: project.icon_url,
         },
     };
