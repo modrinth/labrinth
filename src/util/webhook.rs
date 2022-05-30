@@ -114,6 +114,10 @@ pub async fn send_discord_moderation_webhook(
     Ok(())
 }
 
+fn capitalize(input: &str) -> String {
+    input[0..1].to_uppercase() + &input[1..]
+}
+
 pub async fn send_discord_public_webhook(
     project: Project,
     webhook_url: String,
@@ -121,17 +125,17 @@ pub async fn send_discord_public_webhook(
     let mut fields = vec![
         DiscordEmbedField {
             name: "Project type",
-            value: project.project_type.clone(),
+            value: capitalize(&project.project_type),
             inline: true,
         },
         DiscordEmbedField {
             name: "Client side",
-            value: project.client_side.to_string(),
+            value: capitalize(&project.client_side.to_string()),
             inline: true,
         },
         DiscordEmbedField {
             name: "Server side",
-            value: project.server_side.to_string(),
+            value: capitalize(&project.server_side.to_string()),
             inline: true,
         },
     ];
@@ -139,7 +143,12 @@ pub async fn send_discord_public_webhook(
     if !project.categories.is_empty() {
         fields.push(DiscordEmbedField {
             name: "Categories",
-            value: project.categories.join(", "),
+            value: project
+                .categories
+                .iter()
+                .map(|c| capitalize(c))
+                .collect::<Vec<String>>()
+                .join(", "),
             inline: true,
         });
     }
