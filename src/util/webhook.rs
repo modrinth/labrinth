@@ -120,7 +120,7 @@ pub async fn send_discord_public_webhook(
 ) -> Result<(), reqwest::Error> {
     let mut fields = vec![
         DiscordEmbedField {
-            name: "Project Type",
+            name: "Project type",
             value: project.project_type.clone(),
             inline: true,
         },
