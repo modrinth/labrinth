@@ -10,7 +10,7 @@ use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
-use std::sync::{Arc};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[derive(Deserialize)]
@@ -429,7 +429,8 @@ pub async fn update_files(
         .fetch_all(&mut *transaction)
         .await?;
 
-    let version_ids : RwLock<HashMap<database::models::VersionId, Vec<u8>>> = RwLock::new(HashMap::new());
+    let version_ids: RwLock<HashMap<database::models::VersionId, Vec<u8>>> =
+        RwLock::new(HashMap::new());
 
     futures::future::try_join_all(result.into_iter().map(|row| async {
         let updated_versions = database::models::Version::get_project_versions(
@@ -452,21 +453,25 @@ pub async fn update_files(
             ),
             &**pool,
         )
-            .await?;
+        .await?;
 
         if let Some(latest_version) = updated_versions.last() {
-            let mut version_ids  = version_ids.write().await;
+            let mut version_ids = version_ids.write().await;
 
             version_ids.insert(*latest_version, row.hash);
         }
 
         Ok::<(), ApiError>(())
-    })).await?;
+    }))
+    .await?;
 
     let version_ids = version_ids.into_inner();
 
-    let versions =
-        database::models::Version::get_many_full(version_ids.keys().map(|x| *x).collect(), &**pool).await?;
+    let versions = database::models::Version::get_many_full(
+        version_ids.keys().copied().collect(),
+        &**pool,
+    )
+    .await?;
 
     let mut response = HashMap::new();
 
@@ -480,7 +485,7 @@ pub async fn update_files(
                     models::projects::Version::from(version),
                 );
             } else {
-                let version_id : models::projects::VersionId = version.id.into();
+                let version_id: models::projects::VersionId = version.id.into();
 
                 return Err(ApiError::Database(DatabaseError::Other(format!(
                     "Could not parse hash for version {}",
