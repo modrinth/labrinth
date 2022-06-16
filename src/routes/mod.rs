@@ -125,6 +125,8 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn teams_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(teams::teams_get);
+
     cfg.service(
         web::scope("team")
             .service(teams::team_members_get)

@@ -1,7 +1,7 @@
 use crate::database::models::notification_item::{
     NotificationActionBuilder, NotificationBuilder,
 };
-use crate::database::models::TeamMember;
+use crate::database::models::{Team, TeamMember};
 use crate::models::ids::ProjectId;
 use crate::models::teams::{Permissions, TeamId};
 use crate::models::users::UserId;
@@ -99,6 +99,32 @@ pub async fn team_members_get(
         .collect();
 
     Ok(HttpResponse::Ok().json(team_members))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TeamIds {
+    pub ids: String,
+}
+
+#[get("teams")]
+pub async fn teams_get(
+    req: HttpRequest,
+    web::Query(ids): web::Query<TeamIds>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let team_ids = serde_json::from_str::<Vec<TeamId>>(&*ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect();
+
+    let teams_data = Team::get_many(team_ids, &**pool).await?;
+
+    let teams: Vec<crate::models::teams::TeamMember> = teams_data
+        .into_iter()
+        .map(|data| crate::models::teams::TeamMember::from(data, true))
+        .collect();
+
+    Ok(HttpResponse::Ok().json(teams))
 }
 
 #[post("{id}/join")]
