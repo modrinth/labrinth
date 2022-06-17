@@ -1,7 +1,7 @@
 use crate::database::models::notification_item::{
     NotificationActionBuilder, NotificationBuilder,
 };
-use crate::database::models::{Team, TeamMember};
+use crate::database::models::TeamMember;
 use crate::models::ids::ProjectId;
 use crate::models::teams::{Permissions, TeamId};
 use crate::models::users::UserId;
@@ -112,17 +112,50 @@ pub async fn teams_get(
     web::Query(ids): web::Query<TeamIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
+    use itertools::Itertools;
+
     let team_ids = serde_json::from_str::<Vec<TeamId>>(&*ids.ids)?
         .into_iter()
         .map(|x| x.into())
         .collect();
 
-    let teams_data = Team::get_many(team_ids, &**pool).await?;
+    let teams_data =
+        TeamMember::get_from_team_full_many(team_ids, &**pool).await?;
 
-    let teams: Vec<crate::models::teams::TeamMember> = teams_data
-        .into_iter()
-        .map(|data| crate::models::teams::TeamMember::from(data, true))
-        .collect();
+    let teams_groups = teams_data.into_iter().group_by(|data| data.team_id.0);
+
+    let mut teams: Vec<Vec<crate::models::teams::TeamMember>> = vec![];
+
+    for (id, member_data) in &teams_groups {
+        let current_user =
+            get_user_from_headers(req.headers(), &**pool).await.ok();
+
+        if let Some(user) = current_user {
+            let team_member = TeamMember::get_from_user_id(
+                crate::database::models::ids::TeamId(id),
+                user.id.into(),
+                &**pool,
+            )
+            .await
+            .map_err(ApiError::Database)?;
+
+            if team_member.is_some() {
+                let team_members = member_data.map(|data| {
+                    crate::models::teams::TeamMember::from(data, false)
+                });
+
+                teams.push(team_members.collect());
+
+                continue;
+            }
+        }
+
+        let team_members = member_data
+            .filter(|x| x.accepted)
+            .map(|data| crate::models::teams::TeamMember::from(data, true));
+
+        teams.push(team_members.collect());
+    }
 
     Ok(HttpResponse::Ok().json(teams))
 }

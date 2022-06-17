@@ -91,72 +91,6 @@ pub struct QueryTeamMember {
     pub accepted: bool,
 }
 
-impl Team {
-    pub async fn get_many<'a, E>(
-        team_ids: Vec<TeamId>,
-        exec: E,
-    ) -> Result<Vec<QueryTeamMember>, super::DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
-    {
-        use futures::stream::TryStreamExt;
-
-        let team_ids_parsed: Vec<i64> =
-            team_ids.into_iter().map(|x| x.0).collect();
-
-        let teams = sqlx::query!(
-            "
-            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,
-            u.id user_id, u.github_id github_id, u.name user_name, u.email email,
-            u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role
-            FROM team_members tm
-            INNER JOIN users u ON u.id = tm.user_id
-            WHERE tm.team_id = ANY($1)
-            ",
-            &team_ids_parsed
-        )
-        .fetch_many(exec)
-          .try_filter_map(|e| async {
-              if let Some(m) = e.right() {
-                  let permissions = Permissions::from_bits(m.permissions.unwrap() as u64);
-                  if let Some(perms) = permissions {
-                      Ok(Some(Ok(QueryTeamMember {
-                          id: TeamMemberId(m.id.unwrap()),
-                          team_id: TeamId(m.team_id.unwrap()),
-                          role: m.member_role.unwrap(),
-                          permissions: perms,
-                          accepted: m.accepted.unwrap(),
-                          user: User {
-                              id: UserId(m.user_id.unwrap()),
-                              github_id: m.github_id,
-                              name: m.user_name,
-                              email: m.email,
-                              avatar_url: m.avatar_url,
-                              username: m.username.unwrap(),
-                              bio: m.bio,
-                              created: m.created.unwrap(),
-                              role: m.user_role.unwrap(),
-                          },
-                      })))
-                  } else {
-                      Ok(Some(Err(super::DatabaseError::Bitflag)))
-                  }
-              } else {
-                  Ok(None)
-              }
-          })
-          .try_collect::<Vec<Result<QueryTeamMember, super::DatabaseError>>>()
-          .await?;
-
-        let team_members = teams
-            .into_iter()
-            .collect::<Result<Vec<QueryTeamMember>, super::DatabaseError>>()?;
-
-        Ok(team_members)
-    }
-}
-
 impl TeamMember {
     /// Lists the members of a team
     pub async fn get_from_team<'a, 'b, E>(
@@ -264,6 +198,71 @@ impl TeamMember {
         let team_members = team_members
             .into_iter()
             .collect::<Result<Vec<QueryTeamMember>, super::DatabaseError>>()?;
+
+        Ok(team_members)
+    }
+
+    pub async fn get_from_team_full_many<'a, E>(
+        team_ids: Vec<TeamId>,
+        exec: E,
+    ) -> Result<Vec<QueryTeamMember>, super::DatabaseError>
+        where
+          E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let team_ids_parsed: Vec<i64> =
+          team_ids.into_iter().map(|x| x.0).collect();
+
+        let teams = sqlx::query!(
+            "
+            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,
+            u.id user_id, u.github_id github_id, u.name user_name, u.email email,
+            u.avatar_url avatar_url, u.username username, u.bio bio,
+            u.created created, u.role user_role
+            FROM team_members tm
+            INNER JOIN users u ON u.id = tm.user_id
+            WHERE tm.team_id = ANY($1)
+            ORDER BY tm.team_id
+            ",
+            &team_ids_parsed
+        )
+          .fetch_many(exec)
+          .try_filter_map(|e| async {
+              if let Some(m) = e.right() {
+                  let permissions = Permissions::from_bits(m.permissions as u64);
+                  if let Some(perms) = permissions {
+                      Ok(Some(Ok(QueryTeamMember {
+                          id: TeamMemberId(m.id),
+                          team_id: TeamId(m.team_id),
+                          role: m.member_role,
+                          permissions: perms,
+                          accepted: m.accepted,
+                          user: User {
+                              id: UserId(m.user_id),
+                              github_id: m.github_id,
+                              name: m.user_name,
+                              email: m.email,
+                              avatar_url: m.avatar_url,
+                              username: m.username,
+                              bio: m.bio,
+                              created: m.created,
+                              role: m.user_role,
+                          },
+                      })))
+                  } else {
+                      Ok(Some(Err(super::DatabaseError::Bitflag)))
+                  }
+              } else {
+                  Ok(None)
+              }
+          })
+          .try_collect::<Vec<Result<QueryTeamMember, super::DatabaseError>>>()
+          .await?;
+
+        let team_members = teams
+          .into_iter()
+          .collect::<Result<Vec<QueryTeamMember>, super::DatabaseError>>()?;
 
         Ok(team_members)
     }
