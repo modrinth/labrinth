@@ -122,7 +122,7 @@ pub async fn init(
         parse_strings_from_var("ALLOWED_CALLBACK_URLS").unwrap_or_default();
 
     let domain = url.domain().ok_or(AuthorizationError::Url)?;
-    if !allowed_callback_urls.iter().any(|x| domain.ends_with(x)) {
+    if !allowed_callback_urls.iter().any(|x| domain.ends_with(x)) || domain == "modrinth.com" {
         return Err(AuthorizationError::Url);
     }
 
