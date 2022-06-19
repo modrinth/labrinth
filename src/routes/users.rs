@@ -188,7 +188,9 @@ pub async fn user_edit(
                     )
                     .await?;
 
-                if existing_user_id_option.is_none() || existing_user_id_option.unwrap() == user.id {
+                if existing_user_id_option.is_none()
+                    || UserId::from(existing_user_id_option.unwrap()) == user.id
+                {
                     sqlx::query!(
                         "
                     UPDATE users
