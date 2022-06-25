@@ -191,7 +191,7 @@ pub async fn user_edit(
                 if existing_user_id_option
                     .map(UserId::from)
                     .map(|id| id == user.id)
-                    .unwrap_or(false)
+                    .unwrap_or(true)
                 {
                     sqlx::query!(
                         "
