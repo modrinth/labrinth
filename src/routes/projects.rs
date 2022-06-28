@@ -13,6 +13,7 @@ use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -134,8 +135,10 @@ pub async fn project_get_check(
         .map(|x| x.id)
     };
 
-    if id.is_some() {
-        Ok(HttpResponse::NoContent().body(""))
+    if let Some(id) = id {
+        Ok(HttpResponse::Ok().json(json! ({
+            "id": models::ids::ProjectId(id as u64)
+        })))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
