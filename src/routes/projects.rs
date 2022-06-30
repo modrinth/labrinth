@@ -13,6 +13,7 @@ use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -38,11 +39,10 @@ pub async fn projects_get(
     web::Query(ids): web::Query<ProjectIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let project_ids =
-        serde_json::from_str::<Vec<models::ids::ProjectId>>(&*ids.ids)?
-            .into_iter()
-            .map(|x| x.into())
-            .collect();
+    let project_ids = serde_json::from_str::<Vec<ProjectId>>(&*ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect();
 
     let projects_data =
         database::models::Project::get_many_full(project_ids, &**pool).await?;
@@ -87,9 +87,66 @@ pub async fn project_get(
     Ok(HttpResponse::NotFound().body(""))
 }
 
+//checks the validity of a project id or slug
+#[get("{id}/check")]
+pub async fn project_get_check(
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let slug = info.into_inner().0;
+
+    let id_option = models::ids::base62_impl::parse_base62(&*slug).ok();
+
+    let id = if let Some(id) = id_option {
+        let id = sqlx::query!(
+            "
+            SELECT id FROM mods
+            WHERE id = $1
+            ",
+            id as i64
+        )
+        .fetch_optional(&**pool)
+        .await?;
+
+        if id.is_none() {
+            sqlx::query!(
+                "
+                SELECT id FROM mods
+                WHERE LOWER(slug) = LOWER($1)
+                ",
+                &slug
+            )
+            .fetch_optional(&**pool)
+            .await?
+            .map(|x| x.id)
+        } else {
+            id.map(|x| x.id)
+        }
+    } else {
+        sqlx::query!(
+            "
+            SELECT id FROM mods
+            WHERE LOWER(slug) = LOWER($1)
+            ",
+            &slug
+        )
+        .fetch_optional(&**pool)
+        .await?
+        .map(|x| x.id)
+    };
+
+    if let Some(id) = id {
+        Ok(HttpResponse::Ok().json(json! ({
+            "id": models::ids::ProjectId(id as u64)
+        })))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
 #[derive(Serialize)]
 struct DependencyInfo {
-    pub projects: Vec<models::projects::Project>,
+    pub projects: Vec<Project>,
     pub versions: Vec<models::projects::Version>,
 }
 
@@ -884,8 +941,7 @@ pub async fn project_icon_edit(
 
         let project_item =
             database::models::Project::get_from_slug_or_project_id(
-                string.clone(),
-                &**pool,
+                &string, &**pool,
             )
             .await?
             .ok_or_else(|| {
@@ -976,8 +1032,7 @@ pub async fn delete_project_icon(
     let string = info.into_inner().0;
 
     let project_item = database::models::Project::get_from_slug_or_project_id(
-        string.clone(),
-        &**pool,
+        &string, &**pool,
     )
     .await?
     .ok_or_else(|| {
@@ -1066,8 +1121,7 @@ pub async fn add_gallery_item(
 
         let project_item =
             database::models::Project::get_from_slug_or_project_id(
-                string.clone(),
-                &**pool,
+                &string, &**pool,
             )
             .await?
             .ok_or_else(|| {
@@ -1186,8 +1240,7 @@ pub async fn edit_gallery_item(
     })?;
 
     let project_item = database::models::Project::get_from_slug_or_project_id(
-        string.clone(),
-        &**pool,
+        &string, &**pool,
     )
     .await?
     .ok_or_else(|| {
@@ -1314,8 +1367,7 @@ pub async fn delete_gallery_item(
     let string = info.into_inner().0;
 
     let project_item = database::models::Project::get_from_slug_or_project_id(
-        string.clone(),
-        &**pool,
+        &string, &**pool,
     )
     .await?
     .ok_or_else(|| {
@@ -1398,8 +1450,7 @@ pub async fn project_delete(
     let string = info.into_inner().0;
 
     let project = database::models::Project::get_from_slug_or_project_id(
-        string.clone(),
-        &**pool,
+        &string, &**pool,
     )
     .await?
     .ok_or_else(|| {
@@ -1459,14 +1510,15 @@ pub async fn project_follow(
     let user = get_user_from_headers(req.headers(), &**pool).await?;
     let string = info.into_inner().0;
 
-    let result =
-        database::models::Project::get_from_slug_or_project_id(string, &**pool)
-            .await?
-            .ok_or_else(|| {
-                ApiError::InvalidInput(
-                    "The specified project does not exist!".to_string(),
-                )
-            })?;
+    let result = database::models::Project::get_from_slug_or_project_id(
+        &string, &**pool,
+    )
+    .await?
+    .ok_or_else(|| {
+        ApiError::InvalidInput(
+            "The specified project does not exist!".to_string(),
+        )
+    })?;
 
     let user_id: database::models::ids::UserId = user.id.into();
     let project_id: database::models::ids::ProjectId = result.id;
@@ -1527,14 +1579,15 @@ pub async fn project_unfollow(
     let user = get_user_from_headers(req.headers(), &**pool).await?;
     let string = info.into_inner().0;
 
-    let result =
-        database::models::Project::get_from_slug_or_project_id(string, &**pool)
-            .await?
-            .ok_or_else(|| {
-                ApiError::InvalidInput(
-                    "The specified project does not exist!".to_string(),
-                )
-            })?;
+    let result = database::models::Project::get_from_slug_or_project_id(
+        &string, &**pool,
+    )
+    .await?
+    .ok_or_else(|| {
+        ApiError::InvalidInput(
+            "The specified project does not exist!".to_string(),
+        )
+    })?;
 
     let user_id: database::models::ids::UserId = user.id.into();
     let project_id = result.id;
@@ -1587,7 +1640,7 @@ pub async fn project_unfollow(
 }
 
 pub async fn delete_from_index(
-    id: crate::models::projects::ProjectId,
+    id: ProjectId,
     config: web::Data<SearchConfig>,
 ) -> Result<(), meilisearch_sdk::errors::Error> {
     let client =

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Deserialize)]
 pub struct Algorithm {
@@ -33,12 +34,17 @@ pub async fn get_version_from_hash(
 
     let result = sqlx::query!(
         "
-        SELECT f.version_id version_id FROM hashes h
+        SELECT f.version_id version_id
+        FROM hashes h
         INNER JOIN files f ON h.file_id = f.id
-        WHERE h.algorithm = $2 AND h.hash = $1
+        INNER JOIN versions v on f.version_id = v.id
+        INNER JOIN mods m on v.mod_id = m.id
+        INNER JOIN statuses s on m.status = s.id
+        WHERE h.algorithm = $2 AND h.hash = $1 AND s.status != $3
         ",
         hash.as_bytes(),
-        algorithm.algorithm
+        algorithm.algorithm,
+        models::projects::ProjectStatus::Rejected.to_string()
     )
     .fetch_optional(&**pool)
     .await?;
@@ -80,10 +86,13 @@ pub async fn download_version(
         SELECT f.url url, f.id id, f.version_id version_id, v.mod_id project_id FROM hashes h
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
-        WHERE h.algorithm = $2 AND h.hash = $1
+        INNER JOIN mods m on v.mod_id = m.id
+        INNER JOIN statuses s on m.status = s.id
+        WHERE h.algorithm = $2 AND h.hash = $1 AND s.status != $3
         ",
         hash.as_bytes(),
-        algorithm.algorithm
+        algorithm.algorithm,
+        models::projects::ProjectStatus::Rejected.to_string()
     )
     .fetch_optional(&mut *transaction)
     .await?;
@@ -241,10 +250,13 @@ pub async fn get_update_from_hash(
         SELECT v.mod_id project_id FROM hashes h
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
-        WHERE h.algorithm = $2 AND h.hash = $1
+        INNER JOIN mods m on v.mod_id = m.id
+        INNER JOIN statuses s on m.status = s.id
+        WHERE h.algorithm = $2 AND h.hash = $1 AND s.status != $3
         ",
         hash.as_bytes(),
-        algorithm.algorithm
+        algorithm.algorithm,
+        models::projects::ProjectStatus::Rejected.to_string()
     )
     .fetch_optional(&**pool)
     .await?;
@@ -302,17 +314,21 @@ pub async fn get_versions_from_hashes(
     let hashes_parsed: Vec<Vec<u8>> = file_data
         .hashes
         .iter()
-        .map(|x| x.as_bytes().to_vec())
+        .map(|x| x.to_lowercase().as_bytes().to_vec())
         .collect();
 
     let result = sqlx::query!(
         "
         SELECT h.hash hash, h.algorithm algorithm, f.version_id version_id FROM hashes h
         INNER JOIN files f ON h.file_id = f.id
-        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[])
+        INNER JOIN versions v ON v.id = f.version_id
+        INNER JOIN mods m on v.mod_id = m.id
+        INNER JOIN statuses s on m.status = s.id
+        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND s.status != $3
         ",
         hashes_parsed.as_slice(),
-        file_data.algorithm
+        file_data.algorithm,
+        models::projects::ProjectStatus::Rejected.to_string()
     )
     .fetch_all(&**pool)
     .await?;
@@ -359,7 +375,7 @@ pub async fn download_files(
     let hashes_parsed: Vec<Vec<u8>> = file_data
         .hashes
         .iter()
-        .map(|x| x.as_bytes().to_vec())
+        .map(|x| x.to_lowercase().as_bytes().to_vec())
         .collect();
 
     let mut transaction = pool.begin().await?;
@@ -369,10 +385,13 @@ pub async fn download_files(
         SELECT f.url url, h.hash hash, h.algorithm algorithm, f.version_id version_id, v.mod_id project_id FROM hashes h
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
-        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[])
+        INNER JOIN mods m on v.mod_id = m.id
+        INNER JOIN statuses s on m.status = s.id
+        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND s.status != $3
         ",
         hashes_parsed.as_slice(),
-        file_data.algorithm
+        file_data.algorithm,
+        models::projects::ProjectStatus::Rejected.to_string()
     )
     .fetch_all(&mut *transaction)
     .await?;
@@ -410,7 +429,7 @@ pub async fn update_files(
     let hashes_parsed: Vec<Vec<u8>> = update_data
         .hashes
         .iter()
-        .map(|x| x.as_bytes().to_vec())
+        .map(|x| x.to_lowercase().as_bytes().to_vec())
         .collect();
 
     let mut transaction = pool.begin().await?;
@@ -420,17 +439,21 @@ pub async fn update_files(
         SELECT f.url url, h.hash hash, h.algorithm algorithm, f.version_id version_id, v.mod_id project_id FROM hashes h
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
-        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[])
+        INNER JOIN mods m on v.mod_id = m.id
+        INNER JOIN statuses s on m.status = s.id
+        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND s.status != $3
         ",
         hashes_parsed.as_slice(),
-        update_data.algorithm
+        update_data.algorithm,
+        models::projects::ProjectStatus::Rejected.to_string()
     )
         .fetch_all(&mut *transaction)
         .await?;
 
-    let mut version_ids = Vec::new();
+    let version_ids: RwLock<HashMap<database::models::VersionId, Vec<u8>>> =
+        RwLock::new(HashMap::new());
 
-    for row in &result {
+    futures::future::try_join_all(result.into_iter().map(|row| async {
         let updated_versions = database::models::Version::get_project_versions(
             database::models::ProjectId(row.project_id),
             Some(
@@ -454,28 +477,40 @@ pub async fn update_files(
         .await?;
 
         if let Some(latest_version) = updated_versions.last() {
-            version_ids.push(*latest_version);
-        }
-    }
+            let mut version_ids = version_ids.write().await;
 
-    let versions =
-        database::models::Version::get_many_full(version_ids, &**pool).await?;
+            version_ids.insert(*latest_version, row.hash);
+        }
+
+        Ok::<(), ApiError>(())
+    }))
+    .await?;
+
+    let version_ids = version_ids.into_inner();
+
+    let versions = database::models::Version::get_many_full(
+        version_ids.keys().copied().collect(),
+        &**pool,
+    )
+    .await?;
 
     let mut response = HashMap::new();
 
-    for row in &result {
-        if let Some(version) =
-            versions.iter().find(|x| x.id.0 == row.version_id)
-        {
-            if let Ok(parsed_hash) = String::from_utf8(row.hash.clone()) {
+    for version in versions {
+        let hash = version_ids.get(&version.id);
+
+        if let Some(hash) = hash {
+            if let Ok(parsed_hash) = String::from_utf8(hash.clone()) {
                 response.insert(
                     parsed_hash,
-                    models::projects::Version::from(version.clone()),
+                    models::projects::Version::from(version),
                 );
             } else {
+                let version_id: models::projects::VersionId = version.id.into();
+
                 return Err(ApiError::Database(DatabaseError::Other(format!(
                     "Could not parse hash for version {}",
-                    row.version_id
+                    version_id
                 ))));
             }
         }

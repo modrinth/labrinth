@@ -35,7 +35,7 @@ pub struct InitialVersionData {
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
     pub version_number: String,
-    #[validate(length(min = 3, max = 256))]
+    #[validate(length(min = 1, max = 256))]
     #[serde(alias = "name")]
     pub version_title: String,
     #[validate(length(max = 65536))]
@@ -639,11 +639,11 @@ pub async fn upload_file(
     field: &mut Field,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
-    version_files: &mut Vec<models::version_item::VersionFileBuilder>,
-    dependencies: &mut Vec<models::version_item::DependencyBuilder>,
+    version_files: &mut Vec<VersionFileBuilder>,
+    dependencies: &mut Vec<DependencyBuilder>,
     cdn_url: &str,
     content_disposition: &actix_web::http::header::ContentDisposition,
-    project_id: crate::models::ids::ProjectId,
+    project_id: ProjectId,
     version_number: &str,
     project_type: &str,
     loaders: Vec<Loader>,
@@ -661,8 +661,8 @@ pub async fn upload_file(
         })?;
 
     let data = read_from_field(
-        field, 100 * (1 << 20),
-        "Project file exceeds the maximum of 100MiB. Contact a moderator or admin to request permission to upload larger files."
+        field, 500 * (1 << 20),
+        "Project file exceeds the maximum of 500MiB. Contact a moderator or admin to request permission to upload larger files."
     ).await?;
 
     let hash = sha1::Sha1::from(&data).hexdigest();
@@ -696,9 +696,13 @@ pub async fn upload_file(
     )
     .await?;
 
-    if let ValidationResult::PassWithPackData(ref data) = validation_result {
+    if let ValidationResult::PassWithPackDataAndFiles {
+        ref format,
+        ref files,
+    } = validation_result
+    {
         if dependencies.is_empty() {
-            let hashes: Vec<Vec<u8>> = data
+            let hashes: Vec<Vec<u8>> = format
                 .files
                 .iter()
                 .filter_map(|x| x.hashes.get(&PackFileHash::Sha1))
@@ -716,7 +720,7 @@ pub async fn upload_file(
                 )
                 .fetch_all(&mut *transaction).await?;
 
-            for file in &data.files {
+            for file in &format.files {
                 if let Some(dep) = res.iter().find(|x| {
                     x.hash.as_deref()
                         == file
@@ -730,27 +734,35 @@ pub async fn upload_file(
                                 project_id: Some(models::ProjectId(project_id)),
                                 version_id: Some(models::VersionId(version_id)),
                                 file_name: None,
-                                dependency_type: DependencyType::Required
+                                dependency_type: DependencyType::Embedded
                                     .to_string(),
                             });
                         }
                     }
-                } else {
-                    if let Some(first_download) = file.downloads.first() {
-                        dependencies.push(DependencyBuilder {
-                            project_id: None,
-                            version_id: None,
-                            file_name: Some(
-                                first_download
-                                    .rsplit('/')
-                                    .next()
-                                    .unwrap_or(first_download)
-                                    .to_string(),
-                            ),
-                            dependency_type: DependencyType::Required
+                } else if let Some(first_download) = file.downloads.first() {
+                    dependencies.push(DependencyBuilder {
+                        project_id: None,
+                        version_id: None,
+                        file_name: Some(
+                            first_download
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or(first_download)
                                 .to_string(),
-                        });
-                    }
+                        ),
+                        dependency_type: DependencyType::Embedded.to_string(),
+                    });
+                }
+            }
+
+            for file in files {
+                if !file.is_empty() {
+                    dependencies.push(DependencyBuilder {
+                        project_id: None,
+                        version_id: None,
+                        file_name: Some(file.to_string()),
+                        dependency_type: DependencyType::Embedded.to_string(),
+                    });
                 }
             }
         }

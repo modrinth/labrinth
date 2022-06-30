@@ -1,4 +1,5 @@
 use crate::file_hosting::S3Host;
+use crate::queue::download::DownloadQueue;
 use crate::ratelimit::errors::ARError;
 use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use crate::ratelimit::middleware::RateLimiter;
@@ -16,6 +17,7 @@ mod database;
 mod file_hosting;
 mod health;
 mod models;
+mod queue;
 mod ratelimit;
 mod routes;
 mod scheduler;
@@ -183,11 +185,27 @@ async fn main() -> std::io::Result<()> {
 
     scheduler::schedule_versions(&mut scheduler, pool.clone(), skip_initial);
 
+    let download_queue = Arc::new(DownloadQueue::new());
+
+    let pool_ref = pool.clone();
+    let download_queue_ref = download_queue.clone();
+    scheduler.run(std::time::Duration::from_secs(30), move || {
+        let pool_ref = pool_ref.clone();
+        let download_queue_ref = download_queue_ref.clone();
+
+        async move {
+            info!("Indexing download queue");
+            let result = download_queue_ref.index(&pool_ref).await;
+            if let Err(e) = result {
+                warn!("Indexing download queue failed: {:?}", e);
+            }
+            info!("Done indexing download queue");
+        }
+    });
+
     let ip_salt = Pepper {
-        pepper: crate::models::ids::Base62Id(
-            crate::models::ids::random_base62(11),
-        )
-        .to_string(),
+        pepper: models::ids::Base62Id(models::ids::random_base62(11))
+            .to_string(),
     };
 
     let store = MemoryStore::new();
@@ -235,14 +253,12 @@ async fn main() -> std::io::Result<()> {
                     })
                     .with_interval(std::time::Duration::from_secs(60))
                     .with_max_requests(300)
-                    .with_ignore_ips(
-                        parse_strings_from_var("RATE_LIMIT_IGNORE_IPS")
-                            .unwrap_or_default(),
-                    ),
+                    .with_ignore_key(dotenv::var("RATE_LIMIT_IGNORE_KEY").ok()),
             )
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(file_host.clone()))
             .app_data(web::Data::new(search_config.clone()))
+            .app_data(web::Data::new(download_queue.clone()))
             .app_data(web::Data::new(ip_salt.clone()))
             .configure(routes::v1_config)
             .configure(routes::v2_config)
@@ -273,19 +289,20 @@ fn check_env_vars() -> bool {
         check
     }
 
-    if parse_strings_from_var("RATE_LIMIT_IGNORE_IPS").is_none() {
-        warn!("Variable `RATE_LIMIT_IGNORE_IPS` missing in dotenv or not a json array of strings");
+    if parse_strings_from_var("WHITELISTED_MODPACK_DOMAINS").is_none() {
+        warn!("Variable `WHITELISTED_MODPACK_DOMAINS` missing in dotenv or not a json array of strings");
         failed |= true;
     }
 
-    if parse_strings_from_var("WHITELISTED_MODPACK_DOMAINS").is_none() {
-        warn!("Variable `WHITELISTED_MODPACK_DOMAINS` missing in dotenv or not a json array of strings");
+    if parse_strings_from_var("ALLOWED_CALLBACK_URLS").is_none() {
+        warn!("Variable `ALLOWED_CALLBACK_URLS` missing in dotenv or not a json array of strings");
         failed |= true;
     }
 
     failed |= check_var::<String>("SITE_URL");
     failed |= check_var::<String>("CDN_URL");
     failed |= check_var::<String>("LABRINTH_ADMIN_KEY");
+    failed |= check_var::<String>("RATE_LIMIT_IGNORE_KEY");
     failed |= check_var::<String>("DATABASE_URL");
     failed |= check_var::<String>("MEILISEARCH_ADDR");
     failed |= check_var::<String>("MEILISEARCH_KEY");

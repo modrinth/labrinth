@@ -14,7 +14,7 @@ pub enum AuthenticationError {
     #[error("An unknown database error occurred")]
     Sqlx(#[from] sqlx::Error),
     #[error("Database Error: {0}")]
-    Database(#[from] crate::database::models::DatabaseError),
+    Database(#[from] models::DatabaseError),
     #[error("Error while parsing JSON: {0}")]
     SerDe(#[from] serde_json::Error),
     #[error("Error while communicating to GitHub OAuth2: {0}")]
@@ -89,7 +89,7 @@ where
         .to_str()
         .map_err(|_| AuthenticationError::InvalidCredentials)?;
 
-    Ok(get_user_from_token(token, executor).await?)
+    get_user_from_token(token, executor).await
 }
 
 pub async fn check_is_moderator_from_headers<'a, 'b, E>(
@@ -135,7 +135,7 @@ pub async fn is_authorized(
             if user.role.is_mod() {
                 authorized = true;
             } else {
-                let user_id: database::models::ids::UserId = user.id.into();
+                let user_id: models::ids::UserId = user.id.into();
 
                 let project_exists = sqlx::query!(
                     "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
