@@ -127,7 +127,7 @@ impl super::Validator for SpongeValidator {
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
         if !archive.file_names().any(|name| {
-            name == "META-INF/sponge_plugins.json" || name == "mcmod.info"
+            name == "sponge_plugins.json" || name == "mcmod.info"
         }) {
             return Ok(ValidationResult::Warning(
                 "No sponge_plugins.json or mcmod.info present for Sponge plugin.",
