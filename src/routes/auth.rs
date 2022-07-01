@@ -11,9 +11,7 @@ This system will be revisited and allow easier interaction with the authenticate
 out our own authentication system.
 */
 
-use crate::database::models::{
-    categories, generate_state_id, report_item, User, UserId,
-};
+use crate::database::models::{generate_state_id, User};
 use crate::models::error::ApiError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
@@ -23,7 +21,6 @@ use crate::util::auth::get_github_user_from_token;
 use actix_web::http::StatusCode;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, HttpResponse};
-use censor::Censor;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use thiserror::Error;
@@ -250,19 +247,17 @@ pub async fn auth_callback(
                 }
 
                 if let Some(username) = username {
-                    User {
+                    let new_user = User {
                         id: user_id,
                         github_id: Some(user.id as i64),
-                        username,
+                        username: username.clone(),
                         name: user.name,
                         email: user.email,
                         avatar_url: Some(user.avatar_url),
                         bio: user.bio,
                         created: OffsetDateTime::now_utc(),
                         role: Role::Developer.to_string(),
-                    }
-                    .insert(&mut transaction)
-                    .await?;
+                    };
 
                     crate::util::report::censor_check(
                         &*username,
@@ -271,23 +266,33 @@ pub async fn auth_callback(
                         Some(user_id),
                         "New user's username is inappropriate".to_string(),
                         &mut transaction,
-                    );
-                    crate::util::report::censor_check(
-                        &*user.name,
-                        None,
-                        None,
-                        Some(user_id),
-                        "New user's name is inappropriate".to_string(),
-                        &mut transaction,
-                    );
-                    crate::util::report::censor_check(
-                        &*user.bio,
-                        None,
-                        None,
-                        Some(user_id),
-                        "New user's bio is inappropriate".to_string(),
-                        &mut transaction,
-                    );
+                    )
+                    .await?;
+
+                    if let Some(name) = &new_user.name {
+                        crate::util::report::censor_check(
+                            &*name,
+                            None,
+                            None,
+                            Some(user_id),
+                            "New user's name is inappropriate".to_string(),
+                            &mut transaction,
+                        )
+                        .await?;
+                    }
+                    if let Some(bio) = &new_user.bio {
+                        crate::util::report::censor_check(
+                            &*bio,
+                            None,
+                            None,
+                            Some(user_id),
+                            "New user's bio is inappropriate".to_string(),
+                            &mut transaction,
+                        )
+                        .await?;
+                    }
+
+                    new_user.insert(&mut transaction).await?;
                 }
             }
         }

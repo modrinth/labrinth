@@ -8,7 +8,7 @@ pub struct Report {
     pub version_id: Option<VersionId>,
     pub user_id: Option<UserId>,
     pub body: String,
-    pub reporter: Option<UserId>,
+    pub reporter: UserId,
     pub created: OffsetDateTime,
 }
 
@@ -19,7 +19,7 @@ pub struct QueryReport {
     pub version_id: Option<VersionId>,
     pub user_id: Option<UserId>,
     pub body: String,
-    pub reporter: Option<UserId>,
+    pub reporter: UserId,
     pub created: OffsetDateTime,
 }
 
@@ -80,7 +80,7 @@ impl Report {
                 version_id: row.version_id.map(VersionId),
                 user_id: row.user_id.map(UserId),
                 body: row.body,
-                reporter: row.reporter.map(UserId),
+                reporter: UserId(row.reporter),
                 created: row.created,
             }))
         } else {
@@ -118,7 +118,7 @@ impl Report {
                 version_id: x.version_id.map(VersionId),
                 user_id: x.user_id.map(UserId),
                 body: x.body,
-                reporter: x.reporter.map(UserId),
+                reporter: UserId(x.reporter),
                 created: x.created,
             }))
         })
