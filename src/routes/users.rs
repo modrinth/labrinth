@@ -204,6 +204,17 @@ pub async fn user_edit(
                     )
                     .execute(&mut *transaction)
                     .await?;
+
+                    crate::util::report::censor_check(
+                        &*username,
+                        None,
+                        None,
+                        Some(crate::database::models::ids::UserId::from(
+                            user_id,
+                        )),
+                        "User edited with inappropriate username".to_string(),
+                        &mut transaction,
+                    );
                 } else {
                     return Err(ApiError::InvalidInput(format!(
                         "Username {} is taken!",
@@ -224,6 +235,17 @@ pub async fn user_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                crate::util::report::censor_check(
+                    &*name.as_deref(),
+                    None,
+                    None,
+                    Some(crate::database::models::ids::UserId::from(
+                        user_id,
+                    )),
+                    "User edited with inappropriate name".to_string(),
+                    &mut transaction,
+                );
             }
 
             if let Some(bio) = &new_user.bio {
@@ -238,6 +260,17 @@ pub async fn user_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                crate::util::report::censor_check(
+                    &*bio.as_deref(),
+                    None,
+                    None,
+                    Some(crate::database::models::ids::UserId::from(
+                        user_id,
+                    )),
+                    "User edited with inappropriate bio".to_string(),
+                    &mut transaction,
+                );
             }
 
             if let Some(email) = &new_user.email {

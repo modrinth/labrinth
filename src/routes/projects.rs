@@ -11,6 +11,7 @@ use crate::util::auth::{get_user_from_headers, is_authorized};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use censor::Censor;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -387,6 +388,15 @@ pub async fn project_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                crate::util::report::censor_check(
+                    &*title,
+                    Some(project_item.inner.id),
+                    None,
+                    None,
+                    "Project edited with inappropriate title".to_string(),
+                    &mut transaction,
+                );
             }
 
             if let Some(description) = &new_project.description {
@@ -408,6 +418,15 @@ pub async fn project_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                crate::util::report::censor_check(
+                    &*description,
+                    Some(project_item.inner.id),
+                    None,
+                    None,
+                    "Project edited with inappropriate description".to_string(),
+                    &mut transaction,
+                );
             }
 
             if let Some(status) = &new_project.status {
@@ -692,6 +711,15 @@ pub async fn project_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                crate::util::report::censor_check(
+                    &*slug.as_deref(),
+                    Some(project_item.inner.id),
+                    None,
+                    None,
+                    "Project edited with inappropriate slug".to_string(),
+                    &mut transaction,
+                );
             }
 
             if let Some(new_side) = &new_project.client_side {
@@ -891,6 +919,15 @@ pub async fn project_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                crate::util::report::censor_check(
+                    &*body,
+                    Some(project_item.inner.id),
+                    None,
+                    None,
+                    "Project edited with inappropriate body".to_string(),
+                    &mut transaction,
+                );
             }
 
             transaction.commit().await?;

@@ -9,6 +9,7 @@ use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
+use crate::database::models::VersionId;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct VersionListFilters {
@@ -247,6 +248,15 @@ pub async fn version_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                crate::util::report::censor_check(
+                    &*name,
+                    None,
+                    Some(VersionId::from(version_id)),
+                    None,
+                    "Version edited with inappropriate name".to_string(),
+                    &mut transaction,
+                );
             }
 
             if let Some(number) = &new_version.version_number {
@@ -463,6 +473,15 @@ pub async fn version_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                crate::util::report::censor_check(
+                    &*body,
+                    None,
+                    Some(VersionId::from(version_id)),
+                    None,
+                    "Version edited with inappropriate changelog".to_string(),
+                    &mut transaction,
+                );
             }
 
             if let Some(downloads) = &new_version.downloads {

@@ -13,6 +13,7 @@ macro_rules! generate_ids {
             let length = $id_length;
             let mut id = random_base62_rng(&mut rng, length);
             let mut retry_count = 0;
+            let censor = Censor::Standard + Censor::Sex;
 
             // Check if ID is unique
             loop {
@@ -20,7 +21,7 @@ macro_rules! generate_ids {
                     .fetch_one(&mut *con)
                     .await?;
 
-                if results.exists.unwrap_or(true) {
+                if results.exists.unwrap_or(true) || !censor.check(id) {
                     id = random_base62_rng(&mut rng, length);
                 } else {
                     break;
