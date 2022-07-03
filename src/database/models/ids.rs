@@ -23,7 +23,7 @@ macro_rules! generate_ids {
                     .fetch_one(&mut *con)
                     .await?;
 
-                if results.exists.unwrap_or(true) || !censor.check(&*to_base62(id)) {
+                if results.exists.unwrap_or(true) || censor.check(&*to_base62(id)) {
                     id = random_base62_rng(&mut rng, length);
                 } else {
                     break;
