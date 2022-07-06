@@ -192,9 +192,10 @@ pub async fn delete_report(
     info: web::Path<(crate::models::reports::ReportId,)>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
+    let string = info.into_inner().0;
 
     let result = crate::database::models::report_item::Report::remove_full(
-        info.into_inner().0.into(),
+        string.into(),
         &**pool,
     )
     .await?;
@@ -202,6 +203,6 @@ pub async fn delete_report(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("report {}", string.0)))
     }
 }

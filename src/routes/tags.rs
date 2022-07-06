@@ -112,7 +112,7 @@ pub async fn category_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("category {}", name)))
     }
 }
 
@@ -194,7 +194,7 @@ pub async fn loader_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("loader {}", name)))
     }
 }
 
@@ -295,7 +295,7 @@ pub async fn game_version_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("game version {}", name)))
     }
 }
 
@@ -367,7 +367,7 @@ pub async fn license_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("license {}", name)))
     }
 }
 
@@ -440,7 +440,10 @@ pub async fn donation_platform_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!(
+            "donation platform {}",
+            name
+        )))
     }
 }
 
@@ -489,6 +492,6 @@ pub async fn report_type_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("report type {}", name)))
     }
 }

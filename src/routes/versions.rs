@@ -35,7 +35,10 @@ pub async fn version_list(
 
     if let Some(project) = result {
         if !is_authorized(&project, &user_option, &pool).await? {
-            return Ok(HttpResponse::NotFound().body(""));
+            return Err(ApiError::ResourceNotFound(format!(
+                "version {}",
+                string
+            )));
         }
 
         let id = project.inner.id;
@@ -120,7 +123,7 @@ pub async fn version_list(
 
         Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version {}", string)))
     }
 }
 
@@ -161,7 +164,7 @@ pub async fn version_get(
     if let Some(data) = version_data {
         Ok(HttpResponse::Ok().json(models::projects::Version::from(data)))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version {}", id)))
     }
 }
 
@@ -508,7 +511,10 @@ pub async fn version_edit(
             ))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!(
+            "version {}",
+            version_id
+        )))
     }
 }
 
@@ -557,6 +563,6 @@ pub async fn version_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version {}", id)))
     }
 }

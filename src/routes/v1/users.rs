@@ -14,10 +14,10 @@ pub async fn mods_list(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let string = info.into_inner().0;
 
     let id_option = crate::database::models::User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
+        &*string, &**pool,
     )
     .await?;
 
@@ -47,7 +47,7 @@ pub async fn mods_list(
 
         Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("user {}", string)))
     }
 }
 
@@ -58,9 +58,10 @@ pub async fn user_follows(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let string = info.into_inner().0;
+
     let id_option = crate::database::models::User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
+        &*string, &**pool,
     )
     .await?;
 
@@ -89,6 +90,6 @@ pub async fn user_follows(
 
         Ok(HttpResponse::Ok().json(projects))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("user {}", string)))
     }
 }

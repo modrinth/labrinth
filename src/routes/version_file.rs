@@ -1,10 +1,9 @@
 use super::ApiError;
-use crate::database::models::{version_item::QueryVersion, DatabaseError};
+use crate::database::models::DatabaseError;
 use crate::file_hosting::FileHost;
 use crate::models::projects::{GameVersion, Loader, Version};
 use crate::models::teams::Permissions;
 use crate::util::auth::get_user_from_headers;
-use crate::util::routes::ok_or_not_found;
 use crate::{database, models};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -59,10 +58,10 @@ pub async fn get_version_from_hash(
         if let Some(data) = version_data {
             Ok(HttpResponse::Ok().json(models::projects::Version::from(data)))
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
     }
 }
 
@@ -104,7 +103,7 @@ pub async fn download_version(
             .append_header(("Location", &*id.url))
             .json(DownloadRedirect { url: id.url }))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
     }
 }
 
@@ -222,7 +221,7 @@ pub async fn delete_file(
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
     }
 }
 
@@ -289,12 +288,19 @@ pub async fn get_update_from_hash(
                 database::models::Version::get_full(*version_id, &**pool)
                     .await?;
 
-            ok_or_not_found::<QueryVersion, Version>(version_data)
+            if let Some(data) = version_data {
+                Ok(HttpResponse::Ok().json(Version::from(data)))
+            } else {
+                Err(ApiError::ResourceNotFound(format!(
+                    "version file {}",
+                    hash
+                )))
+            }
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
     }
 }
 

@@ -153,7 +153,7 @@ pub async fn version_list(
 
         Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version {}", string)))
     }
 }
 
@@ -190,7 +190,7 @@ pub async fn version_get(
     if let Some(data) = version_data {
         Ok(HttpResponse::Ok().json(convert_to_legacy(Version::from(data))))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version {}", id)))
     }
 }
 
@@ -236,10 +236,10 @@ pub async fn get_version_from_hash(
             Ok(HttpResponse::Ok()
                 .json(crate::models::projects::Version::from(data)))
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
     }
 }
 
@@ -277,7 +277,7 @@ pub async fn download_version(
             .append_header(("Location", &*id.url))
             .json(DownloadRedirect { url: id.url }))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
     }
 }
 
@@ -374,6 +374,6 @@ pub async fn delete_file(
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("version file {}", hash)))
     }
 }

@@ -67,10 +67,10 @@ pub async fn notification_get(
         if user.id == data.user_id.into() || user.role.is_mod() {
             Ok(HttpResponse::Ok().json(Notification::from(data)))
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            Err(ApiError::ResourceNotFound(format!("notification {}", id)))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("notification {}", id)))
     }
 }
 
@@ -111,7 +111,7 @@ pub async fn notification_delete(
             ))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("notification {}", id)))
     }
 }
 

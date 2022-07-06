@@ -188,6 +188,8 @@ pub enum ApiError {
     Search(#[from] meilisearch_sdk::errors::Error),
     #[error("Indexing Error: {0}")]
     Indexing(#[from] crate::search::indexing::IndexingError),
+    #[error("Resource not found: {0}")]
+    ResourceNotFound(String),
 }
 
 impl actix_web::ResponseError for ApiError {
@@ -227,6 +229,9 @@ impl actix_web::ResponseError for ApiError {
             ApiError::Validation(..) => {
                 actix_web::http::StatusCode::BAD_REQUEST
             }
+            ApiError::ResourceNotFound(..) => {
+                actix_web::http::StatusCode::NOT_FOUND
+            }
         }
     }
 
@@ -246,6 +251,7 @@ impl actix_web::ResponseError for ApiError {
                     ApiError::FileHosting(..) => "file_hosting_error",
                     ApiError::InvalidInput(..) => "invalid_input",
                     ApiError::Validation(..) => "invalid_input",
+                    ApiError::ResourceNotFound(..) => "not_found",
                 },
                 description: &self.to_string(),
             },

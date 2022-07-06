@@ -84,7 +84,7 @@ pub async fn project_get(
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
     }
-    Ok(HttpResponse::NotFound().body(""))
+    Err(ApiError::ResourceNotFound(format!("project {}", string)))
 }
 
 //checks the validity of a project id or slug
@@ -140,7 +140,7 @@ pub async fn project_get_check(
             "id": models::ids::ProjectId(id as u64)
         })))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("project {}", slug)))
     }
 }
 
@@ -167,7 +167,9 @@ pub async fn dependency_list(
 
     if let Some(project) = result {
         if !is_authorized(&project, &user_option, &pool).await? {
-            return Ok(HttpResponse::NotFound().body(""));
+            return Err(ApiError::ResourceNotFound(
+                project.inner.id.0.to_string(),
+            ));
         }
 
         let id = project.inner.id;
@@ -244,7 +246,7 @@ pub async fn dependency_list(
 
         Ok(HttpResponse::Ok().json(DependencyInfo { projects, versions }))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("project {}", string)))
     }
 }
 
@@ -901,7 +903,7 @@ pub async fn project_edit(
             ))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("project {}", string)))
     }
 }
 
@@ -1484,7 +1486,7 @@ pub async fn project_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("project {}", string)))
     }
 }
 

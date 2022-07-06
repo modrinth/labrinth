@@ -60,7 +60,7 @@ pub async fn team_members_get_project(
 
         Ok(HttpResponse::Ok().json(team_members))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("team {}", string)))
     }
 }
 
@@ -514,6 +514,6 @@ pub async fn remove_team_member(
         }
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("team {}", id.0)))
     }
 }

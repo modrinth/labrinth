@@ -64,17 +64,18 @@ pub async fn user_get(
         user_data = User::get(id.into(), &**pool).await?;
 
         if user_data.is_none() {
-            user_data = User::get_from_username(string, &**pool).await?;
+            user_data =
+                User::get_from_username(string.clone(), &**pool).await?;
         }
     } else {
-        user_data = User::get_from_username(string, &**pool).await?;
+        user_data = User::get_from_username(string.clone(), &**pool).await?;
     }
 
     if let Some(data) = user_data {
         let response: crate::models::users::User = data.into();
         Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("user {}", string)))
     }
 }
 
@@ -85,10 +86,10 @@ pub async fn projects_list(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let string = info.into_inner().0;
 
     let id_option = crate::database::models::User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
+        &*string, &**pool,
     )
     .await?;
 
@@ -120,7 +121,7 @@ pub async fn projects_list(
 
         Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("user {}", string)))
     }
 }
 
@@ -164,14 +165,14 @@ pub async fn user_edit(
     new_user: web::Json<EditUser>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let string = info.into_inner().0;
 
     new_user.validate().map_err(|err| {
         ApiError::Validation(validation_errors_to_string(err, None))
     })?;
 
     let id_option = crate::database::models::User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
+        &*string, &**pool,
     )
     .await?;
 
@@ -285,7 +286,7 @@ pub async fn user_edit(
             ))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("user {}", string)))
     }
 }
 
@@ -307,11 +308,11 @@ pub async fn user_icon_edit(
         crate::util::ext::get_image_content_type(&*ext.ext)
     {
         let cdn_url = dotenv::var("CDN_URL")?;
+        let string = info.into_inner().0;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let id_option =
             crate::database::models::User::get_id_from_username_or_id(
-                &*info.into_inner().0,
-                &**pool,
+                &*string, &**pool,
             )
             .await?;
 
@@ -333,7 +334,10 @@ pub async fn user_icon_edit(
                 if let Some(new) = new_user {
                     icon_url = new.avatar_url;
                 } else {
-                    return Ok(HttpResponse::NotFound().body(""));
+                    return Err(ApiError::ResourceNotFound(format!(
+                        "user {}",
+                        string
+                    )));
                 }
             }
 
@@ -375,7 +379,7 @@ pub async fn user_icon_edit(
             .await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            Err(ApiError::ResourceNotFound(format!("user {}", string)))
         }
     } else {
         Err(ApiError::InvalidInput(format!(
@@ -403,9 +407,10 @@ pub async fn user_delete(
     removal_type: web::Query<RemovalType>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let string = info.into_inner().0;
+
     let id_option = crate::database::models::User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
+        &*string, &**pool,
     )
     .await?;
 
@@ -430,10 +435,10 @@ pub async fn user_delete(
         if result.is_some() {
             Ok(HttpResponse::NoContent().body(""))
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            Err(ApiError::ResourceNotFound(format!("user {}", string)))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("user {}", string)))
     }
 }
 
@@ -444,9 +449,10 @@ pub async fn user_follows(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let string = info.into_inner().0;
+
     let id_option = crate::database::models::User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
+        &*string, &**pool,
     )
     .await?;
 
@@ -483,7 +489,7 @@ pub async fn user_follows(
 
         Ok(HttpResponse::Ok().json(projects))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("user {}", string)))
     }
 }
 
@@ -494,9 +500,10 @@ pub async fn user_notifications(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let string = info.into_inner().0;
+
     let id_option = crate::database::models::User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
+        &*string, &**pool,
     )
     .await?;
 
@@ -518,6 +525,6 @@ pub async fn user_notifications(
 
         Ok(HttpResponse::Ok().json(notifications))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::ResourceNotFound(format!("user {}", string)))
     }
 }
