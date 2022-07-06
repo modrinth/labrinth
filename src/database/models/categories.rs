@@ -13,6 +13,7 @@ pub struct Loader {
     pub loader: String,
     pub icon: String,
     pub supported_project_types: Vec<String>,
+    pub featured: bool,
 }
 
 #[derive(Clone)]
@@ -262,6 +263,7 @@ pub struct LoaderBuilder<'a> {
     pub name: Option<&'a str>,
     pub icon: Option<&'a str>,
     pub supported_project_types: Option<&'a [ProjectTypeId]>,
+    pub featured: &'a bool,
 }
 
 impl Loader {
@@ -270,6 +272,7 @@ impl Loader {
             name: None,
             icon: None,
             supported_project_types: None,
+            featured: &false,
         }
     }
 
@@ -326,7 +329,7 @@ impl Loader {
     {
         let result = sqlx::query!(
             "
-            SELECT l.id id, l.loader loader, l.icon icon,
+            SELECT l.id id, l.loader loader, l.icon icon, l.featured featured,
             ARRAY_AGG(DISTINCT pt.name) project_types
             FROM loaders l
             LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id
@@ -346,6 +349,7 @@ impl Loader {
                     .iter()
                     .map(|x| x.to_string())
                     .collect(),
+                featured: x.featured,
             }))
         })
         .try_collect::<Vec<_>>()
@@ -418,6 +422,13 @@ impl<'a> LoaderBuilder<'a> {
             supported_project_types: Some(supported_project_types),
             ..self
         })
+    }
+
+    pub fn featured(
+        self,
+        featured: &'a bool,
+    ) -> Result<LoaderBuilder<'a>, DatabaseError> {
+        Ok(Self { featured, ..self })
     }
 
     pub async fn insert(

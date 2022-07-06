@@ -121,6 +121,7 @@ pub struct LoaderData {
     icon: String,
     name: String,
     supported_project_types: Vec<String>,
+    featured: bool,
 }
 
 #[get("loader")]
@@ -134,6 +135,7 @@ pub async fn loader_list(
             icon: x.icon,
             name: x.loader,
             supported_project_types: x.supported_project_types,
+            featured: x.featured,
         })
         .collect::<Vec<_>>();
 
@@ -164,6 +166,7 @@ pub async fn loader_create(
         .supported_project_types(
             &*project_types.into_iter().map(|x| x.id).collect::<Vec<_>>(),
         )?
+        .featured(&new_loader.featured)?
         .insert(&mut transaction)
         .await?;
 
