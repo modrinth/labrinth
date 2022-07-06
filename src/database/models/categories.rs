@@ -263,7 +263,7 @@ pub struct LoaderBuilder<'a> {
     pub name: Option<&'a str>,
     pub icon: Option<&'a str>,
     pub supported_project_types: Option<&'a [ProjectTypeId]>,
-    pub featured: &'a bool,
+    pub featured: bool,
 }
 
 impl Loader {
@@ -272,7 +272,7 @@ impl Loader {
             name: None,
             icon: None,
             supported_project_types: None,
-            featured: &false,
+            featured: false,
         }
     }
 
@@ -426,7 +426,7 @@ impl<'a> LoaderBuilder<'a> {
 
     pub fn featured(
         self,
-        featured: &'a bool,
+        featured: bool,
     ) -> Result<LoaderBuilder<'a>, DatabaseError> {
         Ok(Self { featured, ..self })
     }

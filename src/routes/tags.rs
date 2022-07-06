@@ -166,7 +166,7 @@ pub async fn loader_create(
         .supported_project_types(
             &*project_types.into_iter().map(|x| x.id).collect::<Vec<_>>(),
         )?
-        .featured(&new_loader.featured)?
+        .featured(new_loader.featured)?
         .insert(&mut transaction)
         .await?;
 
