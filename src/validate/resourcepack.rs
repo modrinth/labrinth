@@ -68,9 +68,9 @@ impl super::Validator for TexturePackValidator {
         &self,
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        archive.by_name("pack.mcmeta").map_err(|_| {
+        archive.by_name("pack.txt").map_err(|_| {
             ValidationError::InvalidInput(
-                "No pack.mcmeta present for pack file.".into(),
+                "No pack.txt present for pack file.".into(),
             )
         })?;
 
