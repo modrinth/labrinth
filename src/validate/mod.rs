@@ -6,7 +6,7 @@ use crate::validate::liteloader::LiteLoaderValidator;
 use crate::validate::modpack::ModpackValidator;
 use crate::validate::plugin::*;
 use crate::validate::quilt::QuiltValidator;
-use crate::validate::resourcepack::{BedrockPackValidator, JavaPackValidator};
+use crate::validate::resourcepack::{PackValidator, TexturePackValidator};
 use std::io::Cursor;
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -83,8 +83,8 @@ static VALIDATORS: [&dyn Validator; 12] = [
     &LegacyForgeValidator,
     &QuiltValidator,
     &LiteLoaderValidator,
-    &JavaPackValidator,
-    &BedrockPackValidator,
+    &PackValidator,
+    &TexturePackValidator,
     &BukkitValidator,
     &BungeeCordValidator,
     &VelocityValidator,
