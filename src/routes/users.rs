@@ -205,6 +205,18 @@ pub async fn user_edit(
                     )
                     .execute(&mut *transaction)
                     .await?;
+
+                    crate::util::report::censor_check(
+                        &*username,
+                        None,
+                        None,
+                        Some(crate::database::models::ids::UserId::from(
+                            user_id,
+                        )),
+                        "User edited with inappropriate username".to_string(),
+                        &mut transaction,
+                    )
+                    .await?;
                 } else {
                     return Err(ApiError::InvalidInput(format!(
                         "Username {} is taken!",
@@ -225,6 +237,20 @@ pub async fn user_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                if let Some(name) = name {
+                    crate::util::report::censor_check(
+                        &*name,
+                        None,
+                        None,
+                        Some(crate::database::models::ids::UserId::from(
+                            user_id,
+                        )),
+                        "User edited with inappropriate name".to_string(),
+                        &mut transaction,
+                    )
+                    .await?;
+                }
             }
 
             if let Some(bio) = &new_user.bio {
@@ -239,6 +265,20 @@ pub async fn user_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                if let Some(bio) = bio {
+                    crate::util::report::censor_check(
+                        &*bio,
+                        None,
+                        None,
+                        Some(crate::database::models::ids::UserId::from(
+                            user_id,
+                        )),
+                        "User edited with inappropriate bio".to_string(),
+                        &mut transaction,
+                    )
+                    .await?;
+                }
             }
 
             if let Some(email) = &new_user.email {
