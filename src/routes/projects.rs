@@ -359,10 +359,13 @@ pub async fn project_edit(
         .await?;
         let permissions;
 
-        if let Some(member) = team_member {
+        if user.role.is_admin() {
+            permissions = Some(Permissions::ALL)
+        } else if let Some(member) = team_member {
             permissions = Some(member.permissions)
         } else if user.role.is_mod() {
-            permissions = Some(Permissions::ALL)
+            permissions =
+                Some(Permissions::EDIT_DETAILS | Permissions::EDIT_BODY)
         } else {
             permissions = None
         }
@@ -1119,7 +1122,7 @@ pub async fn add_gallery_item(
                 )
             })?;
 
-        if !user.role.is_mod() {
+        if !user.role.is_admin() {
             let team_member = database::models::TeamMember::get_from_user_id(
                 project_item.team_id,
                 user.id.into(),
@@ -1448,7 +1451,7 @@ pub async fn project_delete(
         )
     })?;
 
-    if !user.role.is_mod() {
+    if !user.role.is_admin() {
         let team_member =
             database::models::TeamMember::get_from_user_id_project(
                 project.id,

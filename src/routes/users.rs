@@ -256,7 +256,7 @@ pub async fn user_edit(
             }
 
             if let Some(role) = &new_user.role {
-                if !user.role.is_mod() {
+                if !user.role.is_admin() {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the role of this user!"
                             .to_string(),
@@ -415,7 +415,7 @@ pub async fn user_delete(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to delete this user!".to_string(),
             ));
@@ -457,7 +457,7 @@ pub async fn user_follows(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to see the projects this user follows!".to_string(),
             ));
@@ -508,7 +508,7 @@ pub async fn user_notifications(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to see the notifications of this user!".to_string(),
             ));
