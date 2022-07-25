@@ -1,6 +1,6 @@
 [package]
 name = "labrinth"
-version = "2.4.3"
+version = "2.4.4"
 #Team members, please add your emails and usernames
 authors = ["geometrically <jai.a@tuta.io>", "Redblueflame <contact@redblueflame.com>", "Aeledfyr <aeledfyr@gmail.com>", "Charalampos Fanoulis <yo@fanoulis.dev>", "AppleTheGolden <scotsbox@protonmail.com>"]
 edition = "2018"
@@ -14,12 +14,12 @@ path = "src/main.rs"
 
 [dependencies]
 actix = "0.13.0"
-actix-web = { git = "https://github.com/modrinth/actix-web", rev = "88c7c18" }
+actix-web = "4.1.0"
 actix-rt = "2.7.0"
 tokio = { version = "1.19.0", features = ["sync"] }
 tokio-stream = "0.1.8"
-actix-multipart = { git = "https://github.com/modrinth/actix-web", rev = "88c7c18" }
-actix-cors = { git = "https://github.com/modrinth/actix-extras.git", rev = "34d301f" }
+actix-multipart = "0.4.0"
+actix-cors = "0.6.1"
 
 meilisearch-sdk = "0.15.0"
 reqwest = { version = "0.11.10", features = ["json"] }
@@ -64,3 +64,5 @@ bytes = "1.1.0"
 dashmap = "5.2.0"
 
 cached = "0.34.0"
+
+censor = "0.2.0"

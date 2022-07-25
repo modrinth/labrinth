@@ -3,8 +3,10 @@ use crate::models::projects::{GameVersion, Loader};
 use crate::validate::fabric::FabricValidator;
 use crate::validate::forge::{ForgeValidator, LegacyForgeValidator};
 use crate::validate::liteloader::LiteLoaderValidator;
-use crate::validate::pack::PackValidator;
+use crate::validate::modpack::ModpackValidator;
+use crate::validate::plugin::*;
 use crate::validate::quilt::QuiltValidator;
+use crate::validate::resourcepack::{PackValidator, TexturePackValidator};
 use std::io::Cursor;
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -13,8 +15,10 @@ use zip::ZipArchive;
 mod fabric;
 mod forge;
 mod liteloader;
-mod pack;
+mod modpack;
+mod plugin;
 mod quilt;
+mod resourcepack;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -22,7 +26,7 @@ pub enum ValidationError {
     Zip(#[from] zip::result::ZipError),
     #[error("IO Error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Error while validating JSON: {0}")]
+    #[error("Error while validating JSON for uploaded file: {0}")]
     SerDe(#[from] serde_json::Error),
     #[error("Invalid Input: {0}")]
     InvalidInput(std::borrow::Cow<'static, str>),
@@ -72,13 +76,19 @@ pub trait Validator: Sync {
     ) -> Result<ValidationResult, ValidationError>;
 }
 
-static VALIDATORS: [&dyn Validator; 6] = [
-    &PackValidator,
+static VALIDATORS: [&dyn Validator; 12] = [
+    &ModpackValidator,
     &FabricValidator,
     &ForgeValidator,
     &LegacyForgeValidator,
     &QuiltValidator,
     &LiteLoaderValidator,
+    &PackValidator,
+    &TexturePackValidator,
+    &BukkitValidator,
+    &BungeeCordValidator,
+    &VelocityValidator,
+    &SpongeValidator,
 ];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
@@ -91,8 +101,8 @@ pub async fn validate_file(
     all_game_versions: Vec<crate::database::models::categories::GameVersion>,
 ) -> Result<ValidationResult, ValidationError> {
     actix_web::web::block(move || {
-        let reader = std::io::Cursor::new(data);
-        let mut zip = zip::ZipArchive::new(reader)?;
+        let reader = Cursor::new(data);
+        let mut zip = ZipArchive::new(reader)?;
 
         let mut visited = false;
         for validator in &VALIDATORS {

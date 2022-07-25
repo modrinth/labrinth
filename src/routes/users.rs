@@ -182,13 +182,17 @@ pub async fn user_edit(
             let mut transaction = pool.begin().await?;
 
             if let Some(username) = &new_user.username {
-                let user_option =
+                let existing_user_id_option =
                     crate::database::models::User::get_id_from_username_or_id(
                         username, &**pool,
                     )
                     .await?;
 
-                if user_option.is_none() {
+                if existing_user_id_option
+                    .map(UserId::from)
+                    .map(|id| id == user.id)
+                    .unwrap_or(true)
+                {
                     sqlx::query!(
                         "
                     UPDATE users
@@ -251,7 +255,7 @@ pub async fn user_edit(
             }
 
             if let Some(role) = &new_user.role {
-                if !user.role.is_mod() {
+                if !user.role.is_admin() {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the role of this user!"
                             .to_string(),
@@ -406,7 +410,7 @@ pub async fn user_delete(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to delete this user!".to_string(),
             ));
@@ -447,7 +451,7 @@ pub async fn user_follows(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to see the projects this user follows!".to_string(),
             ));
@@ -497,7 +501,7 @@ pub async fn user_notifications(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to see the notifications of this user!".to_string(),
             ));
