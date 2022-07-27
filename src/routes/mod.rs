@@ -19,6 +19,7 @@ mod users;
 mod version_creation;
 mod version_file;
 mod versions;
+mod webhooks;
 
 pub use auth::config as auth_config;
 pub use tags::config as tags_config;
@@ -41,6 +42,7 @@ pub fn v2_config(cfg: &mut web::ServiceConfig) {
             .configure(moderation_config)
             .configure(reports_config)
             .configure(notifications_config)
+            .configure(webhooks_config)
             .configure(admin_config),
     );
 }
@@ -145,6 +147,16 @@ pub fn notifications_config(cfg: &mut web::ServiceConfig) {
         web::scope("notification")
             .service(notifications::notification_get)
             .service(notifications::notification_delete),
+    );
+}
+
+pub fn webhooks_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("webhook").service(
+            web::scope("discord")
+                .service(webhooks::follow_project_updates_discord)
+                .service(webhooks::unfollow_project_updates_discord),
+        ),
     );
 }
 

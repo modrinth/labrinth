@@ -21,8 +21,9 @@ use actix_web::{post, HttpRequest, HttpResponse};
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
+use std::ops::Add;
 use time::OffsetDateTime;
-use validator::Validate;
+use validator::{HasLen, Validate};
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct InitialVersionData {
@@ -392,6 +393,53 @@ async fn version_create_inner(
     }
     .insert_many(users, &mut *transaction)
     .await?;
+
+    let webhooks = sqlx::query!(
+        "SELECT webhook_id FROM mods_webhooks WHERE mod_id = $1",
+        builder.project_id as crate::database::models::ids::ProjectId
+    )
+    .fetch_many(&mut *transaction)
+    .try_filter_map(|e| async { Ok(e.right().map(|m| m.webhook_id)) })
+    .try_collect::<Vec<i32>>()
+    .await?;
+
+    let webhooks =
+        sqlx::query!("SELECT url FROM webhooks WHERE id = ANY($1)", webhooks)
+            .fetch_many(&mut *transaction)
+            .try_filter_map(|e| async { Ok(e.right().map(|m| m.url)) })
+            .try_collect::<Vec<String>>()
+            .await?;
+
+    for webhook in webhooks {
+        let mut game_versions = String::new();
+        for version in version_data.game_versions.clone() {
+            game_versions.add(&*format!("{}, ", version.0));
+            // TODO remove last ", "
+        }
+
+        let mut fields = vec![
+            DiscordEmbedField {
+                name: "Version title",
+                value: version_data.version_title.clone(),
+                inline: true,
+            },
+            DiscordEmbedField {
+                name: "Supported versions",
+                value: game_versions,
+                inline: true,
+            },
+        ];
+
+        if let Some(changelog) = &version_data.version_body {
+            fields.push(DiscordEmbedField {
+                name: "Changelog",
+                value: changelog,
+                inline: true,
+            })
+        }
+    }
+
+    // TODO actually send stuff to the hooks
 
     let response = Version {
         id: builder.version_id.into(),

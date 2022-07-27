@@ -29,6 +29,8 @@ struct DiscordEmbedImage {
 #[derive(Serialize)]
 struct DiscordWebhook {
     pub embeds: Vec<DiscordEmbed>,
+    pub username: Option<String>,
+    pub avatar_url: Option<String>,
 }
 
 pub async fn send_discord_webhook(
@@ -100,6 +102,8 @@ pub async fn send_discord_webhook(
         .post(&webhook_url)
         .json(&DiscordWebhook {
             embeds: vec![embed],
+            username: None,
+            avatar_url: None,
         })
         .send()
         .await?;
