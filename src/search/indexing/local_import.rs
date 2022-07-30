@@ -21,8 +21,8 @@ pub async fn index_local(
             m.updated updated,
             m.team_id team_id, m.license license, m.slug slug,
             s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
-            STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT lo.loader, ',') loaders, STRING_AGG(DISTINCT gv.version, ',') versions,
-            STRING_AGG(DISTINCT mg.image_url, ',') gallery
+            ARRAY_AGG(DISTINCT c.category) categories, ARRAY_AGG(DISTINCT lo.loader) loaders, ARRAY_AGG(DISTINCT gv.version) versions,
+            ARRAY_AGG(DISTINCT mg.image_url) gallery
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
@@ -50,9 +50,9 @@ pub async fn index_local(
             .fetch_many(&pool)
             .try_filter_map(|e| async {
                 Ok(e.right().map(|m| {
-                    let mut categories = split_to_strings(m.categories);
-                    categories.append(&mut split_to_strings(m.loaders));
-                    let versions = split_to_strings(m.versions);
+                    let mut categories = m.categories.unwrap_or_default();
+                    categories.append(&mut m.loaders.unwrap_or_default());
+                    let versions = m.versions.unwrap_or_default();
 
                     let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
 
@@ -69,9 +69,9 @@ pub async fn index_local(
                         icon_url: m.icon_url.unwrap_or_default(),
                         author: m.username,
                         date_created: m.published,
-                        created_timestamp: m.published.unix_timestamp(),
+                        created_timestamp: m.published.timestamp(),
                         date_modified: m.updated,
-                        modified_timestamp: m.updated.unix_timestamp(),
+                        modified_timestamp: m.updated.timestamp(),
                         latest_version: versions.last().cloned().unwrap_or_else(|| "None".to_string()),
                         versions,
                         license: m.short,
@@ -79,16 +79,11 @@ pub async fn index_local(
                         server_side: m.server_side_type,
                         slug: m.slug,
                         project_type: m.project_type_name,
-                        gallery: m.gallery.map(|x| x.split(',').map(|x| x.to_string()).collect()).unwrap_or_default()
+                        gallery: m.gallery.unwrap_or_default()
                     }
                 }))
             })
             .try_collect::<Vec<_>>()
             .await?
     )
-}
-
-fn split_to_strings(s: Option<String>) -> Vec<String> {
-    s.map(|x| x.split(',').map(ToString::to_string).collect())
-        .unwrap_or_default()
 }
