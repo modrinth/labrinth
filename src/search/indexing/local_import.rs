@@ -14,8 +14,7 @@ pub async fn index_local(
         sqlx::query!(
             "
             SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
-            m.icon_url icon_url, m.published published,
-            m.updated updated,
+            m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,
             m.team_id team_id, m.license license, m.slug slug,
             s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories, ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders, ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null) versions,
@@ -65,7 +64,7 @@ pub async fn index_local(
                         icon_url: m.icon_url.unwrap_or_default(),
                         author: m.username,
                         date_created: m.published,
-                        created_timestamp: m.published.timestamp(),
+                        created_timestamp: m.approved.unwrap_or(m.published).timestamp(),
                         date_modified: m.updated,
                         modified_timestamp: m.updated.timestamp(),
                         latest_version: versions.last().cloned().unwrap_or_else(|| "None".to_string()),
