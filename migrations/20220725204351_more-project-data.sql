@@ -5,9 +5,12 @@ ALTER TABLE mods_categories
 ALTER TABLE mods
     ADD COLUMN approved timestamptz NULL;
 
+ALTER TABLE categories
+    ADD COLUMN header varchar(256) NOT NULL DEFAULT 'Categories';
+
 UPDATE mods
     SET approved = published
-    WHERE status = 'approved' OR status = 'unlisted';
+    WHERE status = 1 OR status = 4;
 
 CREATE INDEX mods_slug
     ON mods (slug);

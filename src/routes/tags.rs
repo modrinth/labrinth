@@ -38,6 +38,7 @@ pub struct CategoryData {
     icon: String,
     name: String,
     project_type: String,
+    header: String,
 }
 
 // TODO: searching / filtering? Could be used to implement a live
@@ -53,6 +54,7 @@ pub async fn category_list(
             icon: x.icon,
             name: x.category,
             project_type: x.project_type,
+            header: x.header,
         })
         .collect::<Vec<_>>();
 
@@ -84,6 +86,7 @@ pub async fn category_create(
         .name(&new_category.name)?
         .project_type(&project_type)?
         .icon(&new_category.icon)?
+        .header(&new_category.header)?
         .insert(&**pool)
         .await?;
 

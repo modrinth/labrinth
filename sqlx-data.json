@@ -545,6 +545,29 @@
     },
     "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role FROM users u\n            WHERE u.id = ANY($1)\n            "
   },
+  "19422e88b1b13318d75e8eb2ba142a562c550358b3136eef9ef73b5a216bbcdb": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int4",
+          "Varchar",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO categories (category, project_type, icon, header)\n            VALUES ($1, $2, $3, $4)\n            RETURNING id\n            "
+  },
   "19dc22c4d6d14222f8e8bace74c2961761c53b7375460ade15af921754d5d7da": {
     "describe": {
       "columns": [],
@@ -910,7 +933,44 @@
     },
     "query": "\n                INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted)\n                VALUES ($1, $2, $3, $4, $5, $6)\n                "
   },
-  "2fbd9df69a3e4d8820b82d00f11a4811f42d913afc3c2f95b41f7557b39c29a5": {
+  "33a965c7dc615d3b701c05299889357db8dd36d378850625d2602ba471af4885": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE mods\n                    SET downloads = downloads + $1\n                    WHERE (id = $2)\n                    "
+  },
+  "33fc96ac71cfa382991cfb153e89da1e9f43ebf5367c28b30c336b758222307b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM loaders_versions\n            WHERE loaders_versions.version_id = $1\n            "
+  },
+  "371048e45dd74c855b84cdb8a6a565ccbef5ad166ec9511ab20621c336446da6": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE mods\n            SET follows = follows - 1\n            WHERE id = $1\n            "
+  },
+  "37f7baa7659d84d27972bb9f0f629e70661035a09f1b47bb55426902223d26f9": {
     "describe": {
       "columns": [
         {
@@ -1014,18 +1074,23 @@
           "type_info": "VarcharArray"
         },
         {
-          "name": "loaders",
+          "name": "primary_categories",
           "ordinal": 20,
           "type_info": "VarcharArray"
         },
         {
-          "name": "versions",
+          "name": "loaders",
           "ordinal": 21,
           "type_info": "VarcharArray"
         },
         {
-          "name": "gallery",
+          "name": "versions",
           "ordinal": 22,
+          "type_info": "VarcharArray"
+        },
+        {
+          "name": "gallery",
+          "ordinal": 23,
           "type_info": "VarcharArray"
         }
       ],
@@ -1052,6 +1117,7 @@
         null,
         null,
         null,
+        null,
         null
       ],
       "parameters": {
@@ -1062,44 +1128,7 @@
         ]
       }
     },
-    "query": "\n            SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,\n            m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,\n            m.team_id team_id, m.license license, m.slug slug,\n            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,\n            ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories, ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders, ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null) versions,\n            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null) gallery\n            FROM mods m\n            LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id\n            LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id\n            LEFT OUTER JOIN versions v ON v.mod_id = m.id\n            LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id\n            LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id\n            LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id\n            LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id\n            LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id\n            INNER JOIN statuses s ON s.id = m.status\n            INNER JOIN project_types pt ON pt.id = m.project_type\n            INNER JOIN side_types cs ON m.client_side = cs.id\n            INNER JOIN side_types ss ON m.server_side = ss.id\n            INNER JOIN licenses l ON m.license = l.id\n            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE\n            INNER JOIN users u ON tm.user_id = u.id\n            WHERE s.status = $1 OR s.status = $2\n            GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id, u.id;\n            "
-  },
-  "33a965c7dc615d3b701c05299889357db8dd36d378850625d2602ba471af4885": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int4",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                    UPDATE mods\n                    SET downloads = downloads + $1\n                    WHERE (id = $2)\n                    "
-  },
-  "33fc96ac71cfa382991cfb153e89da1e9f43ebf5367c28b30c336b758222307b": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            DELETE FROM loaders_versions\n            WHERE loaders_versions.version_id = $1\n            "
-  },
-  "371048e45dd74c855b84cdb8a6a565ccbef5ad166ec9511ab20621c336446da6": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            UPDATE mods\n            SET follows = follows - 1\n            WHERE id = $1\n            "
+    "query": "\n            SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,\n            m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,\n            m.team_id team_id, m.license license, m.slug slug,\n            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,\n            ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories, ARRAY_AGG(DISTINCT cp.category) filter (where cp.category is not null) primary_categories, ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders, ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null) versions,\n            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null) gallery\n            FROM mods m\n            LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id\n            LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id\n            LEFT OUTER JOIN categories cp ON mc.joining_category_id = c.id AND mc.is_additional = FALSE\n            LEFT OUTER JOIN versions v ON v.mod_id = m.id\n            LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id\n            LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id\n            LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id\n            LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id\n            LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id\n            INNER JOIN statuses s ON s.id = m.status\n            INNER JOIN project_types pt ON pt.id = m.project_type\n            INNER JOIN side_types cs ON m.client_side = cs.id\n            INNER JOIN side_types ss ON m.server_side = ss.id\n            INNER JOIN licenses l ON m.license = l.id\n            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE\n            INNER JOIN users u ON tm.user_id = u.id\n            WHERE s.status = $1 OR s.status = $2\n            GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id, u.id;\n            "
   },
   "3831c1b321e47690f1f54597506a0d43362eda9540c56acb19c06532bba50b01": {
     "describe": {
@@ -1677,6 +1706,48 @@
       }
     },
     "query": "\n            SELECT id, user_id, role, permissions, accepted\n            FROM team_members\n            WHERE (team_id = $1 AND user_id = $2 AND accepted = TRUE)\n            "
+  },
+  "4c0ddff96476162ed90800cc91147edec58f12d6d2bc09e67308ed678ac7009f": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        },
+        {
+          "name": "category",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "icon",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "header",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "project_type",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "\n            SELECT c.id id, c.category category, c.icon icon, c.header header, pt.name project_type\n            FROM categories c\n            INNER JOIN project_types pt ON c.project_type = pt.id\n            ORDER BY c.id\n            "
   },
   "4ccf5373d9593fd19622dba270ae2b194f8029f2fb05ad00ff6b3f2ac4d589b0": {
     "describe": {
@@ -3349,42 +3420,6 @@
     },
     "query": "\n            DELETE FROM project_types\n            WHERE name = $1\n            "
   },
-  "885ca4b21e05079d30dcf3b65619c95b544a10b7b08c3184278a0fe5ebc44b86": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int4"
-        },
-        {
-          "name": "category",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "icon",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "project_type",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": []
-      }
-    },
-    "query": "\n            SELECT c.id id, c.category category, c.icon icon, pt.name project_type\n            FROM categories c\n            INNER JOIN project_types pt ON c.project_type = pt.id\n            ORDER BY c.id\n            "
-  },
   "89310b2bc5f020744a9a42dae6f15dfebc1544cdd754939f0d09714353f2aa7c": {
     "describe": {
       "columns": [
@@ -3454,28 +3489,6 @@
       }
     },
     "query": "\n            DELETE FROM team_members\n            WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)\n            "
-  },
-  "8bb8be81029b47af0c2a200647abcabb79cb88a41e53467ad3b52d714c83fdf9": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int4"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Varchar",
-          "Int4",
-          "Varchar"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO categories (category, project_type, icon)\n            VALUES ($1, $2, $3)\n            RETURNING id\n            "
   },
   "8ced4b7a1c4f944b918d2d2eefc8007a3fb9565021ca8c44608caccbe1ab9674": {
     "describe": {

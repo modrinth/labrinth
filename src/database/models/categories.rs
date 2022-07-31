@@ -30,6 +30,7 @@ pub struct Category {
     pub category: String,
     pub project_type: String,
     pub icon: String,
+    pub header: String,
 }
 
 pub struct ReportType {
@@ -53,6 +54,7 @@ pub struct CategoryBuilder<'a> {
     pub name: Option<&'a str>,
     pub project_type: Option<&'a ProjectTypeId>,
     pub icon: Option<&'a str>,
+    pub header: Option<&'a str>,
 }
 
 impl Category {
@@ -61,6 +63,7 @@ impl Category {
             name: None,
             project_type: None,
             icon: None,
+            header: None,
         }
     }
 
@@ -146,7 +149,7 @@ impl Category {
     {
         let result = sqlx::query!(
             "
-            SELECT c.id id, c.category category, c.icon icon, pt.name project_type
+            SELECT c.id id, c.category category, c.icon icon, c.header header, pt.name project_type
             FROM categories c
             INNER JOIN project_types pt ON c.project_type = pt.id
             ORDER BY c.id
@@ -159,6 +162,7 @@ impl Category {
                 category: c.category,
                 project_type: c.project_type,
                 icon: c.icon,
+                header: c.header
             }))
         })
         .try_collect::<Vec<Category>>()
@@ -212,6 +216,16 @@ impl<'a> CategoryBuilder<'a> {
         }
     }
 
+    pub fn header(
+        self,
+        header: &'a str,
+    ) -> Result<CategoryBuilder<'a>, DatabaseError> {
+        Ok(Self {
+            header: Some(header),
+            ..self
+        })
+    }
+
     pub fn project_type(
         self,
         project_type: &'a ProjectTypeId,
@@ -244,13 +258,14 @@ impl<'a> CategoryBuilder<'a> {
         })?;
         let result = sqlx::query!(
             "
-            INSERT INTO categories (category, project_type, icon)
-            VALUES ($1, $2, $3)
+            INSERT INTO categories (category, project_type, icon, header)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
             ",
             self.name,
             id as ProjectTypeId,
-            self.icon
+            self.icon,
+            self.header
         )
         .fetch_one(exec)
         .await?;

@@ -74,6 +74,7 @@ pub struct UploadSearchProject {
     pub title: String,
     pub description: String,
     pub categories: Vec<String>,
+    pub display_categories: Vec<String>,
     pub versions: Vec<String>,
     pub follows: i32,
     pub downloads: i32,
@@ -110,6 +111,7 @@ pub struct ResultSearchProject {
     pub title: String,
     pub description: String,
     pub categories: Vec<String>,
+    pub display_categories: Vec<String>,
     // TODO: more efficient format for listing versions, without many repetitions
     pub versions: Vec<String>,
     pub downloads: i32,
