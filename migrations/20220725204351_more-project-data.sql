@@ -6,7 +6,8 @@ ALTER TABLE mods
     ADD COLUMN approved timestamptz NULL;
 
 UPDATE mods
-SET approved = published;
+    SET approved = published
+    WHERE status = 'approved' OR status = 'unlisted';
 
 CREATE INDEX mods_slug
     ON mods (slug);
