@@ -6,23 +6,20 @@ use crate::database::models::ProjectId;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
-// TODO: Move this away from STRING_AGG to multiple queries - however this may be more efficient?
 pub async fn index_local(
     pool: PgPool,
 ) -> Result<Vec<UploadSearchProject>, IndexingError> {
     info!("Indexing local projects!");
     Ok(
         sqlx::query!(
-            //FIXME: there must be a way to reduce the duplicate lines between this query and the one in `query_one` here...
-            //region query
             "
             SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.published published,
             m.updated updated,
             m.team_id team_id, m.license license, m.slug slug,
             s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
-            ARRAY_AGG(DISTINCT c.category) categories, ARRAY_AGG(DISTINCT lo.loader) loaders, ARRAY_AGG(DISTINCT gv.version) versions,
-            ARRAY_AGG(DISTINCT mg.image_url) gallery
+            ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories, ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders, ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null) versions,
+            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null) gallery
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
@@ -42,7 +39,6 @@ pub async fn index_local(
             WHERE s.status = $1 OR s.status = $2
             GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id, u.id;
             ",
-            //endregion query
             crate::models::projects::ProjectStatus::Approved.as_str(),
             crate::models::projects::ProjectStatus::Archived.as_str(),
             crate::models::teams::OWNER_ROLE,

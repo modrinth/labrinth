@@ -629,9 +629,11 @@ impl Project {
             m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
             m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
             s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name, pt.name project_type_name,
-            ARRAY_AGG(DISTINCT c.category) categories, ARRAY_AGG(DISTINCT ca.category) additional_categories, ARRAY_AGG(DISTINCT v.id) versions,
-            ARRAY_AGG(DISTINCT mg.image_url || ' |||| ' || mg.featured || ' |||| ' || mg.created || ' |||| ' || COALESCE(mg.title, ' ') || ' |||| ' || COALESCE(mg.description, ' ')) gallery,
-            ARRAY_AGG(DISTINCT md.joining_platform_id || ' |||| ' || dp.short || ' |||| ' || dp.name || ' |||| ' || md.url) donations
+            ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories,
+            ARRAY_AGG(DISTINCT ca.category) filter (where ca.category is not null) additional_categories,
+            ARRAY_AGG(DISTINCT v.id || ' |||| ' || v.date_published) filter (where v.id is not null) versions,
+            ARRAY_AGG(DISTINCT mg.image_url || ' |||| ' || mg.featured || ' |||| ' || mg.created || ' |||| ' || COALESCE(mg.title, ' ') || ' |||| ' || COALESCE(mg.description, ' ')) filter (where mg.image_url is not null) gallery,
+            ARRAY_AGG(DISTINCT md.joining_platform_id || ' |||| ' || dp.short || ' |||| ' || dp.name || ' |||| ' || md.url) filter (where md.joining_platform_id is not null) donations
             FROM mods m
             INNER JOIN project_types pt ON pt.id = m.project_type
             INNER JOIN statuses s ON s.id = m.status
@@ -684,11 +686,36 @@ impl Project {
                 },
                 project_type: m.project_type_name,
                 categories: m.categories.unwrap_or_default(),
-                additional_categories: m.additional_categories.unwrap_or_default(),
-                versions: m
-                    .versions
-                    .map(|x| x.into_iter().map(VersionId).collect())
+                additional_categories: m
+                    .additional_categories
                     .unwrap_or_default(),
+                versions: {
+                    let versions = m.versions.unwrap_or_default();
+
+                    let mut v = versions
+                        .into_iter()
+                        .flat_map(|x| {
+                            let version: Vec<&str> =
+                                x.split(" |||| ").collect();
+
+                            if version.len() >= 2 {
+                                Some((
+                                    VersionId(
+                                        version[0].parse().unwrap_or_default(),
+                                    ),
+                                    convert_postgres_date(version[1])
+                                        .timestamp(),
+                                ))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<(VersionId, i64)>>();
+
+                    v.sort_by(|a, b| a.1.cmp(&b.1));
+
+                    v.into_iter().map(|x| x.0).collect()
+                },
                 donation_urls: m
                     .donations
                     .unwrap_or_default()
@@ -776,9 +803,11 @@ impl Project {
             m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
             m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
             s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name, pt.name project_type_name,
-            ARRAY_AGG(DISTINCT c.category) categories, ARRAY_AGG(DISTINCT ca.category) additional_categories, ARRAY_AGG(DISTINCT v.id) versions,
-            ARRAY_AGG(DISTINCT mg.image_url || ' |||| ' || mg.featured || ' |||| ' || mg.created || ' |||| ' || COALESCE(mg.title, ' ') || ' |||| ' || COALESCE(mg.description, ' ')) gallery,
-            ARRAY_AGG(DISTINCT md.joining_platform_id || ' |||| ' || dp.short || ' |||| ' || dp.name || ' |||| ' || md.url) donations
+            ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories,
+            ARRAY_AGG(DISTINCT ca.category) filter (where ca.category is not null) additional_categories,
+            ARRAY_AGG(DISTINCT v.id || ' |||| ' || v.date_published) filter (where v.id is not null) versions,
+            ARRAY_AGG(DISTINCT mg.image_url || ' |||| ' || mg.featured || ' |||| ' || mg.created || ' |||| ' || COALESCE(mg.title, ' ') || ' |||| ' || COALESCE(mg.description, ' ')) filter (where mg.image_url is not null) gallery,
+            ARRAY_AGG(DISTINCT md.joining_platform_id || ' |||| ' || dp.short || ' |||| ' || dp.name || ' |||| ' || md.url) filter (where md.joining_platform_id is not null) donations
             FROM mods m
             INNER JOIN project_types pt ON pt.id = m.project_type
             INNER JOIN statuses s ON s.id = m.status
@@ -832,10 +861,31 @@ impl Project {
                         project_type: m.project_type_name,
                         categories: m.categories.unwrap_or_default(),
                         additional_categories: m.additional_categories.unwrap_or_default(),
-                        versions: m
-                            .versions
-                            .map(|x| x.into_iter().map(VersionId).collect())
-                            .unwrap_or_default(),
+                        versions: {
+                            let versions = m.versions.unwrap_or_default();
+
+                            let mut v = versions
+                                .into_iter()
+                                .flat_map(|x| {
+                                    let version: Vec<&str> =
+                                        x.split(" |||| ").collect();
+
+                                    if version.len() >= 2 {
+                                        Some((
+                                            VersionId(version[0].parse().unwrap_or_default()),
+                                            convert_postgres_date(version[1])
+                                                .timestamp(),
+                                        ))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<(VersionId, i64)>>();
+
+                            v.sort_by(|a, b| a.1.cmp(&b.1));
+
+                            v.into_iter().map(|x| x.0).collect()
+                        },
                         gallery_items: m
                             .gallery
                             .unwrap_or_default()

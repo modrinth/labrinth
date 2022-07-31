@@ -328,7 +328,7 @@ impl Loader {
         let result = sqlx::query!(
             "
             SELECT l.id id, l.loader loader, l.icon icon,
-            ARRAY_AGG(DISTINCT pt.name) project_types
+            ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types
             FROM loaders l
             LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id
             LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id

@@ -1,8 +1,7 @@
 [package]
 name = "labrinth"
-version = "2.4.4"
-#Team members, please add your emails and usernames
-authors = ["geometrically <jai.a@tuta.io>", "Redblueflame <contact@redblueflame.com>", "Aeledfyr <aeledfyr@gmail.com>", "Charalampos Fanoulis <yo@fanoulis.dev>", "AppleTheGolden <scotsbox@protonmail.com>"]
+version = "2.5.0"
+authors = ["geometrically <jai@modrinth.com>"]
 edition = "2018"
 license = "AGPL-3.0"
 
