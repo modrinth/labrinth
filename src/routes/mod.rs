@@ -12,6 +12,7 @@ mod notifications;
 pub(crate) mod project_creation;
 mod projects;
 mod reports;
+mod settings;
 mod tags;
 mod teams;
 mod updates;
@@ -41,6 +42,7 @@ pub fn v2_config(cfg: &mut web::ServiceConfig) {
             .configure(moderation_config)
             .configure(reports_config)
             .configure(notifications_config)
+            .configure(settings_config)
             .configure(admin_config),
     );
 }
@@ -121,6 +123,7 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
             .service(users::user_edit)
             .service(users::user_icon_edit)
             .service(users::user_notifications)
+            .service(users::user_settings)
             .service(users::user_follows),
     );
 }
@@ -147,6 +150,16 @@ pub fn notifications_config(cfg: &mut web::ServiceConfig) {
         web::scope("notification")
             .service(notifications::notification_get)
             .service(notifications::notification_delete),
+    );
+}
+
+pub fn settings_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(settings::settings_get);
+
+    cfg.service(
+        web::scope("settings")
+            .service(settings::create_setting)
+            .service(settings::delete_setting),
     );
 }
 

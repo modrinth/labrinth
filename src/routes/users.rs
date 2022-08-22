@@ -521,3 +521,38 @@ pub async fn user_notifications(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
+
+#[get("{id}/settings")]
+pub async fn user_settings(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id_option = crate::database::models::User::get_id_from_username_or_id(
+        &*info.into_inner().0,
+        &**pool,
+    )
+        .await?;
+
+    if let Some(id) = id_option {
+        if !user.role.is_admin() && user.id != id.into() {
+            return Err(ApiError::CustomAuthentication(
+                "You do not have permission to see the settings of this user!".to_string(),
+            ));
+        }
+
+        let mut settings: Vec<Setting> =
+            crate::database::models::notification_item::Notification::get_many_user(id, &**pool)
+                .await?
+                .into_iter()
+                .map(Into::into)
+                .collect();
+
+        notifications.sort_by(|a, b| b.created.cmp(&a.created));
+
+        Ok(HttpResponse::Ok().json(notifications))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
