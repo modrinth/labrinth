@@ -13,8 +13,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
-use serde_json::json;
 use validator::Validate;
+use crate::database::models::settings::UserSettings;
+use crate::models::settings::FrontendTheme;
 
 #[get("user")]
 pub async fn user_auth_get(
@@ -530,7 +531,7 @@ pub async fn user_settings(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option = crate::database::models::User::get_id_from_username_or_id(
+    let id_option = User::get_id_from_username_or_id(
         &*info.into_inner().0,
         &**pool,
     )
@@ -544,18 +545,120 @@ pub async fn user_settings(
             ));
         }
 
-        let settings = sqlx::query!(
-            "SELECT * FROM user_settings WHERE user_id = $1",
+        let result = sqlx::query!(
+            "
+            SELECT *
+            FROM user_settings
+            WHERE user_id = $1
+            ",
             id as crate::database::models::ids::UserId
         )
         .fetch_one(&**pool)
         .await?;
 
-        Ok(HttpResponse::Ok().json(json!({
-            "tos_agreed": settings.tos_agreed,
-            "public_email": settings.public_email,
-            "public_github": settings.public_github
-        })))
+        let settings = UserSettings {
+            tos_agreed: result.tos_agreed,
+            public_email: result.public_email,
+            public_github: result.public_github,
+            theme: FrontendTheme::from_str(&result.theme),
+        };
+
+        Ok(HttpResponse::Ok().json(settings))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[derive(Deserialize)]
+pub struct NewSettings {
+    tos_agreed: Option<bool>,
+    public_email: Option<bool>,
+    public_github: Option<bool>,
+    theme: Option<FrontendTheme>,
+}
+
+#[patch("{id}/settings")]
+pub async fn user_settings_edit(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    new_settings: web::Json<NewSettings>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id_option = User::get_id_from_username_or_id(
+        &*info.into_inner().0,
+        &**pool,
+    )
+    .await?;
+
+    if let Some(id) = id_option {
+        if !user.role.is_admin() && user.id != id.into() {
+            return Err(ApiError::CustomAuthentication(
+                "You do not have permission to see the settings of this user!"
+                    .to_string(),
+            ));
+        }
+
+        let mut transaction = pool.begin().await?;
+
+        if let Some(tos_setting) = new_settings.tos_agreed {
+            sqlx::query!(
+                "
+                UPDATE user_settings
+                SET tos_agreed = $1
+                WHERE user_id = $2
+                ",
+                tos_setting,
+                id as crate::database::models::ids::UserId
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        if let Some(email_setting) = new_settings.public_email {
+            sqlx::query!(
+                "
+                UPDATE user_settings
+                SET public_email = $1
+                WHERE user_id = $2
+                ",
+                email_setting,
+                id as crate::database::models::ids::UserId
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        if let Some(github_setting) = new_settings.public_github {
+            sqlx::query!(
+                "
+                UPDATE user_settings
+                SET public_github = $1
+                WHERE user_id = $2
+                ",
+                github_setting,
+                id as crate::database::models::ids::UserId
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        if let Some(theme_setting) = &new_settings.theme {
+            sqlx::query!(
+                "
+                UPDATE user_settings
+                SET theme = $1
+                WHERE user_id = $2
+                ",
+                theme_setting.as_str(),
+                id as crate::database::models::ids::UserId
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        transaction.commit().await?;
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
