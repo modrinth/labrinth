@@ -13,6 +13,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
+use serde_json::json;
 use validator::Validate;
 
 #[get("user")]
@@ -533,25 +534,28 @@ pub async fn user_settings(
         &*info.into_inner().0,
         &**pool,
     )
-        .await?;
+    .await?;
 
     if let Some(id) = id_option {
         if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
-                "You do not have permission to see the settings of this user!".to_string(),
+                "You do not have permission to see the settings of this user!"
+                    .to_string(),
             ));
         }
 
-        let mut settings: Vec<Setting> =
-            crate::database::models::notification_item::Notification::get_many_user(id, &**pool)
-                .await?
-                .into_iter()
-                .map(Into::into)
-                .collect();
+        let settings = sqlx::query!(
+            "SELECT * FROM user_settings WHERE user_id = $1",
+            id as crate::database::models::ids::UserId
+        )
+        .fetch_one(&**pool)
+        .await?;
 
-        notifications.sort_by(|a, b| b.created.cmp(&a.created));
-
-        Ok(HttpResponse::Ok().json(notifications))
+        Ok(HttpResponse::Ok().json(json!({
+            "tos_agreed": settings.tos_agreed,
+            "public_email": settings.public_email,
+            "public_github": settings.public_github
+        })))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

@@ -154,13 +154,13 @@ pub fn notifications_config(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn settings_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(settings::settings_get);
+    /*cfg.service(settings::settings_get);
 
     cfg.service(
         web::scope("settings")
             .service(settings::create_setting)
             .service(settings::delete_setting),
-    );
+    );*/
 }
 
 pub fn moderation_config(cfg: &mut web::ServiceConfig) {

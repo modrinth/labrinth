@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-// TODO: remove attr once routes are created
-
 use chrono::{DateTime, Utc};
 use thiserror::Error;
 
@@ -9,6 +6,7 @@ pub mod ids;
 pub mod notification_item;
 pub mod project_item;
 pub mod report_item;
+pub mod settings;
 pub mod team_item;
 pub mod user_item;
 pub mod version_item;
