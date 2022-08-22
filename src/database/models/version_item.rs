@@ -665,7 +665,8 @@ impl Version {
                         })
                         .collect();
 
-                    v.files
+                    let mut files: Vec<QueryFile> = v
+                        .files
                         .unwrap_or_default()
                         .into_iter()
                         .flat_map(|f| {
@@ -697,7 +698,9 @@ impl Version {
                                 None
                             }
                         })
-                        .collect()
+                        .collect();
+                    files.sort_by(|a, b| a.filename.cmp(&b.filename));
+                    files
                 },
                 game_versions: {
                     let game_versions = v.game_versions.unwrap_or_default();
@@ -832,7 +835,7 @@ impl Version {
                                 }
                             }).collect();
 
-                            v.files.unwrap_or_default()
+                            let mut files: Vec<QueryFile> = v.files.unwrap_or_default()
                                 .into_iter()
                                 .flat_map(|f| {
                                 let file: Vec<&str> = f.split(" |||| ").collect();
@@ -858,7 +861,10 @@ impl Version {
                                 } else {
                                     None
                                 }
-                            }).collect()
+                            })
+                            .collect();
+                            files.sort_by(|a, b| a.filename.cmp(&b.filename));
+                            files
                         },
                         game_versions: {
                             let game_versions = v
