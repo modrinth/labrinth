@@ -146,7 +146,7 @@ impl TeamMember {
         executor: E,
     ) -> Result<Vec<QueryTeamMember>, super::DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
@@ -155,9 +155,10 @@ impl TeamMember {
             SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role
+            u.created created, u.role user_role, us.public_email
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
+            INNER JOIN user_settings us on u.id = us.user_id
             WHERE tm.team_id = $1
             ",
             id as TeamId,
@@ -177,7 +178,11 @@ impl TeamMember {
                             id: UserId(m.user_id),
                             github_id: m.github_id,
                             name: m.user_name,
-                            email: m.email,
+                            email: if m.public_email {
+                                m.email
+                            } else {
+                                None
+                            },
                             avatar_url: m.avatar_url,
                             username: m.username,
                             bio: m.bio,

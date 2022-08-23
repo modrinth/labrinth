@@ -1,7 +1,9 @@
+use crate::database::models::settings::UserSettings;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::projects::{Project, ProjectStatus};
+use crate::models::settings::FrontendTheme;
 use crate::models::users::{Role, UserId};
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
@@ -14,8 +16,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use validator::Validate;
-use crate::database::models::settings::UserSettings;
-use crate::models::settings::FrontendTheme;
 
 #[get("user")]
 pub async fn user_auth_get(
@@ -531,11 +531,9 @@ pub async fn user_settings(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option = User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
-    )
-    .await?;
+    let id_option =
+        User::get_id_from_username_or_id(&*info.into_inner().0, &**pool)
+            .await?;
 
     if let Some(id) = id_option {
         if !user.role.is_admin() && user.id != id.into() {
@@ -585,11 +583,9 @@ pub async fn user_settings_edit(
     new_settings: web::Json<NewSettings>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option = User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
-    )
-    .await?;
+    let id_option =
+        User::get_id_from_username_or_id(&*info.into_inner().0, &**pool)
+            .await?;
 
     if let Some(id) = id_option {
         if !user.role.is_admin() && user.id != id.into() {

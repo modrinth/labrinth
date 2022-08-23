@@ -41,6 +41,16 @@ impl User {
         .execute(&mut *transaction)
         .await?;
 
+        sqlx::query!(
+            "
+            INSERT INTO user_settings (user_id)
+            VALUES ($1)
+            ",
+            self.id as UserId
+        )
+        .execute(&mut *transaction)
+        .await?;
+
         Ok(())
     }
     pub async fn get<'a, 'b, E>(
@@ -54,8 +64,9 @@ impl User {
             "
             SELECT u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role
+                u.created, u.role, us.public_email
             FROM users u
+            INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.id = $1
             ",
             id as UserId,
@@ -68,7 +79,7 @@ impl User {
                 id,
                 github_id: row.github_id,
                 name: row.name,
-                email: row.email,
+                email: if row.public_email { row.email } else { None },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -91,8 +102,9 @@ impl User {
             "
             SELECT u.id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role
+                u.created, u.role, us.public_email
             FROM users u
+            INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.github_id = $1
             ",
             github_id as i64,
@@ -105,7 +117,7 @@ impl User {
                 id: UserId(row.id),
                 github_id: Some(github_id as i64),
                 name: row.name,
-                email: row.email,
+                email: if row.public_email { row.email } else { None },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -122,14 +134,15 @@ impl User {
         executor: E,
     ) -> Result<Option<Self>, sqlx::error::Error>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         let result = sqlx::query!(
             "
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role
+                u.created, u.role, us.public_email
             FROM users u
+            INNER JOIN user_settings us on u.id = us.user_id
             WHERE LOWER(u.username) = LOWER($1)
             ",
             username
@@ -142,7 +155,7 @@ impl User {
                 id: UserId(row.id),
                 github_id: row.github_id,
                 name: row.name,
-                email: row.email,
+                email: if row.public_email { row.email } else { None },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -169,7 +182,9 @@ impl User {
             "
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role FROM users u
+                u.created, u.role, us.public_email
+            FROM users u
+            INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.id = ANY($1)
             ",
             &user_ids_parsed
@@ -180,7 +195,11 @@ impl User {
                 id: UserId(u.id),
                 github_id: u.github_id,
                 name: u.name,
-                email: u.email,
+                email: if u.public_email || u.role == "admin" {
+                    u.email
+                } else {
+                    None
+                },
                 avatar_url: u.avatar_url,
                 username: u.username,
                 bio: u.bio,

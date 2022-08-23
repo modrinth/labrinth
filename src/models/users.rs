@@ -30,7 +30,7 @@ impl From<DBUser> for User {
             github_id: data.github_id.map(|i| i as u64),
             username: data.username,
             name: data.name,
-            email: None,
+            email: data.email,
             avatar_url: data.avatar_url,
             bio: data.bio,
             created: data.created,
