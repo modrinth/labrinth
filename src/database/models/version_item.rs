@@ -2,6 +2,7 @@ use super::ids::*;
 use super::DatabaseError;
 use crate::database::models::convert_postgres_date;
 use chrono::{DateTime, Utc};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 pub struct VersionBuilder {
@@ -699,7 +700,15 @@ impl Version {
                             }
                         })
                         .collect();
-                    files.sort_by(|a, b| a.filename.cmp(&b.filename));
+                    files.sort_by(|a, b| {
+                        if a.primary {
+                            Ordering::Less
+                        } else if b.primary {
+                            Ordering::Greater
+                        } else {
+                            a.filename.cmp(&b.filename)
+                        }
+                    });
                     files
                 },
                 game_versions: {
@@ -863,7 +872,15 @@ impl Version {
                                 }
                             })
                             .collect();
-                            files.sort_by(|a, b| a.filename.cmp(&b.filename));
+                            files.sort_by(|a, b| {
+                                if a.primary {
+                                    Ordering::Less
+                                } else if b.primary {
+                                    Ordering::Greater
+                                } else {
+                                    a.filename.cmp(&b.filename)
+                                }
+                            });
                             files
                         },
                         game_versions: {
