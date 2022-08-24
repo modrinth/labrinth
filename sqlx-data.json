@@ -172,6 +172,86 @@
     },
     "query": "\n                        INSERT INTO mods_donations (joining_mod_id, joining_platform_id, url)\n                        VALUES ($1, $2, $3)\n                        "
   },
+  "082d463a9d0f969113caebc576a8f6740fdb99d3d6d0cf88af5f585eda2bd4ca": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 6,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 7,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "role",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "public_email",
+          "ordinal": 9,
+          "type_info": "Bool"
+        },
+        {
+          "name": "public_github",
+          "ordinal": 10,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role,\n                us.public_email, us.public_github\n            FROM users u\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE u.id = ANY($1)\n            "
+  },
   "091f325c84d0cf6dfe6933567c58fea815912ba613ffb3536466770d71ea613e": {
     "describe": {
       "columns": [
@@ -1051,6 +1131,110 @@
     },
     "query": "\n                INSERT INTO loaders_versions (loader_id, version_id)\n                VALUES ($1, $2)\n                "
   },
+  "2a791f1bf3ae824bce5e0be2594ba27f1be18140a8a1fb493ab6347bfd701edd": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "member_role",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "permissions",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "accepted",
+          "ordinal": 3,
+          "type_info": "Bool"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 4,
+          "type_info": "Int8"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 5,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_name",
+          "ordinal": 6,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 9,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 11,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "user_role",
+          "ordinal": 12,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "public_email",
+          "ordinal": 13,
+          "type_info": "Bool"
+        },
+        {
+          "name": "public_github",
+          "ordinal": 14,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role, us.public_email, us.public_github\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE tm.team_id = $1\n            "
+  },
   "2abecb467a9ad3b792babf20e09601c011fc2622e101e98054baeaacaa16795a": {
     "describe": {
       "columns": [],
@@ -1129,80 +1313,6 @@
       }
     },
     "query": "\n            DELETE FROM loaders_versions\n            WHERE loaders_versions.version_id = $1\n            "
-  },
-  "33fd8e7425efa3110c61c28e65cef76aacb6700bf5833f26d5fb05230c01ae14": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 6,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 7,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "role",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "public_email",
-          "ordinal": 9,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, us.public_email\n            FROM users u\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE LOWER(u.username) = LOWER($1)\n            "
   },
   "3440b2043859d15314cd7902e97ae1555411054abcc91333f2feaad009aa6a08": {
     "describe": {
@@ -1571,74 +1681,6 @@
     },
     "query": "\n                    UPDATE mods\n                    SET title = $1\n                    WHERE (id = $2)\n                    "
   },
-  "3f092b6247959dd63a8fa82270e7b1a549ae5659fcaecec6208ea51eb9b5bf45": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 6,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "role",
-          "ordinal": 7,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "public_email",
-          "ordinal": 8,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT u.id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, us.public_email\n            FROM users u\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE u.github_id = $1\n            "
-  },
   "3f2f05653552ce8c1be95ce0a922ab41f52f40f8ff6c91c6621481102c8f35e3": {
     "describe": {
       "columns": [],
@@ -1663,6 +1705,19 @@
       }
     },
     "query": "\n                        DELETE FROM mods_categories\n                        WHERE joining_mod_id = $1 AND is_additional = TRUE\n                        "
+  },
+  "411ebdc4d2726acfa56b12ddc53fd7789c95ea9abda40e9a735d176ad7caa17b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE user_settings\n            SET theme = $1\n            WHERE user_id = $2\n            "
   },
   "416fcc4d612d84394c1780a99c30bdf282bfddb9405fbac67ef7864d36aa3f63": {
     "describe": {
@@ -2026,6 +2081,116 @@
       }
     },
     "query": "\n                    DELETE FROM game_versions_versions WHERE joining_version_id = $1\n                    "
+  },
+  "5198eebed2445809a37d471c72393411fa949a803592a1017d73e59f7c5af2cc": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "team_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "member_role",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "permissions",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "accepted",
+          "ordinal": 4,
+          "type_info": "Bool"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 5,
+          "type_info": "Int8"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 6,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_name",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 9,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 12,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "user_role",
+          "ordinal": 13,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "public_email",
+          "ordinal": 14,
+          "type_info": "Bool"
+        },
+        {
+          "name": "public_github",
+          "ordinal": 15,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role, us.public_email, us.public_github\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE tm.team_id = ANY($1)\n            ORDER BY tm.team_id\n            "
   },
   "5295fba2053675c8414c0b37a59943535b9a438a642ea1c68045e987f05ade13": {
     "describe": {
@@ -2679,6 +2844,80 @@
     },
     "query": "\n            SELECT id, team_id, user_id, role, permissions, accepted\n            FROM team_members\n            WHERE (team_id = ANY($1) AND user_id = $2 AND accepted = TRUE)\n            "
   },
+  "6748a326d75432357f66c22b0b6c8d9e55c2d7f3656f5e8183876fb9071170f4": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 6,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "role",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "public_email",
+          "ordinal": 8,
+          "type_info": "Bool"
+        },
+        {
+          "name": "public_github",
+          "ordinal": 9,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT u.id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role,\n                us.public_email, us.public_github\n            FROM users u\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE u.github_id = $1\n            "
+  },
   "67d021f0776276081d3c50ca97afa6b78b98860bf929009e845e9c00a192e3b5": {
     "describe": {
       "columns": [
@@ -2778,26 +3017,6 @@
     },
     "query": "\n            DELETE FROM mods\n            WHERE id = $1\n            "
   },
-  "6b5640247d83c655d524340dcf8e2b6988ba78c344c0c3485236ab096943594d": {
-    "describe": {
-      "columns": [
-        {
-          "name": "public_email",
-          "ordinal": 0,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT public_email\n            FROM user_settings\n            WHERE user_id = $1\n            "
-  },
   "6c7aeb0db4a4fb3387c37b8d7aca6fdafaa637fd883a44416b56270aeebb7a01": {
     "describe": {
       "columns": [],
@@ -2822,26 +3041,6 @@
       }
     },
     "query": "\n                    UPDATE files\n                    SET is_primary = FALSE\n                    WHERE (version_id = $1)\n                    "
-  },
-  "6ec3d596b1932a4a8f09fc8495722aad1a7d541db657a17aee3c2d0410793a4b": {
-    "describe": {
-      "columns": [
-        {
-          "name": "public_github",
-          "ordinal": 0,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT public_github\n            FROM user_settings\n            WHERE user_id = $1\n            "
   },
   "6fd06767f42be894c7a35c6b61f43407c55de43dc77ed02b39062278f3de81e3": {
     "describe": {
@@ -2886,7 +3085,7 @@
     },
     "query": "\n            UPDATE dependencies\n            SET dependency_id = $2\n            WHERE id = ANY($1::bigint[])\n            "
   },
-  "719f1cb4273d6da4fb296fc854e8c9deb656c3efc7ff7bb15487bb99c86e109b": {
+  "72369829c509562d8e01a53a6cd4aec0d2d24ee1c32ac14f49bee5f8506859ba": {
     "describe": {
       "columns": [
         {
@@ -2933,6 +3132,11 @@
           "name": "public_email",
           "ordinal": 8,
           "type_info": "Bool"
+        },
+        {
+          "name": "public_github",
+          "ordinal": 9,
+          "type_info": "Bool"
         }
       ],
       "nullable": [
@@ -2944,6 +3148,7 @@
         true,
         false,
         false,
+        false,
         false
       ],
       "parameters": {
@@ -2952,7 +3157,7 @@
         ]
       }
     },
-    "query": "\n            SELECT u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, us.public_email\n            FROM users u\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE u.id = $1\n            "
+    "query": "\n            SELECT u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role,\n                us.public_email, us.public_github\n            FROM users u\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE u.id = $1\n            "
   },
   "72ad6f4be40d7620a0ec557e3806da41ce95335aeaa910fe35aca2ec7c3f09b6": {
     "describe": {
@@ -3498,6 +3703,50 @@
     },
     "query": "\n            SELECT c.id id, c.category category, c.icon icon, c.header category_header, pt.name project_type\n            FROM categories c\n            INNER JOIN project_types pt ON c.project_type = pt.id\n            ORDER BY c.id\n            "
   },
+  "8b511b800fbd49d7f64b1e1996ec7fa201ebd7531010f530758f691edb72f9ae": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "tos_agreed",
+          "ordinal": 1,
+          "type_info": "Bool"
+        },
+        {
+          "name": "public_email",
+          "ordinal": 2,
+          "type_info": "Bool"
+        },
+        {
+          "name": "public_github",
+          "ordinal": 3,
+          "type_info": "Bool"
+        },
+        {
+          "name": "theme",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        SELECT *\n        FROM user_settings\n        WHERE user_id = $1\n        "
+  },
   "8ba2b2c38958f1c542e514fc62ab4682f58b0b442ac1842d20625420698e34ec": {
     "describe": {
       "columns": [],
@@ -3659,6 +3908,19 @@
     },
     "query": "\n            UPDATE mods\n            SET icon_url = $1\n            WHERE (id = $2)\n            "
   },
+  "92eb7a34b73820fbb3e944710dcb58b813ed755d9945cbef5cffc61f1e89d6e4": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Bool",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE user_settings\n            SET public_github = $1\n            WHERE user_id = $2\n            "
+  },
   "9348309884811e8b22f33786ae7c0f259f37f3c90e545f00761a641570107160": {
     "describe": {
       "columns": [
@@ -3710,26 +3972,6 @@
       }
     },
     "query": "\n            SELECT id FROM mods\n            WHERE slug = LOWER($1)\n            "
-  },
-  "94162f83059b4964fe062426142df5628b9fffb7c975fb50d9beaad9129cb228": {
-    "describe": {
-      "columns": [
-        {
-          "name": "theme",
-          "ordinal": 0,
-          "type_info": "Varchar"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT theme\n            FROM user_settings\n            WHERE user_id = $1\n            "
   },
   "97690dda7edea8c985891cae5ad405f628ed81e333bc88df5493c928a4324d43": {
     "describe": {
@@ -4104,6 +4346,19 @@
     },
     "query": "\n            DELETE FROM dependencies WHERE mod_dependency_id = NULL AND dependency_id = NULL AND dependency_file_name = NULL\n            "
   },
+  "ae45b6650f621603549d6325ab2dba6e5c0b319249285328e52a49959821fbed": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Bool",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE user_settings\n            SET tos_agreed = $1\n            WHERE user_id = $2\n            "
+  },
   "b030a9e0fdb75eee8ee50aafdcb6063a073e2aa53cc70d40ed46437c1d0dfe80": {
     "describe": {
       "columns": [],
@@ -4120,26 +4375,6 @@
     },
     "query": "\n            INSERT INTO mods_gallery (\n                mod_id, image_url, featured, title, description\n            )\n            VALUES (\n                $1, $2, $3, $4, $5\n            )\n            "
   },
-  "b0666c880e82cbd04850179bc92f7a709488ffbc1d4aad93aa6ebed9710163e4": {
-    "describe": {
-      "columns": [
-        {
-          "name": "tos_agreed",
-          "ordinal": 0,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT tos_agreed\n            FROM user_settings\n            WHERE user_id = $1\n            "
-  },
   "b0e3d1c70b87bb54819e3fac04b684a9b857aeedb4dcb7cb400c2af0dbb12922": {
     "describe": {
       "columns": [],
@@ -4151,6 +4386,86 @@
       }
     },
     "query": "\n            DELETE FROM teams\n            WHERE id = $1\n            "
+  },
+  "b17af5c9e507d830a9d4249f6cc8962e4e19ad5090671baeb121c105252db442": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 6,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 7,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "role",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "public_email",
+          "ordinal": 9,
+          "type_info": "Bool"
+        },
+        {
+          "name": "public_github",
+          "ordinal": 10,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role,\n                us.public_email, us.public_github\n            FROM users u\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE LOWER(u.username) = LOWER($1)\n            "
   },
   "b41ba860c9d5402ba78297800b9df632a45718f5680a4e96d05372e59466ed7d": {
     "describe": {
@@ -5060,104 +5375,6 @@
     },
     "query": "\n                    UPDATE team_members\n                    SET accepted = TRUE\n                    WHERE (team_id = $1 AND user_id = $2)\n                    "
   },
-  "d553bb44ac600047656962bd1c44378fb32e74f0e7f07d1c26336dc80dffe78a": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "member_role",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "permissions",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "accepted",
-          "ordinal": 4,
-          "type_info": "Bool"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 5,
-          "type_info": "Int8"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 6,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_name",
-          "ordinal": 7,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 9,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 10,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 11,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 12,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "user_role",
-          "ordinal": 13,
-          "type_info": "Varchar"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      }
-    },
-    "query": "\n            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            WHERE tm.team_id = ANY($1)\n            ORDER BY tm.team_id\n            "
-  },
   "d59a0ca4725d40232eae8bf5735787e1b76282c390d2a8d07fb34e237a0b2132": {
     "describe": {
       "columns": [],
@@ -5606,80 +5823,6 @@
     },
     "query": "\n                    UPDATE versions\n                    SET featured = $1\n                    WHERE (id = $2)\n                    "
   },
-  "e62541c01a09c33632f4fbcd2f1773d149cb9537054b3df60547fd7cf6b94d94": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 6,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 7,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "role",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "public_email",
-          "ordinal": 9,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      }
-    },
-    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, us.public_email\n            FROM users u\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE u.id = ANY($1)\n            "
-  },
   "e673006d1355fa91ba5739d7cf569eec5e1ec501f7b1dc2b431f0b1c25ac07d5": {
     "describe": {
       "columns": [],
@@ -5775,6 +5918,19 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM teams WHERE id=$1)"
+  },
+  "e8d9712203185043cfd5b4b2dd62764a31aab617c2a34d671dbf44a8eeee0de9": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Bool",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE user_settings\n            SET public_email = $1\n            WHERE user_id = $2\n            "
   },
   "e8dc09a76d69e689d4b97527755aebfc049bbb4d470627a688eb9d56f01f8bd5": {
     "describe": {
@@ -6285,104 +6441,6 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM notifications WHERE id=$1)"
-  },
-  "fb9ac58b2e45807ce8bbe5faa78e8beea85d56b31dafeff04db45dae04ac7989": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "member_role",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "permissions",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "accepted",
-          "ordinal": 3,
-          "type_info": "Bool"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 4,
-          "type_info": "Int8"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 5,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_name",
-          "ordinal": 6,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 7,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 9,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 10,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 11,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "user_role",
-          "ordinal": 12,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "public_email",
-          "ordinal": 13,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role, us.public_email\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            INNER JOIN user_settings us on u.id = us.user_id\n            WHERE tm.team_id = $1\n            "
   },
   "fcd15905507769ab7f9839d64d1be3ee3f61cd555aee57dace76f8e53e91d344": {
     "describe": {

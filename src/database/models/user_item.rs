@@ -64,7 +64,8 @@ impl User {
             "
             SELECT u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role, us.public_email
+                u.created, u.role,
+                us.public_email, us.public_github
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.id = $1
@@ -77,7 +78,11 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id,
-                github_id: row.github_id,
+                github_id: if row.public_github {
+                    row.github_id
+                } else {
+                    None
+                },
                 name: row.name,
                 email: if row.public_email { row.email } else { None },
                 avatar_url: row.avatar_url,
@@ -102,7 +107,8 @@ impl User {
             "
             SELECT u.id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role, us.public_email
+                u.created, u.role,
+                us.public_email, us.public_github
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.github_id = $1
@@ -115,7 +121,11 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id: UserId(row.id),
-                github_id: Some(github_id as i64),
+                github_id: if row.public_github {
+                    Some(github_id as i64)
+                } else {
+                    None
+                },
                 name: row.name,
                 email: if row.public_email { row.email } else { None },
                 avatar_url: row.avatar_url,
@@ -134,13 +144,14 @@ impl User {
         executor: E,
     ) -> Result<Option<Self>, sqlx::error::Error>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role, us.public_email
+                u.created, u.role,
+                us.public_email, us.public_github
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
             WHERE LOWER(u.username) = LOWER($1)
@@ -153,7 +164,11 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id: UserId(row.id),
-                github_id: row.github_id,
+                github_id: if row.public_github {
+                    row.github_id
+                } else {
+                    None
+                },
                 name: row.name,
                 email: if row.public_email { row.email } else { None },
                 avatar_url: row.avatar_url,
@@ -182,7 +197,8 @@ impl User {
             "
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role, us.public_email
+                u.created, u.role,
+                us.public_email, us.public_github
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.id = ANY($1)
@@ -193,13 +209,9 @@ impl User {
         .try_filter_map(|e| async {
             Ok(e.right().map(|u| User {
                 id: UserId(u.id),
-                github_id: u.github_id,
+                github_id: if u.public_github { u.github_id } else { None },
                 name: u.name,
-                email: if u.public_email || u.role == "admin" {
-                    u.email
-                } else {
-                    None
-                },
+                email: if u.public_email { u.email } else { None },
                 avatar_url: u.avatar_url,
                 username: u.username,
                 bio: u.bio,

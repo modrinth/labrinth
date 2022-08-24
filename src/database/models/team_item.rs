@@ -146,7 +146,7 @@ impl TeamMember {
         executor: E,
     ) -> Result<Vec<QueryTeamMember>, super::DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         use futures::stream::TryStreamExt;
 
@@ -155,7 +155,7 @@ impl TeamMember {
             SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, us.public_email
+            u.created created, u.role user_role, us.public_email, us.public_github
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             INNER JOIN user_settings us on u.id = us.user_id
@@ -176,7 +176,11 @@ impl TeamMember {
                         accepted: m.accepted,
                         user: User {
                             id: UserId(m.user_id),
-                            github_id: m.github_id,
+                            github_id: if m.public_github {
+                                m.github_id
+                            } else {
+                                None
+                            },
                             name: m.user_name,
                             email: if m.public_email {
                                 m.email
@@ -224,9 +228,10 @@ impl TeamMember {
             SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role
+            u.created created, u.role user_role, us.public_email, us.public_github
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
+            INNER JOIN user_settings us on u.id = us.user_id
             WHERE tm.team_id = ANY($1)
             ORDER BY tm.team_id
             ",
@@ -245,9 +250,17 @@ impl TeamMember {
                           accepted: m.accepted,
                           user: User {
                               id: UserId(m.user_id),
-                              github_id: m.github_id,
+                              github_id: if m.public_github {
+                                  m.github_id
+                              } else {
+                                  None
+                              },
                               name: m.user_name,
-                              email: m.email,
+                              email: if m.public_email {
+                                  m.email
+                              } else {
+                                  None
+                              },
                               avatar_url: m.avatar_url,
                               username: m.username,
                               bio: m.bio,

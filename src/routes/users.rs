@@ -525,7 +525,7 @@ pub async fn user_notifications(
 }
 
 #[get("{id}/settings")]
-pub async fn user_settings(
+pub async fn user_settings_from_id(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
@@ -567,6 +567,35 @@ pub async fn user_settings(
     }
 }
 
+#[get("settings")]
+pub async fn user_settings_from_header(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id = user.id;
+
+    let result = sqlx::query!(
+        "
+        SELECT *
+        FROM user_settings
+        WHERE user_id = $1
+        ",
+        user.id.0 as i64
+    )
+    .fetch_one(&**pool)
+    .await?;
+
+    let settings = UserSettings {
+        tos_agreed: result.tos_agreed,
+        public_email: result.public_email,
+        public_github: result.public_github,
+        theme: FrontendTheme::from_str(&result.theme),
+    };
+
+    Ok(HttpResponse::Ok().json(settings))
+}
+
 #[derive(Deserialize)]
 pub struct NewSettings {
     tos_agreed: Option<bool>,
@@ -576,7 +605,7 @@ pub struct NewSettings {
 }
 
 #[patch("{id}/settings")]
-pub async fn user_settings_edit(
+pub async fn user_settings_edit_from_id(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
@@ -658,4 +687,75 @@ pub async fn user_settings_edit(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+#[patch("settings")]
+pub async fn user_settings_edit_from_header(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    new_settings: web::Json<NewSettings>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    let mut transaction = pool.begin().await?;
+
+    if let Some(tos_setting) = new_settings.tos_agreed {
+        sqlx::query!(
+            "
+            UPDATE user_settings
+            SET tos_agreed = $1
+            WHERE user_id = $2
+            ",
+            tos_setting,
+            user.id.0 as i64
+        )
+        .execute(&mut *transaction)
+        .await?;
+    }
+
+    if let Some(email_setting) = new_settings.public_email {
+        sqlx::query!(
+            "
+            UPDATE user_settings
+            SET public_email = $1
+            WHERE user_id = $2
+            ",
+            email_setting,
+            user.id.0 as i64
+        )
+        .execute(&mut *transaction)
+        .await?;
+    }
+
+    if let Some(github_setting) = new_settings.public_github {
+        sqlx::query!(
+            "
+            UPDATE user_settings
+            SET public_github = $1
+            WHERE user_id = $2
+            ",
+            github_setting,
+            user.id.0 as i64
+        )
+        .execute(&mut *transaction)
+        .await?;
+    }
+
+    if let Some(theme_setting) = &new_settings.theme {
+        sqlx::query!(
+            "
+            UPDATE user_settings
+            SET theme = $1
+            WHERE user_id = $2
+            ",
+            theme_setting.as_str(),
+            user.id.0 as i64
+        )
+        .execute(&mut *transaction)
+        .await?;
+    }
+
+    transaction.commit().await?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }
