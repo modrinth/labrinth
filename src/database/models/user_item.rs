@@ -1,5 +1,6 @@
 use super::ids::{ProjectId, UserId};
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 
 pub struct User {
     pub id: UserId,

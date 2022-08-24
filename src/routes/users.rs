@@ -1,4 +1,3 @@
-use crate::database::models::settings::UserSettings;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
@@ -16,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use validator::Validate;
+use crate::database::models::user_item::UserSettings;
 
 #[get("user")]
 pub async fn user_auth_get(
@@ -573,7 +573,6 @@ pub async fn user_settings_from_header(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id = user.id;
 
     let result = sqlx::query!(
         "
