@@ -6,7 +6,6 @@ pub mod ids;
 pub mod notification_item;
 pub mod project_item;
 pub mod report_item;
-pub mod settings;
 pub mod team_item;
 pub mod user_item;
 pub mod version_item;

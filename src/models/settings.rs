@@ -8,7 +8,7 @@ pub enum FrontendTheme {
     System,
     Light,
     Dark,
-    OLED,
+    Oled,
 }
 
 impl Display for FrontendTheme {
@@ -22,7 +22,7 @@ impl FrontendTheme {
         match string {
             "light" => Light,
             "dark" => Dark,
-            "oled" => OLED,
+            "oled" => Oled,
             _ => System,
         }
     }
@@ -31,7 +31,7 @@ impl FrontendTheme {
             System => "system",
             Light => "light",
             Dark => "dark",
-            OLED => "oled",
+            Oled => "oled",
         }
     }
 }
