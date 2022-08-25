@@ -470,7 +470,6 @@ async fn version_create_inner(
     };
 
     for webhook in webhooks {
-        log::info!("{}", webhook);
         send_generic_webhook(&discord_webhook, webhook)
             .await
             .unwrap_or(());
