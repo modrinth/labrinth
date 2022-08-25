@@ -392,14 +392,6 @@ async fn version_create_inner(
 
     let mut fields: Vec<DiscordEmbedField> = Vec::new();
 
-    let mut game_versions = String::new();
-    let mut count = version_data.game_versions.len();
-    for version in version_data.game_versions.clone() {
-        count -= 1;
-        game_versions +=
-            &*format!("{}{}", version.0, if count == 0 { "" } else { ", " });
-    }
-
     fields.push(DiscordEmbedField {
         name: "Version title",
         value: version_data.version_title.clone(),
@@ -408,7 +400,12 @@ async fn version_create_inner(
 
     fields.push(DiscordEmbedField {
         name: "Supported versions",
-        value: game_versions,
+        value: version_data
+            .game_versions
+            .iter()
+            .map(|c| c.0[0..1].to_uppercase() + &c.0[1..])
+            .collect::<Vec<String>>()
+            .join(", "),
         inline: true,
     });
 
