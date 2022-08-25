@@ -409,6 +409,17 @@ async fn version_create_inner(
         inline: true,
     });
 
+    fields.push(DiscordEmbedField {
+        name: "Supported loaders",
+        value: version_data
+            .loaders
+            .iter()
+            .map(|c| c.0[0..1].to_uppercase() + &c.0[1..])
+            .collect::<Vec<String>>()
+            .join(", "),
+        inline: true,
+    });
+
     if let Some(changelog) = version_data.version_body.clone() {
         fields.push(DiscordEmbedField {
             name: "Changelog",
@@ -419,7 +430,13 @@ async fn version_create_inner(
 
     let embed = DiscordEmbed {
         author: Some(DiscordEmbedAuthor {
-            name: user.username,
+            name: user.username.clone(),
+            url: Some(format!(
+                "{}/user/{}",
+                dotenv::var("SITE_URL").unwrap_or_default(),
+                user.username
+            )),
+            icon_url: user.avatar_url,
         }),
         url: format!(
             "{}/{}/{}/version/{}",
@@ -453,6 +470,7 @@ async fn version_create_inner(
     };
 
     for webhook in webhooks {
+        log::info!("{}", webhook);
         send_generic_webhook(&discord_webhook, webhook)
             .await
             .unwrap_or(());

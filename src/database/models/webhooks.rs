@@ -50,7 +50,7 @@ impl Webhook {
         E: Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         let webhook =
-            sqlx::query!("SELECT id FROM webhooks WHERE url = $1", url,)
+            sqlx::query!("SELECT id FROM webhooks WHERE url = $1", url)
                 .fetch_optional(exec)
                 .await?;
 

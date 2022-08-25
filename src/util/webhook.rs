@@ -29,6 +29,8 @@ pub struct DiscordEmbedThumbnail {
 #[derive(Serialize)]
 pub struct DiscordEmbedAuthor {
     pub name: String,
+    pub url: Option<String>,
+    pub icon_url: Option<String>,
 }
 
 #[derive(Serialize)]
