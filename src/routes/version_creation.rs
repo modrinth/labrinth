@@ -23,8 +23,6 @@ use chrono::Utc;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
-use std::ops::Add;
-use time::OffsetDateTime;
 use validator::Validate;
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -378,21 +376,19 @@ async fn version_create_inner(
     .insert_many(users, &mut *transaction)
     .await?;
 
-    let webhooks = sqlx::query!(
-        "SELECT webhook_id FROM mods_webhooks WHERE mod_id = $1",
+    let webhooks: Vec<String> = sqlx::query!(
+        "
+        SELECT w.url url
+        FROM mods_webhooks mw
+        INNER JOIN webhooks w ON w.id = mw.webhook_id
+        WHERE mod_id = $1
+        ",
         builder.project_id as crate::database::models::ids::ProjectId
     )
     .fetch_many(&mut *transaction)
-    .try_filter_map(|e| async { Ok(e.right().map(|m| m.webhook_id)) })
-    .try_collect::<Vec<i32>>()
+    .try_filter_map(|e| async { Ok(e.right().map(|m| m.url)) })
+    .try_collect::<Vec<String>>()
     .await?;
-
-    let webhooks =
-        sqlx::query!("SELECT url FROM webhooks WHERE id = ANY($1)", webhooks)
-            .fetch_many(&mut *transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|m| m.url)) })
-            .try_collect::<Vec<String>>()
-            .await?;
 
     let mut fields: Vec<DiscordEmbedField> = Vec::new();
 
@@ -400,11 +396,8 @@ async fn version_create_inner(
     let mut count = version_data.game_versions.len();
     for version in version_data.game_versions.clone() {
         count -= 1;
-        game_versions.add(&*format!(
-            "{}{}",
-            version.0,
-            if count == 0 { "" } else { ", " }
-        ));
+        game_versions +=
+            &*format!("{}{}", version.0, if count == 0 { "" } else { ", " });
     }
 
     fields.push(DiscordEmbedField {
@@ -444,27 +437,28 @@ async fn version_create_inner(
             result.title,
             version_data.version_number.clone()
         ),
-        timestamp: OffsetDateTime::now_utc(),
+        timestamp: Utc::now(),
         color: 0x1bd96a,
         fields,
         thumbnail: DiscordEmbedThumbnail {
-            url: result.icon_url,
+            url: result.icon_url.clone(),
+        },
+    };
+
+    let discord_webhook = DiscordWebhook {
+        embeds: vec![embed],
+        username: Some(result.title),
+        avatar_url: if let Some(icon_url) = result.icon_url {
+            Some(icon_url)
+        } else {
+            None
         },
     };
 
     for webhook in webhooks {
-        let _ = send_generic_webhook(
-            &DiscordWebhook {
-                embeds: vec![embed],
-                username: Some(result.title),
-                avatar_url: Some(result.icon_url),
-            },
-            webhook.url,
-        )
-        .await
-        .map_err(
-            |_| Ok(()), // Discord is down or something, ignore it
-        );
+        send_generic_webhook(&discord_webhook, webhook)
+            .await
+            .unwrap_or(());
     }
 
     let response = Version {
