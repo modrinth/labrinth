@@ -1,4 +1,4 @@
-use crate::database::models::{DatabaseError, LoaderId, ProjectId};
+use crate::database::models::{LoaderId, ProjectId};
 use sqlx::Executor;
 
 pub struct Webhook {

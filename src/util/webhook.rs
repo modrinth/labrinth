@@ -3,7 +3,8 @@ use serde::Serialize;
 use time::OffsetDateTime;
 
 #[derive(Serialize)]
-struct DiscordEmbed {
+pub struct DiscordEmbed {
+    pub author: Option<DiscordEmbedAuthor>,
     pub title: String,
     pub description: String,
     pub url: String,
@@ -11,29 +12,45 @@ struct DiscordEmbed {
     pub timestamp: OffsetDateTime,
     pub color: u32,
     pub fields: Vec<DiscordEmbedField>,
-    pub image: DiscordEmbedImage,
+    pub thumbnail: DiscordEmbedThumbnail,
 }
 
 #[derive(Serialize)]
-struct DiscordEmbedField {
+pub struct DiscordEmbedField {
     pub name: &'static str,
     pub value: String,
     pub inline: bool,
 }
 
 #[derive(Serialize)]
-struct DiscordEmbedImage {
+pub struct DiscordEmbedThumbnail {
     pub url: Option<String>,
 }
 
 #[derive(Serialize)]
-struct DiscordWebhook {
+pub struct DiscordEmbedAuthor {
+    pub name: String,
+}
+
+#[derive(Serialize)]
+pub struct DiscordWebhook {
     pub embeds: Vec<DiscordEmbed>,
     pub username: Option<String>,
     pub avatar_url: Option<String>,
 }
 
-pub async fn send_discord_webhook(
+pub async fn send_generic_webhook(
+    webhook: &DiscordWebhook,
+    webhook_url: String,
+) -> Result<(), reqwest::Error> {
+    let client = reqwest::Client::new();
+
+    client.post(webhook_url).json(&webhook).send().await?;
+
+    Ok(())
+}
+
+pub async fn send_discord_moderation_webhook(
     project: Project,
     webhook_url: String,
 ) -> Result<(), reqwest::Error> {
@@ -77,6 +94,7 @@ pub async fn send_discord_webhook(
     }
 
     let embed = DiscordEmbed {
+        author: None,
         url: format!(
             "{}/{}/{}",
             dotenv::var("SITE_URL").unwrap_or_default(),
@@ -91,22 +109,18 @@ pub async fn send_discord_webhook(
         timestamp: project.published,
         color: 0x1bd96a,
         fields,
-        image: DiscordEmbedImage {
+        thumbnail: DiscordEmbedThumbnail {
             url: project.icon_url,
         },
     };
 
-    let client = reqwest::Client::new();
-
-    client
-        .post(&webhook_url)
-        .json(&DiscordWebhook {
+    send_generic_webhook(
+        &DiscordWebhook {
             embeds: vec![embed],
             username: None,
             avatar_url: None,
-        })
-        .send()
-        .await?;
-
-    Ok(())
+        },
+        webhook_url,
+    )
+    .await
 }

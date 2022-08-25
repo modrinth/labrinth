@@ -761,7 +761,7 @@ pub async fn project_create_inner(
 
         if status == ProjectStatus::Processing {
             if let Ok(webhook_url) = dotenv::var("MODERATION_DISCORD_WEBHOOK") {
-                crate::util::webhook::send_discord_webhook(
+                crate::util::webhook::send_discord_moderation_webhook(
                     response.clone(),
                     webhook_url,
                 )

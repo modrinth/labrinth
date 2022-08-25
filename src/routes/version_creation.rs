@@ -14,6 +14,7 @@ use crate::routes::project_creation::{CreateError, UploadedFile};
 use crate::util::auth::get_user_from_headers;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
+use crate::util::webhook::*;
 use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
@@ -23,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::ops::Add;
 use time::OffsetDateTime;
-use validator::{HasLen, Validate};
+use validator::Validate;
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct InitialVersionData {
@@ -347,7 +348,7 @@ async fn version_create_inner(
 
     let result = sqlx::query!(
         "
-        SELECT m.title title, pt.name project_type
+        SELECT m.title title, pt.name project_type, m.icon_url
         FROM mods m
         INNER JOIN project_types pt ON pt.id = m.project_type
         WHERE m.id = $1
@@ -410,36 +411,78 @@ async fn version_create_inner(
             .try_collect::<Vec<String>>()
             .await?;
 
-    for webhook in webhooks {
-        let mut game_versions = String::new();
-        for version in version_data.game_versions.clone() {
-            game_versions.add(&*format!("{}, ", version.0));
-            // TODO remove last ", "
-        }
+    let mut fields: Vec<DiscordEmbedField> = Vec::new();
 
-        let mut fields = vec![
-            DiscordEmbedField {
-                name: "Version title",
-                value: version_data.version_title.clone(),
-                inline: true,
-            },
-            DiscordEmbedField {
-                name: "Supported versions",
-                value: game_versions,
-                inline: true,
-            },
-        ];
-
-        if let Some(changelog) = &version_data.version_body {
-            fields.push(DiscordEmbedField {
-                name: "Changelog",
-                value: changelog,
-                inline: true,
-            })
-        }
+    let mut game_versions = String::new();
+    let mut count = version_data.game_versions.len();
+    for version in version_data.game_versions.clone() {
+        count -= 1;
+        game_versions.add(&*format!(
+            "{}{}",
+            version.0,
+            if count == 0 { "" } else { ", " }
+        ));
     }
 
-    // TODO actually send stuff to the hooks
+    fields.push(DiscordEmbedField {
+        name: "Version title",
+        value: version_data.version_title.clone(),
+        inline: true,
+    });
+
+    fields.push(DiscordEmbedField {
+        name: "Supported versions",
+        value: game_versions,
+        inline: true,
+    });
+
+    if let Some(changelog) = version_data.version_body.clone() {
+        fields.push(DiscordEmbedField {
+            name: "Changelog",
+            value: changelog,
+            inline: true,
+        })
+    }
+
+    let embed = DiscordEmbed {
+        author: Some(DiscordEmbedAuthor {
+            name: user.username,
+        }),
+        url: format!(
+            "{}/{}/{}/version/{}",
+            dotenv::var("SITE_URL").unwrap_or_default(),
+            result.project_type,
+            project_id,
+            version_id
+        ),
+        title: format!("**{}** has been updated!", result.title),
+        description: format!(
+            "The project, {}, has released a new version: {}",
+            result.title,
+            version_data.version_number.clone()
+        ),
+        timestamp: OffsetDateTime::now_utc(),
+        color: 0x1bd96a,
+        fields,
+        thumbnail: DiscordEmbedThumbnail {
+            url: result.icon_url,
+        },
+    };
+
+    for webhook in webhooks {
+        let _ = send_generic_webhook(
+            &DiscordWebhook {
+                embeds: vec![embed],
+                username: Some(result.title),
+                avatar_url: Some(result.icon_url),
+            },
+            webhook.url,
+        )
+        .await
+        .map_err(
+            |_| Ok(()), // Discord is down or something, ignore it
+        );
+    }
 
     let response = Version {
         id: builder.version_id.into(),
