@@ -19,6 +19,7 @@ use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
+use chrono::Utc;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
@@ -171,23 +172,6 @@ async fn version_create_inner(
                 ));
             }
 
-            // Check whether there is already a version of this project with the
-            // same version number
-            let results = sqlx::query!(
-                "SELECT EXISTS(SELECT 1 FROM versions WHERE (version_number = $1) AND (mod_id = $2))",
-                version_create_data.version_number,
-                project_id as models::ProjectId,
-            )
-            .fetch_one(&mut *transaction)
-            .await?;
-
-            if results.exists.unwrap_or(true) {
-                return Err(CreateError::InvalidInput(
-                    "A version with that version_number already exists"
-                        .to_string(),
-                ));
-            }
-
             // Check that the user creating this version is a team member
             // of the project the version is being added to.
             let team_member = models::TeamMember::get_from_user_id_project(
@@ -321,7 +305,7 @@ async fn version_create_inner(
             &cdn_url,
             &content_disposition,
             version.project_id.into(),
-            &version.version_number,
+            version.version_id.into(),
             &*project_type,
             version_data.loaders,
             version_data.game_versions,
@@ -369,10 +353,9 @@ async fn version_create_inner(
     )
     .fetch_many(&mut *transaction)
     .try_filter_map(|e| async {
-        Ok(e.right()
-            .map(|m| crate::database::models::ids::UserId(m.follower_id)))
+        Ok(e.right().map(|m| models::ids::UserId(m.follower_id)))
     })
-    .try_collect::<Vec<crate::database::models::ids::UserId>>()
+    .try_collect::<Vec<models::ids::UserId>>()
     .await?;
 
     let project_id: ProjectId = builder.project_id.into();
@@ -493,7 +476,7 @@ async fn version_create_inner(
         version_number: builder.version_number.clone(),
         changelog: builder.changelog.clone(),
         changelog_url: None,
-        date_published: OffsetDateTime::now_utc(),
+        date_published: Utc::now(),
         downloads: 0,
         version_type: version_data.release_channel,
         files: builder
@@ -629,7 +612,6 @@ async fn upload_file_to_version_inner(
     }
 
     let project_id = ProjectId(version.project_id.0 as u64);
-    let version_number = version.version_number;
 
     let project_type = sqlx::query!(
         "
@@ -676,7 +658,7 @@ async fn upload_file_to_version_inner(
         let mut dependencies = version
             .dependencies
             .iter()
-            .map(|x| models::version_item::DependencyBuilder {
+            .map(|x| DependencyBuilder {
                 project_id: x.project_id,
                 version_id: x.version_id,
                 file_name: None,
@@ -693,7 +675,7 @@ async fn upload_file_to_version_inner(
             &cdn_url,
             &content_disposition,
             project_id,
-            &version_number,
+            version_id.into(),
             &*project_type,
             version.loaders.clone().into_iter().map(Loader).collect(),
             version
@@ -735,7 +717,7 @@ pub async fn upload_file(
     cdn_url: &str,
     content_disposition: &actix_web::http::header::ContentDisposition,
     project_id: ProjectId,
-    version_number: &str,
+    version_id: VersionId,
     project_type: &str,
     loaders: Vec<Loader>,
     game_versions: Vec<GameVersion>,
@@ -813,23 +795,18 @@ pub async fn upload_file(
 
             for file in &format.files {
                 if let Some(dep) = res.iter().find(|x| {
-                    x.hash.as_deref()
+                    Some(&*x.hash)
                         == file
                             .hashes
                             .get(&PackFileHash::Sha1)
                             .map(|x| x.as_bytes())
                 }) {
-                    if let Some(project_id) = dep.project_id {
-                        if let Some(version_id) = dep.version_id {
-                            dependencies.push(DependencyBuilder {
-                                project_id: Some(models::ProjectId(project_id)),
-                                version_id: Some(models::VersionId(version_id)),
-                                file_name: None,
-                                dependency_type: DependencyType::Embedded
-                                    .to_string(),
-                            });
-                        }
-                    }
+                    dependencies.push(DependencyBuilder {
+                        project_id: Some(models::ProjectId(dep.project_id)),
+                        version_id: Some(models::VersionId(dep.version_id)),
+                        file_name: None,
+                        dependency_type: DependencyType::Embedded.to_string(),
+                    });
                 } else if let Some(first_download) = file.downloads.first() {
                     dependencies.push(DependencyBuilder {
                         project_id: None,
@@ -862,13 +839,11 @@ pub async fn upload_file(
     let file_path_encode = format!(
         "data/{}/versions/{}/{}",
         project_id,
-        version_number,
+        version_id,
         urlencoding::encode(file_name)
     );
-    let file_path = format!(
-        "data/{}/versions/{}/{}",
-        project_id, version_number, &file_name
-    );
+    let file_path =
+        format!("data/{}/versions/{}/{}", project_id, version_id, &file_name);
 
     let upload_data = file_host
         .upload_file(content_type, &file_path, data.freeze())

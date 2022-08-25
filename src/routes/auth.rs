@@ -21,10 +21,10 @@ use crate::util::auth::get_github_user_from_token;
 use actix_web::http::StatusCode;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, HttpResponse};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use thiserror::Error;
-use time::OffsetDateTime;
 
 pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(scope("auth").service(auth_callback).service(init));
@@ -50,6 +50,8 @@ pub enum AuthorizationError {
     Decoding(#[from] DecodingError),
     #[error("Invalid callback URL specified")]
     Url,
+    #[error("User is not allowed to access Modrinth services")]
+    Banned,
 }
 impl actix_web::ResponseError for AuthorizationError {
     fn status_code(&self) -> StatusCode {
@@ -67,6 +69,7 @@ impl actix_web::ResponseError for AuthorizationError {
             AuthorizationError::Decoding(..) => StatusCode::BAD_REQUEST,
             AuthorizationError::Authentication(..) => StatusCode::UNAUTHORIZED,
             AuthorizationError::Url => StatusCode::BAD_REQUEST,
+            AuthorizationError::Banned => StatusCode::FORBIDDEN,
         }
     }
 
@@ -84,6 +87,7 @@ impl actix_web::ResponseError for AuthorizationError {
                     "authentication_error"
                 }
                 AuthorizationError::Url => "url_error",
+                AuthorizationError::Banned => "user_banned",
             },
             description: &self.to_string(),
         })
@@ -176,9 +180,9 @@ pub async fn auth_callback(
     .await?;
 
     if let Some(result) = result_option {
-        let duration = result.expires - OffsetDateTime::now_utc();
+        let duration: chrono::Duration = result.expires - Utc::now();
 
-        if duration.whole_seconds() < 0 {
+        if duration.num_seconds() < 0 {
             return Err(AuthorizationError::InvalidCredentials);
         }
 
@@ -215,6 +219,17 @@ pub async fn auth_callback(
         match user_result {
             Some(_) => {}
             None => {
+                let banned_user = sqlx::query!(
+                    "SELECT user FROM banned_users WHERE github_id = $1",
+                    user.id as i64
+                )
+                .fetch_optional(&mut *transaction)
+                .await?;
+
+                if banned_user.is_some() {
+                    return Err(AuthorizationError::Banned);
+                }
+
                 let user_id =
                     crate::database::models::generate_user_id(&mut transaction)
                         .await?;
@@ -255,7 +270,7 @@ pub async fn auth_callback(
                         email: user.email,
                         avatar_url: Some(user.avatar_url),
                         bio: user.bio,
-                        created: OffsetDateTime::now_utc(),
+                        created: Utc::now(),
                         role: Role::Developer.to_string(),
                     }
                     .insert(&mut transaction)
