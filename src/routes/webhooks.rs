@@ -1,8 +1,10 @@
 use super::ApiError;
 use crate::database;
 use crate::database::models::webhooks::Webhook;
+use crate::database::models::UserId;
+use crate::util::auth::get_user_from_headers;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, post, web, HttpResponse};
+use actix_web::{delete, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
@@ -22,12 +24,15 @@ pub struct WebhookData {
 
 #[post("follow")]
 pub async fn follow_project_updates_discord(
+    req: HttpRequest,
     pool: web::Data<PgPool>,
     webhook_data: web::Json<WebhookData>,
 ) -> Result<HttpResponse, ApiError> {
     webhook_data.validate().map_err(|err| {
         ApiError::Validation(validation_errors_to_string(err, None))
     })?;
+
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
 
     let mut transaction = pool.begin().await?;
 
@@ -58,7 +63,8 @@ pub async fn follow_project_updates_discord(
         loaders,
     };
 
-    let result = Webhook::insert(&webhook, &**pool).await;
+    let result =
+        Webhook::insert(&webhook, UserId::from(user.id), &**pool).await;
 
     transaction.commit().await?;
 
@@ -76,10 +82,18 @@ pub struct WebhookDeletionData {
 
 #[delete("unfollow")]
 pub async fn unfollow_project_updates_discord(
+    req: HttpRequest,
     pool: web::Data<PgPool>,
     webhook_data: web::Json<WebhookDeletionData>,
 ) -> Result<HttpResponse, ApiError> {
-    let result = Webhook::remove(&webhook_data.webhook_url, &**pool).await;
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    let result = Webhook::remove(
+        &webhook_data.webhook_url,
+        UserId::from(user.id),
+        &**pool,
+    )
+    .await;
 
     if result.is_ok() {
         Ok(HttpResponse::NoContent().body(""))

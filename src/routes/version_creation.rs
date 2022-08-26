@@ -16,6 +16,7 @@ use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use crate::util::webhook::*;
 use crate::validate::{validate_file, ValidationResult};
+use crate::WebhookQueue;
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
@@ -69,6 +70,7 @@ pub async fn version_create(
     payload: Multipart,
     client: Data<PgPool>,
     file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
+    webhook_queue: Data<std::sync::Arc<WebhookQueue>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -79,6 +81,7 @@ pub async fn version_create(
         &mut transaction,
         &***file_host,
         &mut uploaded_files,
+        webhook_queue,
     )
     .await;
 
@@ -109,6 +112,7 @@ async fn version_create_inner(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
+    webhook_queue: Data<std::sync::Arc<WebhookQueue>>,
 ) -> Result<HttpResponse, CreateError> {
     let cdn_url = dotenv::var("CDN_URL")?;
 
@@ -470,9 +474,7 @@ async fn version_create_inner(
     };
 
     for webhook in webhooks {
-        send_generic_webhook(&discord_webhook, webhook)
-            .await
-            .unwrap_or(());
+        webhook_queue.add(discord_webhook.clone(), webhook).await;
     }
 
     let response = Version {

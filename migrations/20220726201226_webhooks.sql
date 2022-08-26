@@ -1,6 +1,7 @@
 CREATE TABLE webhooks (
     id serial PRIMARY KEY,
-    url varchar(255) NOT NULL UNIQUE
+    url varchar(255) NOT NULL UNIQUE,
+    user_id bigint NOT NULL
 );
 
 CREATE TABLE loaders_webhooks (

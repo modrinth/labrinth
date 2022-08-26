@@ -1,5 +1,6 @@
 use crate::file_hosting::S3Host;
 use crate::queue::download::DownloadQueue;
+use crate::queue::webhook::WebhookQueue;
 use crate::ratelimit::errors::ARError;
 use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use crate::ratelimit::middleware::RateLimiter;
@@ -194,12 +195,24 @@ async fn main() -> std::io::Result<()> {
         let download_queue_ref = download_queue_ref.clone();
 
         async move {
-            info!("Indexing download queue");
             let result = download_queue_ref.index(&pool_ref).await;
             if let Err(e) = result {
                 warn!("Indexing download queue failed: {:?}", e);
             }
-            info!("Done indexing download queue");
+        }
+    });
+
+    let webhook_queue = Arc::new(WebhookQueue::new());
+
+    let webhook_queue_ref = webhook_queue.clone();
+    scheduler.run(std::time::Duration::from_secs(60), move || {
+        let webhook_queue_ref = webhook_queue_ref.clone();
+
+        async move {
+            let result = webhook_queue_ref.index().await;
+            if let Err(e) = result {
+                warn!("Clearing webhook queue failed: {:?}", e);
+            }
         }
     });
 
@@ -259,6 +272,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(file_host.clone()))
             .app_data(web::Data::new(search_config.clone()))
             .app_data(web::Data::new(download_queue.clone()))
+            .app_data(web::Data::new(webhook_queue.clone()))
             .app_data(web::Data::new(ip_salt.clone()))
             .configure(routes::v1_config)
             .configure(routes::v2_config)

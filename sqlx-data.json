@@ -44,19 +44,6 @@
     },
     "query": "\n            SELECT id, team_id, role, permissions, accepted\n            FROM team_members\n            WHERE (user_id = $1 AND accepted = TRUE)\n            "
   },
-  "01b0b52723b13b92323477cee5af9621d3e2134ace26d5b48fc88d684c63f48a": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int4",
-          "Int4"
-        ]
-      }
-    },
-    "query": "INSERT INTO loaders_webhooks (loader_id, webhook_id) VALUES ($1, $2)"
-  },
   "0267d1ea5387d4acfc132aeb4776004a1ebb048e7789e686bfaba3357d392f62": {
     "describe": {
       "columns": [],
@@ -830,6 +817,18 @@
     },
     "query": "\n                UPDATE users\n                SET avatar_url = $1\n                WHERE (id = $2)\n                "
   },
+  "1c08bf43ba63f3fc60ea28f82e738d0e9b7ee3010af751b78bd5455dadba773a": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n                DELETE FROM mods_webhooks\n                WHERE webhook_id = $1\n                "
+  },
   "1c7b0eb4341af5a7942e52f632cf582561f10b4b6a41a082fb8a60f04ac17c6e": {
     "describe": {
       "columns": [
@@ -1015,19 +1014,6 @@
       }
     },
     "query": "\n                UPDATE team_members\n                SET permissions = $1\n                WHERE (team_id = $2 AND user_id = $3)\n                "
-  },
-  "23ca697f0bc444deaed808bbc222344d430c0da1ea43c22cd6109c1c30e170cb": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int4"
-        ]
-      }
-    },
-    "query": "INSERT INTO mods_webhooks (mod_id, webhook_id) VALUES ($1, $2)"
   },
   "24e5daad907eec54505274f93952d5c20f4bbdd3f771eb0a2fdfa6324768df39": {
     "describe": {
@@ -1515,6 +1501,27 @@
       }
     },
     "query": "\n        SELECT h.hash hash, h.algorithm algorithm, f.version_id version_id FROM hashes h\n        INNER JOIN files f ON h.file_id = f.id\n        INNER JOIN versions v ON v.id = f.version_id\n        INNER JOIN mods m on v.mod_id = m.id\n        INNER JOIN statuses s on m.status = s.id\n        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND s.status != $3\n        "
+  },
+  "3bac364df5d97209e389101e064a44e174d25a3d2a46ab03df78c2e6f2d5c2f4": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO webhooks (url, user_id)\n            VALUES ($1, $2) RETURNING id\n            "
   },
   "3bdcbfa5abe43cc9b4f996f147277a7f6921cca00f82cad0ef5d85032c761a36": {
     "describe": {
@@ -3748,18 +3755,6 @@
     },
     "query": "\n            INSERT INTO files (id, version_id, url, filename, is_primary, size)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            "
   },
-  "a8a10c57c95f74b188150e5fb819aa99d7d9a81f43b94c843981426c8b12ccfc": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      }
-    },
-    "query": "DELETE FROM mods_webhooks WHERE webhook_id = $1"
-  },
   "a8f22bd234488500b06855c8258e1e290696adba0766b46640bf87d91b150518": {
     "describe": {
       "columns": [
@@ -3908,18 +3903,6 @@
       }
     },
     "query": "\n            SELECT u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role\n            FROM users u\n            WHERE u.id = $1\n            "
-  },
-  "aa0d3ce12cacaf34ae571cc63a75cdc7edf30b014b51ea40ab14e0a8f371ec48": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      }
-    },
-    "query": "DELETE FROM loaders_webhooks WHERE webhook_id = $1"
   },
   "aaec67a66b58dec36339c14000b319aed1b0ebb1324fc85e34d14c6430c26657": {
     "describe": {
@@ -4324,26 +4307,6 @@
     },
     "query": "\n            DELETE FROM notifications_actions\n            WHERE notification_id = ANY($1)\n            "
   },
-  "ba9159550dd18099f5fd41939d70bf3cfdb0c136eea8fcbd1e9c4d8494aaea56": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int4"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Varchar"
-        ]
-      }
-    },
-    "query": "INSERT INTO webhooks (url) VALUES ($1) RETURNING id"
-  },
   "bbfb47ae2c972734785df6b7c3e62077dc544ef4ccf8bb89e9c22c2f50a933c1": {
     "describe": {
       "columns": [],
@@ -4389,18 +4352,6 @@
       }
     },
     "query": "\n                    UPDATE mods\n                    SET issues_url = $1\n                    WHERE (id = $2)\n                    "
-  },
-  "bd05540b7540897c7ce884042b061789cd8ccd2122d48b7bddf06ce91b1aba62": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      }
-    },
-    "query": "DELETE FROM webhooks WHERE id = $1"
   },
   "bd0d1da185dc7d21ccbbfde86fc093ce9eda7dd7e07f7a53882d427010fd58ca": {
     "describe": {
@@ -4555,26 +4506,6 @@
       }
     },
     "query": "\n            SELECT EXISTS(SELECT 1 FROM reports WHERE id = $1)\n            "
-  },
-  "c1d55a57591bfec6228e8f5668b5b75d01104aa86b20cd2fc15a5af5037037ed": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int4"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "SELECT id FROM webhooks WHERE url = $1"
   },
   "c1fddbf97350871b79cb0c235b1f7488c6616b7c1dfbde76a712fd57e91ba158": {
     "describe": {
@@ -4790,6 +4721,19 @@
     },
     "query": "\n            SELECT EXISTS(SELECT 1 FROM versions WHERE id = $1)\n            "
   },
+  "ca5643a0ea7f340dff8502dab80907b76a36278b8584d80a5c30f4e8ca551017": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n                INSERT INTO loaders_webhooks (loader_id, webhook_id)\n                VALUES ($1, $2)\n                "
+  },
   "cb57ae673f1a7e50cc319efddb9bdc82e2251596bcf85aea52e8def343e423b8": {
     "describe": {
       "columns": [],
@@ -4908,6 +4852,27 @@
     },
     "query": "\n                    SELECT v.id version_id, v.mod_id project_id, h.hash hash FROM hashes h\n                    INNER JOIN files f on h.file_id = f.id\n                    INNER JOIN versions v on f.version_id = v.id\n                    WHERE h.algorithm = 'sha1' AND h.hash = ANY($1)\n                    "
   },
+  "cfe3de027d5365fbadc6bdf801a3677a9fc7b3e67113dc662a675d8edcbca203": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT id FROM webhooks\n            WHERE url = $1 AND user_id = $2\n            "
+  },
   "d03630ab0ff37f5f0a8c088558fdc8a1955bad78bea282c40f72d15e5cf77a79": {
     "describe": {
       "columns": [
@@ -4961,6 +4926,19 @@
       }
     },
     "query": "\n            SELECT loader FROM loaders\n            WHERE id = $1\n            "
+  },
+  "d195e41bad645ed6a299d6614421fc297a70800918e50831d5c4c9ec31138573": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n                INSERT INTO mods_webhooks (mod_id, webhook_id)\n                VALUES ($1, $2)\n                "
   },
   "d2bba2670ef992df166a5e1e4d90f14f1d6b19c5fe77eb7139a5e1a0e660f6db": {
     "describe": {
@@ -5079,6 +5057,18 @@
       }
     },
     "query": "\n                    UPDATE team_members\n                    SET accepted = TRUE\n                    WHERE (team_id = $1 AND user_id = $2)\n                    "
+  },
+  "d431c9347c58ee8810fb8b6e19d75b3619fc0f7349f9dc17f6aefe0ed4e78f7b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n                DELETE FROM loaders_webhooks\n                WHERE webhook_id = $1\n                "
   },
   "d553bb44ac600047656962bd1c44378fb32e74f0e7f07d1c26336dc80dffe78a": {
     "describe": {
@@ -6580,5 +6570,17 @@
       }
     },
     "query": "\n            SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,\n            v.changelog changelog, v.changelog_url changelog_url, v.date_published date_published, v.downloads downloads,\n            v.version_type version_type, v.featured featured,\n            ARRAY_AGG(DISTINCT gv.version || ' |||| ' || gv.created) filter (where gv.version is not null) game_versions, ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,\n            ARRAY_AGG(DISTINCT f.id || ' |||| ' || f.is_primary || ' |||| ' || f.size || ' |||| ' || f.url || ' |||| ' || f.filename) filter (where f.id is not null) files,\n            ARRAY_AGG(DISTINCT h.algorithm || ' |||| ' || encode(h.hash, 'escape') || ' |||| ' || h.file_id) filter (where h.hash is not null) hashes,\n            ARRAY_AGG(DISTINCT COALESCE(d.dependency_id, 0) || ' |||| ' || COALESCE(d.mod_dependency_id, 0) || ' |||| ' || d.dependency_type || ' |||| ' || COALESCE(d.dependency_file_name, ' ')) filter (where d.dependency_type is not null) dependencies\n            FROM versions v\n            LEFT OUTER JOIN game_versions_versions gvv on v.id = gvv.joining_version_id\n            LEFT OUTER JOIN game_versions gv on gvv.game_version_id = gv.id\n            LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id\n            LEFT OUTER JOIN loaders l on lv.loader_id = l.id\n            LEFT OUTER JOIN files f on v.id = f.version_id\n            LEFT OUTER JOIN hashes h on f.id = h.file_id\n            LEFT OUTER JOIN dependencies d on v.id = d.dependent_id\n            WHERE v.id = ANY($1)\n            GROUP BY v.id\n            ORDER BY v.date_published ASC;\n            "
+  },
+  "ffd60ab2d8550f12555a81444fc394c70487a441275849674581695f1a18d2ec": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n                DELETE FROM webhooks\n                WHERE id = $1\n                "
   }
 }

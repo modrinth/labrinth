@@ -2,7 +2,7 @@ use crate::models::projects::Project;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct DiscordEmbed {
     pub author: Option<DiscordEmbedAuthor>,
     pub title: String,
@@ -14,26 +14,26 @@ pub struct DiscordEmbed {
     pub thumbnail: DiscordEmbedThumbnail,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct DiscordEmbedField {
     pub name: &'static str,
     pub value: String,
     pub inline: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct DiscordEmbedThumbnail {
     pub url: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct DiscordEmbedAuthor {
     pub name: String,
     pub url: Option<String>,
     pub icon_url: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct DiscordWebhook {
     pub embeds: Vec<DiscordEmbed>,
     pub username: Option<String>,
