@@ -1,3 +1,4 @@
+use crate::database::models::user_item::UserSettings;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
@@ -15,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use validator::Validate;
-use crate::database::models::user_item::UserSettings;
 
 #[get("user")]
 pub async fn user_auth_get(

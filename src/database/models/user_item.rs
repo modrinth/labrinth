@@ -382,6 +382,16 @@ impl User {
 
         sqlx::query!(
             "
+            DELETE FROM user_settings
+            WHERE user_id = $1
+            ",
+            id as UserId
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
             DELETE FROM users
             WHERE id = $1
             ",
@@ -472,6 +482,16 @@ impl User {
             WHERE user_id = $1
             ",
             id as UserId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM user_settings
+            WHERE user_id = $1
+            ",
+            id as UserId
         )
         .execute(&mut *transaction)
         .await?;

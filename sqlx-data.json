@@ -4336,6 +4336,18 @@
     },
     "query": "\n        SELECT m.title title, pt.name project_type\n        FROM mods m\n        INNER JOIN project_types pt ON pt.id = m.project_type\n        WHERE m.id = $1\n        "
   },
+  "ae039fb52683affa037f054ba98244b3f1b1fb7a754978887ce79a73760d6c5b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM user_settings\n            WHERE user_id = $1\n            "
+  },
   "ae1686b8b566dd7ecc57c653c9313a4b324a2ec3a63aa6a44ed1d8ea7999b115": {
     "describe": {
       "columns": [],
