@@ -555,7 +555,6 @@ pub async fn user_settings_from_id(
         .await?;
 
         let settings = UserSettings {
-            tos_agreed: result.tos_agreed,
             public_email: result.public_email,
             public_github: result.public_github,
             theme: FrontendTheme::from_str(&result.theme),
@@ -586,7 +585,6 @@ pub async fn user_settings_from_header(
     .await?;
 
     let settings = UserSettings {
-        tos_agreed: result.tos_agreed,
         public_email: result.public_email,
         public_github: result.public_github,
         theme: FrontendTheme::from_str(&result.theme),
@@ -597,7 +595,6 @@ pub async fn user_settings_from_header(
 
 #[derive(Deserialize)]
 pub struct NewSettings {
-    tos_agreed: Option<bool>,
     public_email: Option<bool>,
     public_github: Option<bool>,
     theme: Option<FrontendTheme>,
@@ -624,20 +621,6 @@ pub async fn user_settings_edit_from_id(
         }
 
         let mut transaction = pool.begin().await?;
-
-        if let Some(tos_setting) = new_settings.tos_agreed {
-            sqlx::query!(
-                "
-                UPDATE user_settings
-                SET tos_agreed = $1
-                WHERE user_id = $2
-                ",
-                tos_setting,
-                id as crate::database::models::ids::UserId
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
 
         if let Some(email_setting) = new_settings.public_email {
             sqlx::query!(
@@ -697,20 +680,6 @@ pub async fn user_settings_edit_from_header(
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
     let mut transaction = pool.begin().await?;
-
-    if let Some(tos_setting) = new_settings.tos_agreed {
-        sqlx::query!(
-            "
-            UPDATE user_settings
-            SET tos_agreed = $1
-            WHERE user_id = $2
-            ",
-            tos_setting,
-            user.id.0 as i64
-        )
-        .execute(&mut *transaction)
-        .await?;
-    }
 
     if let Some(email_setting) = new_settings.public_email {
         sqlx::query!(

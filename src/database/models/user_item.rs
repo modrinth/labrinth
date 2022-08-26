@@ -16,7 +16,6 @@ pub struct User {
 
 #[derive(Serialize)]
 pub struct UserSettings {
-    pub tos_agreed: bool,
     pub public_email: bool,
     pub public_github: bool,
     pub theme: crate::models::settings::FrontendTheme,

@@ -2577,19 +2577,6 @@
     },
     "query": "\n                    UPDATE users\n                    SET role = $1\n                    WHERE (id = $2)\n                    "
   },
-  "5cba80cdfe42fe0327eeb57244245587c2c800e201b6b850d2e145b73d76ef26": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Bool",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                UPDATE user_settings\n                SET tos_agreed = $1\n                WHERE user_id = $2\n                "
-  },
   "5d7425cfa91e332bf7cc14aa5c300b997e941c49757606f6b906cb5e060d3179": {
     "describe": {
       "columns": [],
@@ -3712,28 +3699,22 @@
           "type_info": "Int8"
         },
         {
-          "name": "tos_agreed",
+          "name": "public_email",
           "ordinal": 1,
           "type_info": "Bool"
         },
         {
-          "name": "public_email",
+          "name": "public_github",
           "ordinal": 2,
           "type_info": "Bool"
         },
         {
-          "name": "public_github",
-          "ordinal": 3,
-          "type_info": "Bool"
-        },
-        {
           "name": "theme",
-          "ordinal": 4,
+          "ordinal": 3,
           "type_info": "Varchar"
         }
       ],
       "nullable": [
-        false,
         false,
         false,
         false,
@@ -4358,19 +4339,6 @@
     },
     "query": "\n            DELETE FROM dependencies WHERE mod_dependency_id = NULL AND dependency_id = NULL AND dependency_file_name = NULL\n            "
   },
-  "ae45b6650f621603549d6325ab2dba6e5c0b319249285328e52a49959821fbed": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Bool",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            UPDATE user_settings\n            SET tos_agreed = $1\n            WHERE user_id = $2\n            "
-  },
   "b030a9e0fdb75eee8ee50aafdcb6063a073e2aa53cc70d40ed46437c1d0dfe80": {
     "describe": {
       "columns": [],
@@ -4855,28 +4823,22 @@
           "type_info": "Int8"
         },
         {
-          "name": "tos_agreed",
+          "name": "public_email",
           "ordinal": 1,
           "type_info": "Bool"
         },
         {
-          "name": "public_email",
+          "name": "public_github",
           "ordinal": 2,
           "type_info": "Bool"
         },
         {
-          "name": "public_github",
-          "ordinal": 3,
-          "type_info": "Bool"
-        },
-        {
           "name": "theme",
-          "ordinal": 4,
+          "ordinal": 3,
           "type_info": "Varchar"
         }
       ],
       "nullable": [
-        false,
         false,
         false,
         false,
