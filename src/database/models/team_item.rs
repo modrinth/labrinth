@@ -118,20 +118,16 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
-                    Ok(Some(Ok(TeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: id,
-                        user_id: UserId(m.user_id),
-                        role: m.role,
-                        permissions: perms,
-                        accepted: m.accepted,
-                        payouts_split: m.payouts_split,
-                    })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
+                Ok(Some(Ok(TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: id,
+                    user_id: UserId(m.user_id),
+                    role: m.role,
+                    permissions: Permissions::from_bits(m.permissions as u64)
+                        .unwrap_or_default(),
+                    accepted: m.accepted,
+                    payouts_split: m.payouts_split,
+                })))
             } else {
                 Ok(None)
             }
@@ -290,20 +286,16 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
-                    Ok(Some(Ok(TeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: TeamId(m.team_id),
-                        user_id: id,
-                        role: m.role,
-                        permissions: perms,
-                        accepted: m.accepted,
-                        payouts_split: m.payouts_split,
-                    })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
+                Ok(Some(Ok(TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: TeamId(m.team_id),
+                    user_id: id,
+                    role: m.role,
+                    permissions: Permissions::from_bits(m.permissions as u64)
+                        .unwrap_or_default(),
+                    accepted: m.accepted,
+                    payouts_split: m.payouts_split,
+                })))
             } else {
                 Ok(None)
             }
@@ -339,20 +331,16 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
-                    Ok(Some(Ok(TeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: TeamId(m.team_id),
-                        user_id: id,
-                        role: m.role,
-                        permissions: perms,
-                        accepted: m.accepted,
-                        payouts_split: m.payouts_split,
-                    })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
+                Ok(Some(Ok(TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: TeamId(m.team_id),
+                    user_id: id,
+                    role: m.role,
+                    permissions: Permissions::from_bits(m.permissions as u64)
+                        .unwrap_or_default(),
+                    accepted: m.accepted,
+                    payouts_split: m.payouts_split,
+                })))
             } else {
                 Ok(None)
             }
@@ -395,7 +383,7 @@ impl TeamMember {
                 user_id,
                 role: m.role,
                 permissions: Permissions::from_bits(m.permissions as u64)
-                    .ok_or(super::DatabaseError::Bitflag)?,
+                    .unwrap_or_default(),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
             }))
@@ -430,20 +418,15 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
                     Ok(Some(Ok(TeamMember {
                         id: TeamMemberId(m.id),
                         team_id: TeamId(m.team_id),
                         user_id,
                         role: m.role,
-                        permissions: perms,
+                        permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
                         accepted: m.accepted,
                         payouts_split: m.payouts_split
                     })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
             } else {
                 Ok(None)
             }
@@ -486,7 +469,7 @@ impl TeamMember {
                 user_id,
                 role: m.role,
                 permissions: Permissions::from_bits(m.permissions as u64)
-                    .ok_or(super::DatabaseError::Bitflag)?,
+                    .unwrap_or_default(),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
             }))
@@ -651,7 +634,7 @@ impl TeamMember {
                 user_id,
                 role: m.role,
                 permissions: Permissions::from_bits(m.permissions as u64)
-                    .ok_or(super::DatabaseError::Bitflag)?,
+                    .unwrap_or_default(),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
             }))
@@ -688,7 +671,7 @@ impl TeamMember {
                 user_id,
                 role: m.role,
                 permissions: Permissions::from_bits(m.permissions as u64)
-                    .ok_or(super::DatabaseError::Bitflag)?,
+                    .unwrap_or_default(),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
             }))

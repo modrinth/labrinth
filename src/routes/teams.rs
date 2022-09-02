@@ -259,7 +259,7 @@ pub async fn add_team_member(
         ));
     }
 
-    if new_member.payouts_split < 0.0 || new_member.payouts_split > 5000.0 {
+    if !(0.0..=5000.0).contains(&new_member.payouts_split) {
         return Err(ApiError::InvalidInput(
             "Payouts split must be between 0 and 5000!".to_string(),
         ));
@@ -419,7 +419,7 @@ pub async fn edit_team_member(
     }
 
     if let Some(payouts_split) = edit_member.payouts_split {
-        if payouts_split < 0.0 || payouts_split > 5000.0 {
+        if !(0.0..=5000.0).contains(&payouts_split) {
             return Err(ApiError::InvalidInput(
                 "Payouts split must be between 0 and 5000!".to_string(),
             ));
