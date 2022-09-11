@@ -116,8 +116,24 @@ impl From<QueryProject> for Project {
                 None
             },
             license: License {
-                id: data.license_id,
-                name: data.license_name,
+                id: m.license.clone(),
+                name: match spdx::Expression::parse(&*m.license) {
+                    Ok(spdx_expr) => {
+                        let mut vec: Vec<&str> = Vec::new();
+                        for node in spdx_expr.iter() {
+                            if let spdx::expression::ExprNode::Req(req) = node {
+                                if let Some(id) = req.req.license.id() {
+                                    vec.push(id.full_name);
+                                }
+                            }
+                        }
+                        // spdx crate returns AND/OR operations in postfix order
+                        // and it would be a lot more effort to make it actually in order
+                        // so let's just ignore that and make them comma-separated
+                        Some(vec.join(", "))
+                    }
+                    Err(_) => None,
+                },
                 url: m.license_url,
             },
             client_side: data.client_side,
@@ -211,7 +227,7 @@ impl SideType {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct License {
     pub id: String,
-    pub name: String,
+    pub name: Option<String>,
     pub url: Option<String>,
 }
 

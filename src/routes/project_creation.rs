@@ -677,16 +677,16 @@ pub async fn project_create_inner(
             )
         })?;
 
-        let license_id = models::categories::License::get_id(
+        let license_id = spdx::Expression::parse(
             &project_create_data.license_id,
-            &mut *transaction,
         )
-        .await?
-        .ok_or_else(|| {
-            CreateError::InvalidInput(
-                "License specified does not exist.".to_string(),
-            )
+        .map_err(|err| {
+            CreateError::InvalidInput(format!(
+                "Invalid SPDX license identifier: {}",
+                err
+            ))
         })?;
+
         let mut donation_urls = vec![];
 
         if let Some(urls) = &project_create_data.donation_urls {
@@ -733,7 +733,7 @@ pub async fn project_create_inner(
             status: status_id,
             client_side: client_side_id,
             server_side: server_side_id,
-            license: license_id,
+            license: license_id.to_string(),
             slug: Some(project_create_data.slug),
             donation_urls,
             gallery_items: gallery_urls
@@ -767,7 +767,7 @@ pub async fn project_create_inner(
             moderator_message: None,
             license: License {
                 id: project_create_data.license_id.clone(),
-                name: "".to_string(),
+                name: None,
                 url: project_builder.license_url.clone(),
             },
             client_side: project_create_data.client_side,

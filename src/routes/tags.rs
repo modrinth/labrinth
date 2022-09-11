@@ -1,7 +1,7 @@
 use super::ApiError;
 use crate::database::models;
 use crate::database::models::categories::{
-    DonationPlatform, License, ProjectType, ReportType,
+    DonationPlatform, ProjectType, ReportType,
 };
 use crate::util::auth::check_is_admin_from_headers;
 use actix_web::{delete, get, put, web, HttpRequest, HttpResponse};
@@ -21,8 +21,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(game_version_list)
             .service(game_version_create)
             .service(game_version_delete)
-            .service(license_create)
-            .service(license_delete)
             .service(license_list)
             .service(donation_platform_create)
             .service(donation_platform_list)
@@ -302,75 +300,24 @@ pub async fn game_version_delete(
 }
 
 #[derive(serde::Serialize)]
-pub struct LicenseQueryData {
+pub struct License {
     short: String,
     name: String,
 }
 
 #[get("license")]
-pub async fn license_list(
-    pool: web::Data<PgPool>,
-) -> Result<HttpResponse, ApiError> {
-    let results: Vec<LicenseQueryData> = License::list(&**pool)
-        .await?
-        .into_iter()
-        .map(|x| LicenseQueryData {
-            short: x.short,
-            name: x.name,
-        })
-        .collect();
-    Ok(HttpResponse::Ok().json(results))
-}
+pub async fn license_list() -> Result<HttpResponse, ApiError> {
+    let licenses = spdx::identifiers::LICENSES;
+    let mut results: Vec<License> = Vec::with_capacity(licenses.len());
 
-#[derive(serde::Deserialize)]
-pub struct LicenseData {
-    name: String,
-}
-
-#[put("license/{name}")]
-pub async fn license_create(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    license: web::Path<(String,)>,
-    license_data: web::Json<LicenseData>,
-) -> Result<HttpResponse, ApiError> {
-    check_is_admin_from_headers(req.headers(), &**pool).await?;
-
-    let short = license.into_inner().0;
-
-    let _id = License::builder()
-        .short(&short)?
-        .name(&license_data.name)?
-        .insert(&**pool)
-        .await?;
-
-    Ok(HttpResponse::NoContent().body(""))
-}
-
-#[delete("license/{name}")]
-pub async fn license_delete(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    license: web::Path<(String,)>,
-) -> Result<HttpResponse, ApiError> {
-    check_is_admin_from_headers(req.headers(), &**pool).await?;
-
-    let name = license.into_inner().0;
-    let mut transaction =
-        pool.begin().await.map_err(models::DatabaseError::from)?;
-
-    let result = License::remove(&name, &mut transaction).await?;
-
-    transaction
-        .commit()
-        .await
-        .map_err(models::DatabaseError::from)?;
-
-    if result.is_some() {
-        Ok(HttpResponse::NoContent().body(""))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
+    for (short, name, _) in licenses {
+        results.push(License {
+            short: short.to_string(),
+            name: name.to_string(),
+        });
     }
+
+    Ok(HttpResponse::Ok().json(results))
 }
 
 #[derive(serde::Serialize)]

@@ -844,12 +844,18 @@ pub async fn project_edit(
                     ));
                 }
 
-                let license_id = database::models::categories::License::get_id(
-                    license,
-                    &mut *transaction,
-                )
-                .await?
-                .expect("No database entry found for license");
+                let mut license = license.clone();
+
+                if license.to_lowercase().eq("arr") {
+                    license = "LicenseRef-All-Rights-Reserved".to_string();
+                }
+
+                spdx::Expression::parse(&*license).map_err(|err| {
+                    ApiError::InvalidInput(format!(
+                        "Invalid SPDX license identifier: {}",
+                        err
+                    ))
+                })?;
 
                 sqlx::query!(
                     "
@@ -857,7 +863,7 @@ pub async fn project_edit(
                     SET license = $1
                     WHERE (id = $2)
                     ",
-                    license_id as database::models::LicenseId,
+                    license,
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
