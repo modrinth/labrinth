@@ -12,6 +12,7 @@ mod notifications;
 pub(crate) mod project_creation;
 mod projects;
 mod reports;
+mod statistics;
 mod tags;
 mod teams;
 mod updates;
@@ -41,6 +42,7 @@ pub fn v2_config(cfg: &mut web::ServiceConfig) {
             .configure(moderation_config)
             .configure(reports_config)
             .configure(notifications_config)
+            .configure(statistics_config)
             .configure(admin_config),
     );
 }
@@ -163,6 +165,10 @@ pub fn reports_config(cfg: &mut web::ServiceConfig) {
     cfg.service(reports::reports);
     cfg.service(reports::report_create);
     cfg.service(reports::delete_report);
+}
+
+pub fn statistics_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(statistics::get_stats);
 }
 
 pub fn admin_config(cfg: &mut web::ServiceConfig) {

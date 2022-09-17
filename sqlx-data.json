@@ -1009,6 +1009,27 @@
     },
     "query": "\n            SELECT short, name FROM licenses\n            WHERE id = $1\n            "
   },
+  "250e7deb143373fc326bb54cf6f82b9790051329b5beb55f5942673d432e2c24": {
+    "describe": {
+      "columns": [
+        {
+          "name": "count",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        SELECT COUNT(id)\n        FROM mods\n        WHERE\n            status = ( SELECT id FROM statuses WHERE status = $1 ) OR\n            status = ( SELECT id FROM statuses WHERE status = $2 )\n        "
+  },
   "25131559cb73a088000ab6379a769233440ade6c7511542da410065190d203fc": {
     "describe": {
       "columns": [
@@ -1783,6 +1804,27 @@
       }
     },
     "query": "\n                    UPDATE mods\n                    SET server_side = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "4ac5d28c1d3fa26f0a42460ee1e515c3bd4a849fdff4d58c2a138c415186ab3d": {
+    "describe": {
+      "columns": [
+        {
+          "name": "count",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        SELECT COUNT(f.id) FROM files f\n        INNER JOIN versions v on f.version_id = v.id\n        INNER JOIN mods m on v.mod_id = m.id\n        WHERE\n            status = ( SELECT id FROM statuses WHERE status = $1 ) OR\n            status = ( SELECT id FROM statuses WHERE status = $2 )\n        "
   },
   "4b14b5c69f6a0ee4e06e41d7cea425c7c34d6db45895275a2ce8adfa28dc8f72": {
     "describe": {
@@ -3301,6 +3343,27 @@
       }
     },
     "query": "\n            DELETE FROM project_types\n            WHERE name = $1\n            "
+  },
+  "8a4d05106f27de01a1a8ebf5266727b71fa5b6a34b48cd9ba3996fe8ec1ab78a": {
+    "describe": {
+      "columns": [
+        {
+          "name": "count",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        SELECT COUNT(DISTINCT u.id)\n        FROM users u\n        INNER JOIN team_members tm on u.id = tm.user_id AND tm.accepted = TRUE\n        INNER JOIN mods m on tm.team_id = m.team_id AND (\n            m.status = ( SELECT s.id FROM statuses s WHERE s.status = $1 ) OR\n            m.status = ( SELECT s.id FROM statuses s WHERE s.status = $2 )\n        )\n        "
   },
   "8b2e65cec164bb84de6929b1c2afeee28b36d0e36edea75baceaf97d7574bdd7": {
     "describe": {
@@ -5221,6 +5284,24 @@
     },
     "query": "\n                    UPDATE team_members\n                    SET accepted = TRUE\n                    WHERE (team_id = $1 AND user_id = $2)\n                    "
   },
+  "d3f7666366a36739e1830fdb1a9a5d62d6285a02117a87ab1d3973002e2a263c": {
+    "describe": {
+      "columns": [
+        {
+          "name": "count",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "SELECT COUNT(id) FROM users"
+  },
   "d59a0ca4725d40232eae8bf5735787e1b76282c390d2a8d07fb34e237a0b2132": {
     "describe": {
       "columns": [],
@@ -6268,6 +6349,27 @@
       }
     },
     "query": "\n            SELECT short, name FROM donation_platforms\n            WHERE id = $1\n            "
+  },
+  "fb81707d46632f5733222bc3d9c4c5574366db130b130263fcb0eabcf7983b78": {
+    "describe": {
+      "columns": [
+        {
+          "name": "count",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        SELECT COUNT(v.id)\n        FROM versions v\n        INNER JOIN mods m on v.mod_id = m.id\n        WHERE\n            status = ( SELECT id FROM statuses WHERE status = $1 ) OR\n            status = ( SELECT id FROM statuses WHERE status = $2 )\n        "
   },
   "fb955ca41b95120f66c98c0b528b1db10c4be4a55e9641bb104d772e390c9bb7": {
     "describe": {
