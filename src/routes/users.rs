@@ -44,7 +44,8 @@ pub async fn users_get(
         .map(|x| x.into())
         .collect();
 
-    let is_mod = match get_user_from_headers(req.headers(), &**pool).await.ok() {
+    let is_mod = match get_user_from_headers(req.headers(), &**pool).await.ok()
+    {
         Some(user) => user.role.is_mod(),
         None => false,
     };
@@ -67,7 +68,8 @@ pub async fn user_get(
     let id_option: Option<UserId> =
         serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let is_mod = match get_user_from_headers(req.headers(), &**pool).await.ok() {
+    let is_mod = match get_user_from_headers(req.headers(), &**pool).await.ok()
+    {
         Some(user) => user.role.is_mod(),
         None => false,
     };
@@ -78,7 +80,8 @@ pub async fn user_get(
         user_data = User::get(id.into(), is_mod, &**pool).await?;
 
         if user_data.is_none() {
-            user_data = User::get_from_username(string, is_mod, &**pool).await?;
+            user_data =
+                User::get_from_username(string, is_mod, &**pool).await?;
         }
     } else {
         user_data = User::get_from_username(string, is_mod, &**pool).await?;
@@ -593,7 +596,7 @@ pub async fn user_settings_from_id(
             public_email: result.public_email,
             public_github: result.public_github,
             theme: FrontendTheme::from_str(&result.theme),
-            locale: result.locale
+            locale: result.locale,
         };
 
         Ok(HttpResponse::Ok().json(settings))
