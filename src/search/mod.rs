@@ -2,13 +2,14 @@ use crate::models::error::ApiError;
 use crate::models::projects::SearchRequest;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
+use chrono::{DateTime, Utc};
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::document::Document;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::min;
+use std::fmt::Write;
 use thiserror::Error;
-use time::OffsetDateTime;
 
 pub mod indexing;
 
@@ -20,6 +21,8 @@ pub enum SearchError {
     Serde(#[from] serde_json::Error),
     #[error("Error while parsing an integer: {0}")]
     IntParsing(#[from] std::num::ParseIntError),
+    #[error("Error while formatting strings: {0}")]
+    FormatError(#[from] std::fmt::Error),
     #[error("Environment Error")]
     Env(#[from] dotenv::Error),
     #[error("Invalid index to sort by: {0}")]
@@ -34,6 +37,7 @@ impl actix_web::ResponseError for SearchError {
             SearchError::Serde(..) => StatusCode::BAD_REQUEST,
             SearchError::IntParsing(..) => StatusCode::BAD_REQUEST,
             SearchError::InvalidIndex(..) => StatusCode::BAD_REQUEST,
+            SearchError::FormatError(..) => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -45,6 +49,7 @@ impl actix_web::ResponseError for SearchError {
                 SearchError::Serde(..) => "invalid_input",
                 SearchError::IntParsing(..) => "invalid_input",
                 SearchError::InvalidIndex(..) => "invalid_input",
+                SearchError::FormatError(..) => "invalid_input",
             },
             description: &self.to_string(),
         })
@@ -74,6 +79,7 @@ pub struct UploadSearchProject {
     pub title: String,
     pub description: String,
     pub categories: Vec<String>,
+    pub display_categories: Vec<String>,
     pub versions: Vec<String>,
     pub follows: i32,
     pub downloads: i32,
@@ -83,16 +89,12 @@ pub struct UploadSearchProject {
     pub client_side: String,
     pub server_side: String,
     pub gallery: Vec<String>,
-
-    #[serde(with = "crate::util::time_ser")]
     /// RFC 3339 formatted creation date of the project
-    pub date_created: OffsetDateTime,
+    pub date_created: DateTime<Utc>,
     /// Unix timestamp of the creation date of the project
     pub created_timestamp: i64,
-
-    #[serde(with = "crate::util::time_ser")]
     /// RFC 3339 formatted date/time of last major modification (update)
-    pub date_modified: OffsetDateTime,
+    pub date_modified: DateTime<Utc>,
     /// Unix timestamp of the last major modification
     pub modified_timestamp: i64,
 }
@@ -114,6 +116,7 @@ pub struct ResultSearchProject {
     pub title: String,
     pub description: String,
     pub categories: Vec<String>,
+    pub display_categories: Vec<String>,
     // TODO: more efficient format for listing versions, without many repetitions
     pub versions: Vec<String>,
     pub downloads: i32,
@@ -159,9 +162,9 @@ pub async fn search_for_project(
     let sort = match index {
         "relevance" => ("projects", ["downloads:desc"]),
         "downloads" => ("projects_filtered", ["downloads:desc"]),
-        "follows" => ("projects_filtered", ["follows:desc"]),
-        "updated" => ("projects_filtered", ["date_modified:desc"]),
-        "newest" => ("projects_filtered", ["date_created:desc"]),
+        "follows" => ("projects", ["follows:desc"]),
+        "updated" => ("projects", ["date_modified:desc"]),
+        "newest" => ("projects", ["date_created:desc"]),
         i => return Err(SearchError::InvalidIndex(i.to_string())),
     };
 
@@ -217,7 +220,7 @@ pub async fn search_for_project(
                 filter_string.push(')');
 
                 if !filters.is_empty() {
-                    filter_string.push_str(&format!(" AND ({})", filter_string))
+                    write!(filter_string, " AND ({})", filters)?;
                 }
             } else {
                 filter_string.push_str(&*filters);

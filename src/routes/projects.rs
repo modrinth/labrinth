@@ -11,12 +11,12 @@ use crate::util::auth::{get_user_from_headers, is_authorized};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use chrono::Utc;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
-use time::OffsetDateTime;
 use validator::Validate;
 
 #[get("search")]
@@ -112,7 +112,7 @@ pub async fn project_get_check(
             sqlx::query!(
                 "
                 SELECT id FROM mods
-                WHERE LOWER(slug) = LOWER($1)
+                WHERE slug = LOWER($1)
                 ",
                 &slug
             )
@@ -126,7 +126,7 @@ pub async fn project_get_check(
         sqlx::query!(
             "
             SELECT id FROM mods
-            WHERE LOWER(slug) = LOWER($1)
+            WHERE slug = LOWER($1)
             ",
             &slug
         )
@@ -259,40 +259,57 @@ pub struct EditProject {
     pub body: Option<String>,
     #[validate(length(max = 3))]
     pub categories: Option<Vec<String>>,
+    #[validate(length(max = 256))]
+    pub additional_categories: Option<Vec<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     pub issues_url: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     pub source_url: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     pub wiki_url: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     pub license_url: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     pub discord_url: Option<Option<String>>,
     #[validate]
     pub donation_urls: Option<Vec<DonationLink>>,
@@ -357,10 +374,13 @@ pub async fn project_edit(
         .await?;
         let permissions;
 
-        if let Some(member) = team_member {
+        if user.role.is_admin() {
+            permissions = Some(Permissions::ALL)
+        } else if let Some(member) = team_member {
             permissions = Some(member.permissions)
         } else if user.role.is_mod() {
-            permissions = Some(Permissions::ALL)
+            permissions =
+                Some(Permissions::EDIT_DETAILS | Permissions::EDIT_BODY)
         } else {
             permissions = None
         }
@@ -493,6 +513,21 @@ pub async fn project_edit(
                     )
                 })?;
 
+                if status == &ProjectStatus::Approved
+                    || status == &ProjectStatus::Unlisted
+                {
+                    sqlx::query!(
+                        "
+                        UPDATE mods
+                        SET approved = NOW()
+                        WHERE id = $1 AND approved IS NULL
+                        ",
+                        id as database::models::ids::ProjectId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+
                 sqlx::query!(
                     "
                     UPDATE mods
@@ -512,6 +547,32 @@ pub async fn project_edit(
                 }
             }
 
+            if perms.contains(Permissions::EDIT_DETAILS) {
+                if new_project.categories.is_some() {
+                    sqlx::query!(
+                        "
+                        DELETE FROM mods_categories
+                        WHERE joining_mod_id = $1 AND is_additional = FALSE
+                        ",
+                        id as database::models::ids::ProjectId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+
+                if new_project.additional_categories.is_some() {
+                    sqlx::query!(
+                        "
+                        DELETE FROM mods_categories
+                        WHERE joining_mod_id = $1 AND is_additional = TRUE
+                        ",
+                        id as database::models::ids::ProjectId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+            }
+
             if let Some(categories) = &new_project.categories {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
@@ -519,16 +580,6 @@ pub async fn project_edit(
                             .to_string(),
                     ));
                 }
-
-                sqlx::query!(
-                    "
-                    DELETE FROM mods_categories
-                    WHERE joining_mod_id = $1
-                    ",
-                    id as database::models::ids::ProjectId,
-                )
-                .execute(&mut *transaction)
-                .await?;
 
                 for category in categories {
                     let category_id =
@@ -546,14 +597,49 @@ pub async fn project_edit(
 
                     sqlx::query!(
                         "
-                        INSERT INTO mods_categories (joining_mod_id, joining_category_id)
-                        VALUES ($1, $2)
+                        INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
+                        VALUES ($1, $2, FALSE)
                         ",
                         id as database::models::ids::ProjectId,
                         category_id as database::models::ids::CategoryId,
                     )
                     .execute(&mut *transaction)
                     .await?;
+                }
+            }
+
+            if let Some(categories) = &new_project.additional_categories {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the additional categories of this project!"
+                            .to_string(),
+                    ));
+                }
+
+                for category in categories {
+                    let category_id =
+                        database::models::categories::Category::get_id(
+                            category,
+                            &mut *transaction,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            ApiError::InvalidInput(format!(
+                                "Category {} does not exist.",
+                                category.clone()
+                            ))
+                        })?;
+
+                    sqlx::query!(
+                        "
+                        INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
+                        VALUES ($1, $2, TRUE)
+                        ",
+                        id as database::models::ids::ProjectId,
+                        category_id as database::models::ids::CategoryId,
+                    )
+                        .execute(&mut *transaction)
+                        .await?;
                 }
             }
 
@@ -1130,7 +1216,7 @@ pub async fn add_gallery_item(
                 )
             })?;
 
-        if !user.role.is_mod() {
+        if !user.role.is_admin() {
             let team_member = database::models::TeamMember::get_from_user_id(
                 project_item.team_id,
                 user.id.into(),
@@ -1188,7 +1274,7 @@ pub async fn add_gallery_item(
             featured: item.featured,
             title: item.title,
             description: item.description,
-            created: OffsetDateTime::now_utc(),
+            created: Utc::now(),
         }
         .insert(&mut transaction)
         .await?;
@@ -1459,7 +1545,7 @@ pub async fn project_delete(
         )
     })?;
 
-    if !user.role.is_mod() {
+    if !user.role.is_admin() {
         let team_member =
             database::models::TeamMember::get_from_user_id_project(
                 project.id,

@@ -1,6 +1,6 @@
 use crate::models::projects::Project;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
-use time::OffsetDateTime;
 
 #[derive(Serialize)]
 struct DiscordEmbed {
@@ -8,8 +8,7 @@ struct DiscordEmbed {
     pub title: String,
     pub description: String,
     pub url: String,
-    #[serde(with = "crate::util::time_ser")]
-    pub timestamp: OffsetDateTime,
+    pub timestamp: DateTime<Utc>,
     pub color: u32,
     pub fields: Vec<DiscordEmbedField>,
     pub thumbnail: DiscordEmbedThumbnail,

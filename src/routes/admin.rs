@@ -4,6 +4,7 @@ use crate::util::guards::admin_key_guard;
 use crate::DownloadQueue;
 use actix_web::{patch, web, HttpResponse};
 use serde::Deserialize;
+use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -24,11 +25,18 @@ pub async fn count_download(
     let project_id: crate::database::models::ids::ProjectId =
         download_body.hash.into();
 
+    let id_option = crate::models::ids::base62_impl::parse_base62(
+        &download_body.version_name,
+    )
+    .ok()
+    .map(|x| x as i64);
+
     let (version_id, project_id) = if let Some(version) = sqlx::query!(
         "SELECT id, mod_id FROM versions
-         WHERE (version_number = $1 AND mod_id = $2)",
+         WHERE ((version_number = $1 OR id = $3) AND mod_id = $2)",
         download_body.version_name,
-        project_id as crate::database::models::ids::ProjectId
+        project_id as crate::database::models::ids::ProjectId,
+        id_option
     )
     .fetch_optional(pool.as_ref())
     .await?
@@ -58,6 +66,19 @@ pub async fn count_download(
             crate::database::models::VersionId(version_id),
         )
         .await;
+
+    let client = reqwest::Client::new();
+
+    client
+        .post(format!("{}downloads", dotenv::var("ARIADNE_URL")?))
+        .header("Modrinth-Admin", dotenv::var("ARIADNE_ADMIN_KEY")?)
+        .json(&json!({
+            "url": download_body.url,
+            "project_id": download_body.hash
+        }))
+        .send()
+        .await
+        .ok();
 
     Ok(HttpResponse::Ok().body(""))
 }

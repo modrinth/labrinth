@@ -6,23 +6,21 @@ use crate::database::models::ProjectId;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
-// TODO: Move this away from STRING_AGG to multiple queries - however this may be more efficient?
 pub async fn index_local(
     pool: PgPool,
 ) -> Result<Vec<UploadSearchProject>, IndexingError> {
     info!("Indexing local projects!");
     Ok(
         sqlx::query!(
-            //FIXME: there must be a way to reduce the duplicate lines between this query and the one in `query_one` here...
-            //region query
             "
             SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
-            m.icon_url icon_url, m.published published,
-            m.updated updated,
+            m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,
             m.team_id team_id, m.license license, m.slug slug,
             s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
-            STRING_AGG(DISTINCT c.category, ',') categories, STRING_AGG(DISTINCT lo.loader, ',') loaders, STRING_AGG(DISTINCT gv.version, ',') versions,
-            STRING_AGG(DISTINCT mg.image_url, ',') gallery
+            ARRAY_AGG(DISTINCT c.category || ' |||| ' || mc.is_additional) filter (where c.category is not null) categories,
+            ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders,
+            ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null) versions,
+            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null) gallery
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
@@ -42,7 +40,6 @@ pub async fn index_local(
             WHERE s.status = $1 OR s.status = $2
             GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id, u.id;
             ",
-            //endregion query
             crate::models::projects::ProjectStatus::Approved.as_str(),
             crate::models::projects::ProjectStatus::Archived.as_str(),
             crate::models::teams::OWNER_ROLE,
@@ -50,15 +47,32 @@ pub async fn index_local(
             .fetch_many(&pool)
             .try_filter_map(|e| async {
                 Ok(e.right().map(|m| {
-                    let mut categories = split_to_strings(m.categories);
-                    categories.append(&mut split_to_strings(m.loaders));
-                    let versions = split_to_strings(m.versions);
+                    let categories_raw = m.categories.unwrap_or_default();
+
+                    let mut additional_categories = Vec::new();
+                    let mut categories = Vec::new();
+
+                    for category in categories_raw {
+                        let category: Vec<&str> = category.split(" |||| ").collect();
+
+                        if category.len() >= 2 {
+                            if category[1].parse::<bool>().ok().unwrap_or_default() {
+                                additional_categories.push(category[0].to_string());
+                            } else {
+                                categories.push(category[0].to_string());
+                            }
+                        }
+                    }
+
+                    categories.append(&mut m.loaders.unwrap_or_default());
+
+                    let display_categories = categories.clone();
+                    categories.append(&mut additional_categories.clone());
+
+                    let versions = m.versions.unwrap_or_default();
 
                     let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
 
-                    // TODO: Cleanup - This method has a lot of code in common with the method below.
-                    // But, since the macro returns an (de facto) unnamed struct,
-                    // We cannot reuse the code easily. Ugh.
                     UploadSearchProject {
                         project_id: format!("{}", project_id),
                         title: m.title,
@@ -69,9 +83,9 @@ pub async fn index_local(
                         icon_url: m.icon_url.unwrap_or_default(),
                         author: m.username,
                         date_created: m.published,
-                        created_timestamp: m.published.unix_timestamp(),
+                        created_timestamp: m.approved.unwrap_or(m.published).timestamp(),
                         date_modified: m.updated,
-                        modified_timestamp: m.updated.unix_timestamp(),
+                        modified_timestamp: m.updated.timestamp(),
                         latest_version: versions.last().cloned().unwrap_or_else(|| "None".to_string()),
                         versions,
                         license: m.short,
@@ -79,16 +93,12 @@ pub async fn index_local(
                         server_side: m.server_side_type,
                         slug: m.slug,
                         project_type: m.project_type_name,
-                        gallery: m.gallery.map(|x| x.split(',').map(|x| x.to_string()).collect()).unwrap_or_default()
+                        gallery: m.gallery.unwrap_or_default(),
+                        display_categories
                     }
                 }))
             })
             .try_collect::<Vec<_>>()
             .await?
     )
-}
-
-fn split_to_strings(s: Option<String>) -> Vec<String> {
-    s.map(|x| x.split(',').map(ToString::to_string).collect())
-        .unwrap_or_default()
 }

@@ -1,7 +1,8 @@
 use super::ids::*;
 use super::DatabaseError;
+use chrono::DateTime;
+use chrono::Utc;
 use futures::TryStreamExt;
-use time::OffsetDateTime;
 
 pub struct ProjectType {
     pub id: ProjectTypeId,
@@ -20,7 +21,7 @@ pub struct GameVersion {
     pub id: GameVersionId,
     pub version: String,
     pub version_type: String,
-    pub date: OffsetDateTime,
+    pub date: DateTime<Utc>,
     pub major: bool,
 }
 
@@ -29,6 +30,7 @@ pub struct Category {
     pub category: String,
     pub project_type: String,
     pub icon: String,
+    pub header: String,
 }
 
 pub struct ReportType {
@@ -52,6 +54,7 @@ pub struct CategoryBuilder<'a> {
     pub name: Option<&'a str>,
     pub project_type: Option<&'a ProjectTypeId>,
     pub icon: Option<&'a str>,
+    pub header: Option<&'a str>,
 }
 
 impl Category {
@@ -60,6 +63,7 @@ impl Category {
             name: None,
             project_type: None,
             icon: None,
+            header: None,
         }
     }
 
@@ -70,13 +74,6 @@ impl Category {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        if !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(DatabaseError::InvalidIdentifier(name.to_string()));
-        }
-
         let result = sqlx::query!(
             "
             SELECT id FROM categories
@@ -98,13 +95,6 @@ impl Category {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        if !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(DatabaseError::InvalidIdentifier(name.to_string()));
-        }
-
         let result = sqlx::query!(
             "
             SELECT id FROM categories
@@ -145,7 +135,7 @@ impl Category {
     {
         let result = sqlx::query!(
             "
-            SELECT c.id id, c.category category, c.icon icon, pt.name project_type
+            SELECT c.id id, c.category category, c.icon icon, c.header category_header, pt.name project_type
             FROM categories c
             INNER JOIN project_types pt ON c.project_type = pt.id
             ORDER BY c.id
@@ -158,6 +148,7 @@ impl Category {
                 category: c.category,
                 project_type: c.project_type,
                 icon: c.icon,
+                header: c.category_header
             }))
         })
         .try_collect::<Vec<Category>>()
@@ -198,17 +189,20 @@ impl<'a> CategoryBuilder<'a> {
         self,
         name: &'a str,
     ) -> Result<CategoryBuilder<'a>, DatabaseError> {
-        if name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            Ok(Self {
-                name: Some(name),
-                ..self
-            })
-        } else {
-            Err(DatabaseError::InvalidIdentifier(name.to_string()))
-        }
+        Ok(Self {
+            name: Some(name),
+            ..self
+        })
+    }
+
+    pub fn header(
+        self,
+        header: &'a str,
+    ) -> Result<CategoryBuilder<'a>, DatabaseError> {
+        Ok(Self {
+            header: Some(header),
+            ..self
+        })
     }
 
     pub fn project_type(
@@ -243,13 +237,14 @@ impl<'a> CategoryBuilder<'a> {
         })?;
         let result = sqlx::query!(
             "
-            INSERT INTO categories (category, project_type, icon)
-            VALUES ($1, $2, $3)
+            INSERT INTO categories (category, project_type, icon, header)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
             ",
             self.name,
             id as ProjectTypeId,
-            self.icon
+            self.icon,
+            self.header
         )
         .fetch_one(exec)
         .await?;
@@ -280,13 +275,6 @@ impl Loader {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        if !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(DatabaseError::InvalidIdentifier(name.to_string()));
-        }
-
         let result = sqlx::query!(
             "
             SELECT id FROM loaders
@@ -327,7 +315,7 @@ impl Loader {
         let result = sqlx::query!(
             "
             SELECT l.id id, l.loader loader, l.icon icon,
-            ARRAY_AGG(DISTINCT pt.name) project_types
+            ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types
             FROM loaders l
             LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id
             LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id
@@ -387,17 +375,10 @@ impl<'a> LoaderBuilder<'a> {
         self,
         name: &'a str,
     ) -> Result<LoaderBuilder<'a>, DatabaseError> {
-        if name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            Ok(Self {
-                name: Some(name),
-                ..self
-            })
-        } else {
-            Err(DatabaseError::InvalidIdentifier(name.to_string()))
-        }
+        Ok(Self {
+            name: Some(name),
+            ..self
+        })
     }
 
     pub fn icon(
@@ -470,7 +451,7 @@ impl<'a> LoaderBuilder<'a> {
 pub struct GameVersionBuilder<'a> {
     pub version: Option<&'a str>,
     pub version_type: Option<&'a str>,
-    pub date: Option<&'a OffsetDateTime>,
+    pub date: Option<&'a DateTime<Utc>>,
 }
 
 impl GameVersion {
@@ -485,13 +466,6 @@ impl GameVersion {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        if !version
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        {
-            return Err(DatabaseError::InvalidIdentifier(version.to_string()));
-        }
-
         let result = sqlx::query!(
             "
             SELECT id FROM game_versions
@@ -658,40 +632,23 @@ impl<'a> GameVersionBuilder<'a> {
         self,
         version: &'a str,
     ) -> Result<GameVersionBuilder<'a>, DatabaseError> {
-        if version
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        {
-            Ok(Self {
-                version: Some(version),
-                ..self
-            })
-        } else {
-            Err(DatabaseError::InvalidIdentifier(version.to_string()))
-        }
+        Ok(Self {
+            version: Some(version),
+            ..self
+        })
     }
 
     pub fn version_type(
         self,
         version_type: &'a str,
     ) -> Result<GameVersionBuilder<'a>, DatabaseError> {
-        if version_type
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        {
-            Ok(Self {
-                version_type: Some(version_type),
-                ..self
-            })
-        } else {
-            Err(DatabaseError::InvalidIdentifier(version_type.to_string()))
-        }
+        Ok(Self {
+            version_type: Some(version_type),
+            ..self
+        })
     }
 
-    pub fn created(
-        self,
-        created: &'a OffsetDateTime,
-    ) -> GameVersionBuilder<'a> {
+    pub fn created(self, created: &'a DateTime<Utc>) -> GameVersionBuilder<'a> {
         Self {
             date: Some(created),
             ..self
@@ -719,7 +676,7 @@ impl<'a> GameVersionBuilder<'a> {
             ",
             self.version,
             self.version_type,
-            self.date.map(|x| time::PrimitiveDateTime::new(x.date(), x.time())),
+            self.date.map(chrono::DateTime::naive_utc),
         )
         .fetch_one(exec)
         .await?;
@@ -838,17 +795,10 @@ impl<'a> LicenseBuilder<'a> {
         self,
         short: &'a str,
     ) -> Result<LicenseBuilder<'a>, DatabaseError> {
-        if short
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        {
-            Ok(Self {
-                short: Some(short),
-                ..self
-            })
-        } else {
-            Err(DatabaseError::InvalidIdentifier(short.to_string()))
-        }
+        Ok(Self {
+            short: Some(short),
+            ..self
+        })
     }
 
     /// The license's long name
@@ -998,17 +948,10 @@ impl<'a> DonationPlatformBuilder<'a> {
         self,
         short: &'a str,
     ) -> Result<DonationPlatformBuilder<'a>, DatabaseError> {
-        if short
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        {
-            Ok(Self {
-                short: Some(short),
-                ..self
-            })
-        } else {
-            Err(DatabaseError::InvalidIdentifier(short.to_string()))
-        }
+        Ok(Self {
+            short: Some(short),
+            ..self
+        })
     }
 
     /// The donation platform long name
@@ -1062,13 +1005,6 @@ impl ReportType {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        if !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(DatabaseError::InvalidIdentifier(name.to_string()));
-        }
-
         let result = sqlx::query!(
             "
             SELECT id FROM report_types
@@ -1151,14 +1087,7 @@ impl<'a> ReportTypeBuilder<'a> {
         self,
         name: &'a str,
     ) -> Result<ReportTypeBuilder<'a>, DatabaseError> {
-        if name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            Ok(Self { name: Some(name) })
-        } else {
-            Err(DatabaseError::InvalidIdentifier(name.to_string()))
-        }
+        Ok(Self { name: Some(name) })
     }
 
     pub async fn insert<'b, E>(
@@ -1200,13 +1129,6 @@ impl ProjectType {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        if !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(DatabaseError::InvalidIdentifier(name.to_string()));
-        }
-
         let result = sqlx::query!(
             "
             SELECT id FROM project_types
@@ -1317,14 +1239,7 @@ impl<'a> ProjectTypeBuilder<'a> {
         self,
         name: &'a str,
     ) -> Result<ProjectTypeBuilder<'a>, DatabaseError> {
-        if name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            Ok(Self { name: Some(name) })
-        } else {
-            Err(DatabaseError::InvalidIdentifier(name.to_string()))
-        }
+        Ok(Self { name: Some(name) })
     }
 
     pub async fn insert<'b, E>(

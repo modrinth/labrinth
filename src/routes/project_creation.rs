@@ -10,17 +10,17 @@ use crate::search::indexing::IndexingError;
 use crate::util::auth::{get_user_from_headers, AuthenticationError};
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
+use actix::fut::ready;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
+use chrono::Utc;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
-use std::collections::HashSet;
 use std::sync::Arc;
 use thiserror::Error;
-use time::OffsetDateTime;
 use validator::Validate;
 
 #[derive(Error, Debug)]
@@ -166,20 +166,39 @@ struct ProjectCreateData {
     #[validate(length(max = 3))]
     /// A list of the categories that the project is in.
     pub categories: Vec<String>,
+    #[validate(length(max = 256))]
+    #[serde(default = "Vec::new")]
+    /// A list of the categories that the project is in.
+    pub additional_categories: Vec<String>,
 
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     /// An optional link to where to submit bugs or issues with the project.
     pub issues_url: Option<String>,
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     /// An optional link to the source code for the project.
     pub source_url: Option<String>,
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     /// An optional link to the project's wiki page or other relevant information.
     pub wiki_url: Option<String>,
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     /// An optional link to the project's license page
     pub license_url: Option<String>,
-    #[validate(url, length(max = 2048))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
     /// An optional link to the project's discord.
     pub discord_url: Option<String>,
     /// An optional list of all donation links the project has\
@@ -232,7 +251,7 @@ pub async fn undo_uploads(
 #[post("project")]
 pub async fn project_create(
     req: HttpRequest,
-    payload: Multipart,
+    mut payload: Multipart,
     client: Data<PgPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, CreateError> {
@@ -241,7 +260,7 @@ pub async fn project_create(
 
     let result = project_create_inner(
         req,
-        payload,
+        &mut payload,
         &mut transaction,
         &***file_host,
         &mut uploaded_files,
@@ -251,6 +270,9 @@ pub async fn project_create(
     if result.is_err() {
         let undo_result = undo_uploads(&***file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
+
+        // fix multipart error bug:
+        payload.for_each(|_| ready(())).await;
 
         if let Err(e) = undo_result {
             return Err(e);
@@ -296,7 +318,7 @@ Get logged in user
 
 pub async fn project_create_inner(
     req: HttpRequest,
-    mut payload: Multipart,
+    payload: &mut Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
@@ -358,12 +380,6 @@ pub async fn project_create_inner(
             CreateError::InvalidInput(validation_errors_to_string(err, None))
         })?;
 
-        let mut uniq = HashSet::new();
-        create_data
-            .initial_versions
-            .iter()
-            .all(|x| uniq.insert(x.version_number.clone()));
-
         let slug_project_id_option: Option<ProjectId> =
             serde_json::from_str(&*format!("\"{}\"", create_data.slug)).ok();
 
@@ -388,7 +404,7 @@ pub async fn project_create_inner(
         {
             let results = sqlx::query!(
                 "
-                SELECT EXISTS(SELECT 1 FROM mods WHERE slug = $1)
+                SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
                 ",
                 create_data.slug
             )
@@ -522,7 +538,7 @@ pub async fn project_create_inner(
                     featured: item.featured,
                     title: item.title.clone(),
                     description: item.description.clone(),
-                    created: OffsetDateTime::now_utc(),
+                    created: Utc::now(),
                 });
 
                 continue;
@@ -553,7 +569,7 @@ pub async fn project_create_inner(
             &cdn_url,
             &content_disposition,
             project_id,
-            &version_data.version_number,
+            created_version.version_id.into(),
             &*project_create_data.project_type,
             version_data.loaders.clone(),
             version_data.game_versions.clone(),
@@ -593,12 +609,26 @@ pub async fn project_create_inner(
             categories.push(id);
         }
 
+        let mut additional_categories =
+            Vec::with_capacity(project_create_data.additional_categories.len());
+        for category in &project_create_data.additional_categories {
+            let id = models::categories::Category::get_id_project(
+                category,
+                project_type_id,
+                &mut *transaction,
+            )
+            .await?
+            .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
+            additional_categories.push(id);
+        }
+
         let team = models::team_item::TeamBuilder {
             members: vec![models::team_item::TeamMemberBuilder {
                 user_id: current_user.id.into(),
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
                 permissions: crate::models::teams::Permissions::ALL,
                 accepted: true,
+                payouts_split: 100.0,
             }],
         };
 
@@ -698,6 +728,7 @@ pub async fn project_create_inner(
             license_url: project_create_data.license_url,
             discord_url: project_create_data.discord_url,
             categories,
+            additional_categories,
             initial_versions: versions,
             status: status_id,
             client_side: client_side_id,
@@ -718,7 +749,7 @@ pub async fn project_create_inner(
                 .collect(),
         };
 
-        let now = OffsetDateTime::now_utc();
+        let now = Utc::now();
 
         let response = crate::models::projects::Project {
             id: project_id,
@@ -731,6 +762,7 @@ pub async fn project_create_inner(
             body_url: None,
             published: now,
             updated: now,
+            approved: None,
             status: status.clone(),
             moderator_message: None,
             license: License {
@@ -743,6 +775,7 @@ pub async fn project_create_inner(
             downloads: 0,
             followers: 0,
             categories: project_create_data.categories,
+            additional_categories: project_create_data.additional_categories,
             versions: project_builder
                 .initial_versions
                 .iter()
@@ -875,10 +908,11 @@ async fn process_icon_upload(
         )
         .await?;
 
+        let hash = sha1::Sha1::from(&data).hexdigest();
         let upload_data = file_host
             .upload_file(
                 content_type,
-                &format!("data/{}/icon.{}", project_id, file_extension),
+                &format!("data/{}/{}.{}", project_id, hash, file_extension),
                 data.freeze(),
             )
             .await?;

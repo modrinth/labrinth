@@ -101,6 +101,63 @@ pub async fn team_members_get(
     Ok(HttpResponse::Ok().json(team_members))
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct TeamIds {
+    pub ids: String,
+}
+
+#[get("teams")]
+pub async fn teams_get(
+    req: HttpRequest,
+    web::Query(ids): web::Query<TeamIds>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    use itertools::Itertools;
+
+    let team_ids = serde_json::from_str::<Vec<TeamId>>(&*ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect::<Vec<crate::database::models::ids::TeamId>>();
+
+    let teams_data =
+        TeamMember::get_from_team_full_many(team_ids.clone(), &**pool).await?;
+
+    let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let accepted = if let Some(user) = current_user {
+        TeamMember::get_from_user_id_many(team_ids, user.id.into(), &**pool)
+            .await?
+            .into_iter()
+            .map(|m| m.team_id.0)
+            .collect()
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    let teams_groups = teams_data.into_iter().group_by(|data| data.team_id.0);
+
+    let mut teams: Vec<Vec<crate::models::teams::TeamMember>> = vec![];
+
+    for (id, member_data) in &teams_groups {
+        if accepted.contains(&id) {
+            let team_members = member_data.map(|data| {
+                crate::models::teams::TeamMember::from(data, false)
+            });
+
+            teams.push(team_members.collect());
+
+            continue;
+        }
+
+        let team_members = member_data
+            .filter(|x| x.accepted)
+            .map(|data| crate::models::teams::TeamMember::from(data, true));
+
+        teams.push(team_members.collect());
+    }
+
+    Ok(HttpResponse::Ok().json(teams))
+}
+
 #[post("{id}/join")]
 pub async fn join_team(
     req: HttpRequest,
@@ -132,6 +189,7 @@ pub async fn join_team(
             None,
             None,
             Some(true),
+            None,
             &mut transaction,
         )
         .await?;
@@ -157,6 +215,8 @@ pub struct NewTeamMember {
     pub role: String,
     #[serde(default = "Permissions::default")]
     pub permissions: Permissions,
+    #[serde(default)]
+    pub payouts_split: f32,
 }
 
 #[post("{id}/members")]
@@ -198,6 +258,13 @@ pub async fn add_team_member(
             "The `Owner` role is restricted to one person".to_string(),
         ));
     }
+
+    if !(0.0..=5000.0).contains(&new_member.payouts_split) {
+        return Err(ApiError::InvalidInput(
+            "Payouts split must be between 0 and 5000!".to_string(),
+        ));
+    }
+
     let request = crate::database::models::team_item::TeamMember::get_from_user_id_pending(
         team_id,
         new_member.user_id.into(),
@@ -234,6 +301,7 @@ pub async fn add_team_member(
         role: new_member.role.clone(),
         permissions: new_member.permissions,
         accepted: false,
+        payouts_split: new_member.payouts_split,
     }
     .insert(&mut transaction)
     .await?;
@@ -292,6 +360,7 @@ pub async fn add_team_member(
 pub struct EditTeamMember {
     pub permissions: Option<Permissions>,
     pub role: Option<String>,
+    pub payouts_split: Option<f32>,
 }
 
 #[patch("{id}/members/{user_id}")]
@@ -349,6 +418,14 @@ pub async fn edit_team_member(
         }
     }
 
+    if let Some(payouts_split) = edit_member.payouts_split {
+        if !(0.0..=5000.0).contains(&payouts_split) {
+            return Err(ApiError::InvalidInput(
+                "Payouts split must be between 0 and 5000!".to_string(),
+            ));
+        }
+    }
+
     if edit_member.role.as_deref() == Some(crate::models::teams::OWNER_ROLE) {
         return Err(ApiError::InvalidInput(
             "The `Owner` role is restricted to one person".to_string(),
@@ -361,6 +438,7 @@ pub async fn edit_team_member(
         edit_member.permissions,
         edit_member.role.clone(),
         None,
+        edit_member.payouts_split,
         &mut transaction,
     )
     .await?;
@@ -386,7 +464,7 @@ pub async fn transfer_ownership(
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    if !current_user.role.is_mod() {
+    if !current_user.role.is_admin() {
         let member = TeamMember::get_from_user_id(
             id.into(),
             current_user.id.into(),
@@ -434,6 +512,7 @@ pub async fn transfer_ownership(
         None,
         Some(crate::models::teams::DEFAULT_ROLE.to_string()),
         None,
+        None,
         &mut transaction,
     )
     .await?;
@@ -443,6 +522,7 @@ pub async fn transfer_ownership(
         new_owner.user_id.into(),
         Some(Permissions::ALL),
         Some(crate::models::teams::OWNER_ROLE.to_string()),
+        None,
         None,
         &mut transaction,
     )

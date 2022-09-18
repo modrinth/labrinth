@@ -2,7 +2,7 @@ use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::projects::{Project, ProjectStatus};
-use crate::models::users::{Role, UserId};
+use crate::models::users::{Badges, Role, UserId};
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use crate::util::routes::read_from_payload;
@@ -154,6 +154,7 @@ pub struct EditUser {
     #[validate(length(max = 160))]
     pub bio: Option<Option<String>>,
     pub role: Option<Role>,
+    pub badges: Option<Badges>,
 }
 
 #[patch("{id}")]
@@ -255,7 +256,7 @@ pub async fn user_edit(
             }
 
             if let Some(role) = &new_user.role {
-                if !user.role.is_mod() {
+                if !user.role.is_admin() {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the role of this user!"
                             .to_string(),
@@ -271,6 +272,27 @@ pub async fn user_edit(
                     WHERE (id = $2)
                     ",
                     role,
+                    id as crate::database::models::ids::UserId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+
+            if let Some(badges) = &new_user.badges {
+                if !user.role.is_admin() {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the badges of this user!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE users
+                    SET badges = $1
+                    WHERE (id = $2)
+                    ",
+                    badges.bits() as i64,
                     id as crate::database::models::ids::UserId,
                 )
                 .execute(&mut *transaction)
@@ -354,10 +376,11 @@ pub async fn user_icon_edit(
             )
             .await?;
 
+            let hash = sha1::Sha1::from(&bytes).hexdigest();
             let upload_data = file_host
                 .upload_file(
                     content_type,
-                    &format!("user/{}/icon.{}", user_id, ext.ext),
+                    &format!("user/{}/{}.{}", user_id, hash, ext.ext),
                     bytes.freeze(),
                 )
                 .await?;
@@ -410,7 +433,7 @@ pub async fn user_delete(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to delete this user!".to_string(),
             ));
@@ -451,7 +474,7 @@ pub async fn user_follows(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to see the projects this user follows!".to_string(),
             ));
@@ -501,7 +524,7 @@ pub async fn user_notifications(
     .await?;
 
     if let Some(id) = id_option {
-        if !user.role.is_mod() && user.id != id.into() {
+        if !user.role.is_admin() && user.id != id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to see the notifications of this user!".to_string(),
             ));

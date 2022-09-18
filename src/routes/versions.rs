@@ -167,7 +167,7 @@ pub async fn version_get(
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct EditVersion {
-    #[validate(length(min = 3, max = 256))]
+    #[validate(length(min = 1, max = 256))]
     pub name: Option<String>,
     #[validate(
         length(min = 1, max = 64),
@@ -208,6 +208,12 @@ pub async fn version_edit(
     let result = database::models::Version::get_full(id, &**pool).await?;
 
     if let Some(version_item) = result {
+        let project_item = database::models::Project::get_full(
+            version_item.project_id,
+            &**pool,
+        )
+        .await?;
+
         let team_member =
             database::models::TeamMember::get_from_user_id_version(
                 version_item.id,
@@ -217,10 +223,13 @@ pub async fn version_edit(
             .await?;
         let permissions;
 
-        if let Some(member) = team_member {
+        if user.role.is_admin() {
+            permissions = Some(Permissions::ALL)
+        } else if let Some(member) = team_member {
             permissions = Some(member.permissions)
         } else if user.role.is_mod() {
-            permissions = Some(Permissions::ALL)
+            permissions =
+                Some(Permissions::EDIT_DETAILS | Permissions::EDIT_BODY)
         } else {
             permissions = None
         }
@@ -250,23 +259,6 @@ pub async fn version_edit(
             }
 
             if let Some(number) = &new_version.version_number {
-                let results = sqlx::query!(
-                    "SELECT EXISTS(SELECT 1 FROM versions WHERE (version_number = $1) AND (mod_id = $2))",
-                    number,
-                    version_item.project_id as database::models::ids::ProjectId,
-                )
-                    .fetch_one(&mut *transaction)
-                    .await?;
-
-                if results.exists.unwrap_or(true)
-                    && &version_item.version_number != number
-                {
-                    return Err(ApiError::InvalidInput(
-                        "A version with that version_number already exists"
-                            .to_string(),
-                    ));
-                }
-
                 sqlx::query!(
                     "
                     UPDATE versions
@@ -295,29 +287,33 @@ pub async fn version_edit(
             }
 
             if let Some(dependencies) = &new_version.dependencies {
-                sqlx::query!(
-                    "
-                    DELETE FROM dependencies WHERE dependent_id = $1
-                    ",
-                    id as database::models::ids::VersionId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-
-                let builders = dependencies
-                    .iter()
-                    .map(|x| database::models::version_item::DependencyBuilder {
-                        project_id: x.project_id.map(|x| x.into()),
-                        version_id: x.version_id.map(|x| x.into()),
-                        file_name: x.file_name.clone(),
-                        dependency_type: x.dependency_type.to_string(),
-                    })
-                    .collect::<Vec<database::models::version_item::DependencyBuilder>>();
-
-                for dependency in builders {
-                    dependency
-                        .insert(version_item.id, &mut transaction)
+                if let Some(project) = project_item {
+                    if project.project_type != "modpack" {
+                        sqlx::query!(
+                            "
+                            DELETE FROM dependencies WHERE dependent_id = $1
+                            ",
+                            id as database::models::ids::VersionId,
+                        )
+                        .execute(&mut *transaction)
                         .await?;
+
+                        let builders = dependencies
+                            .iter()
+                            .map(|x| database::models::version_item::DependencyBuilder {
+                                project_id: x.project_id.map(|x| x.into()),
+                                version_id: x.version_id.map(|x| x.into()),
+                                file_name: x.file_name.clone(),
+                                dependency_type: x.dependency_type.to_string(),
+                            })
+                            .collect::<Vec<database::models::version_item::DependencyBuilder>>();
+
+                        for dependency in builders {
+                            dependency
+                                .insert(version_item.id, &mut transaction)
+                                .await?;
+                        }
+                    }
                 }
             }
 
@@ -521,7 +517,7 @@ pub async fn version_delete(
     let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id = info.into_inner().0;
 
-    if !user.role.is_mod() {
+    if !user.role.is_admin() {
         let team_member = database::models::TeamMember::get_from_user_id_version(
             id.into(),
             user.id.into(),

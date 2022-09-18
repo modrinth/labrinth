@@ -1,6 +1,6 @@
 use super::ids::Base62Id;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Base62Id")]
@@ -8,6 +8,29 @@ use time::OffsetDateTime;
 pub struct UserId(pub u64);
 
 pub const DELETED_USER: UserId = UserId(127155982985829);
+
+bitflags::bitflags! {
+    #[derive(Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct Badges: u64 {
+        const MIDAS = 1 << 0;
+        const EARLY_MODPACK_ADOPTER = 1 << 1;
+        const EARLY_RESPACK_ADOPTER = 1 << 2;
+        const EARLY_PLUGIN_ADOPTER = 1 << 3;
+        const ALPHA_TESTER = 1 << 4;
+        const CONTRIBUTOR = 1 << 5;
+        const TRANSLATOR = 1 << 6;
+
+        const ALL = 0b1111111;
+        const NONE = 0b0;
+    }
+}
+
+impl Default for Badges {
+    fn default() -> Badges {
+        Badges::NONE
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct User {
@@ -18,9 +41,9 @@ pub struct User {
     pub email: Option<String>,
     pub avatar_url: Option<String>,
     pub bio: Option<String>,
-    #[serde(with = "crate::util::time_ser")]
-    pub created: OffsetDateTime,
+    pub created: DateTime<Utc>,
     pub role: Role,
+    pub badges: Badges,
 }
 
 use crate::database::models::user_item::User as DBUser;
@@ -36,6 +59,7 @@ impl From<DBUser> for User {
             bio: data.bio,
             created: data.created,
             role: Role::from_string(&*data.role),
+            badges: data.badges,
         }
     }
 }
@@ -75,6 +99,13 @@ impl Role {
         match self {
             Role::Developer => false,
             Role::Moderator | Role::Admin => true,
+        }
+    }
+
+    pub fn is_admin(&self) -> bool {
+        match self {
+            Role::Developer | Role::Moderator => false,
+            Role::Admin => true,
         }
     }
 }

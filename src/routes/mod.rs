@@ -126,6 +126,8 @@ pub fn users_config(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn teams_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(teams::teams_get);
+
     cfg.service(
         web::scope("team")
             .service(teams::team_members_get)
@@ -149,7 +151,12 @@ pub fn notifications_config(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn moderation_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("moderation").service(moderation::get_projects));
+    cfg.service(
+        web::scope("moderation")
+            .service(moderation::get_projects)
+            .service(moderation::ban_user)
+            .service(moderation::unban_user),
+    );
 }
 
 pub fn reports_config(cfg: &mut web::ServiceConfig) {
