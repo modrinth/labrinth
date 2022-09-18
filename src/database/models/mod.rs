@@ -29,8 +29,6 @@ pub enum DatabaseError {
     Database(#[from] sqlx::error::Error),
     #[error("Error while trying to generate random ID")]
     RandomId,
-    #[error("Invalid permissions bitflag!")]
-    Bitflag,
     #[error("A database request failed")]
     Other(String),
 }
@@ -124,7 +122,13 @@ impl ids::ProjectTypeId {
 }
 
 pub fn convert_postgres_date(input: &str) -> DateTime<Utc> {
-    DateTime::parse_from_str(input, "%Y-%m-%d %T%#z")
+    let mut result = DateTime::parse_from_str(input, "%Y-%m-%d %T.%f%#z");
+
+    if result.is_err() {
+        result = DateTime::parse_from_str(input, "%Y-%m-%d %T%#z")
+    }
+
+    result
         .map(|x| x.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
 }

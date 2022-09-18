@@ -10,6 +10,7 @@ use crate::search::indexing::IndexingError;
 use crate::util::auth::{get_user_from_headers, AuthenticationError};
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
+use actix::fut::ready;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
@@ -250,7 +251,7 @@ pub async fn undo_uploads(
 #[post("project")]
 pub async fn project_create(
     req: HttpRequest,
-    payload: Multipart,
+    mut payload: Multipart,
     client: Data<PgPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, CreateError> {
@@ -259,7 +260,7 @@ pub async fn project_create(
 
     let result = project_create_inner(
         req,
-        payload,
+        &mut payload,
         &mut transaction,
         &***file_host,
         &mut uploaded_files,
@@ -269,6 +270,9 @@ pub async fn project_create(
     if result.is_err() {
         let undo_result = undo_uploads(&***file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
+
+        // fix multipart error bug:
+        payload.for_each(|_| ready(())).await;
 
         if let Err(e) = undo_result {
             return Err(e);
@@ -314,7 +318,7 @@ Get logged in user
 
 pub async fn project_create_inner(
     req: HttpRequest,
-    mut payload: Multipart,
+    payload: &mut Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
@@ -624,6 +628,7 @@ pub async fn project_create_inner(
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
                 permissions: crate::models::teams::Permissions::ALL,
                 accepted: true,
+                payouts_split: 100.0,
             }],
         };
 
@@ -903,10 +908,11 @@ async fn process_icon_upload(
         )
         .await?;
 
+        let hash = sha1::Sha1::from(&data).hexdigest();
         let upload_data = file_host
             .upload_file(
                 content_type,
-                &format!("data/{}/icon.{}", project_id, file_extension),
+                &format!("data/{}/{}.{}", project_id, hash, file_extension),
                 data.freeze(),
             )
             .await?;
