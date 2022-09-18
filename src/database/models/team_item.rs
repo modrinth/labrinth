@@ -1,6 +1,7 @@
 use super::ids::*;
 use crate::database::models::User;
 use crate::models::teams::Permissions;
+use crate::models::users::Badges;
 
 pub struct TeamBuilder {
     pub members: Vec<TeamMemberBuilder>,
@@ -10,6 +11,7 @@ pub struct TeamMemberBuilder {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
+    pub payouts_split: f32,
 }
 
 impl TeamBuilder {
@@ -41,6 +43,7 @@ impl TeamBuilder {
                 role: member.role,
                 permissions: member.permissions,
                 accepted: member.accepted,
+                payouts_split: member.payouts_split,
             };
 
             sqlx::query!(
@@ -78,6 +81,7 @@ pub struct TeamMember {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
+    pub payouts_split: f32,
 }
 
 /// A member of a team
@@ -89,6 +93,7 @@ pub struct QueryTeamMember {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
+    pub payouts_split: f32,
 }
 
 impl TeamMember {
@@ -104,7 +109,7 @@ impl TeamMember {
 
         let team_members = sqlx::query!(
             "
-            SELECT id, user_id, role, permissions, accepted
+            SELECT id, user_id, role, permissions, accepted, payouts_split
             FROM team_members
             WHERE team_id = $1
             ",
@@ -113,19 +118,16 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
-                    Ok(Some(Ok(TeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: id,
-                        user_id: UserId(m.user_id),
-                        role: m.role,
-                        permissions: perms,
-                        accepted: m.accepted,
-                    })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
+                Ok(Some(Ok(TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: id,
+                    user_id: UserId(m.user_id),
+                    role: m.role,
+                    permissions: Permissions::from_bits(m.permissions as u64)
+                        .unwrap_or_default(),
+                    accepted: m.accepted,
+                    payouts_split: m.payouts_split,
+                })))
             } else {
                 Ok(None)
             }
@@ -152,10 +154,11 @@ impl TeamMember {
 
         let team_members = sqlx::query!(
             "
-            SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,
+            SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, us.public_email, us.public_github
+            u.created created, u.role user_role, u.badges badges,
+            us.public_email, us.public_github
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             INNER JOIN user_settings us on u.id = us.user_id
@@ -166,13 +169,12 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
+
                     Ok(Some(Ok(QueryTeamMember {
                         id: TeamMemberId(m.id),
                         team_id: id,
                         role: m.member_role,
-                        permissions: perms,
+                        permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
                         accepted: m.accepted,
                         user: User {
                             id: UserId(m.user_id),
@@ -192,11 +194,10 @@ impl TeamMember {
                             bio: m.bio,
                             created: m.created,
                             role: m.user_role,
+                            badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
                         },
+                        payouts_split: m.payouts_split
                     })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
             } else {
                 Ok(None)
             }
@@ -225,10 +226,11 @@ impl TeamMember {
 
         let teams = sqlx::query!(
             "
-            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted,
+            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, us.public_email, us.public_github
+            u.created created, u.role user_role, u.badges badges,
+            us.public_email, us.public_github
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             INNER JOIN user_settings us on u.id = us.user_id
@@ -240,13 +242,12 @@ impl TeamMember {
           .fetch_many(exec)
           .try_filter_map(|e| async {
               if let Some(m) = e.right() {
-                  let permissions = Permissions::from_bits(m.permissions as u64);
-                  if let Some(perms) = permissions {
+
                       Ok(Some(Ok(QueryTeamMember {
                           id: TeamMemberId(m.id),
                           team_id: TeamId(m.team_id),
                           role: m.member_role,
-                          permissions: perms,
+                          permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
                           accepted: m.accepted,
                           user: User {
                               id: UserId(m.user_id),
@@ -266,11 +267,10 @@ impl TeamMember {
                               bio: m.bio,
                               created: m.created,
                               role: m.user_role,
+                              badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
                           },
+                          payouts_split: m.payouts_split
                       })))
-                  } else {
-                      Ok(Some(Err(super::DatabaseError::Bitflag)))
-                  }
               } else {
                   Ok(None)
               }
@@ -297,7 +297,7 @@ impl TeamMember {
 
         let team_members = sqlx::query!(
             "
-            SELECT id, team_id, role, permissions, accepted
+            SELECT id, team_id, role, permissions, accepted, payouts_split
             FROM team_members
             WHERE (user_id = $1 AND accepted = TRUE)
             ",
@@ -306,19 +306,16 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
-                    Ok(Some(Ok(TeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: TeamId(m.team_id),
-                        user_id: id,
-                        role: m.role,
-                        permissions: perms,
-                        accepted: m.accepted,
-                    })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
+                Ok(Some(Ok(TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: TeamId(m.team_id),
+                    user_id: id,
+                    role: m.role,
+                    permissions: Permissions::from_bits(m.permissions as u64)
+                        .unwrap_or_default(),
+                    accepted: m.accepted,
+                    payouts_split: m.payouts_split,
+                })))
             } else {
                 Ok(None)
             }
@@ -345,7 +342,7 @@ impl TeamMember {
 
         let team_members = sqlx::query!(
             "
-            SELECT id, team_id, role, permissions, accepted
+            SELECT id, team_id, role, permissions, accepted, payouts_split
             FROM team_members
             WHERE user_id = $1
             ",
@@ -354,19 +351,16 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
-                    Ok(Some(Ok(TeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: TeamId(m.team_id),
-                        user_id: id,
-                        role: m.role,
-                        permissions: perms,
-                        accepted: m.accepted,
-                    })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
+                Ok(Some(Ok(TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: TeamId(m.team_id),
+                    user_id: id,
+                    role: m.role,
+                    permissions: Permissions::from_bits(m.permissions as u64)
+                        .unwrap_or_default(),
+                    accepted: m.accepted,
+                    payouts_split: m.payouts_split,
+                })))
             } else {
                 Ok(None)
             }
@@ -392,7 +386,7 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT id, user_id, role, permissions, accepted
+            SELECT id, user_id, role, permissions, accepted, payouts_split
             FROM team_members
             WHERE (team_id = $1 AND user_id = $2 AND accepted = TRUE)
             ",
@@ -409,8 +403,9 @@ impl TeamMember {
                 user_id,
                 role: m.role,
                 permissions: Permissions::from_bits(m.permissions as u64)
-                    .ok_or(super::DatabaseError::Bitflag)?,
+                    .unwrap_or_default(),
                 accepted: m.accepted,
+                payouts_split: m.payouts_split,
             }))
         } else {
             Ok(None)
@@ -433,7 +428,7 @@ impl TeamMember {
 
         let team_members = sqlx::query!(
             "
-            SELECT id, team_id, user_id, role, permissions, accepted
+            SELECT id, team_id, user_id, role, permissions, accepted, payouts_split
             FROM team_members
             WHERE (team_id = ANY($1) AND user_id = $2 AND accepted = TRUE)
             ",
@@ -443,19 +438,15 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let permissions = Permissions::from_bits(m.permissions as u64);
-                if let Some(perms) = permissions {
                     Ok(Some(Ok(TeamMember {
                         id: TeamMemberId(m.id),
                         team_id: TeamId(m.team_id),
                         user_id,
                         role: m.role,
-                        permissions: perms,
+                        permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
                         accepted: m.accepted,
+                        payouts_split: m.payouts_split
                     })))
-                } else {
-                    Ok(Some(Err(super::DatabaseError::Bitflag)))
-                }
             } else {
                 Ok(None)
             }
@@ -481,7 +472,7 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT id, user_id, role, permissions, accepted
+            SELECT id, user_id, role, permissions, accepted, payouts_split
             FROM team_members
             WHERE (team_id = $1 AND user_id = $2)
             ",
@@ -498,8 +489,9 @@ impl TeamMember {
                 user_id,
                 role: m.role,
                 permissions: Permissions::from_bits(m.permissions as u64)
-                    .ok_or(super::DatabaseError::Bitflag)?,
+                    .unwrap_or_default(),
                 accepted: m.accepted,
+                payouts_split: m.payouts_split,
             }))
         } else {
             Ok(None)
@@ -568,6 +560,7 @@ impl TeamMember {
         new_permissions: Option<Permissions>,
         new_role: Option<String>,
         new_accepted: Option<bool>,
+        new_payouts_split: Option<f32>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), super::DatabaseError> {
         if let Some(permissions) = new_permissions {
@@ -616,6 +609,21 @@ impl TeamMember {
             }
         }
 
+        if let Some(payouts_split) = new_payouts_split {
+            sqlx::query!(
+                "
+                UPDATE team_members
+                SET payouts_split = $1
+                WHERE (team_id = $2 AND user_id = $3)
+                ",
+                payouts_split,
+                id as TeamId,
+                user_id as UserId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
         Ok(())
     }
 
@@ -629,7 +637,7 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted FROM mods m
+            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted, tm.payouts_split FROM mods m
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND user_id = $2 AND accepted = TRUE
             WHERE m.id = $1
             ",
@@ -646,8 +654,9 @@ impl TeamMember {
                 user_id,
                 role: m.role,
                 permissions: Permissions::from_bits(m.permissions as u64)
-                    .ok_or(super::DatabaseError::Bitflag)?,
+                    .unwrap_or_default(),
                 accepted: m.accepted,
+                payouts_split: m.payouts_split,
             }))
         } else {
             Ok(None)
@@ -664,7 +673,7 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted FROM versions v
+            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted, tm.payouts_split FROM versions v
             INNER JOIN mods m ON m.id = v.mod_id
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.user_id = $2 AND tm.accepted = TRUE
             WHERE v.id = $1
@@ -682,8 +691,9 @@ impl TeamMember {
                 user_id,
                 role: m.role,
                 permissions: Permissions::from_bits(m.permissions as u64)
-                    .ok_or(super::DatabaseError::Bitflag)?,
+                    .unwrap_or_default(),
                 accepted: m.accepted,
+                payouts_split: m.payouts_split,
             }))
         } else {
             Ok(None)

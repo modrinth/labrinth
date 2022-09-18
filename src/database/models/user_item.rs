@@ -1,4 +1,5 @@
 use super::ids::{ProjectId, UserId};
+use crate::models::users::Badges;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -12,6 +13,7 @@ pub struct User {
     pub bio: Option<String>,
     pub created: DateTime<Utc>,
     pub role: String,
+    pub badges: Badges,
 }
 
 #[derive(Serialize)]
@@ -74,7 +76,7 @@ impl User {
             "
             SELECT u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role,
+                u.created, u.role, u.badges,
                 us.public_email, us.public_github
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
@@ -104,6 +106,8 @@ impl User {
                 bio: row.bio,
                 created: row.created,
                 role: row.role,
+                badges: Badges::from_bits(row.badges as u64)
+                    .unwrap_or_default(),
             }))
         } else {
             Ok(None)
@@ -122,7 +126,7 @@ impl User {
             "
             SELECT u.id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role,
+                u.created, u.role, u.badges,
                 us.public_email, us.public_github
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
@@ -148,6 +152,8 @@ impl User {
                 bio: row.bio,
                 created: row.created,
                 role: row.role,
+                badges: Badges::from_bits(row.badges as u64)
+                    .unwrap_or_default(),
             }))
         } else {
             Ok(None)
@@ -166,7 +172,7 @@ impl User {
             "
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role,
+                u.created, u.role, u.badges,
                 us.public_email, us.public_github
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
@@ -192,6 +198,8 @@ impl User {
                 bio: row.bio,
                 created: row.created,
                 role: row.role,
+                badges: Badges::from_bits(row.badges as u64)
+                    .unwrap_or_default(),
             }))
         } else {
             Ok(None)
@@ -214,7 +222,7 @@ impl User {
             "
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
-                u.created, u.role,
+                u.created, u.role, u.badges,
                 us.public_email, us.public_github
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
@@ -234,6 +242,7 @@ impl User {
                 bio: u.bio,
                 created: u.created,
                 role: u.role,
+                badges: Badges::from_bits(u.badges as u64).unwrap_or_default(),
             }))
         })
         .try_collect::<Vec<User>>()
@@ -257,6 +266,7 @@ impl User {
             SELECT m.id FROM mods m
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.accepted = TRUE
             WHERE tm.user_id = $1 AND m.status = (SELECT s.id FROM statuses s WHERE s.status = $2)
+            ORDER BY m.downloads DESC
             ",
             user_id as UserId,
             status,
@@ -283,6 +293,7 @@ impl User {
             SELECT m.id FROM mods m
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.accepted = TRUE
             WHERE tm.user_id = $1
+            ORDER BY m.downloads DESC
             ",
             user_id as UserId,
         )

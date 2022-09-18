@@ -4,7 +4,7 @@ use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::projects::{Project, ProjectStatus};
 use crate::models::settings::FrontendTheme;
-use crate::models::users::{Role, UserId};
+use crate::models::users::{Badges, Role, UserId};
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use crate::util::routes::read_from_payload;
@@ -168,6 +168,7 @@ pub struct EditUser {
     #[validate(length(max = 160))]
     pub bio: Option<Option<String>>,
     pub role: Option<Role>,
+    pub badges: Option<Badges>,
 }
 
 #[patch("{id}")]
@@ -291,6 +292,27 @@ pub async fn user_edit(
                 .await?;
             }
 
+            if let Some(badges) = &new_user.badges {
+                if !user.role.is_admin() {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the badges of this user!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE users
+                    SET badges = $1
+                    WHERE (id = $2)
+                    ",
+                    badges.bits() as i64,
+                    id as crate::database::models::ids::UserId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
@@ -368,10 +390,11 @@ pub async fn user_icon_edit(
             )
             .await?;
 
+            let hash = sha1::Sha1::from(&bytes).hexdigest();
             let upload_data = file_host
                 .upload_file(
                     content_type,
-                    &format!("user/{}/icon.{}", user_id, ext.ext),
+                    &format!("user/{}/{}.{}", user_id, hash, ext.ext),
                     bytes.freeze(),
                 )
                 .await?;
