@@ -306,7 +306,7 @@ pub struct License {
 }
 
 #[get("license")]
-pub async fn license_list() -> Result<HttpResponse, ApiError> {
+pub async fn license_list() -> HttpResponse {
     let licenses = spdx::identifiers::LICENSES;
     let mut results: Vec<License> = Vec::with_capacity(licenses.len());
 
@@ -317,7 +317,7 @@ pub async fn license_list() -> Result<HttpResponse, ApiError> {
         });
     }
 
-    Ok(HttpResponse::Ok().json(results))
+    HttpResponse::Ok().json(results)
 }
 
 #[derive(serde::Serialize)]
