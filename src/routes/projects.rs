@@ -846,7 +846,7 @@ pub async fn project_edit(
 
                 let mut license = license.clone();
 
-                if license.to_lowercase().eq("arr") {
+                if license.to_lowercase() == "arr" {
                     license = "LicenseRef-All-Rights-Reserved".to_string();
                 }
 
