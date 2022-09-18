@@ -19,6 +19,7 @@ pub struct UserSettings {
     pub public_email: bool,
     pub public_github: bool,
     pub theme: crate::models::settings::FrontendTheme,
+    pub locale: String,
 }
 
 impl User {
@@ -63,6 +64,7 @@ impl User {
     }
     pub async fn get<'a, 'b, E>(
         id: UserId,
+        override_privacy_settings: bool,
         executor: E,
     ) -> Result<Option<Self>, sqlx::error::Error>
     where
@@ -86,13 +88,17 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id,
-                github_id: if row.public_github {
+                github_id: if row.public_github || override_privacy_settings {
                     row.github_id
                 } else {
                     None
                 },
                 name: row.name,
-                email: if row.public_email { row.email } else { None },
+                email: if row.public_email || override_privacy_settings {
+                    row.email
+                } else {
+                    None
+                },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -106,6 +112,7 @@ impl User {
 
     pub async fn get_from_github_id<'a, 'b, E>(
         github_id: u64,
+        override_privacy_settings: bool,
         executor: E,
     ) -> Result<Option<Self>, sqlx::error::Error>
     where
@@ -129,13 +136,13 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id: UserId(row.id),
-                github_id: if row.public_github {
+                github_id: if row.public_github || override_privacy_settings {
                     Some(github_id as i64)
                 } else {
                     None
                 },
                 name: row.name,
-                email: if row.public_email { row.email } else { None },
+                email: if row.public_email || override_privacy_settings { row.email } else { None },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -149,6 +156,7 @@ impl User {
 
     pub async fn get_from_username<'a, 'b, E>(
         username: String,
+        override_privacy_settings: bool,
         executor: E,
     ) -> Result<Option<Self>, sqlx::error::Error>
     where
@@ -172,13 +180,13 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id: UserId(row.id),
-                github_id: if row.public_github {
+                github_id: if row.public_github || override_privacy_settings {
                     row.github_id
                 } else {
                     None
                 },
                 name: row.name,
-                email: if row.public_email { row.email } else { None },
+                email: if row.public_email || override_privacy_settings { row.email } else { None },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -192,6 +200,7 @@ impl User {
 
     pub async fn get_many<'a, E>(
         user_ids: Vec<UserId>,
+        override_privacy_settings: bool,
         exec: E,
     ) -> Result<Vec<User>, sqlx::Error>
     where
@@ -217,9 +226,9 @@ impl User {
         .try_filter_map(|e| async {
             Ok(e.right().map(|u| User {
                 id: UserId(u.id),
-                github_id: if u.public_github { u.github_id } else { None },
+                github_id: if u.public_github || override_privacy_settings { u.github_id } else { None },
                 name: u.name,
-                email: if u.public_email { u.email } else { None },
+                email: if u.public_email || override_privacy_settings { u.email } else { None },
                 avatar_url: u.avatar_url,
                 username: u.username,
                 bio: u.bio,

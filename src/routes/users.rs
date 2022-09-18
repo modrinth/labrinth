@@ -35,6 +35,7 @@ pub struct UserIds {
 
 #[get("users")]
 pub async fn users_get(
+    req: HttpRequest,
     web::Query(ids): web::Query<UserIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -43,7 +44,12 @@ pub async fn users_get(
         .map(|x| x.into())
         .collect();
 
-    let users_data = User::get_many(user_ids, &**pool).await?;
+    let is_mod = match get_user_from_headers(req.headers(), &**pool).await.ok() {
+        Some(user) => user.role.is_mod(),
+        None => false,
+    };
+
+    let users_data = User::get_many(user_ids, is_mod, &**pool).await?;
 
     let users: Vec<crate::models::users::User> =
         users_data.into_iter().map(From::from).collect();
@@ -53,6 +59,7 @@ pub async fn users_get(
 
 #[get("{id}")]
 pub async fn user_get(
+    req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -60,16 +67,21 @@ pub async fn user_get(
     let id_option: Option<UserId> =
         serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
+    let is_mod = match get_user_from_headers(req.headers(), &**pool).await.ok() {
+        Some(user) => user.role.is_mod(),
+        None => false,
+    };
+
     let mut user_data;
 
     if let Some(id) = id_option {
-        user_data = User::get(id.into(), &**pool).await?;
+        user_data = User::get(id.into(), is_mod, &**pool).await?;
 
         if user_data.is_none() {
-            user_data = User::get_from_username(string, &**pool).await?;
+            user_data = User::get_from_username(string, is_mod, &**pool).await?;
         }
     } else {
-        user_data = User::get_from_username(string, &**pool).await?;
+        user_data = User::get_from_username(string, is_mod, &**pool).await?;
     }
 
     if let Some(data) = user_data {
@@ -330,7 +342,7 @@ pub async fn user_icon_edit(
             let user_id: UserId = id.into();
 
             if user.id != user_id {
-                let new_user = User::get(id, &**pool).await?;
+                let new_user = User::get(id, false, &**pool).await?;
 
                 if let Some(new) = new_user {
                     icon_url = new.avatar_url;
@@ -558,6 +570,7 @@ pub async fn user_settings_from_id(
             public_email: result.public_email,
             public_github: result.public_github,
             theme: FrontendTheme::from_str(&result.theme),
+            locale: result.locale
         };
 
         Ok(HttpResponse::Ok().json(settings))
@@ -588,6 +601,7 @@ pub async fn user_settings_from_header(
         public_email: result.public_email,
         public_github: result.public_github,
         theme: FrontendTheme::from_str(&result.theme),
+        locale: result.locale,
     };
 
     Ok(HttpResponse::Ok().json(settings))
