@@ -1,5 +1,5 @@
 use crate::routes::ApiError;
-use actix_web::{get, web, HttpRequest, HttpResponse};
+use actix_web::{get, web, HttpResponse};
 use serde_json::json;
 use sqlx::PgPool;
 
@@ -36,10 +36,6 @@ pub async fn get_stats(
     .fetch_one(&**pool)
     .await?;
 
-    let users = sqlx::query!("SELECT COUNT(id) FROM users")
-        .fetch_one(&**pool)
-        .await?;
-
     let authors = sqlx::query!(
         "
         SELECT COUNT(DISTINCT u.id)
@@ -74,7 +70,6 @@ pub async fn get_stats(
     let json = json!({
         "projects": projects.count,
         "versions": versions.count,
-        "users": users.count,
         "authors": authors.count,
         "files": files.count,
     });
