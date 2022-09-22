@@ -15,7 +15,7 @@ use crate::database::models::{generate_state_id, User};
 use crate::models::error::ApiError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
-use crate::models::users::{Badges, Role};
+use crate::models::users::{Badges, FrontendTheme, Role, UserSettings};
 use crate::parse_strings_from_var;
 use crate::util::auth::get_github_user_from_token;
 use actix_web::http::StatusCode;
@@ -273,6 +273,11 @@ pub async fn auth_callback(
                         created: Utc::now(),
                         role: Role::Developer.to_string(),
                         badges: Badges::default(),
+                        settings: Some(UserSettings {
+                            public_github: true,
+                            theme: FrontendTheme::System,
+                            locale: "en-US".to_string(),
+                        }),
                     }
                     .insert(&mut transaction)
                     .await?;

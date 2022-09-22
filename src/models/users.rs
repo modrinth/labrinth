@@ -44,6 +44,14 @@ pub struct User {
     pub created: DateTime<Utc>,
     pub role: Role,
     pub badges: Badges,
+    pub settings: Option<UserSettings>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct UserSettings {
+    pub public_github: bool,
+    pub theme: FrontendTheme,
+    pub locale: String,
 }
 
 use crate::database::models::user_item::User as DBUser;
@@ -60,6 +68,7 @@ impl From<DBUser> for User {
             created: data.created,
             role: Role::from_string(&*data.role),
             badges: data.badges,
+            settings: data.settings,
         }
     }
 }
@@ -106,6 +115,41 @@ impl Role {
         match self {
             Role::Developer | Role::Moderator => false,
             Role::Admin => true,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FrontendTheme {
+    System,
+    Light,
+    Dark,
+    Oled,
+}
+
+impl std::fmt::Display for FrontendTheme {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}", self.as_str())
+    }
+}
+
+use FrontendTheme::*;
+impl FrontendTheme {
+    pub fn from_str(string: &str) -> FrontendTheme {
+        match string {
+            "light" => Light,
+            "dark" => Dark,
+            "oled" => Oled,
+            _ => System,
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            System => "system",
+            Light => "light",
+            Dark => "dark",
+            Oled => "oled",
         }
     }
 }

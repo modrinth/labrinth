@@ -73,6 +73,7 @@ where
             created: result.created,
             role: Role::from_string(&result.role),
             badges: result.badges,
+            settings: result.settings,
         }),
         None => Err(AuthenticationError::InvalidCredentials),
     }

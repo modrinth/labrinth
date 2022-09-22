@@ -1,7 +1,6 @@
 use super::ids::{ProjectId, UserId};
-use crate::models::users::Badges;
+use crate::models::users::{Badges, FrontendTheme, UserSettings};
 use chrono::{DateTime, Utc};
-use serde::Serialize;
 
 pub struct User {
     pub id: UserId,
@@ -14,14 +13,7 @@ pub struct User {
     pub created: DateTime<Utc>,
     pub role: String,
     pub badges: Badges,
-}
-
-#[derive(Serialize)]
-pub struct UserSettings {
-    pub public_email: bool,
-    pub public_github: bool,
-    pub theme: crate::models::settings::FrontendTheme,
-    pub locale: String,
+    pub settings: Option<UserSettings>,
 }
 
 impl User {
@@ -77,7 +69,7 @@ impl User {
             SELECT u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
-                us.public_email, us.public_github
+                us.public_github, us.theme, us.locale
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.id = $1
@@ -96,11 +88,7 @@ impl User {
                     None
                 },
                 name: row.name,
-                email: if row.public_email || override_settings {
-                    row.email
-                } else {
-                    None
-                },
+                email: if override_settings { row.email } else { None },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -108,6 +96,15 @@ impl User {
                 role: row.role,
                 badges: Badges::from_bits(row.badges as u64)
                     .unwrap_or_default(),
+                settings: if override_settings {
+                    Some(UserSettings {
+                        public_github: row.public_github,
+                        theme: FrontendTheme::from_str(&row.theme),
+                        locale: row.locale,
+                    })
+                } else {
+                    None
+                },
             }))
         } else {
             Ok(None)
@@ -127,7 +124,7 @@ impl User {
             SELECT u.id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
-                us.public_email, us.public_github
+                us.public_github, us.theme, us.locale
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.github_id = $1
@@ -146,11 +143,7 @@ impl User {
                     None
                 },
                 name: row.name,
-                email: if row.public_email || override_settings {
-                    row.email
-                } else {
-                    None
-                },
+                email: if override_settings { row.email } else { None },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -158,6 +151,15 @@ impl User {
                 role: row.role,
                 badges: Badges::from_bits(row.badges as u64)
                     .unwrap_or_default(),
+                settings: if override_settings {
+                    Some(UserSettings {
+                        public_github: row.public_github,
+                        theme: FrontendTheme::from_str(&row.theme),
+                        locale: row.locale,
+                    })
+                } else {
+                    None
+                },
             }))
         } else {
             Ok(None)
@@ -177,7 +179,7 @@ impl User {
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
-                us.public_email, us.public_github
+                us.public_github, us.theme, us.locale
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
             WHERE LOWER(u.username) = LOWER($1)
@@ -196,11 +198,7 @@ impl User {
                     None
                 },
                 name: row.name,
-                email: if row.public_email || override_settings {
-                    row.email
-                } else {
-                    None
-                },
+                email: if override_settings { row.email } else { None },
                 avatar_url: row.avatar_url,
                 username: row.username,
                 bio: row.bio,
@@ -208,6 +206,15 @@ impl User {
                 role: row.role,
                 badges: Badges::from_bits(row.badges as u64)
                     .unwrap_or_default(),
+                settings: if override_settings {
+                    Some(UserSettings {
+                        public_github: row.public_github,
+                        theme: FrontendTheme::from_str(&row.theme),
+                        locale: row.locale,
+                    })
+                } else {
+                    None
+                },
             }))
         } else {
             Ok(None)
@@ -231,7 +238,7 @@ impl User {
             SELECT u.id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
-                us.public_email, us.public_github
+                us.public_github, us.theme, us.locale
             FROM users u
             INNER JOIN user_settings us on u.id = us.user_id
             WHERE u.id = ANY($1)
@@ -248,17 +255,22 @@ impl User {
                     None
                 },
                 name: u.name,
-                email: if u.public_email || override_settings {
-                    u.email
-                } else {
-                    None
-                },
+                email: if override_settings { u.email } else { None },
                 avatar_url: u.avatar_url,
                 username: u.username,
                 bio: u.bio,
                 created: u.created,
                 role: u.role,
                 badges: Badges::from_bits(u.badges as u64).unwrap_or_default(),
+                settings: if override_settings {
+                    Some(UserSettings {
+                        public_github: u.public_github,
+                        theme: FrontendTheme::from_str(&u.theme),
+                        locale: u.locale,
+                    })
+                } else {
+                    None
+                },
             }))
         })
         .try_collect::<Vec<User>>()

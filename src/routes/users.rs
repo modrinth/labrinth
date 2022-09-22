@@ -1,12 +1,12 @@
-use crate::database::models::user_item::UserSettings;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::projects::{Project, ProjectStatus};
-use crate::models::settings::FrontendTheme;
-use crate::models::users::{Badges, Role, UserId};
+use crate::models::users::{Badges, FrontendTheme, Role, UserId};
 use crate::routes::ApiError;
-use crate::util::auth::get_user_from_headers;
+use crate::util::auth::{
+    check_is_moderator_from_headers, get_user_from_headers,
+};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
@@ -44,11 +44,9 @@ pub async fn users_get(
         .map(|x| x.into())
         .collect();
 
-    let is_mod = match get_user_from_headers(req.headers(), &**pool).await.ok()
-    {
-        Some(user) => user.role.is_mod(),
-        None => false,
-    };
+    let is_mod = check_is_moderator_from_headers(req.headers(), &**pool)
+        .await
+        .is_ok();
 
     let users_data = User::get_many(user_ids, is_mod, &**pool).await?;
 
@@ -68,11 +66,9 @@ pub async fn user_get(
     let id_option: Option<UserId> =
         serde_json::from_str(&*format!("\"{}\"", string)).ok();
 
-    let is_mod = match get_user_from_headers(req.headers(), &**pool).await.ok()
-    {
-        Some(user) => user.role.is_mod(),
-        None => false,
-    };
+    let is_mod = check_is_moderator_from_headers(req.headers(), &**pool)
+        .await
+        .is_ok();
 
     let mut user_data;
 
@@ -172,6 +168,14 @@ pub struct EditUser {
     pub bio: Option<Option<String>>,
     pub role: Option<Role>,
     pub badges: Option<Badges>,
+    pub settings: Option<EditSettings>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EditSettings {
+    pub public_github: Option<bool>,
+    pub theme: Option<FrontendTheme>,
+    pub locale: Option<String>,
 }
 
 #[patch("{id}")]
@@ -314,6 +318,50 @@ pub async fn user_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+            }
+
+            if let Some(settings) = &new_user.settings {
+                if let Some(public_github) = &settings.public_github {
+                    sqlx::query!(
+                        "
+                        UPDATE user_settings
+                        SET public_github = $1
+                        WHERE (user_id = $2)
+                        ",
+                        public_github,
+                        id as crate::database::models::ids::UserId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+
+                if let Some(theme) = &settings.theme {
+                    sqlx::query!(
+                        "
+                        UPDATE user_settings
+                        SET theme = $1
+                        WHERE (user_id = $2)
+                        ",
+                        theme.as_str(),
+                        id as crate::database::models::ids::UserId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+
+                if let Some(locale) = &settings.locale {
+                    sqlx::query!(
+                        "
+                        UPDATE user_settings
+                        SET locale = $1
+                        WHERE (user_id = $2)
+                        ",
+                        locale,
+                        id as crate::database::models::ids::UserId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
             }
 
             transaction.commit().await?;
@@ -560,210 +608,4 @@ pub async fn user_notifications(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
-}
-
-#[get("{id}/settings")]
-pub async fn user_settings_from_id(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option =
-        User::get_id_from_username_or_id(&*info.into_inner().0, &**pool)
-            .await?;
-
-    if let Some(id) = id_option {
-        if !user.role.is_admin() && user.id != id.into() {
-            return Err(ApiError::CustomAuthentication(
-                "You do not have permission to see the settings of this user!"
-                    .to_string(),
-            ));
-        }
-
-        let result = sqlx::query!(
-            "
-            SELECT *
-            FROM user_settings
-            WHERE user_id = $1
-            ",
-            id as crate::database::models::ids::UserId
-        )
-        .fetch_one(&**pool)
-        .await?;
-
-        let settings = UserSettings {
-            public_email: result.public_email,
-            public_github: result.public_github,
-            theme: FrontendTheme::from_str(&result.theme),
-            locale: result.locale,
-        };
-
-        Ok(HttpResponse::Ok().json(settings))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
-}
-
-#[get("settings")]
-pub async fn user_settings_from_header(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
-
-    let result = sqlx::query!(
-        "
-        SELECT *
-        FROM user_settings
-        WHERE user_id = $1
-        ",
-        user.id.0 as i64
-    )
-    .fetch_one(&**pool)
-    .await?;
-
-    let settings = UserSettings {
-        public_email: result.public_email,
-        public_github: result.public_github,
-        theme: FrontendTheme::from_str(&result.theme),
-        locale: result.locale,
-    };
-
-    Ok(HttpResponse::Ok().json(settings))
-}
-
-#[derive(Deserialize)]
-pub struct NewSettings {
-    public_email: Option<bool>,
-    public_github: Option<bool>,
-    theme: Option<FrontendTheme>,
-}
-
-#[patch("{id}/settings")]
-pub async fn user_settings_edit_from_id(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    new_settings: web::Json<NewSettings>,
-) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option =
-        User::get_id_from_username_or_id(&*info.into_inner().0, &**pool)
-            .await?;
-
-    if let Some(id) = id_option {
-        if !user.role.is_admin() && user.id != id.into() {
-            return Err(ApiError::CustomAuthentication(
-                "You do not have permission to see the settings of this user!"
-                    .to_string(),
-            ));
-        }
-
-        let mut transaction = pool.begin().await?;
-
-        if let Some(email_setting) = new_settings.public_email {
-            sqlx::query!(
-                "
-                UPDATE user_settings
-                SET public_email = $1
-                WHERE user_id = $2
-                ",
-                email_setting,
-                id as crate::database::models::ids::UserId
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
-
-        if let Some(github_setting) = new_settings.public_github {
-            sqlx::query!(
-                "
-                UPDATE user_settings
-                SET public_github = $1
-                WHERE user_id = $2
-                ",
-                github_setting,
-                id as crate::database::models::ids::UserId
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
-
-        if let Some(theme_setting) = &new_settings.theme {
-            sqlx::query!(
-                "
-                UPDATE user_settings
-                SET theme = $1
-                WHERE user_id = $2
-                ",
-                theme_setting.as_str(),
-                id as crate::database::models::ids::UserId
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
-
-        transaction.commit().await?;
-        Ok(HttpResponse::NoContent().body(""))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
-}
-
-#[patch("settings")]
-pub async fn user_settings_edit_from_header(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    new_settings: web::Json<NewSettings>,
-) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
-
-    let mut transaction = pool.begin().await?;
-
-    if let Some(email_setting) = new_settings.public_email {
-        sqlx::query!(
-            "
-            UPDATE user_settings
-            SET public_email = $1
-            WHERE user_id = $2
-            ",
-            email_setting,
-            user.id.0 as i64
-        )
-        .execute(&mut *transaction)
-        .await?;
-    }
-
-    if let Some(github_setting) = new_settings.public_github {
-        sqlx::query!(
-            "
-            UPDATE user_settings
-            SET public_github = $1
-            WHERE user_id = $2
-            ",
-            github_setting,
-            user.id.0 as i64
-        )
-        .execute(&mut *transaction)
-        .await?;
-    }
-
-    if let Some(theme_setting) = &new_settings.theme {
-        sqlx::query!(
-            "
-            UPDATE user_settings
-            SET theme = $1
-            WHERE user_id = $2
-            ",
-            theme_setting.as_str(),
-            user.id.0 as i64
-        )
-        .execute(&mut *transaction)
-        .await?;
-    }
-
-    transaction.commit().await?;
-
-    Ok(HttpResponse::NoContent().body(""))
 }

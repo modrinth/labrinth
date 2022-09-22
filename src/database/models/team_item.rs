@@ -158,7 +158,7 @@ impl TeamMember {
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
             u.created created, u.role user_role, u.badges badges,
-            us.public_email, us.public_github
+            us.public_github
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             INNER JOIN user_settings us on u.id = us.user_id
@@ -184,17 +184,14 @@ impl TeamMember {
                                 None
                             },
                             name: m.user_name,
-                            email: if m.public_email {
-                                m.email
-                            } else {
-                                None
-                            },
+                            email: None,
                             avatar_url: m.avatar_url,
                             username: m.username,
                             bio: m.bio,
                             created: m.created,
                             role: m.user_role,
                             badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
+                            settings: None,
                         },
                         payouts_split: m.payouts_split
                     })))
@@ -230,7 +227,7 @@ impl TeamMember {
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
             u.created created, u.role user_role, u.badges badges,
-            us.public_email, us.public_github
+            us.public_github
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             INNER JOIN user_settings us on u.id = us.user_id
@@ -257,17 +254,14 @@ impl TeamMember {
                                   None
                               },
                               name: m.user_name,
-                              email: if m.public_email {
-                                  m.email
-                              } else {
-                                  None
-                              },
+                              email: None,
                               avatar_url: m.avatar_url,
                               username: m.username,
                               bio: m.bio,
                               created: m.created,
                               role: m.user_role,
                               badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
+                              settings: None,
                           },
                           payouts_split: m.payouts_split
                       })))
