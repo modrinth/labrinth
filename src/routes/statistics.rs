@@ -18,8 +18,7 @@ pub async fn get_stats(
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()
     )
-    .fetch_one(&**pool)
-    .await?;
+    .fetch_one(&**pool);
 
     let versions = sqlx::query!(
         "
@@ -33,8 +32,7 @@ pub async fn get_stats(
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()
     )
-    .fetch_one(&**pool)
-    .await?;
+    .fetch_one(&**pool);
 
     let authors = sqlx::query!(
         "
@@ -49,8 +47,7 @@ pub async fn get_stats(
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()
     )
-    .fetch_one(&**pool)
-    .await?;
+    .fetch_one(&**pool);
 
     let files = sqlx::query!(
         "
@@ -64,8 +61,10 @@ pub async fn get_stats(
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()
     )
-    .fetch_one(&**pool)
-    .await?;
+    .fetch_one(&**pool);
+
+    let (projects, versions, authors, files) =
+        futures::future::try_join4(projects, versions, authors, files).await?;
 
     let json = json!({
         "projects": projects.count,
