@@ -7,7 +7,7 @@ use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse, post};
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -513,7 +513,7 @@ pub async fn user_follows(
 #[derive(Serialize)]
 pub struct UserFollowing {
     projects: Vec<Project>,
-    users: Vec<crate::models::users::User>
+    users: Vec<crate::models::users::User>,
 }
 
 #[get("{id}/following")]
@@ -527,7 +527,7 @@ pub async fn user_following(
         &*info.into_inner().0,
         &**pool,
     )
-        .await?;
+    .await?;
 
     if let Some(id) = id_option {
         if !user.role.is_admin() && user.id != id.into() {
@@ -545,13 +545,13 @@ pub async fn user_following(
             ",
             id as crate::database::models::ids::UserId,
         )
-            .fetch_many(&**pool)
-            .try_filter_map(|e| async {
-                Ok(e.right()
-                    .map(|m| crate::database::models::ProjectId(m.mod_id)))
-            })
-            .try_collect::<Vec<crate::database::models::ProjectId>>()
-            .await?;
+        .fetch_many(&**pool)
+        .try_filter_map(|e| async {
+            Ok(e.right()
+                .map(|m| crate::database::models::ProjectId(m.mod_id)))
+        })
+        .try_collect::<Vec<crate::database::models::ProjectId>>()
+        .await?;
 
         let projects: Vec<_> =
             crate::database::Project::get_many_full(project_ids, &**pool)
@@ -567,25 +567,21 @@ pub async fn user_following(
             ",
             id as crate::database::models::ids::UserId,
         )
-            .fetch_many(&**pool)
-            .try_filter_map(|e| async {
-                Ok(e.right()
-                    .map(|m| crate::database::models::UserId(m.user_id)))
-            })
-            .try_collect::<Vec<crate::database::models::UserId>>()
-            .await?;
+        .fetch_many(&**pool)
+        .try_filter_map(|e| async {
+            Ok(e.right()
+                .map(|m| crate::database::models::UserId(m.user_id)))
+        })
+        .try_collect::<Vec<crate::database::models::UserId>>()
+        .await?;
 
-        let users: Vec<_> =
-            User::get_many(user_ids, &**pool)
-                .await?
-                .into_iter()
-                .map(crate::models::users::User::from)
-                .collect();
+        let users: Vec<_> = User::get_many(user_ids, &**pool)
+            .await?
+            .into_iter()
+            .map(crate::models::users::User::from)
+            .collect();
 
-        Ok(HttpResponse::Ok().json(UserFollowing {
-            projects: vec![],
-            users
-        }))
+        Ok(HttpResponse::Ok().json(UserFollowing { projects, users }))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -598,16 +594,16 @@ pub async fn follow_user(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option = User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
-    )
-        .await?;
+    let id_option =
+        User::get_id_from_username_or_id(&*info.into_inner().0, &**pool)
+            .await?;
 
     if let Some(id) = id_option {
         let user_id: crate::database::models::ids::UserId = user.id.into();
         if user_id == id {
-            return Err(ApiError::InvalidInput("You cannot follow yourself".to_string()))
+            return Err(ApiError::InvalidInput(
+                "You cannot follow yourself".to_string(),
+            ));
         }
 
         let following = sqlx::query!(
@@ -631,8 +627,8 @@ pub async fn follow_user(
                 ",
                 user_id as crate::database::models::ids::UserId,
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
 
             sqlx::query!(
                 "
@@ -642,14 +638,16 @@ pub async fn follow_user(
                 id as crate::database::models::ids::UserId,
                 user_id as crate::database::models::ids::UserId
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
 
             transaction.commit().await?;
 
             Ok(HttpResponse::NoContent().body(""))
         } else {
-            Err(ApiError::InvalidInput("You are already following this user!".to_string(), ))
+            Err(ApiError::InvalidInput(
+                "You are already following this user!".to_string(),
+            ))
         }
     } else {
         Ok(HttpResponse::NotFound().body(""))
@@ -663,11 +661,9 @@ pub async fn unfollow_user(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option = User::get_id_from_username_or_id(
-        &*info.into_inner().0,
-        &**pool,
-    )
-        .await?;
+    let id_option =
+        User::get_id_from_username_or_id(&*info.into_inner().0, &**pool)
+            .await?;
 
     if let Some(id) = id_option {
         let user_id: crate::database::models::ids::UserId = user.id.into();
@@ -692,8 +688,8 @@ pub async fn unfollow_user(
                 ",
                 user_id as crate::database::models::ids::UserId,
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
 
             sqlx::query!(
                 "
@@ -703,14 +699,16 @@ pub async fn unfollow_user(
                 id as crate::database::models::ids::UserId,
                 user_id as crate::database::models::ids::UserId
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
 
             transaction.commit().await?;
 
             Ok(HttpResponse::NoContent().body(""))
         } else {
-            Err(ApiError::InvalidInput("You are not already following this user!".to_string(), ))
+            Err(ApiError::InvalidInput(
+                "You are not already following this user!".to_string(),
+            ))
         }
     } else {
         Ok(HttpResponse::NotFound().body(""))

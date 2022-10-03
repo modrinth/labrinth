@@ -13,7 +13,7 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
-use futures::{TryStreamExt, StreamExt};
+use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{PgPool, Row};
@@ -980,44 +980,68 @@ pub async fn project_edit(
                 .await?;
             }
 
-            if new_project.status.as_ref().unwrap_or(&project_item.status) == &ProjectStatus::Approved {
-                let user = database::models::TeamMember::get_from_team(project_item.inner.team_id, &mut *transaction)
-                    .await?
-                    .into_iter()
-                    .filter(|user| user.role == models::teams::OWNER_ROLE)
-                    .collect::<Vec<database::models::TeamMember>>();
+            if new_project.status.as_ref().unwrap_or(&project_item.status)
+                == &ProjectStatus::Approved
+            {
+                let user = database::models::TeamMember::get_from_team(
+                    project_item.inner.team_id,
+                    &mut *transaction,
+                )
+                .await?
+                .into_iter()
+                .filter(|user| user.role == models::teams::OWNER_ROLE)
+                .collect::<Vec<database::models::TeamMember>>();
 
-                let user = user
-                    .first()
-                    .ok_or_else(|| ApiError::InvalidInput("This project has no owner".to_string()))?;
+                let user = user.first().ok_or_else(|| {
+                    ApiError::InvalidInput(
+                        "This project has no owner".to_string(),
+                    )
+                })?;
 
                 let users = sqlx::query!(
-                        "
+                    "
                         SELECT follower_id FROM user_follows
                         WHERE user_id = $1
                         ",
-                        user.user_id as crate::database::models::ids::UserId
-                    )
-                    .fetch_many(&mut *transaction)
-                    .try_filter_map(|e| async {
-                        Ok(e.right().map(|m| database::models::ids::UserId(m.follower_id)))
-                    })
-                    .try_collect::<Vec<database::models::ids::UserId>>()
-                    .await?;
+                    user.user_id as crate::database::models::ids::UserId
+                )
+                .fetch_many(&mut *transaction)
+                .try_filter_map(|e| async {
+                    Ok(e.right()
+                        .map(|m| database::models::ids::UserId(m.follower_id)))
+                })
+                .try_collect::<Vec<database::models::ids::UserId>>()
+                .await?;
 
-                let user = database::models::User::get(user.user_id, &mut *transaction)
-                    .await?
-                    .ok_or_else(|| ApiError::InvalidInput("This project has no owner".to_string()))?;
+                let user = database::models::User::get(
+                    user.user_id,
+                    &mut *transaction,
+                )
+                .await?
+                .ok_or_else(|| {
+                    ApiError::InvalidInput(
+                        "This project has no owner".to_string(),
+                    )
+                })?;
 
                 let project_id: ProjectId = project_item.inner.id.into();
 
                 NotificationBuilder {
                     notification_type: Some("project_created".to_string()),
-                    title: format!("**{}** has been created!", new_project.title.as_ref().unwrap_or(&project_item.inner.title)),
+                    title: format!(
+                        "**{}** has been created!",
+                        new_project
+                            .title
+                            .as_ref()
+                            .unwrap_or(&project_item.inner.title)
+                    ),
                     text: format!(
                         "{}, has released a new project: {}",
                         user.name.unwrap_or(user.username),
-                        new_project.title.as_ref().unwrap_or(&project_item.inner.title)
+                        new_project
+                            .title
+                            .as_ref()
+                            .unwrap_or(&project_item.inner.title)
                     ),
                     link: format!(
                         "/{}/{}",
@@ -1025,8 +1049,8 @@ pub async fn project_edit(
                     ),
                     actions: vec![],
                 }
-                    .insert_many(users, &mut transaction)
-                    .await?;
+                .insert_many(users, &mut transaction)
+                .await?;
             }
 
             transaction.commit().await?;
