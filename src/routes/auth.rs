@@ -276,7 +276,7 @@ pub async fn auth_callback(
                         settings: Some(UserSettings {
                             public_github: true,
                             theme: FrontendTheme::Auto,
-                            locale: "en-US".to_string(),
+                            locale: "auto".to_string(),
                         }),
                     }
                     .insert(&mut transaction)
