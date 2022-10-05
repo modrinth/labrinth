@@ -77,7 +77,7 @@ pub async fn index_local(
                         None => m.license,
                     };
 
-                    let open_source = match spdx::license_id(license) {
+                    let open_source = match spdx::license_id(&license) {
                         Some(id) => id.is_osi_approved(),
                         _ => false,
                     };
