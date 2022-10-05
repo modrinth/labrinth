@@ -1,5 +1,6 @@
 use futures::TryStreamExt;
 use log::info;
+use spdx::{Expression, LicenseId};
 
 use super::IndexingError;
 use crate::database::models::ProjectId;
@@ -72,6 +73,16 @@ pub async fn index_local(
 
                     let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
 
+                    let license = match m.license.split(" ").next() {
+                        Some(license) => license.to_string(),
+                        None => m.license,
+                    };
+
+                    let open_source = match spdx::license_id(license) {
+                        Some(id) => id.is_osi_approved(),
+                        _ => false,
+                    };
+
                     UploadSearchProject {
                         project_id: format!("{}", project_id),
                         title: m.title,
@@ -87,16 +98,14 @@ pub async fn index_local(
                         modified_timestamp: m.updated.timestamp(),
                         latest_version: versions.last().cloned().unwrap_or_else(|| "None".to_string()),
                         versions,
-                        license: match m.license.split(" ").next() {
-                            Some(license) => license.to_string(),
-                            None => m.license,
-                        },
+                        license,
                         client_side: m.client_side_type,
                         server_side: m.server_side_type,
                         slug: m.slug,
                         project_type: m.project_type_name,
                         gallery: m.gallery.unwrap_or_default(),
-                        display_categories
+                        display_categories,
+                        open_source,
                     }
                 }))
             })
