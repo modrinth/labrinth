@@ -1,6 +1,5 @@
 use futures::TryStreamExt;
 use log::info;
-use spdx::{Expression, LicenseId};
 
 use super::IndexingError;
 use crate::database::models::ProjectId;
