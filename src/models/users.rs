@@ -122,7 +122,7 @@ impl Role {
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum FrontendTheme {
-    System,
+    Auto,
     Light,
     Dark,
     Oled,
@@ -141,12 +141,12 @@ impl FrontendTheme {
             "light" => Light,
             "dark" => Dark,
             "oled" => Oled,
-            _ => System,
+            _ => Auto,
         }
     }
     pub fn as_str(&self) -> &'static str {
         match self {
-            System => "system",
+            Auto => "auto",
             Light => "light",
             Dark => "dark",
             Oled => "oled",

@@ -275,7 +275,7 @@ pub async fn auth_callback(
                         badges: Badges::default(),
                         settings: Some(UserSettings {
                             public_github: true,
-                            theme: FrontendTheme::System,
+                            theme: FrontendTheme::Auto,
                             locale: "en-US".to_string(),
                         }),
                     }
