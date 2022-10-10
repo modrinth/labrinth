@@ -2,6 +2,7 @@ use super::ids::*;
 use crate::database::models::User;
 use crate::models::teams::Permissions;
 use crate::models::users::Badges;
+use rust_decimal::Decimal;
 
 pub struct TeamBuilder {
     pub members: Vec<TeamMemberBuilder>,
@@ -11,7 +12,7 @@ pub struct TeamMemberBuilder {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
-    pub payouts_split: f32,
+    pub payouts_split: Decimal,
 }
 
 impl TeamBuilder {
@@ -81,7 +82,7 @@ pub struct TeamMember {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
-    pub payouts_split: f32,
+    pub payouts_split: Decimal,
 }
 
 /// A member of a team
@@ -93,7 +94,7 @@ pub struct QueryTeamMember {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
-    pub payouts_split: f32,
+    pub payouts_split: Decimal,
 }
 
 impl TeamMember {
@@ -540,7 +541,7 @@ impl TeamMember {
         new_permissions: Option<Permissions>,
         new_role: Option<String>,
         new_accepted: Option<bool>,
-        new_payouts_split: Option<f32>,
+        new_payouts_split: Option<Decimal>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), super::DatabaseError> {
         if let Some(permissions) = new_permissions {

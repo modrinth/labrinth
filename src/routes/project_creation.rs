@@ -17,6 +17,7 @@ use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
@@ -628,7 +629,7 @@ pub async fn project_create_inner(
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
                 permissions: crate::models::teams::Permissions::ALL,
                 accepted: true,
-                payouts_split: 100.0,
+                payouts_split: Decimal::from(100),
             }],
         };
 

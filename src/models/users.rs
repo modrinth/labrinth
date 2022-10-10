@@ -13,6 +13,7 @@ bitflags::bitflags! {
     #[derive(Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Badges: u64 {
+        // 1 << 0 unused - ignore + replace with something later
         const MIDAS = 1 << 0;
         const EARLY_MODPACK_ADOPTER = 1 << 1;
         const EARLY_RESPACK_ADOPTER = 1 << 2;

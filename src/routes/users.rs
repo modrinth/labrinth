@@ -20,10 +20,8 @@ pub async fn user_auth_get(
     req: HttpRequest,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().json(
-        get_user_from_headers(req.headers(), &mut *pool.acquire().await?)
-            .await?,
-    ))
+    Ok(HttpResponse::Ok()
+        .json(get_user_from_headers(req.headers(), &**pool).await?))
 }
 
 #[derive(Serialize, Deserialize)]
