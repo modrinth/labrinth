@@ -175,6 +175,7 @@ pub fn midas_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("midas")
             .service(midas::init_checkout)
+            .service(midas::init_customer_portal)
             .service(midas::handle_stripe_webhook),
     );
 }
@@ -183,7 +184,7 @@ pub fn midas_config(cfg: &mut web::ServiceConfig) {
 pub enum ApiError {
     #[error("Environment Error")]
     Env(#[from] dotenv::Error),
-    #[error("Error while uploading file: {0}")]
+    #[error("Error while uploading file")]
     FileHosting(#[from] FileHostingError),
     #[error("Database Error: {0}")]
     Database(#[from] crate::database::models::DatabaseError),
@@ -209,6 +210,8 @@ pub enum ApiError {
     Analytics(String),
     #[error("Crypto Error: {0}")]
     Crypto(String),
+    #[error("Payments Error: {0}")]
+    Payments(String),
 }
 
 impl actix_web::ResponseError for ApiError {
@@ -252,6 +255,9 @@ impl actix_web::ResponseError for ApiError {
                 actix_web::http::StatusCode::FAILED_DEPENDENCY
             }
             ApiError::Crypto(..) => actix_web::http::StatusCode::FORBIDDEN,
+            ApiError::Payments(..) => {
+                actix_web::http::StatusCode::FAILED_DEPENDENCY
+            }
         }
     }
 
@@ -273,6 +279,7 @@ impl actix_web::ResponseError for ApiError {
                     ApiError::Validation(..) => "invalid_input",
                     ApiError::Analytics(..) => "analytics_error",
                     ApiError::Crypto(..) => "crypto_error",
+                    ApiError::Payments(..) => "payments_error",
                 },
                 description: &self.to_string(),
             },

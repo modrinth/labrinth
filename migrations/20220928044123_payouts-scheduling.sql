@@ -24,4 +24,5 @@ CREATE INDEX payouts_values_created
     ON payouts_values (created);
 
 ALTER TABLE users ADD COLUMN midas_expires timestamptz NULL;
+ALTER TABLE users ADD COLUMN is_overdue BOOLEAN NULL;
 ALTER TABLE users ADD COLUMN stripe_customer_id varchar(255) NULL;

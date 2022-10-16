@@ -297,5 +297,8 @@ fn check_env_vars() -> bool {
     failed |= check_var::<String>("ARIADNE_ADMIN_KEY");
     failed |= check_var::<String>("ARIADNE_URL");
 
+    failed |= check_var::<String>("STRIPE_TOKEN");
+    failed |= check_var::<String>("STRIPE_WEBHOOK_SECRET");
+
     failed
 }

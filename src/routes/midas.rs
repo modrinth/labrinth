@@ -1,11 +1,12 @@
+use crate::models::users::UserId;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use actix_web::{post, web, HttpRequest, HttpResponse};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use hmac::{Hmac, Mac, NewMac};
 use itertools::Itertools;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use sqlx::PgPool;
 
 #[derive(Deserialize)]
@@ -30,7 +31,10 @@ pub async fn init_checkout(
 
     let session = client
         .post("https://api.stripe.com/v1/checkout/sessions")
-        .header("Authorization", format!("Bearer {}", dotenv::var("STRIPE_TOKEN")?),)
+        .header(
+            "Authorization",
+            format!("Bearer {}", dotenv::var("STRIPE_TOKEN")?),
+        )
         .form(&[
             ("mode", "subscription"),
             ("line_items[0][price]", &*data.price_id),
@@ -41,10 +45,18 @@ pub async fn init_checkout(
         ])
         .send()
         .await
-        .unwrap()
+        .map_err(|_| {
+            ApiError::Payments(
+                "Error while creating checkout session!".to_string(),
+            )
+        })?
         .json::<Session>()
         .await
-        .unwrap();
+        .map_err(|_| {
+            ApiError::Payments(
+                "Error while deserializing checkout response!".to_string(),
+            )
+        })?;
 
     Ok(HttpResponse::Ok().json(json!(
         {
@@ -70,8 +82,7 @@ pub async fn init_customer_portal(
     )
     .fetch_optional(&**pool)
     .await?
-    .map(|x| x.stripe_customer_id)
-    .flatten()
+    .and_then(|x| x.stripe_customer_id)
     .ok_or_else(|| {
         ApiError::InvalidInput(
             "User is not linked to stripe account!".to_string(),
@@ -86,7 +97,7 @@ pub async fn init_customer_portal(
     }
 
     let session = client
-        .post("https://api.stripe.com/v1/checkout/sessions")
+        .post("https://api.stripe.com/v1/billing_portal/sessions")
         .header(
             "Authorization",
             format!("Bearer {}", dotenv::var("STRIPE_TOKEN")?),
@@ -97,10 +108,18 @@ pub async fn init_customer_portal(
         ])
         .send()
         .await
-        .unwrap()
+        .map_err(|_| {
+            ApiError::Payments(
+                "Error while creating billing session!".to_string(),
+            )
+        })?
         .json::<Session>()
         .await
-        .unwrap();
+        .map_err(|_| {
+            ApiError::Payments(
+                "Error while deserializing billing response!".to_string(),
+            )
+        })?;
 
     Ok(HttpResponse::Ok().json(json!(
         {
@@ -118,13 +137,12 @@ pub async fn handle_stripe_webhook(
     if let Some(signature_raw) = req
         .headers()
         .get("Stripe-Signature")
-        .map(|x| x.to_str().ok())
-        .flatten()
+        .and_then(|x| x.to_str().ok())
     {
         let mut timestamp = None;
         let mut signature = None;
-        for val in signature_raw.split(",") {
-            let key_val = val.split("=").collect_vec();
+        for val in signature_raw.split(',') {
+            let key_val = val.split('=').collect_vec();
 
             if key_val.len() == 2 {
                 if key_val[0] == "v1" {
@@ -175,30 +193,144 @@ pub async fn handle_stripe_webhook(
     struct StripeWebhookBody {
         #[serde(rename = "type")]
         type_: String,
-        data: serde_json::Value,
+        data: StripeWebhookObject,
     }
 
+    #[derive(Deserialize)]
+    struct StripeWebhookObject {
+        object: Value,
+    }
 
-    let webhook : StripeWebhookBody = serde_json::from_str(&*body)?;
+    let webhook: StripeWebhookBody = serde_json::from_str(&*body)?;
 
-    let data_string =
+    #[derive(Deserialize)]
+    struct CheckoutSession {
+        customer: String,
+        metadata: SessionMetadata,
+    }
 
+    #[derive(Deserialize)]
+    struct SessionMetadata {
+        user_id: UserId,
+    }
+
+    #[derive(Deserialize)]
+    struct Invoice {
+        customer: String,
+        paid: bool,
+        lines: InvoiceLineItems,
+    }
+
+    #[derive(Deserialize)]
+    struct InvoiceLineItems {
+        pub data: Vec<InvoiceLineItem>,
+    }
+
+    #[derive(Deserialize)]
+    struct InvoiceLineItem {
+        period: Period,
+    }
+
+    #[derive(Deserialize)]
+    struct Period {
+        start: i64,
+        end: i64,
+    }
+
+    #[derive(Deserialize)]
+    struct Subscription {
+        customer: String,
+    }
+
+    let mut transaction = pool.begin().await?;
+
+    // TODO: Currently hardcoded to midas-only. When we add more stuff should include price IDs
     match &*webhook.type_ {
         "checkout.session.completed" => {
-            // set stripe_customer_id
-        },
-        "invoice.paid" => {
-            // set midas_expires in db with stripe customer id
-        },
-        "invoice.payment_failed" => {
+            let session: CheckoutSession =
+                serde_json::from_value(webhook.data.object)?;
 
-        },
+            sqlx::query!(
+                "
+                UPDATE users
+                SET stripe_customer_id = $1
+                WHERE (id = $2)
+                ",
+                session.customer,
+                session.metadata.user_id.0 as i64,
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+        "invoice.paid" => {
+            let invoice: Invoice = serde_json::from_value(webhook.data.object)?;
+
+            if let Some(item) = invoice.lines.data.first() {
+                let expires: DateTime<Utc> = DateTime::from_utc(
+                    NaiveDateTime::from_timestamp(item.period.end, 0),
+                    Utc,
+                ) + Duration::days(1);
+
+                sqlx::query!(
+                    "
+                    UPDATE users
+                    SET midas_expires = $1, is_overdue = FALSE
+                    WHERE (stripe_customer_id = $2)
+                    ",
+                    expires,
+                    invoice.customer,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+        }
+        "invoice.payment_failed" => {
+            let invoice: Invoice = serde_json::from_value(webhook.data.object)?;
+
+            let customer_id = sqlx::query!(
+                "
+                SELECT u.id
+                FROM users u
+                WHERE u.stripe_customer_id = $1
+                ",
+                invoice.customer,
+            )
+            .fetch_optional(&**pool)
+            .await?
+            .map(|x| x.id);
+
+            if let Some(user_id) = customer_id {
+                sqlx::query!(
+                    "
+                    UPDATE users
+                    SET is_overdue = TRUE
+                    WHERE (id = $1)
+                    ",
+                    user_id,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+        }
+        "customer.subscription.deleted" => {
+            let session: Subscription =
+                serde_json::from_value(webhook.data.object)?;
+
+            sqlx::query!(
+                "
+                UPDATE users
+                SET stripe_customer_id = NULL, midas_expires = NULL, is_overdue = NULL
+                WHERE (stripe_customer_id = $1)
+                ",
+                session.customer,
+            )
+                .execute(&mut *transaction)
+                .await?;
+        }
         _ => {}
     };
 
-
-
-    println!("{}", body);
+    transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }

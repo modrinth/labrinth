@@ -252,5 +252,7 @@ pub async fn process_payout(
         }
     }
 
+    transaction.commit().await?;
+
     Ok(HttpResponse::NoContent().body(""))
 }
