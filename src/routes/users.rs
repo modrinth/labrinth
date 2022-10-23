@@ -7,7 +7,7 @@ use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -503,6 +503,211 @@ pub async fn user_follows(
                 .collect();
 
         Ok(HttpResponse::Ok().json(projects))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[derive(Serialize)]
+pub struct UserFollowing {
+    projects: Vec<Project>,
+    users: Vec<crate::models::users::User>,
+}
+
+#[get("{id}/following")]
+pub async fn user_following(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id_option = crate::database::models::User::get_id_from_username_or_id(
+        &*info.into_inner().0,
+        &**pool,
+    )
+    .await?;
+
+    if let Some(id) = id_option {
+        if !user.role.is_admin() && user.id != id.into() {
+            return Err(ApiError::CustomAuthentication(
+                "You do not have permission to see the projects this user follows!".to_string(),
+            ));
+        }
+
+        use futures::TryStreamExt;
+
+        let project_ids = sqlx::query!(
+            "
+            SELECT mf.mod_id FROM mod_follows mf
+            WHERE mf.follower_id = $1
+            ",
+            id as crate::database::models::ids::UserId,
+        )
+        .fetch_many(&**pool)
+        .try_filter_map(|e| async {
+            Ok(e.right()
+                .map(|m| crate::database::models::ProjectId(m.mod_id)))
+        })
+        .try_collect::<Vec<crate::database::models::ProjectId>>()
+        .await?;
+
+        let projects: Vec<_> =
+            crate::database::Project::get_many_full(project_ids, &**pool)
+                .await?
+                .into_iter()
+                .map(Project::from)
+                .collect();
+
+        let user_ids = sqlx::query!(
+            "
+            SELECT user_id FROM user_follows
+            WHERE follower_id = $1
+            ",
+            id as crate::database::models::ids::UserId,
+        )
+        .fetch_many(&**pool)
+        .try_filter_map(|e| async {
+            Ok(e.right()
+                .map(|m| crate::database::models::UserId(m.user_id)))
+        })
+        .try_collect::<Vec<crate::database::models::UserId>>()
+        .await?;
+
+        let users: Vec<_> = User::get_many(user_ids, &**pool)
+            .await?
+            .into_iter()
+            .map(crate::models::users::User::from)
+            .collect();
+
+        Ok(HttpResponse::Ok().json(UserFollowing { projects, users }))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[post("{id}/follow")]
+pub async fn follow_user(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id_option =
+        User::get_id_from_username_or_id(&*info.into_inner().0, &**pool)
+            .await?;
+
+    if let Some(id) = id_option {
+        let user_id: crate::database::models::ids::UserId = user.id.into();
+        if user_id == id {
+            return Err(ApiError::InvalidInput(
+                "You cannot follow yourself".to_string(),
+            ));
+        }
+
+        let following = sqlx::query!(
+            "SELECT EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $1 AND user_id = $2)",
+            id as crate::database::models::ids::UserId,
+            user_id as crate::database::models::ids::UserId
+        )
+            .fetch_one(&**pool)
+            .await?
+            .exists
+            .unwrap_or(false);
+
+        if !following {
+            let mut transaction = pool.begin().await?;
+
+            sqlx::query!(
+                "
+                UPDATE users
+                SET follows = follows + 1
+                WHERE id = $1
+                ",
+                user_id as crate::database::models::ids::UserId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            sqlx::query!(
+                "
+                INSERT INTO user_follows (follower_id, user_id)
+                VALUES ($1, $2)
+                ",
+                id as crate::database::models::ids::UserId,
+                user_id as crate::database::models::ids::UserId
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            transaction.commit().await?;
+
+            Ok(HttpResponse::NoContent().body(""))
+        } else {
+            Err(ApiError::InvalidInput(
+                "You are already following this user!".to_string(),
+            ))
+        }
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[delete("{id}/follow")]
+pub async fn unfollow_user(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id_option =
+        User::get_id_from_username_or_id(&*info.into_inner().0, &**pool)
+            .await?;
+
+    if let Some(id) = id_option {
+        let user_id: crate::database::models::ids::UserId = user.id.into();
+        let following = sqlx::query!(
+            "SELECT EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $1 AND user_id = $2)",
+            id as crate::database::models::ids::UserId,
+            user_id as crate::database::models::ids::UserId
+        )
+            .fetch_one(&**pool)
+            .await?
+            .exists
+            .unwrap_or(false);
+
+        if following {
+            let mut transaction = pool.begin().await?;
+
+            sqlx::query!(
+                "
+                UPDATE users
+                SET follows = follows - 1
+                WHERE id = $1
+                ",
+                user_id as crate::database::models::ids::UserId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            sqlx::query!(
+                "
+                DELETE FROM user_follows
+                WHERE follower_id = $1 AND user_id = $2
+                ",
+                id as crate::database::models::ids::UserId,
+                user_id as crate::database::models::ids::UserId
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            transaction.commit().await?;
+
+            Ok(HttpResponse::NoContent().body(""))
+        } else {
+            Err(ApiError::InvalidInput(
+                "You are not already following this user!".to_string(),
+            ))
+        }
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
