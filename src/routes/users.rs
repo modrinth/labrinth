@@ -346,7 +346,7 @@ pub async fn user_icon_edit(
     if let Some(content_type) =
         crate::util::ext::get_image_content_type(&*ext.ext)
     {
-        let cdn_url = dotenv::var("CDN_URL")?;
+        let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let id_option =
             crate::database::models::User::get_id_from_username_or_id(
@@ -378,12 +378,10 @@ pub async fn user_icon_edit(
             }
 
             if let Some(icon) = icon_url {
-                if icon.starts_with(&cdn_url) {
-                    let name = icon.split('/').next();
+                let name = icon.split(&format!("{cdn_url}/")).nth(1);
 
-                    if let Some(icon_path) = name {
-                        file_host.delete_file_version("", icon_path).await?;
-                    }
+                if let Some(icon_path) = name {
+                    file_host.delete_file_version("", icon_path).await?;
                 }
             }
 

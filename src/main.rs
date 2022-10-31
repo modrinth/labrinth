@@ -31,7 +31,7 @@ pub struct Pepper {
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .init();
 
@@ -39,11 +39,11 @@ async fn main() -> std::io::Result<()> {
         error!("Some environment variables are missing!");
     }
 
-    info!("Starting Labrinth on {}", dotenv::var("BIND_ADDR").unwrap());
+    info!("Starting Labrinth on {}", dotenvy::var("BIND_ADDR").unwrap());
 
     let search_config = search::SearchConfig {
-        address: dotenv::var("MEILISEARCH_ADDR").unwrap(),
-        key: dotenv::var("MEILISEARCH_KEY").unwrap(),
+        address: dotenvy::var("MEILISEARCH_ADDR").unwrap(),
+        key: dotenvy::var("MEILISEARCH_KEY").unwrap(),
     };
 
     database::check_for_migrations()
@@ -56,25 +56,25 @@ async fn main() -> std::io::Result<()> {
         .expect("Database connection failed");
 
     let storage_backend =
-        dotenv::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
+        dotenvy::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
 
     let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> =
         match storage_backend.as_str() {
             "backblaze" => Arc::new(
                 file_hosting::BackblazeHost::new(
-                    &dotenv::var("BACKBLAZE_KEY_ID").unwrap(),
-                    &dotenv::var("BACKBLAZE_KEY").unwrap(),
-                    &dotenv::var("BACKBLAZE_BUCKET_ID").unwrap(),
+                    &dotenvy::var("BACKBLAZE_KEY_ID").unwrap(),
+                    &dotenvy::var("BACKBLAZE_KEY").unwrap(),
+                    &dotenvy::var("BACKBLAZE_BUCKET_ID").unwrap(),
                 )
                 .await,
             ),
             "s3" => Arc::new(
                 S3Host::new(
-                    &*dotenv::var("S3_BUCKET_NAME").unwrap(),
-                    &*dotenv::var("S3_REGION").unwrap(),
-                    &*dotenv::var("S3_URL").unwrap(),
-                    &*dotenv::var("S3_ACCESS_TOKEN").unwrap(),
-                    &*dotenv::var("S3_SECRET").unwrap(),
+                    &*dotenvy::var("S3_BUCKET_NAME").unwrap(),
+                    &*dotenvy::var("S3_REGION").unwrap(),
+                    &*dotenvy::var("S3_URL").unwrap(),
+                    &*dotenvy::var("S3_ACCESS_TOKEN").unwrap(),
+                    &*dotenvy::var("S3_SECRET").unwrap(),
                 )
                 .unwrap(),
             ),
@@ -204,7 +204,7 @@ async fn main() -> std::io::Result<()> {
                     })
                     .with_interval(std::time::Duration::from_secs(60))
                     .with_max_requests(300)
-                    .with_ignore_key(dotenv::var("RATE_LIMIT_IGNORE_KEY").ok()),
+                    .with_ignore_key(dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok()),
             )
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(file_host.clone()))
@@ -219,7 +219,7 @@ async fn main() -> std::io::Result<()> {
             .service(web::scope("updates").configure(routes::updates))
             .default_service(web::get().to(routes::not_found))
     })
-    .bind(dotenv::var("BIND_ADDR").unwrap())?
+    .bind(dotenvy::var("BIND_ADDR").unwrap())?
     .run()
     .await
 }
@@ -261,7 +261,7 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("STORAGE_BACKEND");
 
-    let storage_backend = dotenv::var("STORAGE_BACKEND").ok();
+    let storage_backend = dotenvy::var("STORAGE_BACKEND").ok();
     match storage_backend.as_deref() {
         Some("backblaze") => {
             failed |= check_var::<String>("BACKBLAZE_KEY_ID");

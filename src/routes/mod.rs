@@ -183,7 +183,7 @@ pub fn midas_config(cfg: &mut web::ServiceConfig) {
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
     #[error("Environment Error")]
-    Env(#[from] dotenv::Error),
+    Env(#[from] dotenvy::Error),
     #[error("Error while uploading file")]
     FileHosting(#[from] FileHostingError),
     #[error("Database Error: {0}")]
