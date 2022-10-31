@@ -158,7 +158,7 @@ impl TeamMember {
             SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, u.badges badges
+            u.created created, u.role user_role, u.badges badges, u.paypal_email paypal_email
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             WHERE tm.team_id = $1
@@ -186,6 +186,7 @@ impl TeamMember {
                             created: m.created,
                             role: m.user_role,
                             badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
+                            paypal_email: m.paypal_email
                         },
                         payouts_split: m.payouts_split
                     })))
@@ -220,7 +221,7 @@ impl TeamMember {
             SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, u.badges badges
+            u.created created, u.role user_role, u.badges badges, u.paypal_email paypal_email
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             WHERE tm.team_id = ANY($1)
@@ -249,6 +250,7 @@ impl TeamMember {
                               created: m.created,
                               role: m.user_role,
                               badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
+                              paypal_email: m.paypal_email
                           },
                           payouts_split: m.payouts_split
                       })))

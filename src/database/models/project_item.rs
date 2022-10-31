@@ -476,6 +476,17 @@ impl Project {
 
         sqlx::query!(
             "
+            UPDATE payouts_values
+            SET mod_id = NULL
+            WHERE (mod_id = $1)
+            ",
+            id as ProjectId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
             DELETE FROM mods
             WHERE id = $1
             ",

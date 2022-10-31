@@ -217,7 +217,7 @@ pub async fn handle_stripe_webhook(
     #[derive(Deserialize)]
     struct Invoice {
         customer: String,
-        paid: bool,
+        // paid: bool,
         lines: InvoiceLineItems,
     }
 
@@ -233,7 +233,7 @@ pub async fn handle_stripe_webhook(
 
     #[derive(Deserialize)]
     struct Period {
-        start: i64,
+        // start: i64,
         end: i64,
     }
 

@@ -45,6 +45,7 @@ pub struct User {
     pub created: DateTime<Utc>,
     pub role: Role,
     pub badges: Badges,
+    pub paypal_email: Option<String>,
 }
 
 use crate::database::models::user_item::User as DBUser;
@@ -61,6 +62,7 @@ impl From<DBUser> for User {
             created: data.created,
             role: Role::from_string(&*data.role),
             badges: data.badges,
+            paypal_email: None,
         }
     }
 }
