@@ -39,7 +39,10 @@ async fn main() -> std::io::Result<()> {
         error!("Some environment variables are missing!");
     }
 
-    info!("Starting Labrinth on {}", dotenvy::var("BIND_ADDR").unwrap());
+    info!(
+        "Starting Labrinth on {}",
+        dotenvy::var("BIND_ADDR").unwrap()
+    );
 
     let search_config = search::SearchConfig {
         address: dotenvy::var("MEILISEARCH_ADDR").unwrap(),
@@ -204,7 +207,9 @@ async fn main() -> std::io::Result<()> {
                     })
                     .with_interval(std::time::Duration::from_secs(60))
                     .with_max_requests(300)
-                    .with_ignore_key(dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok()),
+                    .with_ignore_key(
+                        dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok(),
+                    ),
             )
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(file_host.clone()))
