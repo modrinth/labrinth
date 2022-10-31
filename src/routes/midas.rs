@@ -33,7 +33,7 @@ pub async fn init_checkout(
         .post("https://api.stripe.com/v1/checkout/sessions")
         .header(
             "Authorization",
-            format!("Bearer {}", dotenv::var("STRIPE_TOKEN")?),
+            format!("Bearer {}", dotenvy::var("STRIPE_TOKEN")?),
         )
         .form(&[
             ("mode", "subscription"),
@@ -100,7 +100,7 @@ pub async fn init_customer_portal(
         .post("https://api.stripe.com/v1/billing_portal/sessions")
         .header(
             "Authorization",
-            format!("Bearer {}", dotenv::var("STRIPE_TOKEN")?),
+            format!("Bearer {}", dotenvy::var("STRIPE_TOKEN")?),
         )
         .form(&[
             ("customer", &*customer_id),
@@ -157,7 +157,7 @@ pub async fn handle_stripe_webhook(
             if let Some(signature) = signature {
                 type HmacSha256 = Hmac<sha2::Sha256>;
 
-                let mut key = HmacSha256::new_from_slice(dotenv::var("STRIPE_WEBHOOK_SECRET")?.as_bytes()).map_err(|_| {
+                let mut key = HmacSha256::new_from_slice(dotenvy::var("STRIPE_WEBHOOK_SECRET")?.as_bytes()).map_err(|_| {
                     ApiError::Crypto(
                         "Unable to initialize HMAC instance due to invalid key length!".to_string(),
                     )

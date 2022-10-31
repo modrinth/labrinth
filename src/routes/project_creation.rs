@@ -275,9 +275,7 @@ pub async fn project_create(
         // fix multipart error bug:
         payload.for_each(|_| ready(())).await;
 
-        if let Err(e) = undo_result {
-            return Err(e);
-        }
+        undo_result?;
         if let Err(e) = rollback_result {
             return Err(e.into());
         }

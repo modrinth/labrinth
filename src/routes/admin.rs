@@ -113,10 +113,10 @@ pub async fn process_payout(
     let multipliers: PayoutMultipliers = client
         .get(format!(
             "{}multipliers?start_date=\"{}\"",
-            dotenv::var("ARIADNE_URL")?,
+            dotenvy::var("ARIADNE_URL")?,
             start.to_rfc3339(),
         ))
-        .header("Modrinth-Admin", dotenv::var("ARIADNE_ADMIN_KEY")?)
+        .header("Modrinth-Admin", dotenvy::var("ARIADNE_ADMIN_KEY")?)
         .send()
         .await
         .map_err(|_| {
