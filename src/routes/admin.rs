@@ -365,7 +365,7 @@ pub async fn get_payout_data(
 
     use futures::stream::TryStreamExt;
 
-    let payouts = sqlx::query!(
+    let mut payouts: HashMap<String, Decimal> = sqlx::query!(
             "
             SELECT u.paypal_email, SUM(pv.amount) amount
             FROM payouts_values pv
@@ -381,6 +381,9 @@ pub async fn get_payout_data(
         })
         .try_collect::<HashMap<String, Decimal>>()
         .await?;
+
+    let mut minimum_payout = Decimal::from(5);
+    payouts.retain(|_k, v| v > &mut minimum_payout);
 
     Ok(HttpResponse::Ok().json(payouts))
 }
