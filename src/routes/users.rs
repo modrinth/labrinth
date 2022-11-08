@@ -701,7 +701,7 @@ pub async fn user_payouts_request(
                     payouts_data.payout_wallet_type
                 {
                     if let Some(payout_wallet) = payouts_data.payout_wallet {
-                        return if data.amount > payouts_data.balance {
+                        return if data.amount < payouts_data.balance && data.amount > Decimal::from(0.25) {
                             let mut transaction = pool.begin().await?;
 
                             sqlx::query!(
@@ -733,7 +733,7 @@ pub async fn user_payouts_request(
                                 .send_payout(PayoutItem {
                                     amount: PayoutAmount {
                                         currency: "USD".to_string(),
-                                        value: data.amount.to_string(),
+                                        value: (data.amount - Decimal::from(0.25)).to_string(),
                                     },
                                     receiver: payout_address,
                                     note: "Payment from Modrinth creator monetization program".to_string(),
