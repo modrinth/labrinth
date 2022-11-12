@@ -107,7 +107,7 @@ impl PayoutsQueue {
 
         payout.amount.value -= fee;
 
-        if payout.amount.value < Decimal::ZERO {
+        if payout.amount.value <= Decimal::ZERO {
             return Err(ApiError::InvalidInput(
                 "You do not have enough funds to make this payout!".to_string(),
             ));
