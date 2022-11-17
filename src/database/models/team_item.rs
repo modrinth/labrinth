@@ -160,7 +160,7 @@ impl TeamMember {
             u.avatar_url avatar_url, u.username username, u.bio bio,
             u.created created, u.role user_role, u.badges badges, u.balance balance,
             u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,
-            u.payout_address payout_address
+            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             WHERE tm.team_id = $1
@@ -191,7 +191,8 @@ impl TeamMember {
                             balance: m.balance,
                             payout_wallet: m.payout_wallet.map(|x| RecipientWallet::from_string(&*x)),
                             payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&*x)),
-                            payout_address: m.payout_address
+                            payout_address: m.payout_address,
+                            flame_anvil_key: m.flame_anvil_key
                         },
                         payouts_split: m.payouts_split
                     })))
@@ -228,7 +229,7 @@ impl TeamMember {
             u.avatar_url avatar_url, u.username username, u.bio bio,
             u.created created, u.role user_role, u.badges badges, u.balance balance,
             u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,
-            u.payout_address payout_address
+            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             WHERE tm.team_id = ANY($1)
@@ -260,7 +261,8 @@ impl TeamMember {
                               balance: m.balance,
                               payout_wallet: m.payout_wallet.map(|x| RecipientWallet::from_string(&*x)),
                               payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&*x)),
-                              payout_address: m.payout_address
+                              payout_address: m.payout_address,
+                              flame_anvil_key: m.flame_anvil_key
                           },
                           payouts_split: m.payouts_split
                       })))

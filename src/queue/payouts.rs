@@ -97,13 +97,18 @@ impl PayoutsQueue {
             })?;
         }
 
-        let fee = std::cmp::min(
-            std::cmp::max(
-                Decimal::ONE / Decimal::from(4),
-                (Decimal::from(2) / Decimal::ONE_HUNDRED) * payout.amount.value,
-            ),
-            Decimal::from(20),
-        );
+        let fee = if payout.recipient_wallet == "Venmo".to_string() {
+            Decimal::ONE / Decimal::from(4)
+        } else {
+            std::cmp::min(
+                std::cmp::max(
+                    Decimal::ONE / Decimal::from(4),
+                    (Decimal::from(2) / Decimal::ONE_HUNDRED)
+                        * payout.amount.value,
+                ),
+                Decimal::from(20),
+            )
+        };
 
         payout.amount.value -= fee;
 
