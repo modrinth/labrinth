@@ -1020,7 +1020,7 @@ pub async fn project_edit(
                 .await?;
             }
 
-            if let Some(user) = &new_project.flame_anvil_user {
+            if let Some(user_id) = &new_project.flame_anvil_user {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the syncing user for this project!"
@@ -1035,7 +1035,14 @@ pub async fn project_edit(
                     ));
                 }
 
-                if let Some(user_id) = user {
+                if let Some(user_id) = user_id {
+                    if user_id != &user.id && !user.role.is_admin() {
+                        return Err(ApiError::InvalidInput(
+                            "You may only set yourself as the syncing user!"
+                                .to_string(),
+                        ));
+                    }
+
                     let results = sqlx::query!(
                         "
                         SELECT EXISTS(
@@ -1064,7 +1071,7 @@ pub async fn project_edit(
                     SET flame_anvil_user = $1
                     WHERE (id = $2)
                     ",
-                    user.map(|x| x.0 as i64),
+                    user_id.map(|x| x.0 as i64),
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)

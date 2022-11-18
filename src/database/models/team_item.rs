@@ -519,14 +519,23 @@ impl TeamMember {
         Ok(())
     }
 
-    pub async fn delete<'a, 'b, E>(
+    pub async fn delete<'a, 'b>(
         id: TeamId,
         user_id: UserId,
-        executor: E,
-    ) -> Result<(), super::DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), super::DatabaseError> {
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET flame_anvil_user = NULL
+            WHERE (team_id = $1 AND flame_anvil_user = $2 )
+            ",
+            id as TeamId,
+            user_id as UserId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
         let result = sqlx::query!(
             "
             DELETE FROM team_members
@@ -536,15 +545,8 @@ impl TeamMember {
             user_id as UserId,
             crate::models::teams::OWNER_ROLE,
         )
-        .execute(executor)
+        .execute(&mut *transaction)
         .await?;
-
-        if result.rows_affected() != 1 {
-            return Err(super::DatabaseError::Other(format!(
-                "Deleting a member failed; {} rows deleted",
-                result.rows_affected()
-            )));
-        }
 
         Ok(())
     }
