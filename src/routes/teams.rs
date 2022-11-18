@@ -115,7 +115,7 @@ pub async fn teams_get(
 ) -> Result<HttpResponse, ApiError> {
     use itertools::Itertools;
 
-    let team_ids = serde_json::from_str::<Vec<TeamId>>(&*ids.ids)?
+    let team_ids = serde_json::from_str::<Vec<TeamId>>(&ids.ids)?
         .into_iter()
         .map(|x| x.into())
         .collect::<Vec<crate::database::models::ids::TeamId>>();
@@ -260,7 +260,7 @@ pub async fn add_team_member(
         ));
     }
 
-    if new_member.payouts_split < Decimal::from(0)
+    if new_member.payouts_split < Decimal::ZERO
         || new_member.payouts_split > Decimal::from(5000)
     {
         return Err(ApiError::InvalidInput(
@@ -399,9 +399,12 @@ pub async fn edit_team_member(
 
     let mut transaction = pool.begin().await?;
 
-    if &*edit_member_db.role == crate::models::teams::OWNER_ROLE {
+    if &*edit_member_db.role == crate::models::teams::OWNER_ROLE
+        && (edit_member.role.is_some() || edit_member.permissions.is_some())
+    {
         return Err(ApiError::InvalidInput(
-            "The owner of a team cannot be edited".to_string(),
+            "The owner's permission and role of a team cannot be edited"
+                .to_string(),
         ));
     }
 
@@ -422,8 +425,7 @@ pub async fn edit_team_member(
     }
 
     if let Some(payouts_split) = edit_member.payouts_split {
-        if payouts_split < Decimal::from(0)
-            || payouts_split > Decimal::from(5000)
+        if payouts_split < Decimal::ZERO || payouts_split > Decimal::from(5000)
         {
             return Err(ApiError::InvalidInput(
                 "Payouts split must be between 0 and 5000!".to_string(),
