@@ -191,8 +191,8 @@ impl TeamMember {
                             balance: m.balance,
                             payout_wallet: m.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
                             payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
-                            payout_address: m.payout_address
-                            flame_anvil_key: m.flame_anvil_key
+                            payout_address: m.payout_address,
+                            flame_anvil_key: m.flame_anvil_key,
                         },
                         payouts_split: m.payouts_split
                     })))
@@ -261,8 +261,8 @@ impl TeamMember {
                               balance: m.balance,
                               payout_wallet: m.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
                               payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
-                              payout_address: m.payout_address
-                              flame_anvil_key: m.flame_anvil_key
+                              payout_address: m.payout_address,
+                              flame_anvil_key: m.flame_anvil_key,
                           },
                           payouts_split: m.payouts_split
                       })))
@@ -536,7 +536,7 @@ impl TeamMember {
         .execute(&mut *transaction)
         .await?;
 
-        let result = sqlx::query!(
+        sqlx::query!(
             "
             DELETE FROM team_members
             WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)

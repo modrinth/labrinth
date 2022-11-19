@@ -6641,6 +6641,19 @@
     },
     "query": "\n            DELETE FROM files\n            WHERE files.id = $1\n            "
   },
+  "e42d3a64ae4d88b73136a319fe79a8b070c193707e3560d18deca478662d8d90": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE mods\n            SET flame_anvil_user = NULL\n            WHERE (team_id = $1 AND flame_anvil_user = $2 )\n            "
+  },
   "e48c85a2b2e11691afae3799aa126bdd8b7338a973308bbab2760c18bb9cb0b7": {
     "describe": {
       "columns": [],
