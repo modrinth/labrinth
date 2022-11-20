@@ -22,6 +22,7 @@ use actix_web::http::StatusCode;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, HttpResponse};
 use chrono::Utc;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use thiserror::Error;
@@ -33,7 +34,7 @@ pub fn config(cfg: &mut ServiceConfig) {
 #[derive(Error, Debug)]
 pub enum AuthorizationError {
     #[error("Environment Error")]
-    Env(#[from] dotenv::Error),
+    Env(#[from] dotenvy::Error),
     #[error("An unknown database error occured: {0}")]
     SqlxDatabase(#[from] sqlx::Error),
     #[error("Database Error: {0}")]
@@ -148,7 +149,7 @@ pub async fn init(
 
     transaction.commit().await?;
 
-    let client_id = dotenv::var("GITHUB_CLIENT_ID")?;
+    let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
     let url = format!(
         "https://github.com/login/oauth/authorize?client_id={}&state={}&scope={}",
         client_id,
@@ -196,8 +197,8 @@ pub async fn auth_callback(
         .execute(&mut *transaction)
         .await?;
 
-        let client_id = dotenv::var("GITHUB_CLIENT_ID")?;
-        let client_secret = dotenv::var("GITHUB_CLIENT_SECRET")?;
+        let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
+        let client_secret = dotenvy::var("GITHUB_CLIENT_SECRET")?;
 
         let url = format!(
             "https://github.com/login/oauth/access_token?client_id={}&client_secret={}&code={}",
@@ -273,6 +274,10 @@ pub async fn auth_callback(
                         created: Utc::now(),
                         role: Role::Developer.to_string(),
                         badges: Badges::default(),
+                        balance: Decimal::from(0),
+                        payout_wallet: None,
+                        payout_wallet_type: None,
+                        payout_address: None,
                     }
                     .insert(&mut transaction)
                     .await?;
