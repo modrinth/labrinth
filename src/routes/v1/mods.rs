@@ -131,7 +131,7 @@ pub async fn mod_create(
         &mut payload,
         &mut transaction,
         &***file_host,
-        &***flame_anvil_queue,
+        &flame_anvil_queue,
         &mut uploaded_files,
     )
     .await;

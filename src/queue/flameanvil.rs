@@ -131,6 +131,7 @@ impl FlameAnvilQueue {
         new
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn upload_file(
         &mut self,
         api_token: &str,

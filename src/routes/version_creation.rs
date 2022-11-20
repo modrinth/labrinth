@@ -82,7 +82,7 @@ pub async fn version_create(
         &mut payload,
         &mut transaction,
         &***file_host,
-        &***flame_anvil_queue,
+        &flame_anvil_queue,
         &mut uploaded_files,
     )
     .await;
@@ -334,8 +334,8 @@ async fn version_create_inner(
             version_data.version_body.clone().unwrap_or_default(),
             version_data.release_channel.clone().to_string(),
             flame_anvil_queue,
-            flame_anvil_info.clone().map(|x| x.0).flatten(),
-            flame_anvil_info.map(|x| x.1).flatten(),
+            flame_anvil_info.clone().and_then(|x| x.0),
+            flame_anvil_info.and_then(|x| x.1),
             transaction,
         )
         .await?;
@@ -471,7 +471,7 @@ pub async fn upload_file_to_version(
         client,
         &mut transaction,
         &***file_host,
-        &***flame_anvil_queue,
+        &flame_anvil_queue,
         &mut uploaded_files,
         version_id,
     )
@@ -498,6 +498,7 @@ pub async fn upload_file_to_version(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn upload_file_to_version_inner(
     req: HttpRequest,
     payload: &mut Multipart,
