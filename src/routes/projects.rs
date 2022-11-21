@@ -24,7 +24,7 @@ pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
-    let results = search_for_project(&info, &**config).await?;
+    let results = search_for_project(&info, &config).await?;
     Ok(HttpResponse::Ok().json(results))
 }
 
@@ -39,7 +39,7 @@ pub async fn projects_get(
     web::Query(ids): web::Query<ProjectIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let project_ids = serde_json::from_str::<Vec<ProjectId>>(&*ids.ids)?
+    let project_ids = serde_json::from_str::<Vec<ProjectId>>(&ids.ids)?
         .into_iter()
         .map(|x| x.into())
         .collect();
@@ -95,7 +95,7 @@ pub async fn project_get_check(
 ) -> Result<HttpResponse, ApiError> {
     let slug = info.into_inner().0;
 
-    let id_option = models::ids::base62_impl::parse_base62(&*slug).ok();
+    let id_option = models::ids::base62_impl::parse_base62(&slug).ok();
 
     let id = if let Some(id) = id_option {
         let id = sqlx::query!(
@@ -478,7 +478,7 @@ pub async fn project_edit(
                     .await?;
 
                     if let Ok(webhook_url) =
-                        dotenv::var("MODERATION_DISCORD_WEBHOOK")
+                        dotenvy::var("MODERATION_DISCORD_WEBHOOK")
                     {
                         crate::util::webhook::send_discord_webhook(
                             Project::from(project_item.clone()),
@@ -745,7 +745,7 @@ pub async fn project_edit(
 
                 if let Some(slug) = slug {
                     let slug_project_id_option: Option<ProjectId> =
-                        serde_json::from_str(&*format!("\"{}\"", slug)).ok();
+                        serde_json::from_str(&format!("\"{}\"", slug)).ok();
                     if let Some(slug_project_id) = slug_project_id_option {
                         let slug_project_id: database::models::ids::ProjectId =
                             slug_project_id.into();
@@ -1012,9 +1012,9 @@ pub async fn project_icon_edit(
     mut payload: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) =
-        crate::util::ext::get_image_content_type(&*ext.ext)
+        crate::util::ext::get_image_content_type(&ext.ext)
     {
-        let cdn_url = dotenv::var("CDN_URL")?;
+        let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let string = info.into_inner().0;
 
@@ -1142,7 +1142,7 @@ pub async fn delete_project_icon(
         }
     }
 
-    let cdn_url = dotenv::var("CDN_URL")?;
+    let cdn_url = dotenvy::var("CDN_URL")?;
     if let Some(icon) = project_item.icon_url {
         let name = icon.split(&format!("{cdn_url}/")).nth(1);
 
@@ -1189,13 +1189,13 @@ pub async fn add_gallery_item(
     mut payload: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) =
-        crate::util::ext::get_image_content_type(&*ext.ext)
+        crate::util::ext::get_image_content_type(&ext.ext)
     {
         item.validate().map_err(|err| {
             ApiError::Validation(validation_errors_to_string(err, None))
         })?;
 
-        let cdn_url = dotenv::var("CDN_URL")?;
+        let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let string = info.into_inner().0;
 
@@ -1496,7 +1496,7 @@ pub async fn delete_gallery_item(
     })?
     .id;
 
-    let cdn_url = dotenv::var("CDN_URL")?;
+    let cdn_url = dotenvy::var("CDN_URL")?;
     let name = item.url.split(&format!("{cdn_url}/")).nth(1);
 
     if let Some(icon_path) = name {

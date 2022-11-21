@@ -17,6 +17,7 @@ use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
@@ -26,7 +27,7 @@ use validator::Validate;
 #[derive(Error, Debug)]
 pub enum CreateError {
     #[error("Environment Error")]
-    EnvError(#[from] dotenv::Error),
+    EnvError(#[from] dotenvy::Error),
     #[error("An unknown database error occurred")]
     SqlxDatabaseError(#[from] sqlx::Error),
     #[error("Database Error: {0}")]
@@ -274,9 +275,7 @@ pub async fn project_create(
         // fix multipart error bug:
         payload.for_each(|_| ready(())).await;
 
-        if let Err(e) = undo_result {
-            return Err(e);
-        }
+        undo_result?;
         if let Err(e) = rollback_result {
             return Err(e.into());
         }
@@ -324,7 +323,7 @@ pub async fn project_create_inner(
     uploaded_files: &mut Vec<UploadedFile>,
 ) -> Result<HttpResponse, CreateError> {
     // The base URL for files uploaded to backblaze
-    let cdn_url = dotenv::var("CDN_URL")?;
+    let cdn_url = dotenvy::var("CDN_URL")?;
 
     // The currently logged in user
     let current_user =
@@ -381,7 +380,7 @@ pub async fn project_create_inner(
         })?;
 
         let slug_project_id_option: Option<ProjectId> =
-            serde_json::from_str(&*format!("\"{}\"", create_data.slug)).ok();
+            serde_json::from_str(&format!("\"{}\"", create_data.slug)).ok();
 
         if let Some(slug_project_id) = slug_project_id_option {
             let slug_project_id: models::ids::ProjectId =
@@ -570,7 +569,7 @@ pub async fn project_create_inner(
             &content_disposition,
             project_id,
             created_version.version_id.into(),
-            &*project_create_data.project_type,
+            &project_create_data.project_type,
             version_data.loaders.clone(),
             version_data.game_versions.clone(),
             all_game_versions.clone(),
@@ -628,7 +627,7 @@ pub async fn project_create_inner(
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
                 permissions: crate::models::teams::Permissions::ALL,
                 accepted: true,
-                payouts_split: 100.0,
+                payouts_split: Decimal::ONE_HUNDRED,
             }],
         };
 
@@ -793,7 +792,8 @@ pub async fn project_create_inner(
         let _project_id = project_builder.insert(&mut *transaction).await?;
 
         if status == ProjectStatus::Processing {
-            if let Ok(webhook_url) = dotenv::var("MODERATION_DISCORD_WEBHOOK") {
+            if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK")
+            {
                 crate::util::webhook::send_discord_webhook(
                     response.clone(),
                     webhook_url,
@@ -875,10 +875,7 @@ async fn create_initial_version(
         author_id: author.into(),
         name: version_data.version_title.clone(),
         version_number: version_data.version_number.clone(),
-        changelog: version_data
-            .version_body
-            .clone()
-            .unwrap_or_else(|| "".to_string()),
+        changelog: version_data.version_body.clone().unwrap_or_default(),
         files: Vec::new(),
         dependencies,
         game_versions,

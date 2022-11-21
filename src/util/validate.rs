@@ -30,7 +30,7 @@ pub fn validation_errors_to_string(
                 }
                 ValidationErrorsKind::List(list) => {
                     if let Some((index, errors)) = list.iter().next() {
-                        output.push_str(&*validation_errors_to_string(
+                        output.push_str(&validation_errors_to_string(
                             *errors.clone(),
                             Some(format!(
                                 "of list {} with index {}",
@@ -44,12 +44,12 @@ pub fn validation_errors_to_string(
                 ValidationErrorsKind::Field(errors) => {
                     if let Some(error) = errors.get(0) {
                         if let Some(adder) = adder {
-                            output.push_str(&*format!(
+                            output.push_str(&format!(
                                 "Field {} {} failed validation with error {}",
                                 field, adder, error.code
                             ));
                         } else {
-                            output.push_str(&*format!(
+                            output.push_str(&format!(
                                 "Field {} failed validation with error {}",
                                 field, error.code
                             ));
@@ -89,7 +89,7 @@ pub fn validate_deps(
     Ok(())
 }
 
-pub fn validate_url(value: &String) -> Result<(), validator::ValidationError> {
+pub fn validate_url(value: &str) -> Result<(), validator::ValidationError> {
     let url = url::Url::parse(value)
         .ok()
         .ok_or_else(|| validator::ValidationError::new("invalid URL"))?;

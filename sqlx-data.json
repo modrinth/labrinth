@@ -31,6 +31,26 @@
     },
     "query": "\n            INSERT INTO users (\n                id, github_id, username, name, email,\n                avatar_url, bio, created\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8\n            )\n            "
   },
+  "03284fe5b045e2cf93f160863c4d121439382b348b728fffb5ac588dee980731": {
+    "describe": {
+      "columns": [
+        {
+          "name": "exists",
+          "ordinal": 0,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                        SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND email IS NULL)\n                        "
+  },
   "041f499f542ddab1b81bd445d6cabe225b1b2ad3ec7bbc1f755346c016ae06e6": {
     "describe": {
       "columns": [],
@@ -99,7 +119,7 @@
         {
           "name": "payouts_split",
           "ordinal": 5,
-          "type_info": "Float4"
+          "type_info": "Numeric"
         }
       ],
       "nullable": [
@@ -143,6 +163,18 @@
       }
     },
     "query": "\n                    UPDATE versions\n                    SET downloads = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "0794b913ad194908048fa8f303f736f3d437a1699b975691f9d50e8ffc3f5f78": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM historical_payouts\n            WHERE user_id = $1\n            "
   },
   "07ebc9dc82cd012cd4f5880b1eb3d82602c195a3e3ddd557103ee037aa6dad1c": {
     "describe": {
@@ -193,6 +225,26 @@
     },
     "query": "\n                    UPDATE versions\n                    SET name = $1\n                    WHERE (id = $2)\n                    "
   },
+  "0ba5a9f4d1381ed37a67b7dc90edf7e3ec86cae6c2860e5db1e53144d4654e58": {
+    "describe": {
+      "columns": [
+        {
+          "name": "amount",
+          "ordinal": 0,
+          "type_info": "Numeric"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                SELECT SUM(pv.amount) amount\n                FROM payouts_values pv\n                WHERE pv.user_id = $1\n                "
+  },
   "0ca11a32b2860e4f5c3d20892a5be3cb419e084f42ba0f98e09b9995027fcc4e": {
     "describe": {
       "columns": [
@@ -233,79 +285,17 @@
     },
     "query": "\n            INSERT INTO report_types (name)\n            VALUES ($1)\n            ON CONFLICT (name) DO NOTHING\n            RETURNING id\n            "
   },
-  "0dc684e5ef32880e360e0a624ccb80a2cc9c0ea7791f3cc3e07c1e280f9d2a18": {
+  "0f0244e77f60e69b3ab1320265749656e25da0b021b3df9013a2da470dbc8d46": {
     "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 6,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 7,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "role",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "badges",
-          "ordinal": 9,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
+      "columns": [],
+      "nullable": [],
       "parameters": {
         "Left": [
-          "Int8Array"
+          "Int8"
         ]
       }
     },
-    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges\n            FROM users u\n            WHERE u.id = ANY($1)\n            "
+    "query": "\n            UPDATE payouts_values\n            SET mod_id = NULL\n            WHERE (mod_id = $1)\n            "
   },
   "0f29bb5ba767ebd0669c860994e48e3cb2674f0d53f6c4ab85c79d46b04cbb40": {
     "describe": {
@@ -526,6 +516,21 @@
       }
     },
     "query": "\n            INSERT INTO categories (category, project_type, icon, header)\n            VALUES ($1, $2, $3, $4)\n            RETURNING id\n            "
+  },
+  "196c8ac2228e199f23eaf980f7ea15b37f76e66bb81da1115a754aad0be756e4": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Numeric",
+          "Timestamptz"
+        ]
+      }
+    },
+    "query": "\n                            INSERT INTO payouts_values (user_id, mod_id, amount, created)\n                            VALUES ($1, $2, $3, $4)\n                            "
   },
   "19dc22c4d6d14222f8e8bace74c2961761c53b7375460ade15af921754d5d7da": {
     "describe": {
@@ -779,6 +784,38 @@
     },
     "query": "\n            SELECT id FROM loaders\n            WHERE loader = $1\n            "
   },
+  "2534464b06d567078bcfaa94e0c5e37729db111f5b46c4035cabe72634104b2e": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "payouts_split",
+          "ordinal": 2,
+          "type_info": "Numeric"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT m.id id, tm.user_id user_id, tm.payouts_split payouts_split\n            FROM mods m\n            INNER JOIN team_members tm on m.team_id = tm.team_id AND tm.accepted = TRUE\n            WHERE m.id = ANY($1)\n            "
+  },
   "27a35fca63dfc3801f95958604f0ac27afd81800e2dc981382d6f923c4415d32": {
     "describe": {
       "columns": [],
@@ -822,7 +859,7 @@
         {
           "name": "payouts_split",
           "ordinal": 5,
-          "type_info": "Float4"
+          "type_info": "Numeric"
         }
       ],
       "nullable": [
@@ -1120,6 +1157,26 @@
       }
     },
     "query": "\n            DELETE FROM loaders_versions\n            WHERE loaders_versions.version_id = $1\n            "
+  },
+  "34c0c25212dd8bc133f1e79b968d18d2b66eb537aeaba752e7ab2847a2214db4": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n                SELECT u.id\n                FROM users u\n                WHERE u.stripe_customer_id = $1\n                "
   },
   "371048e45dd74c855b84cdb8a6a565ccbef5ad166ec9511ab20621c336446da6": {
     "describe": {
@@ -1456,6 +1513,18 @@
     },
     "query": "\n                        DELETE FROM mods_categories\n                        WHERE joining_mod_id = $1 AND is_additional = TRUE\n                        "
   },
+  "414951c52e3342b4009cd1d0169bc34b164ab00db0af8c2d446a178a52e5fd6c": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n                UPDATE users\n                SET stripe_customer_id = NULL, midas_expires = NULL, is_overdue = NULL\n                WHERE (stripe_customer_id = $1)\n                "
+  },
   "4298552497a48adb9ace61c8dcf989c4d35866866b61c0cc4d45909b1d31c660": {
     "describe": {
       "columns": [
@@ -1547,6 +1616,20 @@
     },
     "query": "\n                    INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id)\n                    VALUES ($1, $2)\n                    "
   },
+  "4778d2f5994fda2f978fa53e0840c1a9a2582ef0434a5ff7f21706f1dc4edcf4": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Numeric",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n                                INSERT INTO historical_payouts (user_id, amount, status)\n                                VALUES ($1, $2, $3)\n                                "
+  },
   "48294a4e0c594e80fff8d14a705aa7282f55e47cf3772e77f1d4bf4849008b60": {
     "describe": {
       "columns": [
@@ -1603,7 +1686,7 @@
         {
           "name": "payouts_split",
           "ordinal": 6,
-          "type_info": "Float4"
+          "type_info": "Numeric"
         }
       ],
       "nullable": [
@@ -1689,74 +1772,6 @@
       }
     },
     "query": "\n            INSERT INTO project_types (name)\n            VALUES ($1)\n            ON CONFLICT (name) DO NOTHING\n            RETURNING id\n            "
-  },
-  "4b734b2afeaee2025f489dbce25df3ef80eae17576e49d321cb8357b0327e4b7": {
-    "describe": {
-      "columns": [
-        {
-          "name": "github_id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 6,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "role",
-          "ordinal": 7,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "badges",
-          "ordinal": 8,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges\n            FROM users u\n            WHERE u.id = $1\n            "
   },
   "4cfafb61d38608152743c38cb8fb9a9c35e788fcbefe6f7f81476a3f144af3f8": {
     "describe": {
@@ -1864,6 +1879,104 @@
       }
     },
     "query": "\n                    DELETE FROM game_versions_versions WHERE joining_version_id = $1\n                    "
+  },
+  "50fc72532d4b61d117b6245b5e315f3d88e9fe3a67f4522d281270911177f3ed": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 6,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 7,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "role",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "badges",
+          "ordinal": 9,
+          "type_info": "Int8"
+        },
+        {
+          "name": "balance",
+          "ordinal": 10,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "payout_wallet",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_wallet_type",
+          "ordinal": 12,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_address",
+          "ordinal": 13,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges,\n                u.balance, u.payout_wallet, u.payout_wallet_type,\n                u.payout_address\n            FROM users u\n            WHERE LOWER(u.username) = LOWER($1)\n            "
   },
   "5295fba2053675c8414c0b37a59943535b9a438a642ea1c68045e987f05ade13": {
     "describe": {
@@ -1987,110 +2100,6 @@
       }
     },
     "query": "\n            SELECT v.mod_id, v.author_id, v.name, v.version_number,\n                v.changelog, v.changelog_url, v.date_published, v.downloads,\n                v.version_type, v.featured\n            FROM versions v\n            WHERE v.id = $1\n            "
-  },
-  "56b099001ed5799d71d8a5a7ffcdb826dd8185b03781445c4d63d59072f6bed1": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "member_role",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "permissions",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "accepted",
-          "ordinal": 3,
-          "type_info": "Bool"
-        },
-        {
-          "name": "payouts_split",
-          "ordinal": 4,
-          "type_info": "Float4"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 5,
-          "type_info": "Int8"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 6,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_name",
-          "ordinal": 7,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 9,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 10,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 11,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 12,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "user_role",
-          "ordinal": 13,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "badges",
-          "ordinal": 14,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role, u.badges badges\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            WHERE tm.team_id = $1\n            "
   },
   "57a38641fe5bdb273190e8d586f46284340b9ff11b6ae3177923631a37bb11eb": {
     "describe": {
@@ -2426,80 +2435,6 @@
     },
     "query": "\n            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read, n.type notification_type,\n            ARRAY_AGG(DISTINCT na.id || ' |||| ' || na.title || ' |||| ' || na.action_route || ' |||| ' || na.action_route_method) filter (where na.id is not null) actions\n            FROM notifications n\n            LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id\n            WHERE n.user_id = $1\n            GROUP BY n.id, n.user_id;\n            "
   },
-  "5f4a3899e55b67ed096c6e0efd1f95ac27be7c81f1e4c5b2145c28fc8b28397a": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 6,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 7,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "role",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "badges",
-          "ordinal": 9,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges\n            FROM users u\n            WHERE LOWER(u.username) = LOWER($1)\n            "
-  },
   "5f94e9e767ec4be7f9136b991b4a29373dbe48feb2f61281e3212721095ed675": {
     "describe": {
       "columns": [],
@@ -2661,6 +2596,38 @@
       }
     },
     "query": "\n                        INSERT INTO loaders_versions (loader_id, version_id)\n                        VALUES ($1, $2)\n                        "
+  },
+  "6d10ec782e422e868681827a6eb999edc6bf4fe8fa2b94d1f8970db2578c6db4": {
+    "describe": {
+      "columns": [
+        {
+          "name": "created",
+          "ordinal": 0,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "amount",
+          "ordinal": 1,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "status",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                SELECT hp.created, hp.amount, hp.status\n                FROM historical_payouts hp\n                WHERE hp.user_id = $1\n                ORDER BY hp.created DESC\n                "
   },
   "6d883ea05aead20f571a0f63bfd63f1d432717ec7a0fb9ab29e01fcb061b3afc": {
     "describe": {
@@ -3236,6 +3203,39 @@
     },
     "query": "\n            INSERT INTO mods (\n                id, team_id, title, description, body,\n                published, downloads, icon_url, issues_url,\n                source_url, wiki_url, status, discord_url,\n                client_side, server_side, license_url, license,\n                slug, project_type\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8, $9,\n                $10, $11, $12, $13,\n                $14, $15, $16, $17,\n                LOWER($18), $19\n            )\n            "
   },
+  "7ab21e7613dd88e97cf602e76bff62170c13ceef8104a4ce4cb2d101f8ce4f48": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Numeric",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                            UPDATE users\n                            SET balance = balance + $1\n                            WHERE id = $2\n                            "
+  },
+  "7c0cdacf0898155c94008a96a0b918550df4475b9e3362a926d4d00e001880c1": {
+    "describe": {
+      "columns": [
+        {
+          "name": "amount",
+          "ordinal": 0,
+          "type_info": "Numeric"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                SELECT SUM(pv.amount) amount\n                FROM payouts_values pv\n                WHERE pv.user_id = $1 AND created > NOW() - '1 month'::interval\n                "
+  },
   "7c61fee015231f0a97c25d24f2c6be24821e39e330ab82344ad3b985d0d2aaea": {
     "describe": {
       "columns": [
@@ -3316,6 +3316,140 @@
     },
     "query": "\n            INSERT INTO notifications_actions (\n                notification_id, title, action_route, action_route_method\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            "
   },
+  "8187df6b7a47085ec9f844737755c75b162d154a6c38ee2f88c68ebc673baaab": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "team_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "member_role",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "permissions",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "accepted",
+          "ordinal": 4,
+          "type_info": "Bool"
+        },
+        {
+          "name": "payouts_split",
+          "ordinal": 5,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 6,
+          "type_info": "Int8"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 7,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_name",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 9,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 12,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 13,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "user_role",
+          "ordinal": 14,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "badges",
+          "ordinal": 15,
+          "type_info": "Int8"
+        },
+        {
+          "name": "balance",
+          "ordinal": 16,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "payout_wallet",
+          "ordinal": 17,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_wallet_type",
+          "ordinal": 18,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_address",
+          "ordinal": 19,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role, u.badges badges, u.balance balance,\n            u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,\n            u.payout_address payout_address\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            WHERE tm.team_id = ANY($1)\n            ORDER BY tm.team_id\n            "
+  },
   "844735a1ffd4b17c96e0cc441c85b3d05325523b415c509bbf2860b7e1ca0de3": {
     "describe": {
       "columns": [
@@ -3348,6 +3482,110 @@
       }
     },
     "query": "\n            DELETE FROM project_types\n            WHERE name = $1\n            "
+  },
+  "886cc346f5ecc958018f7cab7dc3db9f8766fcdc7b16d686504ddcb6c5dde0b0": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 6,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "role",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "badges",
+          "ordinal": 8,
+          "type_info": "Int8"
+        },
+        {
+          "name": "balance",
+          "ordinal": 9,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "payout_wallet",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_wallet_type",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_address",
+          "ordinal": 12,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT u.id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges,\n                u.balance, u.payout_wallet, u.payout_wallet_type,\n                u.payout_address\n            FROM users u\n            WHERE u.github_id = $1\n            "
+  },
+  "8a7b2bc070e5e8308e2853ff125bc98f40b22c1d0deeb013dd90ce5768bd0ce8": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM payouts_values\n            WHERE user_id = $1\n            "
   },
   "8b2e65cec164bb84de6929b1c2afeee28b36d0e36edea75baceaf97d7574bdd7": {
     "describe": {
@@ -3404,6 +3642,21 @@
       }
     },
     "query": "\n            DELETE FROM team_members\n            WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)\n            "
+  },
+  "8cbd74dad7a21128d99fd32b430c2e0427480f910e1f125ff56b893c67a6e8a4": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Varchar",
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                        UPDATE users\n                        SET payout_wallet = $1, payout_wallet_type = $2, payout_address = $3\n                        WHERE (id = $4)\n                        "
   },
   "8ced4b7a1c4f944b918d2d2eefc8007a3fb9565021ca8c44608caccbe1ab9674": {
     "describe": {
@@ -3563,7 +3816,7 @@
         {
           "name": "payouts_split",
           "ordinal": 6,
-          "type_info": "Float4"
+          "type_info": "Numeric"
         }
       ],
       "nullable": [
@@ -3648,6 +3901,44 @@
       }
     },
     "query": "\n            SELECT id FROM mods\n            WHERE slug = LOWER($1)\n            "
+  },
+  "96b2f4e0e619e7ed312d191dc90d64113235d72254fbda8f528ce866d1795cb5": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "payouts_split",
+          "ordinal": 2,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "project_type",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n        SELECT m.id id, tm.user_id user_id, tm.payouts_split payouts_split, pt.name project_type\n        FROM mods m\n        INNER JOIN team_members tm on m.team_id = tm.team_id AND tm.accepted = TRUE\n        INNER JOIN project_types pt ON pt.id = m.project_type\n        WHERE m.id = ANY($1)\n        "
   },
   "97690dda7edea8c985891cae5ad405f628ed81e333bc88df5493c928a4324d43": {
     "describe": {
@@ -3752,6 +4043,26 @@
       }
     },
     "query": "\n            UPDATE dependencies\n            SET dependency_id = $2\n            WHERE dependency_id = $1\n            "
+  },
+  "9dc32a9ef59f57fbad862520b6d3a4795a95d7d0db17e05eb8aedc3a2fe600dc": {
+    "describe": {
+      "columns": [
+        {
+          "name": "stripe_customer_id",
+          "ordinal": 0,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        SELECT u.stripe_customer_id\n        FROM users u\n        WHERE u.id = $1\n        "
   },
   "9e3d3ead2ecd6fae8df0a743823b2563deecb13b19b75d85dedf5bd1ba2e06f0": {
     "describe": {
@@ -3989,115 +4300,17 @@
     },
     "query": "\n                        UPDATE mods\n                        SET approved = NOW()\n                        WHERE id = $1 AND approved IS NULL\n                        "
   },
-  "a1e3ac170e45196e5fcca154c96a206f35be68a3219a0d493e1e149206590043": {
+  "a2c3f1dc8939a0df9cb62e7e751847b7681b96b4016389cf5f39ebd1deff6e5a": {
     "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "member_role",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "permissions",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "accepted",
-          "ordinal": 4,
-          "type_info": "Bool"
-        },
-        {
-          "name": "payouts_split",
-          "ordinal": 5,
-          "type_info": "Float4"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 6,
-          "type_info": "Int8"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 7,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_name",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 9,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 10,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 11,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 12,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 13,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "user_role",
-          "ordinal": 14,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "badges",
-          "ordinal": 15,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
+      "columns": [],
+      "nullable": [],
       "parameters": {
         "Left": [
-          "Int8Array"
+          "Int8"
         ]
       }
     },
-    "query": "\n            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role, u.badges badges\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            WHERE tm.team_id = ANY($1)\n            ORDER BY tm.team_id\n            "
+    "query": "\n                    UPDATE users\n                    SET is_overdue = TRUE\n                    WHERE (id = $1)\n                    "
   },
   "a39ce28b656032f862b205cffa393a76b989f4803654a615477a94fda5f57354": {
     "describe": {
@@ -4110,6 +4323,38 @@
       }
     },
     "query": "\n            DELETE FROM states\n            WHERE id = $1\n            "
+  },
+  "a3e27b758ca441fa82f6bcd42915b92fb23a7db19a7eb27db7ed92eeba4b566e": {
+    "describe": {
+      "columns": [
+        {
+          "name": "mod_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "times_depended",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT mv.mod_id, m.id, COUNT(m.id) times_depended FROM versions mv\n            INNER JOIN dependencies d ON d.dependent_id = mv.id\n            INNER JOIN versions v ON d.dependency_id = v.id\n            INNER JOIN mods m ON v.mod_id = m.id OR d.mod_dependency_id = m.id\n            WHERE mv.mod_id = ANY($1)\n            group by mv.mod_id, m.id;\n            "
   },
   "a647c282a276b63f36d2d8a253c32d0f627cea9cab8eb1b32b39875536bdfcbb": {
     "describe": {
@@ -4188,6 +4433,104 @@
       }
     },
     "query": "\n                DELETE FROM states\n                WHERE expires < CURRENT_DATE\n                "
+  },
+  "a91e7409e72211acf36cdcc4ee3395ef350acbf7be401e190dfbabdf60ebe155": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 6,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 7,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "role",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "badges",
+          "ordinal": 9,
+          "type_info": "Int8"
+        },
+        {
+          "name": "balance",
+          "ordinal": 10,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "payout_wallet",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_wallet_type",
+          "ordinal": 12,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_address",
+          "ordinal": 13,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges,\n                u.balance, u.payout_wallet, u.payout_wallet_type,\n                u.payout_address\n            FROM users u\n            WHERE u.id = ANY($1)\n            "
   },
   "a91fabe9e620bd700362c68631628725419183025c9699f4bd31c22b813b2824": {
     "describe": {
@@ -4279,7 +4622,7 @@
         {
           "name": "payouts_split",
           "ordinal": 5,
-          "type_info": "Float4"
+          "type_info": "Numeric"
         }
       ],
       "nullable": [
@@ -4406,11 +4749,52 @@
     },
     "query": "\n            DELETE FROM dependencies WHERE mod_dependency_id = NULL AND dependency_id = NULL AND dependency_file_name = NULL\n            "
   },
-  "af0d1c0b8a52cef5af2627e321e4f0d52f472d278fc52fb7f7fed3ab37d52608": {
+  "b030a9e0fdb75eee8ee50aafdcb6063a073e2aa53cc70d40ed46437c1d0dfe80": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Varchar",
+          "Bool",
+          "Varchar",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO mods_gallery (\n                mod_id, image_url, featured, title, description\n            )\n            VALUES (\n                $1, $2, $3, $4, $5\n            )\n            "
+  },
+  "b0e3d1c70b87bb54819e3fac04b684a9b857aeedb4dcb7cb400c2af0dbb12922": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM teams\n            WHERE id = $1\n            "
+  },
+  "b1e77dbaf4b190ab361f4fa203c442e5905cef6c1a135011a59ebd6e2dc0a92a": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Numeric",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                                UPDATE users\n                                SET balance = balance - $1\n                                WHERE id = $2\n                                "
+  },
+  "b4e67474dcef7d8357c3336b154425d1fff9d70757f8393e285883b739f5fadf": {
     "describe": {
       "columns": [
         {
-          "name": "id",
+          "name": "github_id",
           "ordinal": 0,
           "type_info": "Int8"
         },
@@ -4453,18 +4837,42 @@
           "name": "badges",
           "ordinal": 8,
           "type_info": "Int8"
+        },
+        {
+          "name": "balance",
+          "ordinal": 9,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "payout_wallet",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_wallet_type",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_address",
+          "ordinal": 12,
+          "type_info": "Varchar"
         }
       ],
       "nullable": [
-        false,
         true,
         true,
         true,
+        true,
         false,
         true,
         false,
         false,
-        false
+        false,
+        false,
+        true,
+        true,
+        true
       ],
       "parameters": {
         "Left": [
@@ -4472,35 +4880,7 @@
         ]
       }
     },
-    "query": "\n            SELECT u.id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges\n            FROM users u\n            WHERE u.github_id = $1\n            "
-  },
-  "b030a9e0fdb75eee8ee50aafdcb6063a073e2aa53cc70d40ed46437c1d0dfe80": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Varchar",
-          "Bool",
-          "Varchar",
-          "Varchar"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO mods_gallery (\n                mod_id, image_url, featured, title, description\n            )\n            VALUES (\n                $1, $2, $3, $4, $5\n            )\n            "
-  },
-  "b0e3d1c70b87bb54819e3fac04b684a9b857aeedb4dcb7cb400c2af0dbb12922": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            DELETE FROM teams\n            WHERE id = $1\n            "
+    "query": "\n            SELECT u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges,\n                u.balance, u.payout_wallet, u.payout_wallet_type,\n                u.payout_address\n            FROM users u\n            WHERE u.id = $1\n            "
   },
   "b69a6f42965b3e7103fcbf46e39528466926789ff31e9ed2591bb175527ec169": {
     "describe": {
@@ -4694,7 +5074,7 @@
         {
           "name": "payouts_split",
           "ordinal": 6,
-          "type_info": "Float4"
+          "type_info": "Numeric"
         }
       ],
       "nullable": [
@@ -4823,7 +5203,7 @@
         {
           "name": "payouts_split",
           "ordinal": 5,
-          "type_info": "Float4"
+          "type_info": "Numeric"
         }
       ],
       "nullable": [
@@ -4969,6 +5349,18 @@
     },
     "query": "SELECT id FROM versions WHERE mod_id = $1 AND (version_number = $2 OR id = $3) ORDER BY date_published ASC"
   },
+  "c4b167ec7452cc92be0e33f7e4f3908f0c4109291511c94909e9105fc62a432f": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                        UPDATE users\n                        SET payout_wallet = NULL, payout_wallet_type = NULL, payout_address = NULL\n                        WHERE (id = $1)\n                        "
+  },
   "c545a74e902c5c63bca1057b76e94b9547ee21fadbc61964f45837915d5f4608": {
     "describe": {
       "columns": [],
@@ -5040,7 +5432,7 @@
         {
           "name": "payouts_split",
           "ordinal": 5,
-          "type_info": "Float4"
+          "type_info": "Numeric"
         }
       ],
       "nullable": [
@@ -5528,7 +5920,7 @@
       "nullable": [],
       "parameters": {
         "Left": [
-          "Float4",
+          "Numeric",
           "Int8",
           "Int8"
         ]
@@ -5555,6 +5947,134 @@
       }
     },
     "query": "\n            SELECT id FROM donation_platforms\n            WHERE short = $1\n            "
+  },
+  "d83c10db0ab21343ab17acad30546ecebeae2347b12c4604532eccf66dd99b7a": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "member_role",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "permissions",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "accepted",
+          "ordinal": 3,
+          "type_info": "Bool"
+        },
+        {
+          "name": "payouts_split",
+          "ordinal": 4,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 5,
+          "type_info": "Int8"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 6,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_name",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 9,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 12,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "user_role",
+          "ordinal": 13,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "badges",
+          "ordinal": 14,
+          "type_info": "Int8"
+        },
+        {
+          "name": "balance",
+          "ordinal": 15,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "payout_wallet",
+          "ordinal": 16,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_wallet_type",
+          "ordinal": 17,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_address",
+          "ordinal": 18,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role, u.badges badges, u.balance balance,\n            u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,\n            u.payout_address payout_address\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            WHERE tm.team_id = $1\n            "
   },
   "d8b4e7e382c77a05395124d5a6a27cccb687d0e2c31b76d49b03aa364d099d42": {
     "describe": {
@@ -5799,6 +6319,19 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM team_members WHERE id=$1)"
+  },
+  "e876f64db82d618dce53b108509d67a1108aa747d16892499481fe9f8b95200b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                UPDATE users\n                SET stripe_customer_id = $1\n                WHERE (id = $2)\n                "
   },
   "e8ad94314ec2972c3102041b1bf06872c8e4c8a55156a17334a0e317fe41b784": {
     "describe": {
@@ -6083,6 +6616,19 @@
       }
     },
     "query": "\n                    UPDATE users\n                    SET bio = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "f6eae06931e9cde0f18e7031bc93c33fa689de4d9676c1a8a3fc14a182d5fb08": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Timestamptz",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE users\n                    SET midas_expires = $1, is_overdue = FALSE\n                    WHERE (stripe_customer_id = $2)\n                    "
   },
   "f8be3053274b00ee9743e798886696062009c5f681baaf29dfc24cfbbda93742": {
     "describe": {

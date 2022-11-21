@@ -1,5 +1,6 @@
 use crate::file_hosting::S3Host;
 use crate::queue::download::DownloadQueue;
+use crate::queue::payouts::PayoutsQueue;
 use crate::ratelimit::errors::ARError;
 use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use crate::ratelimit::middleware::RateLimiter;
@@ -7,11 +8,11 @@ use crate::util::env::{parse_strings_from_var, parse_var};
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use env_logger::Env;
-use gumdrop::Options;
 use log::{error, info, warn};
 use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 mod database;
 mod file_hosting;
@@ -25,23 +26,6 @@ mod search;
 mod util;
 mod validate;
 
-#[derive(Debug, Options)]
-struct Config {
-    #[options(help = "Print help message")]
-    help: bool,
-
-    #[options(no_short, help = "Skip indexing on startup")]
-    skip_first_index: bool,
-    #[options(no_short, help = "Reset the documents in the indices")]
-    reset_indices: bool,
-
-    #[options(
-        no_short,
-        help = "Allow missing environment variables on startup. This is a bad idea, but it may work in some cases."
-    )]
-    allow_missing_vars: bool,
-}
-
 #[derive(Clone)]
 pub struct Pepper {
     pub pepper: String,
@@ -49,43 +33,23 @@ pub struct Pepper {
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .init();
 
-    let config = Config::parse_args_default_or_exit();
-
     if check_env_vars() {
         error!("Some environment variables are missing!");
-        if !config.allow_missing_vars {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Missing required environment variables",
-            ));
-        }
     }
 
-    info!("Starting Labrinth on {}", dotenv::var("BIND_ADDR").unwrap());
+    info!(
+        "Starting Labrinth on {}",
+        dotenvy::var("BIND_ADDR").unwrap()
+    );
 
     let search_config = search::SearchConfig {
-        address: dotenv::var("MEILISEARCH_ADDR").unwrap(),
-        key: dotenv::var("MEILISEARCH_KEY").unwrap(),
+        address: dotenvy::var("MEILISEARCH_ADDR").unwrap(),
+        key: dotenvy::var("MEILISEARCH_KEY").unwrap(),
     };
-
-    if config.reset_indices {
-        info!("Resetting indices");
-        search::indexing::reset_indices(&search_config)
-            .await
-            .unwrap();
-        return Ok(());
-    }
-
-    // Allow manually skipping the initial indexing for quicker iteration
-    // and startup times.
-    let skip_initial = config.skip_first_index;
-    if skip_initial {
-        info!("Skipping initial indexing");
-    }
 
     database::check_for_migrations()
         .await
@@ -97,25 +61,25 @@ async fn main() -> std::io::Result<()> {
         .expect("Database connection failed");
 
     let storage_backend =
-        dotenv::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
+        dotenvy::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
 
     let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> =
         match storage_backend.as_str() {
             "backblaze" => Arc::new(
                 file_hosting::BackblazeHost::new(
-                    &dotenv::var("BACKBLAZE_KEY_ID").unwrap(),
-                    &dotenv::var("BACKBLAZE_KEY").unwrap(),
-                    &dotenv::var("BACKBLAZE_BUCKET_ID").unwrap(),
+                    &dotenvy::var("BACKBLAZE_KEY_ID").unwrap(),
+                    &dotenvy::var("BACKBLAZE_KEY").unwrap(),
+                    &dotenvy::var("BACKBLAZE_BUCKET_ID").unwrap(),
                 )
                 .await,
             ),
             "s3" => Arc::new(
                 S3Host::new(
-                    &*dotenv::var("S3_BUCKET_NAME").unwrap(),
-                    &*dotenv::var("S3_REGION").unwrap(),
-                    &*dotenv::var("S3_URL").unwrap(),
-                    &*dotenv::var("S3_ACCESS_TOKEN").unwrap(),
-                    &*dotenv::var("S3_SECRET").unwrap(),
+                    &dotenvy::var("S3_BUCKET_NAME").unwrap(),
+                    &dotenvy::var("S3_REGION").unwrap(),
+                    &dotenvy::var("S3_URL").unwrap(),
+                    &dotenvy::var("S3_ACCESS_TOKEN").unwrap(),
+                    &dotenvy::var("S3_SECRET").unwrap(),
                 )
                 .unwrap(),
             ),
@@ -131,20 +95,12 @@ async fn main() -> std::io::Result<()> {
         parse_var("LOCAL_INDEX_INTERVAL").unwrap_or(3600),
     );
 
-    let mut skip = skip_initial;
     let pool_ref = pool.clone();
     let search_config_ref = search_config.clone();
     scheduler.run(local_index_interval, move || {
         let pool_ref = pool_ref.clone();
         let search_config_ref = search_config_ref.clone();
-        let local_skip = skip;
-        if skip {
-            skip = false;
-        }
         async move {
-            if local_skip {
-                return;
-            }
             info!("Indexing local database");
             let settings = IndexingSettings { index_local: true };
             let result =
@@ -183,7 +139,7 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    scheduler::schedule_versions(&mut scheduler, pool.clone(), skip_initial);
+    scheduler::schedule_versions(&mut scheduler, pool.clone());
 
     let download_queue = Arc::new(DownloadQueue::new());
 
@@ -202,6 +158,8 @@ async fn main() -> std::io::Result<()> {
             info!("Done indexing download queue");
         }
     });
+
+    let payouts_queue = Arc::new(Mutex::new(PayoutsQueue::new()));
 
     let ip_salt = Pepper {
         pepper: models::ids::Base62Id(models::ids::random_base62(11))
@@ -253,12 +211,15 @@ async fn main() -> std::io::Result<()> {
                     })
                     .with_interval(std::time::Duration::from_secs(60))
                     .with_max_requests(300)
-                    .with_ignore_key(dotenv::var("RATE_LIMIT_IGNORE_KEY").ok()),
+                    .with_ignore_key(
+                        dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok(),
+                    ),
             )
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(file_host.clone()))
             .app_data(web::Data::new(search_config.clone()))
             .app_data(web::Data::new(download_queue.clone()))
+            .app_data(web::Data::new(payouts_queue.clone()))
             .app_data(web::Data::new(ip_salt.clone()))
             .configure(routes::v1_config)
             .configure(routes::v2_config)
@@ -268,7 +229,7 @@ async fn main() -> std::io::Result<()> {
             .service(web::scope("updates").configure(routes::updates))
             .default_service(web::get().to(routes::not_found))
     })
-    .bind(dotenv::var("BIND_ADDR").unwrap())?
+    .bind(dotenvy::var("BIND_ADDR").unwrap())?
     .run()
     .await
 }
@@ -310,7 +271,7 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("STORAGE_BACKEND");
 
-    let storage_backend = dotenv::var("STORAGE_BACKEND").ok();
+    let storage_backend = dotenvy::var("STORAGE_BACKEND").ok();
     match storage_backend.as_deref() {
         Some("backblaze") => {
             failed |= check_var::<String>("BACKBLAZE_KEY_ID");
@@ -345,6 +306,13 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("ARIADNE_ADMIN_KEY");
     failed |= check_var::<String>("ARIADNE_URL");
+
+    failed |= check_var::<String>("STRIPE_TOKEN");
+    failed |= check_var::<String>("STRIPE_WEBHOOK_SECRET");
+
+    failed |= check_var::<String>("PAYPAL_API_URL");
+    failed |= check_var::<String>("PAYPAL_CLIENT_ID");
+    failed |= check_var::<String>("PAYPAL_CLIENT_SECRET");
 
     failed
 }
