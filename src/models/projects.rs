@@ -135,9 +135,9 @@ impl From<QueryProject> for Project {
                         // spdx crate returns AND/OR operations in postfix order
                         // and it would be a lot more effort to make it actually in order
                         // so let's just ignore that and make them comma-separated
-                        Some(vec.join(", "))
+                        vec.join(", ")
                     }
-                    Err(_) => None,
+                    Err(_) => "".to_string(),
                 },
                 url: m.license_url,
             },
@@ -234,7 +234,7 @@ impl SideType {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct License {
     pub id: String,
-    pub name: Option<String>,
+    pub name: String,
     pub url: Option<String>,
 }
 

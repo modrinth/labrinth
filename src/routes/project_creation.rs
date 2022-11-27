@@ -778,7 +778,7 @@ pub async fn project_create_inner(
             moderator_message: None,
             license: License {
                 id: project_create_data.license_id.clone(),
-                name: None,
+                name: "".to_string(),
                 url: project_builder.license_url.clone(),
             },
             client_side: project_create_data.client_side,

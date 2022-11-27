@@ -22,6 +22,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(game_version_create)
             .service(game_version_delete)
             .service(license_list)
+            .service(license_text)
             .service(donation_platform_create)
             .service(donation_platform_list)
             .service(donation_platform_delete)
@@ -318,6 +319,23 @@ pub async fn license_list() -> HttpResponse {
     }
 
     HttpResponse::Ok().json(results)
+}
+
+#[get("license/{id}")]
+pub async fn license_text(
+    params: web::Path<(String,)>,
+) -> Result<HttpResponse, ApiError> {
+    let license_id = params.into_inner().0;
+
+    if let Some(license) = spdx::license_id(&*license_id) {
+        return Ok(HttpResponse::Ok()
+            .content_type("text/plain")
+            .body(license.text()));
+    }
+
+    Err(ApiError::InvalidInput(
+        "Invalid SPDX identifier specified".to_string(),
+    ))
 }
 
 #[derive(serde::Serialize)]
