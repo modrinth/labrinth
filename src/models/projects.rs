@@ -231,6 +231,8 @@ impl SideType {
     }
 }
 
+pub const DEFAULT_LICENSE_ID: &str = "LicenseRef-All-Rights-Reserved";
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct License {
     pub id: String,

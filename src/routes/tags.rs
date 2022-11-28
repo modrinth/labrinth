@@ -321,16 +321,27 @@ pub async fn license_list() -> HttpResponse {
     HttpResponse::Ok().json(results)
 }
 
+#[derive(serde::Serialize)]
+pub struct LicenseText {
+    body: String,
+}
+
 #[get("license/{id}")]
 pub async fn license_text(
     params: web::Path<(String,)>,
 ) -> Result<HttpResponse, ApiError> {
     let license_id = params.into_inner().0;
 
+    if license_id == crate::models::projects::DEFAULT_LICENSE_ID.to_string() {
+        return Ok(HttpResponse::Ok().json(LicenseText {
+            body: "All rights reserved unless explicitly stated.".to_string(),
+        }));
+    }
+
     if let Some(license) = spdx::license_id(&*license_id) {
-        return Ok(HttpResponse::Ok()
-            .content_type("text/plain")
-            .body(license.text()));
+        return Ok(HttpResponse::Ok().json(LicenseText {
+            body: license.text().to_string(),
+        }));
     }
 
     Err(ApiError::InvalidInput(
