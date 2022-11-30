@@ -131,6 +131,10 @@ fn default_project_type() -> String {
     "mod".to_string()
 }
 
+fn default_requested_status() -> ProjectStatus {
+    ProjectStatus::Approved
+}
+
 #[derive(Serialize, Deserialize, Validate, Clone)]
 struct ProjectCreateData {
     #[validate(length(min = 3, max = 64))]
@@ -218,6 +222,9 @@ struct ProjectCreateData {
     #[validate]
     /// The multipart names of the gallery items to upload
     pub gallery_items: Option<Vec<NewGalleryItem>>,
+    #[serde(default = "default_requested_status")]
+    /// The status of the mod to be set once it is approved
+    pub requested_status: ProjectStatus,
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -658,14 +665,12 @@ pub async fn project_create_inner(
             }
         }
 
-        let status_id = models::StatusId::get_id(&status, &mut *transaction)
-            .await?
-            .ok_or_else(|| {
-                CreateError::InvalidInput(format!(
-                    "Status {} does not exist.",
-                    status.clone()
-                ))
-            })?;
+        if !project_create_data.requested_status.can_be_requested() {
+            return Err(CreateError::InvalidInput(String::from(
+                "Specified requested status is not allowed to be requested",
+            )));
+        }
+
         let client_side_id = models::SideTypeId::get_id(
             &project_create_data.client_side,
             &mut *transaction,
@@ -741,7 +746,8 @@ pub async fn project_create_inner(
             categories,
             additional_categories,
             initial_versions: versions,
-            status: status_id,
+            status: status.clone(),
+            requested_status: Some(project_create_data.requested_status),
             client_side: client_side_id,
             server_side: server_side_id,
             license: license_id,
@@ -775,6 +781,7 @@ pub async fn project_create_inner(
             updated: now,
             approved: None,
             status: status.clone(),
+            requested_status: project_builder.requested_status.clone(),
             moderator_message: None,
             license: License {
                 id: project_create_data.license_id.clone(),

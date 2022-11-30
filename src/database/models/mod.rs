@@ -32,28 +32,6 @@ pub enum DatabaseError {
     Other(String),
 }
 
-impl ids::StatusId {
-    pub async fn get_id<'a, E>(
-        status: &crate::models::projects::ProjectStatus,
-        exec: E,
-    ) -> Result<Option<Self>, DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        let result = sqlx::query!(
-            "
-            SELECT id FROM statuses
-            WHERE status = $1
-            ",
-            status.as_str()
-        )
-        .fetch_optional(exec)
-        .await?;
-
-        Ok(result.map(|r| ids::StatusId(r.id)))
-    }
-}
-
 impl ids::SideTypeId {
     pub async fn get_id<'a, E>(
         side: &crate::models::projects::SideType,

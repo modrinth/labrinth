@@ -12,8 +12,8 @@ pub async fn get_stats(
         SELECT COUNT(id)
         FROM mods
         WHERE
-            status = ( SELECT id FROM statuses WHERE status = $1 ) OR
-            status = ( SELECT id FROM statuses WHERE status = $2 )
+            status = $1 OR
+            status = $2
         ",
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()
@@ -26,8 +26,8 @@ pub async fn get_stats(
         FROM versions v
         INNER JOIN mods m on v.mod_id = m.id
         WHERE
-            status = ( SELECT id FROM statuses WHERE status = $1 ) OR
-            status = ( SELECT id FROM statuses WHERE status = $2 )
+            status = $1 OR
+            status = $2
         ",
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()
@@ -40,8 +40,8 @@ pub async fn get_stats(
         FROM users u
         INNER JOIN team_members tm on u.id = tm.user_id AND tm.accepted = TRUE
         INNER JOIN mods m on tm.team_id = m.team_id AND (
-            m.status = ( SELECT s.id FROM statuses s WHERE s.status = $1 ) OR
-            m.status = ( SELECT s.id FROM statuses s WHERE s.status = $2 )
+            m.status = $1 OR
+            m.status = $2
         )
         ",
         crate::models::projects::ProjectStatus::Approved.as_str(),
@@ -55,8 +55,8 @@ pub async fn get_stats(
         INNER JOIN versions v on f.version_id = v.id
         INNER JOIN mods m on v.mod_id = m.id
         WHERE
-            status = ( SELECT id FROM statuses WHERE status = $1 ) OR
-            status = ( SELECT id FROM statuses WHERE status = $2 )
+            status = $1 OR
+            status = $2
         ",
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()

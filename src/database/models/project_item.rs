@@ -1,5 +1,6 @@
 use super::ids::*;
 use crate::database::models::convert_postgres_date;
+use crate::models::projects::ProjectStatus;
 use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
@@ -89,7 +90,8 @@ pub struct ProjectBuilder {
     pub categories: Vec<CategoryId>,
     pub additional_categories: Vec<CategoryId>,
     pub initial_versions: Vec<super::version_item::VersionBuilder>,
-    pub status: StatusId,
+    pub status: ProjectStatus,
+    pub requested_status: Option<ProjectStatus>,
     pub client_side: SideTypeId,
     pub server_side: SideTypeId,
     pub license: LicenseId,
@@ -115,6 +117,7 @@ impl ProjectBuilder {
             updated: Utc::now(),
             approved: None,
             status: self.status,
+            requested_status: self.requested_status,
             downloads: 0,
             follows: 0,
             icon_url: self.icon_url,
@@ -190,7 +193,8 @@ pub struct Project {
     pub published: DateTime<Utc>,
     pub updated: DateTime<Utc>,
     pub approved: Option<DateTime<Utc>>,
-    pub status: StatusId,
+    pub status: ProjectStatus,
+    pub requested_status: Option<ProjectStatus>,
     pub downloads: i32,
     pub follows: i32,
     pub icon_url: Option<String>,
@@ -242,7 +246,7 @@ impl Project {
             self.issues_url.as_ref(),
             self.source_url.as_ref(),
             self.wiki_url.as_ref(),
-            self.status.0,
+            self.status.as_str(),
             self.discord_url.as_ref(),
             self.client_side as SideTypeId,
             self.server_side as SideTypeId,
@@ -268,7 +272,7 @@ impl Project {
             "
             SELECT project_type, title, description, downloads, follows,
                    icon_url, body, body_url, published,
-                   updated, approved, status,
+                   updated, approved, status, requested_status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
                    team_id, client_side, server_side, license, slug,
                    moderation_message, moderation_message_body, flame_anvil_project,
@@ -299,7 +303,10 @@ impl Project {
                 license_url: row.license_url,
                 discord_url: row.discord_url,
                 client_side: SideTypeId(row.client_side),
-                status: StatusId(row.status),
+                status: ProjectStatus::from_str(&row.status),
+                requested_status: row
+                    .requested_status
+                    .map(|x| ProjectStatus::from_str(&x)),
                 server_side: SideTypeId(row.server_side),
                 license: LicenseId(row.license),
                 slug: row.slug,
@@ -331,7 +338,7 @@ impl Project {
             "
             SELECT id, project_type, title, description, downloads, follows,
                    icon_url, body, body_url, published,
-                   updated, approved, status,
+                   updated, approved, status, requested_status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
                    team_id, client_side, server_side, license, slug,
                    moderation_message, moderation_message_body, flame_anvil_project,
@@ -360,7 +367,12 @@ impl Project {
                 license_url: m.license_url,
                 discord_url: m.discord_url,
                 client_side: SideTypeId(m.client_side),
-                status: StatusId(m.status),
+                status: ProjectStatus::from_str(
+                    &m.status,
+                ),
+                requested_status: m.requested_status.map(|x| ProjectStatus::from_str(
+                    &x,
+                )),
                 server_side: SideTypeId(m.server_side),
                 license: LicenseId(m.license),
                 slug: m.slug,
@@ -370,7 +382,7 @@ impl Project {
                 moderation_message_body: m.moderation_message_body,
                 approved: m.approved,
                 flame_anvil_project: m.flame_anvil_project,
-                flame_anvil_user: m.flame_anvil_user.map(UserId)
+                flame_anvil_user: m.flame_anvil_user.map(UserId),
             }))
         })
         .try_collect::<Vec<Project>>()
@@ -646,17 +658,16 @@ impl Project {
             "
             SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.body body, m.body_url body_url, m.published published,
-            m.updated updated, m.approved approved, m.status status,
+            m.updated updated, m.approved approved, m.status status, m.requested_status requested_status,
             m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
             m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
-            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name, pt.name project_type_name, m.flame_anvil_project flame_anvil_project, m.flame_anvil_user flame_anvil_user,
+            cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name, pt.name project_type_name, m.flame_anvil_project flame_anvil_project, m.flame_anvil_user flame_anvil_user,
             ARRAY_AGG(DISTINCT c.category || ' |||| ' || mc.is_additional) filter (where c.category is not null) categories,
             ARRAY_AGG(DISTINCT v.id || ' |||| ' || v.date_published) filter (where v.id is not null) versions,
             ARRAY_AGG(DISTINCT mg.image_url || ' |||| ' || mg.featured || ' |||| ' || mg.created || ' |||| ' || COALESCE(mg.title, ' ') || ' |||| ' || COALESCE(mg.description, ' ')) filter (where mg.image_url is not null) gallery,
             ARRAY_AGG(DISTINCT md.joining_platform_id || ' |||| ' || dp.short || ' |||| ' || dp.name || ' |||| ' || md.url) filter (where md.joining_platform_id is not null) donations
             FROM mods m
             INNER JOIN project_types pt ON pt.id = m.project_type
-            INNER JOIN statuses s ON s.id = m.status
             INNER JOIN side_types cs ON m.client_side = cs.id
             INNER JOIN side_types ss ON m.server_side = ss.id
             INNER JOIN licenses l ON m.license = l.id
@@ -667,7 +678,7 @@ impl Project {
             LEFT JOIN versions v ON v.mod_id = m.id
             LEFT JOIN mods_gallery mg ON mg.mod_id = m.id
             WHERE m.id = $1
-            GROUP BY pt.id, s.id, cs.id, ss.id, l.id, m.id;
+            GROUP BY pt.id, cs.id, ss.id, l.id, m.id;
             ",
             id as ProjectId,
         )
@@ -710,7 +721,10 @@ impl Project {
                     license_url: m.license_url.clone(),
                     discord_url: m.discord_url.clone(),
                     client_side: SideTypeId(m.client_side),
-                    status: StatusId(m.status),
+                    status: ProjectStatus::from_str(&m.status),
+                    requested_status: m
+                        .requested_status
+                        .map(|x| ProjectStatus::from_str(&x)),
                     server_side: SideTypeId(m.server_side),
                     license: LicenseId(m.license),
                     slug: m.slug.clone(),
@@ -803,9 +817,6 @@ impl Project {
                         }
                     })
                     .collect(),
-                status: crate::models::projects::ProjectStatus::from_str(
-                    &m.status_name,
-                ),
                 license_id: m.short,
                 license_name: m.license_name,
                 client_side: crate::models::projects::SideType::from_str(
@@ -835,17 +846,16 @@ impl Project {
             "
             SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.body body, m.body_url body_url, m.published published,
-            m.updated updated, m.approved approved, m.status status,
+            m.updated updated, m.approved approved, m.status status, m.requested_status requested_status,
             m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
             m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
-            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name, pt.name project_type_name, m.flame_anvil_project flame_anvil_project, m.flame_anvil_user flame_anvil_user,
+            cs.name client_side_type, ss.name server_side_type, l.short short, l.name license_name, pt.name project_type_name, m.flame_anvil_project flame_anvil_project, m.flame_anvil_user flame_anvil_user,
             ARRAY_AGG(DISTINCT c.category || ' |||| ' || mc.is_additional) filter (where c.category is not null) categories,
             ARRAY_AGG(DISTINCT v.id || ' |||| ' || v.date_published) filter (where v.id is not null) versions,
             ARRAY_AGG(DISTINCT mg.image_url || ' |||| ' || mg.featured || ' |||| ' || mg.created || ' |||| ' || COALESCE(mg.title, ' ') || ' |||| ' || COALESCE(mg.description, ' ')) filter (where mg.image_url is not null) gallery,
             ARRAY_AGG(DISTINCT md.joining_platform_id || ' |||| ' || dp.short || ' |||| ' || dp.name || ' |||| ' || md.url) filter (where md.joining_platform_id is not null) donations
             FROM mods m
             INNER JOIN project_types pt ON pt.id = m.project_type
-            INNER JOIN statuses s ON s.id = m.status
             INNER JOIN side_types cs ON m.client_side = cs.id
             INNER JOIN side_types ss ON m.server_side = ss.id
             INNER JOIN licenses l ON m.license = l.id
@@ -856,7 +866,7 @@ impl Project {
             LEFT JOIN versions v ON v.mod_id = m.id
             LEFT JOIN mods_gallery mg ON mg.mod_id = m.id
             WHERE m.id = ANY($1)
-            GROUP BY pt.id, s.id, cs.id, ss.id, l.id, m.id;
+            GROUP BY pt.id, cs.id, ss.id, l.id, m.id;
             ",
             &project_ids_parsed
         )
@@ -901,7 +911,12 @@ impl Project {
                             license_url: m.license_url.clone(),
                             discord_url: m.discord_url.clone(),
                             client_side: SideTypeId(m.client_side),
-                            status: StatusId(m.status),
+                            status: ProjectStatus::from_str(
+                                &m.status,
+                            ),
+                            requested_status: m.requested_status.map(|x| ProjectStatus::from_str(
+                                &x,
+                            )),
                             server_side: SideTypeId(m.server_side),
                             license: LicenseId(m.license),
                             slug: m.slug.clone(),
@@ -982,7 +997,6 @@ impl Project {
                                 }
                             })
                             .collect(),
-                        status: crate::models::projects::ProjectStatus::from_str(&m.status_name),
                         license_id: m.short,
                         license_name: m.license_name,
                         client_side: crate::models::projects::SideType::from_str(&m.client_side_type),
@@ -1003,7 +1017,6 @@ pub struct QueryProject {
     pub versions: Vec<VersionId>,
     pub donation_urls: Vec<DonationUrl>,
     pub gallery_items: Vec<GalleryItem>,
-    pub status: crate::models::projects::ProjectStatus,
     pub license_id: String,
     pub license_name: String,
     pub client_side: crate::models::projects::SideType,

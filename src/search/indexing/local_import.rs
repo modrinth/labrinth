@@ -15,8 +15,8 @@ pub async fn index_local(
             "
             SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,
-            m.team_id team_id, m.license license, m.slug slug,
-            s.status status_name, cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
+            m.team_id team_id, m.license license, m.slug slug, m.status status_name,
+            cs.name client_side_type, ss.name server_side_type, l.short short, pt.name project_type_name, u.username username,
             ARRAY_AGG(DISTINCT c.category || ' |||| ' || mc.is_additional) filter (where c.category is not null) categories,
             ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders,
             ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null) versions,
@@ -30,15 +30,14 @@ pub async fn index_local(
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
             LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id
             LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
-            INNER JOIN statuses s ON s.id = m.status
             INNER JOIN project_types pt ON pt.id = m.project_type
             INNER JOIN side_types cs ON m.client_side = cs.id
             INNER JOIN side_types ss ON m.server_side = ss.id
             INNER JOIN licenses l ON m.license = l.id
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
             INNER JOIN users u ON tm.user_id = u.id
-            WHERE s.status = $1 OR s.status = $2
-            GROUP BY m.id, s.id, cs.id, ss.id, l.id, pt.id, u.id;
+            WHERE m.status = $1 OR m.status = $2
+            GROUP BY m.id, cs.id, ss.id, l.id, pt.id, u.id;
             ",
             crate::models::projects::ProjectStatus::Approved.as_str(),
             crate::models::projects::ProjectStatus::Archived.as_str(),

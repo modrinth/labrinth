@@ -51,6 +51,9 @@ pub struct Project {
 
     /// The status of the project
     pub status: ProjectStatus,
+    /// The requested status of this projct
+    pub requested_status: Option<ProjectStatus>,
+
     /// The rejection data of the project
     pub moderator_message: Option<ModeratorMessage>,
 
@@ -111,7 +114,8 @@ impl From<QueryProject> for Project {
             published: m.published,
             updated: m.updated,
             approved: m.approved,
-            status: data.status,
+            status: m.status,
+            requested_status: m.requested_status,
             moderator_message: if let Some(message) = m.moderation_message {
                 Some(ModeratorMessage {
                     message,
@@ -238,8 +242,10 @@ pub struct DonationLink {
 /// Rejected - Project is not displayed on search, and not accessible by URL (Temporary state, project can reapply)
 /// Draft - Project is not displayed on search, and not accessible by URL
 /// Unlisted - Project is not displayed on search, but accessible by URL
+/// Withheld - Same as unlisted, but set by a moderator. Cannot be switched to another type without moderator approval
 /// Processing - Project is not displayed on search, and not accessible by URL (Temporary state, project under review)
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
+/// Scheduled - Project is scheduled to be released in the future
+#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
     Approved,
@@ -248,6 +254,8 @@ pub enum ProjectStatus {
     Draft,
     Unlisted,
     Processing,
+    Withheld,
+    Scheduled,
     Unknown,
 }
 
@@ -266,6 +274,7 @@ impl ProjectStatus {
             "draft" => ProjectStatus::Draft,
             "unlisted" => ProjectStatus::Unlisted,
             "archived" => ProjectStatus::Archived,
+            "withheld" => ProjectStatus::Withheld,
             _ => ProjectStatus::Unknown,
         }
     }
@@ -278,6 +287,8 @@ impl ProjectStatus {
             ProjectStatus::Processing => "processing",
             ProjectStatus::Unknown => "unknown",
             ProjectStatus::Archived => "archived",
+            ProjectStatus::Withheld => "withheld",
+            ProjectStatus::Scheduled => "scheduled",
         }
     }
 
@@ -290,11 +301,32 @@ impl ProjectStatus {
             ProjectStatus::Processing => true,
             ProjectStatus::Unknown => true,
             ProjectStatus::Archived => false,
+            ProjectStatus::Withheld => false,
+            ProjectStatus::Scheduled => true,
         }
     }
 
     pub fn is_searchable(&self) -> bool {
-        matches!(self, ProjectStatus::Approved)
+        match self {
+            ProjectStatus::Approved => true,
+            ProjectStatus::Archived => true,
+            _ => {}
+        }
+    }
+
+    pub fn can_be_requested(&self) -> bool {
+        match self {
+            ProjectStatus::Approved => true,
+            ProjectStatus::Archived => true,
+            ProjectStatus::Draft => true,
+            ProjectStatus::Unlisted => true,
+
+            ProjectStatus::Rejected => false,
+            ProjectStatus::Processing => false,
+            ProjectStatus::Unknown => false,
+            ProjectStatus::Withheld => false,
+            ProjectStatus::Scheduled => false,
+        }
     }
 }
 

@@ -136,7 +136,7 @@ pub async fn is_authorized(
     user_option: &Option<User>,
     pool: &web::Data<PgPool>,
 ) -> Result<bool, ApiError> {
-    let mut authorized = !project_data.status.is_hidden();
+    let mut authorized = !project_data.inner.status.is_hidden();
 
     if let Some(user) = &user_option {
         if !authorized {

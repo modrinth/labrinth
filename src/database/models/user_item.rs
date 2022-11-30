@@ -268,7 +268,7 @@ impl User {
             "
             SELECT m.id FROM mods m
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.accepted = TRUE
-            WHERE tm.user_id = $1 AND m.status = (SELECT s.id FROM statuses s WHERE s.status = $2)
+            WHERE tm.user_id = $1 AND m.status = $2
             ORDER BY m.downloads DESC
             ",
             user_id as UserId,

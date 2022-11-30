@@ -333,6 +333,12 @@ pub struct EditProject {
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
+    pub requested_status: Option<Option<ProjectStatus>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
     #[validate(length(max = 2000))]
     pub moderation_message: Option<Option<String>>,
     #[serde(
@@ -443,6 +449,7 @@ pub async fn project_edit(
                 .await?;
             }
 
+            //TODO: add requested statuses and change how setting statuses works/permission checks
             if let Some(status) = &new_project.status {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
@@ -502,17 +509,6 @@ pub async fn project_edit(
                     }
                 }
 
-                let status_id = database::models::StatusId::get_id(
-                    status,
-                    &mut *transaction,
-                )
-                .await?
-                .ok_or_else(|| {
-                    ApiError::InvalidInput(
-                        "No database entry for status provided.".to_string(),
-                    )
-                })?;
-
                 if status == &ProjectStatus::Approved
                     || status == &ProjectStatus::Unlisted
                 {
@@ -534,13 +530,13 @@ pub async fn project_edit(
                     SET status = $1
                     WHERE (id = $2)
                     ",
-                    status_id as database::models::ids::StatusId,
+                    status.as_str(),
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
 
-                if project_item.status.is_searchable()
+                if project_item.inner.status.is_searchable()
                     && !status.is_searchable()
                 {
                     delete_from_index(id.into(), config).await?;
@@ -925,7 +921,7 @@ pub async fn project_edit(
 
             if let Some(moderation_message) = &new_project.moderation_message {
                 if !user.role.is_mod()
-                    && project_item.status != ProjectStatus::Approved
+                    && project_item.inner.status != ProjectStatus::Approved
                 {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the moderation message of this project!"
@@ -950,7 +946,7 @@ pub async fn project_edit(
                 &new_project.moderation_message_body
             {
                 if !user.role.is_mod()
-                    && project_item.status != ProjectStatus::Approved
+                    && project_item.inner.status != ProjectStatus::Approved
                 {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the moderation message body of this project!"

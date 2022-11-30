@@ -37,8 +37,7 @@ pub async fn get_version_from_hash(
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v on f.version_id = v.id
         INNER JOIN mods m on v.mod_id = m.id
-        INNER JOIN statuses s on m.status = s.id
-        WHERE h.algorithm = $2 AND h.hash = $1 AND s.status != $3
+        WHERE h.algorithm = $2 AND h.hash = $1 AND m.status != $3
         ",
         hash.as_bytes(),
         algorithm.algorithm,
@@ -85,8 +84,7 @@ pub async fn download_version(
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
         INNER JOIN mods m on v.mod_id = m.id
-        INNER JOIN statuses s on m.status = s.id
-        WHERE h.algorithm = $2 AND h.hash = $1 AND s.status != $3
+        WHERE h.algorithm = $2 AND h.hash = $1 AND m.status != $3
         ",
         hash.as_bytes(),
         algorithm.algorithm,
@@ -236,8 +234,7 @@ pub async fn get_update_from_hash(
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
         INNER JOIN mods m on v.mod_id = m.id
-        INNER JOIN statuses s on m.status = s.id
-        WHERE h.algorithm = $2 AND h.hash = $1 AND s.status != $3
+        WHERE h.algorithm = $2 AND h.hash = $1 AND m.status != $3
         ",
         hash.as_bytes(),
         algorithm.algorithm,
@@ -308,8 +305,7 @@ pub async fn get_versions_from_hashes(
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
         INNER JOIN mods m on v.mod_id = m.id
-        INNER JOIN statuses s on m.status = s.id
-        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND s.status != $3
+        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND m.status != $3
         ",
         hashes_parsed.as_slice(),
         file_data.algorithm,
@@ -371,8 +367,7 @@ pub async fn download_files(
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
         INNER JOIN mods m on v.mod_id = m.id
-        INNER JOIN statuses s on m.status = s.id
-        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND s.status != $3
+        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND m.status != $3
         ",
         hashes_parsed.as_slice(),
         file_data.algorithm,
@@ -425,8 +420,7 @@ pub async fn update_files(
         INNER JOIN files f ON h.file_id = f.id
         INNER JOIN versions v ON v.id = f.version_id
         INNER JOIN mods m on v.mod_id = m.id
-        INNER JOIN statuses s on m.status = s.id
-        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND s.status != $3
+        WHERE h.algorithm = $2 AND h.hash = ANY($1::bytea[]) AND m.status != $3
         ",
         hashes_parsed.as_slice(),
         update_data.algorithm,
