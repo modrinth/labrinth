@@ -1,7 +1,8 @@
 use super::ids::*;
 use crate::database::models::User;
 use crate::models::teams::Permissions;
-use crate::models::users::Badges;
+use crate::models::users::{Badges, RecipientType, RecipientWallet};
+use rust_decimal::Decimal;
 
 pub struct TeamBuilder {
     pub members: Vec<TeamMemberBuilder>,
@@ -11,7 +12,7 @@ pub struct TeamMemberBuilder {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
-    pub payouts_split: f32,
+    pub payouts_split: Decimal,
 }
 
 impl TeamBuilder {
@@ -81,7 +82,7 @@ pub struct TeamMember {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
-    pub payouts_split: f32,
+    pub payouts_split: Decimal,
 }
 
 /// A member of a team
@@ -93,7 +94,7 @@ pub struct QueryTeamMember {
     pub role: String,
     pub permissions: Permissions,
     pub accepted: bool,
-    pub payouts_split: f32,
+    pub payouts_split: Decimal,
 }
 
 impl TeamMember {
@@ -157,7 +158,9 @@ impl TeamMember {
             SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, u.badges badges
+            u.created created, u.role user_role, u.badges badges, u.balance balance,
+            u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,
+            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             WHERE tm.team_id = $1
@@ -185,6 +188,11 @@ impl TeamMember {
                             created: m.created,
                             role: m.user_role,
                             badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
+                            balance: m.balance,
+                            payout_wallet: m.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
+                            payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
+                            payout_address: m.payout_address,
+                            flame_anvil_key: m.flame_anvil_key,
                         },
                         payouts_split: m.payouts_split
                     })))
@@ -219,7 +227,9 @@ impl TeamMember {
             SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split,
             u.id user_id, u.github_id github_id, u.name user_name, u.email email,
             u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, u.badges badges
+            u.created created, u.role user_role, u.badges badges, u.balance balance,
+            u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,
+            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             WHERE tm.team_id = ANY($1)
@@ -248,6 +258,11 @@ impl TeamMember {
                               created: m.created,
                               role: m.user_role,
                               badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
+                              balance: m.balance,
+                              payout_wallet: m.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
+                              payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
+                              payout_address: m.payout_address,
+                              flame_anvil_key: m.flame_anvil_key,
                           },
                           payouts_split: m.payouts_split
                       })))
@@ -504,15 +519,24 @@ impl TeamMember {
         Ok(())
     }
 
-    pub async fn delete<'a, 'b, E>(
+    pub async fn delete<'a, 'b>(
         id: TeamId,
         user_id: UserId,
-        executor: E,
-    ) -> Result<(), super::DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        let result = sqlx::query!(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), super::DatabaseError> {
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET flame_anvil_user = NULL
+            WHERE (team_id = $1 AND flame_anvil_user = $2 )
+            ",
+            id as TeamId,
+            user_id as UserId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
             "
             DELETE FROM team_members
             WHERE (team_id = $1 AND user_id = $2 AND NOT role = $3)
@@ -521,15 +545,8 @@ impl TeamMember {
             user_id as UserId,
             crate::models::teams::OWNER_ROLE,
         )
-        .execute(executor)
+        .execute(&mut *transaction)
         .await?;
-
-        if result.rows_affected() != 1 {
-            return Err(super::DatabaseError::Other(format!(
-                "Deleting a member failed; {} rows deleted",
-                result.rows_affected()
-            )));
-        }
 
         Ok(())
     }
@@ -540,7 +557,7 @@ impl TeamMember {
         new_permissions: Option<Permissions>,
         new_role: Option<String>,
         new_accepted: Option<bool>,
-        new_payouts_split: Option<f32>,
+        new_payouts_split: Option<Decimal>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), super::DatabaseError> {
         if let Some(permissions) = new_permissions {

@@ -5,6 +5,7 @@ use crate::models::projects::{
     DonationLink, License, ProjectId, ProjectStatus, SideType, VersionId,
 };
 use crate::models::users::UserId;
+use crate::queue::flameanvil::FlameAnvilQueue;
 use crate::routes::version_creation::InitialVersionData;
 use crate::search::indexing::IndexingError;
 use crate::util::auth::{get_user_from_headers, AuthenticationError};
@@ -17,16 +18,18 @@ use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex;
 use validator::Validate;
 
 #[derive(Error, Debug)]
 pub enum CreateError {
     #[error("Environment Error")]
-    EnvError(#[from] dotenv::Error),
+    EnvError(#[from] dotenvy::Error),
     #[error("An unknown database error occurred")]
     SqlxDatabaseError(#[from] sqlx::Error),
     #[error("Database Error: {0}")]
@@ -39,7 +42,7 @@ pub enum CreateError {
     SerDeError(#[from] serde_json::Error),
     #[error("Error while validating input: {0}")]
     ValidationError(String),
-    #[error("Error while uploading file")]
+    #[error("Error while uploading file: {0}")]
     FileHostingError(#[from] FileHostingError),
     #[error("Error while validating uploaded file: {0}")]
     FileValidationError(#[from] crate::validate::ValidationError),
@@ -130,7 +133,7 @@ fn default_project_type() -> String {
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
 struct ProjectCreateData {
-    #[validate(length(min = 3, max = 256))]
+    #[validate(length(min = 3, max = 64))]
     #[serde(alias = "mod_name")]
     /// The title or name of the project.
     pub title: String,
@@ -145,7 +148,7 @@ struct ProjectCreateData {
     #[serde(alias = "mod_slug")]
     /// The slug of a project, used for vanity URLs
     pub slug: String,
-    #[validate(length(min = 3, max = 2048))]
+    #[validate(length(min = 3, max = 255))]
     #[serde(alias = "mod_description")]
     /// A short description of the project.
     pub description: String,
@@ -254,6 +257,7 @@ pub async fn project_create(
     mut payload: Multipart,
     client: Data<PgPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
+    flame_anvil_queue: Data<Arc<Mutex<FlameAnvilQueue>>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -263,6 +267,7 @@ pub async fn project_create(
         &mut payload,
         &mut transaction,
         &***file_host,
+        &flame_anvil_queue,
         &mut uploaded_files,
     )
     .await;
@@ -274,9 +279,7 @@ pub async fn project_create(
         // fix multipart error bug:
         payload.for_each(|_| ready(())).await;
 
-        if let Err(e) = undo_result {
-            return Err(e);
-        }
+        undo_result?;
         if let Err(e) = rollback_result {
             return Err(e.into());
         }
@@ -321,10 +324,11 @@ pub async fn project_create_inner(
     payload: &mut Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
+    flame_anvil_queue: &Mutex<FlameAnvilQueue>,
     uploaded_files: &mut Vec<UploadedFile>,
 ) -> Result<HttpResponse, CreateError> {
     // The base URL for files uploaded to backblaze
-    let cdn_url = dotenv::var("CDN_URL")?;
+    let cdn_url = dotenvy::var("CDN_URL")?;
 
     // The currently logged in user
     let current_user =
@@ -381,7 +385,7 @@ pub async fn project_create_inner(
         })?;
 
         let slug_project_id_option: Option<ProjectId> =
-            serde_json::from_str(&*format!("\"{}\"", create_data.slug)).ok();
+            serde_json::from_str(&format!("\"{}\"", create_data.slug)).ok();
 
         if let Some(slug_project_id) = slug_project_id_option {
             let slug_project_id: models::ids::ProjectId =
@@ -563,6 +567,7 @@ pub async fn project_create_inner(
         super::version_creation::upload_file(
             &mut field,
             file_host,
+            version_data.file_parts.len(),
             uploaded_files,
             &mut created_version.files,
             &mut created_version.dependencies,
@@ -570,12 +575,18 @@ pub async fn project_create_inner(
             &content_disposition,
             project_id,
             created_version.version_id.into(),
-            &*project_create_data.project_type,
+            &project_create_data.project_type,
             version_data.loaders.clone(),
             version_data.game_versions.clone(),
             all_game_versions.clone(),
             version_data.primary_file.is_some(),
             version_data.primary_file.as_deref() == Some(name),
+            version_data.version_title.clone(),
+            version_data.version_body.clone().unwrap_or_default(),
+            version_data.release_channel.clone().to_string(),
+            flame_anvil_queue,
+            None,
+            None,
             transaction,
         )
         .await?;
@@ -628,7 +639,7 @@ pub async fn project_create_inner(
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
                 permissions: crate::models::teams::Permissions::ALL,
                 accepted: true,
-                payouts_split: 100.0,
+                payouts_split: Decimal::ONE_HUNDRED,
             }],
         };
 
@@ -677,16 +688,16 @@ pub async fn project_create_inner(
             )
         })?;
 
-        let license_id = models::categories::License::get_id(
+        let license_id = spdx::Expression::parse(
             &project_create_data.license_id,
-            &mut *transaction,
         )
-        .await?
-        .ok_or_else(|| {
-            CreateError::InvalidInput(
-                "License specified does not exist.".to_string(),
-            )
+        .map_err(|err| {
+            CreateError::InvalidInput(format!(
+                "Invalid SPDX license identifier: {}",
+                err
+            ))
         })?;
+
         let mut donation_urls = vec![];
 
         if let Some(urls) = &project_create_data.donation_urls {
@@ -733,7 +744,7 @@ pub async fn project_create_inner(
             status: status_id,
             client_side: client_side_id,
             server_side: server_side_id,
-            license: license_id,
+            license: license_id.to_string(),
             slug: Some(project_create_data.slug),
             donation_urls,
             gallery_items: gallery_urls
@@ -788,12 +799,15 @@ pub async fn project_create_inner(
             discord_url: project_builder.discord_url.clone(),
             donation_urls: project_create_data.donation_urls.clone(),
             gallery: gallery_urls,
+            flame_anvil_project: None,
+            flame_anvil_user: None,
         };
 
         let _project_id = project_builder.insert(&mut *transaction).await?;
 
         if status == ProjectStatus::Processing {
-            if let Ok(webhook_url) = dotenv::var("MODERATION_DISCORD_WEBHOOK") {
+            if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK")
+            {
                 crate::util::webhook::send_discord_moderation_webhook(
                     response.clone(),
                     webhook_url,
@@ -875,10 +889,7 @@ async fn create_initial_version(
         author_id: author.into(),
         name: version_data.version_title.clone(),
         version_number: version_data.version_number.clone(),
-        changelog: version_data
-            .version_body
-            .clone()
-            .unwrap_or_else(|| "".to_string()),
+        changelog: version_data.version_body.clone().unwrap_or_default(),
         files: Vec::new(),
         dependencies,
         game_versions,

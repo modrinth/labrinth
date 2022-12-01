@@ -10,19 +10,23 @@ use crate::models::projects::{
     VersionFile, VersionId, VersionType,
 };
 use crate::models::teams::Permissions;
+use crate::queue::flameanvil::{FlameAnvilQueue, UploadFile};
 use crate::routes::project_creation::{CreateError, UploadedFile};
 use crate::util::auth::get_user_from_headers;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
-use crate::validate::{validate_file, ValidationResult};
+use crate::validate::plugin::PluginYmlValidator;
+use crate::validate::{validate_file, ValidationResult, Validator};
 use actix::fut::ready;
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
-use actix_web::{post, HttpRequest, HttpResponse};
+use actix_web::{post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use validator::Validate;
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -32,18 +36,18 @@ pub struct InitialVersionData {
     #[validate(length(min = 1, max = 256))]
     pub file_parts: Vec<String>,
     #[validate(
-        length(min = 1, max = 64),
+        length(min = 1, max = 32),
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
     pub version_number: String,
-    #[validate(length(min = 1, max = 256))]
+    #[validate(length(min = 1, max = 64))]
     #[serde(alias = "name")]
     pub version_title: String,
     #[validate(length(max = 65536))]
     #[serde(alias = "changelog")]
     pub version_body: Option<String>,
     #[validate(
-        length(min = 0, max = 256),
+        length(min = 0, max = 4096),
         custom(function = "crate::util::validate::validate_deps")
     )]
     pub dependencies: Vec<Dependency>,
@@ -68,7 +72,8 @@ pub async fn version_create(
     req: HttpRequest,
     mut payload: Multipart,
     client: Data<PgPool>,
-    file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
+    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
+    flame_anvil_queue: Data<Arc<Mutex<FlameAnvilQueue>>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -78,6 +83,7 @@ pub async fn version_create(
         &mut payload,
         &mut transaction,
         &***file_host,
+        &flame_anvil_queue,
         &mut uploaded_files,
     )
     .await;
@@ -92,9 +98,7 @@ pub async fn version_create(
 
         payload.for_each(|_| ready(())).await;
 
-        if let Err(e) = undo_result {
-            return Err(e);
-        }
+        undo_result?;
         if let Err(e) = rollback_result {
             return Err(e.into());
         }
@@ -110,9 +114,10 @@ async fn version_create_inner(
     payload: &mut Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
+    flame_anvil_queue: &Mutex<FlameAnvilQueue>,
     uploaded_files: &mut Vec<UploadedFile>,
 ) -> Result<HttpResponse, CreateError> {
-    let cdn_url = dotenv::var("CDN_URL")?;
+    let cdn_url = dotenvy::var("CDN_URL")?;
 
     let mut initial_version_data = None;
     let mut version_builder = None;
@@ -262,7 +267,7 @@ async fn version_create_inner(
                 changelog: version_create_data
                     .version_body
                     .clone()
-                    .unwrap_or_else(|| "".to_string()),
+                    .unwrap_or_default(),
                 files: Vec::new(),
                 dependencies,
                 game_versions,
@@ -282,15 +287,28 @@ async fn version_create_inner(
 
         let project_type = sqlx::query!(
             "
-                SELECT name FROM project_types pt
-                INNER JOIN mods ON mods.project_type = pt.id
-                WHERE mods.id = $1
-                ",
+            SELECT name FROM project_types pt
+            INNER JOIN mods ON mods.project_type = pt.id
+            WHERE mods.id = $1
+            ",
             version.project_id as models::ProjectId,
         )
         .fetch_one(&mut *transaction)
         .await?
         .name;
+
+        let flame_anvil_info = sqlx::query!(
+            "
+            SELECT m.flame_anvil_project, u.flame_anvil_key
+            FROM mods m
+            INNER JOIN users u ON m.flame_anvil_user = u.id
+            WHERE m.id = $1
+            ",
+            version.project_id as models::ProjectId,
+        )
+        .fetch_optional(&mut *transaction)
+        .await?
+        .map(|x| (x.flame_anvil_project, x.flame_anvil_key));
 
         let version_data = initial_version_data.clone().ok_or_else(|| {
             CreateError::InvalidInput("`data` field is required".to_string())
@@ -299,6 +317,7 @@ async fn version_create_inner(
         upload_file(
             &mut field,
             file_host,
+            version_data.file_parts.len(),
             uploaded_files,
             &mut version.files,
             &mut version.dependencies,
@@ -306,12 +325,18 @@ async fn version_create_inner(
             &content_disposition,
             version.project_id.into(),
             version.version_id.into(),
-            &*project_type,
+            &project_type,
             version_data.loaders,
             version_data.game_versions,
             all_game_versions.clone(),
             version_data.primary_file.is_some(),
             version_data.primary_file.as_deref() == Some(name),
+            version_data.version_title.clone(),
+            version_data.version_body.clone().unwrap_or_default(),
+            version_data.release_channel.clone().to_string(),
+            flame_anvil_queue,
+            flame_anvil_info.clone().and_then(|x| x.0),
+            flame_anvil_info.and_then(|x| x.1),
             transaction,
         )
         .await?;
@@ -346,9 +371,9 @@ async fn version_create_inner(
 
     let users = sqlx::query!(
         "
-            SELECT follower_id FROM mod_follows
-            WHERE mod_id = $1
-            ",
+        SELECT follower_id FROM mod_follows
+        WHERE mod_id = $1
+        ",
         builder.project_id as crate::database::models::ids::ProjectId
     )
     .fetch_many(&mut *transaction)
@@ -365,7 +390,7 @@ async fn version_create_inner(
         notification_type: Some("project_update".to_string()),
         title: format!("**{}** has been updated!", result.title),
         text: format!(
-            "The project, {}, has released a new version: {}",
+            "The project {} has released a new version: {}",
             result.title,
             version_data.version_number.clone()
         ),
@@ -430,10 +455,11 @@ async fn version_create_inner(
 #[post("{version_id}/file")]
 pub async fn upload_file_to_version(
     req: HttpRequest,
-    url_data: actix_web::web::Path<(VersionId,)>,
+    url_data: web::Path<(VersionId,)>,
     mut payload: Multipart,
     client: Data<PgPool>,
-    file_host: Data<std::sync::Arc<dyn FileHost + Send + Sync>>,
+    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
+    flame_anvil_queue: Data<Arc<Mutex<FlameAnvilQueue>>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -446,6 +472,7 @@ pub async fn upload_file_to_version(
         client,
         &mut transaction,
         &***file_host,
+        &flame_anvil_queue,
         &mut uploaded_files,
         version_id,
     )
@@ -461,9 +488,7 @@ pub async fn upload_file_to_version(
 
         payload.for_each(|_| ready(())).await;
 
-        if let Err(e) = undo_result {
-            return Err(e);
-        }
+        undo_result?;
         if let Err(e) = rollback_result {
             return Err(e.into());
         }
@@ -474,16 +499,18 @@ pub async fn upload_file_to_version(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn upload_file_to_version_inner(
     req: HttpRequest,
     payload: &mut Multipart,
     client: Data<PgPool>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     file_host: &dyn FileHost,
+    flame_anvil_queue: &Mutex<FlameAnvilQueue>,
     uploaded_files: &mut Vec<UploadedFile>,
     version_id: models::VersionId,
 ) -> Result<HttpResponse, CreateError> {
-    let cdn_url = dotenv::var("CDN_URL")?;
+    let cdn_url = dotenvy::var("CDN_URL")?;
 
     let mut initial_file_data: Option<InitialFileData> = None;
     let mut file_builders: Vec<VersionFileBuilder> = Vec::new();
@@ -582,6 +609,7 @@ async fn upload_file_to_version_inner(
         upload_file(
             &mut field,
             file_host,
+            0,
             uploaded_files,
             &mut file_builders,
             &mut dependencies,
@@ -589,7 +617,7 @@ async fn upload_file_to_version_inner(
             &content_disposition,
             project_id,
             version_id.into(),
-            &*project_type,
+            &project_type,
             version.loaders.clone().into_iter().map(Loader).collect(),
             version
                 .game_versions
@@ -600,6 +628,12 @@ async fn upload_file_to_version_inner(
             all_game_versions.clone(),
             true,
             false,
+            version.name.clone(),
+            version.changelog.clone(),
+            version.version_type.clone(),
+            flame_anvil_queue,
+            None,
+            None,
             transaction,
         )
         .await?;
@@ -624,6 +658,7 @@ async fn upload_file_to_version_inner(
 pub async fn upload_file(
     field: &mut Field,
     file_host: &dyn FileHost,
+    total_files_len: usize,
     uploaded_files: &mut Vec<UploadedFile>,
     version_files: &mut Vec<VersionFileBuilder>,
     dependencies: &mut Vec<DependencyBuilder>,
@@ -637,6 +672,12 @@ pub async fn upload_file(
     all_game_versions: Vec<models::categories::GameVersion>,
     ignore_primary: bool,
     force_primary: bool,
+    version_display_name: String,
+    version_changelog: String,
+    version_type: String,
+    flame_anvil_queue: &Mutex<FlameAnvilQueue>,
+    flame_anvil_project: Option<i32>,
+    flame_anvil_key: Option<String>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<(), CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
@@ -676,9 +717,9 @@ pub async fn upload_file(
         data.clone().into(),
         file_extension.to_string(),
         project_type.to_string(),
-        loaders,
-        game_versions,
-        all_game_versions,
+        loaders.clone(),
+        game_versions.clone(),
+        all_game_versions.clone(),
     )
     .await?;
 
@@ -749,6 +790,50 @@ pub async fn upload_file(
         }
     }
 
+    let data = data.freeze();
+
+    let primary = (validation_result.is_passed()
+        && version_files.iter().all(|x| !x.primary)
+        && !ignore_primary)
+        || force_primary
+        || total_files_len == 1;
+
+    if primary {
+        if let Some(project_id) = flame_anvil_project {
+            if let Some(key) = flame_anvil_key {
+                let mut flame_anvil_queue = flame_anvil_queue.lock().await;
+
+                let is_plugin = loaders.iter().any(|x| {
+                    PluginYmlValidator {}
+                        .get_supported_loaders()
+                        .contains(&&*x.0)
+                });
+
+                flame_anvil_queue
+                    .upload_file(
+                        &key,
+                        project_id,
+                        UploadFile {
+                            loaders: loaders.into_iter().map(|x| x.0).collect(),
+                            game_versions: game_versions
+                                .into_iter()
+                                .map(|x| x.0)
+                                .collect(),
+                            display_name: version_display_name,
+                            changelog: version_changelog,
+                            version_type,
+                        },
+                        &all_game_versions,
+                        data.to_vec(),
+                        file_name.to_string(),
+                        content_type.to_string(),
+                        is_plugin,
+                    )
+                    .await?;
+            }
+        }
+    }
+
     let file_path_encode = format!(
         "data/{}/versions/{}/{}",
         project_id,
@@ -759,7 +844,7 @@ pub async fn upload_file(
         format!("data/{}/versions/{}/{}", project_id, version_id, &file_name);
 
     let upload_data = file_host
-        .upload_file(content_type, &file_path, data.freeze())
+        .upload_file(content_type, &file_path, data)
         .await?;
 
     uploaded_files.push(UploadedFile {
@@ -781,7 +866,7 @@ pub async fn upload_file(
         ));
     }
 
-    version_files.push(models::version_item::VersionFileBuilder {
+    version_files.push(VersionFileBuilder {
         filename: file_name.to_string(),
         url: format!("{}/{}", cdn_url, file_path_encode),
         hashes: vec![
@@ -798,10 +883,7 @@ pub async fn upload_file(
                 hash: sha512_bytes,
             },
         ],
-        primary: (validation_result.is_passed()
-            && version_files.iter().all(|x| !x.primary)
-            && !ignore_primary)
-            || force_primary,
+        primary,
         size: upload_data.content_length,
     });
 

@@ -82,7 +82,7 @@ pub async fn send_discord_moderation_webhook(
     let embed = DiscordEmbed {
         url: format!(
             "{}/{}/{}",
-            dotenv::var("SITE_URL").unwrap_or_default(),
+            dotenvy::var("SITE_URL").unwrap_or_default(),
             project.project_type,
             project
                 .clone()

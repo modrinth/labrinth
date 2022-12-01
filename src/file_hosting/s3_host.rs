@@ -21,11 +21,17 @@ impl S3Host {
         access_token: &str,
         secret: &str,
     ) -> Result<S3Host, FileHostingError> {
-        let mut bucket = Bucket::new(
+        let bucket = Bucket::new(
             bucket_name,
-            Region::Custom {
-                region: bucket_region.to_string(),
-                endpoint: url.to_string(),
+            if bucket_region == "r2" {
+                Region::R2 {
+                    account_id: url.to_string(),
+                }
+            } else {
+                Region::Custom {
+                    region: bucket_region.to_string(),
+                    endpoint: url.to_string(),
+                }
             },
             Credentials::new(
                 Some(access_token),
@@ -46,8 +52,6 @@ impl S3Host {
             )
         })?;
 
-        bucket.add_header("x-amz-acl", "public-read");
-
         Ok(S3Host { bucket })
     }
 }
@@ -61,13 +65,12 @@ impl FileHost for S3Host {
         file_bytes: Bytes,
     ) -> Result<UploadFileData, FileHostingError> {
         let content_sha1 = sha1::Sha1::from(&file_bytes).hexdigest();
-        let content_sha512 =
-            format!("{:x}", sha2::Sha512::digest(&*file_bytes));
+        let content_sha512 = format!("{:x}", sha2::Sha512::digest(&file_bytes));
 
         self.bucket
             .put_object_with_content_type(
                 format!("/{}", file_name),
-                &*file_bytes,
+                &file_bytes,
                 content_type,
             )
             .await

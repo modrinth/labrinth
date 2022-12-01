@@ -1,7 +1,7 @@
 use crate::database;
 use crate::database::models;
 use crate::database::models::project_item::QueryProject;
-use crate::models::users::{Role, User, UserId};
+use crate::models::users::{Role, User, UserId, UserPayoutData};
 use crate::routes::ApiError;
 use actix_web::http::header::HeaderMap;
 use actix_web::web;
@@ -73,6 +73,13 @@ where
             created: result.created,
             role: Role::from_string(&result.role),
             badges: result.badges,
+            payout_data: Some(UserPayoutData {
+                balance: result.balance,
+                payout_wallet: result.payout_wallet,
+                payout_wallet_type: result.payout_wallet_type,
+                payout_address: result.payout_address,
+            }),
+            has_flame_anvil_key: Some(result.flame_anvil_key.is_some()),
         }),
         None => Err(AuthenticationError::InvalidCredentials),
     }

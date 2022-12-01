@@ -135,7 +135,7 @@ pub async fn versions_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let version_ids =
-        serde_json::from_str::<Vec<models::ids::VersionId>>(&*ids.ids)?
+        serde_json::from_str::<Vec<models::ids::VersionId>>(&ids.ids)?
             .into_iter()
             .map(|x| x.into())
             .collect();
@@ -167,10 +167,10 @@ pub async fn version_get(
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct EditVersion {
-    #[validate(length(min = 1, max = 256))]
+    #[validate(length(min = 1, max = 64))]
     pub name: Option<String>,
     #[validate(
-        length(min = 1, max = 64),
+        length(min = 1, max = 32),
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
     pub version_number: Option<String>,
@@ -178,7 +178,7 @@ pub struct EditVersion {
     pub changelog: Option<String>,
     pub version_type: Option<models::projects::VersionType>,
     #[validate(
-        length(min = 0, max = 256),
+        length(min = 0, max = 4096),
         custom(function = "crate::util::validate::validate_deps")
     )]
     pub dependencies: Option<Vec<Dependency>>,

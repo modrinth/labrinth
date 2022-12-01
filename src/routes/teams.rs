@@ -8,6 +8,7 @@ use crate::models::users::UserId;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -114,7 +115,7 @@ pub async fn teams_get(
 ) -> Result<HttpResponse, ApiError> {
     use itertools::Itertools;
 
-    let team_ids = serde_json::from_str::<Vec<TeamId>>(&*ids.ids)?
+    let team_ids = serde_json::from_str::<Vec<TeamId>>(&ids.ids)?
         .into_iter()
         .map(|x| x.into())
         .collect::<Vec<crate::database::models::ids::TeamId>>();
@@ -216,7 +217,7 @@ pub struct NewTeamMember {
     #[serde(default = "Permissions::default")]
     pub permissions: Permissions,
     #[serde(default)]
-    pub payouts_split: f32,
+    pub payouts_split: Decimal,
 }
 
 #[post("{id}/members")]
@@ -259,7 +260,9 @@ pub async fn add_team_member(
         ));
     }
 
-    if !(0.0..=5000.0).contains(&new_member.payouts_split) {
+    if new_member.payouts_split < Decimal::ZERO
+        || new_member.payouts_split > Decimal::from(5000)
+    {
         return Err(ApiError::InvalidInput(
             "Payouts split must be between 0 and 5000!".to_string(),
         ));
@@ -360,7 +363,7 @@ pub async fn add_team_member(
 pub struct EditTeamMember {
     pub permissions: Option<Permissions>,
     pub role: Option<String>,
-    pub payouts_split: Option<f32>,
+    pub payouts_split: Option<Decimal>,
 }
 
 #[patch("{id}/members/{user_id}")]
@@ -396,9 +399,12 @@ pub async fn edit_team_member(
 
     let mut transaction = pool.begin().await?;
 
-    if &*edit_member_db.role == crate::models::teams::OWNER_ROLE {
+    if &*edit_member_db.role == crate::models::teams::OWNER_ROLE
+        && (edit_member.role.is_some() || edit_member.permissions.is_some())
+    {
         return Err(ApiError::InvalidInput(
-            "The owner of a team cannot be edited".to_string(),
+            "The owner's permission and role of a team cannot be edited"
+                .to_string(),
         ));
     }
 
@@ -419,7 +425,8 @@ pub async fn edit_team_member(
     }
 
     if let Some(payouts_split) = edit_member.payouts_split {
-        if !(0.0..=5000.0).contains(&payouts_split) {
+        if payouts_split < Decimal::ZERO || payouts_split > Decimal::from(5000)
+        {
             return Err(ApiError::InvalidInput(
                 "Payouts split must be between 0 and 5000!".to_string(),
             ));
@@ -565,6 +572,8 @@ pub async fn remove_team_member(
             ));
         }
 
+        let mut transaction = pool.begin().await?;
+
         if delete_member.accepted {
             // Members other than the owner can either leave the team, or be
             // removed by a member with the REMOVE_MEMBER permission.
@@ -572,7 +581,7 @@ pub async fn remove_team_member(
                 || (member.permissions.contains(Permissions::REMOVE_MEMBER)
                     && member.accepted)
             {
-                TeamMember::delete(id, user_id, &**pool).await?;
+                TeamMember::delete(id, user_id, &mut transaction).await?;
             } else {
                 return Err(ApiError::CustomAuthentication(
                     "You do not have permission to remove a member from this team".to_string(),
@@ -585,13 +594,15 @@ pub async fn remove_team_member(
             // This is a pending invite rather than a member, so the
             // user being invited or team members with the MANAGE_INVITES
             // permission can remove it.
-            TeamMember::delete(id, user_id, &**pool).await?;
+            TeamMember::delete(id, user_id, &mut transaction).await?;
         } else {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to cancel a team invite"
                     .to_string(),
             ));
         }
+
+        transaction.commit().await?;
         Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))

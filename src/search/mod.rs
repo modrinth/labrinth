@@ -24,7 +24,7 @@ pub enum SearchError {
     #[error("Error while formatting strings: {0}")]
     FormatError(#[from] std::fmt::Error),
     #[error("Environment Error")]
-    Env(#[from] dotenv::Error),
+    Env(#[from] dotenvy::Error),
     #[error("Invalid index to sort by: {0}")]
     InvalidIndex(String),
 }
@@ -97,6 +97,7 @@ pub struct UploadSearchProject {
     pub date_modified: DateTime<Utc>,
     /// Unix timestamp of the last major modification
     pub modified_timestamp: i64,
+    pub open_source: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -223,7 +224,7 @@ pub async fn search_for_project(
                     write!(filter_string, " AND ({})", filters)?;
                 }
             } else {
-                filter_string.push_str(&*filters);
+                filter_string.push_str(&filters);
             }
 
             if !filter_string.is_empty() {

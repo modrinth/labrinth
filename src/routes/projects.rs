@@ -1,6 +1,7 @@
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models;
+use crate::models::ids::UserId;
 use crate::models::projects::{
     DonationLink, Project, ProjectId, ProjectStatus, SearchRequest, SideType,
 };
@@ -24,7 +25,7 @@ pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
-    let results = search_for_project(&info, &**config).await?;
+    let results = search_for_project(&info, &config).await?;
     Ok(HttpResponse::Ok().json(results))
 }
 
@@ -39,7 +40,7 @@ pub async fn projects_get(
     web::Query(ids): web::Query<ProjectIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let project_ids = serde_json::from_str::<Vec<ProjectId>>(&*ids.ids)?
+    let project_ids = serde_json::from_str::<Vec<ProjectId>>(&ids.ids)?
         .into_iter()
         .map(|x| x.into())
         .collect();
@@ -95,7 +96,7 @@ pub async fn project_get_check(
 ) -> Result<HttpResponse, ApiError> {
     let slug = info.into_inner().0;
 
-    let id_option = models::ids::base62_impl::parse_base62(&*slug).ok();
+    let id_option = models::ids::base62_impl::parse_base62(&slug).ok();
 
     let id = if let Some(id) = id_option {
         let id = sqlx::query!(
@@ -251,9 +252,9 @@ pub async fn dependency_list(
 /// A project returned from the API
 #[derive(Serialize, Deserialize, Validate)]
 pub struct EditProject {
-    #[validate(length(min = 3, max = 256))]
+    #[validate(length(min = 3, max = 64))]
     pub title: Option<String>,
-    #[validate(length(min = 3, max = 2048))]
+    #[validate(length(min = 3, max = 256))]
     pub description: Option<String>,
     #[validate(length(max = 65536))]
     pub body: Option<String>,
@@ -341,6 +342,18 @@ pub struct EditProject {
     )]
     #[validate(length(max = 65536))]
     pub moderation_message_body: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub flame_anvil_user: Option<Option<UserId>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub flame_anvil_project: Option<Option<i32>>,
 }
 
 #[patch("{id}")]
@@ -478,7 +491,7 @@ pub async fn project_edit(
                     .await?;
 
                     if let Ok(webhook_url) =
-                        dotenv::var("MODERATION_DISCORD_WEBHOOK")
+                        dotenvy::var("MODERATION_DISCORD_WEBHOOK")
                     {
                         crate::util::webhook::send_discord_moderation_webhook(
                             Project::from(project_item.clone()),
@@ -758,7 +771,7 @@ pub async fn project_edit(
 
                 if let Some(slug) = slug {
                     let slug_project_id_option: Option<ProjectId> =
-                        serde_json::from_str(&*format!("\"{}\"", slug)).ok();
+                        serde_json::from_str(&format!("\"{}\"", slug)).ok();
                     if let Some(slug_project_id) = slug_project_id_option {
                         let slug_project_id: database::models::ids::ProjectId =
                             slug_project_id.into();
@@ -857,12 +870,18 @@ pub async fn project_edit(
                     ));
                 }
 
-                let license_id = database::models::categories::License::get_id(
-                    license,
-                    &mut *transaction,
-                )
-                .await?
-                .expect("No database entry found for license");
+                let mut license = license.clone();
+
+                if license.to_lowercase() == "arr" {
+                    license = models::projects::DEFAULT_LICENSE_ID.to_string();
+                }
+
+                spdx::Expression::parse(&*license).map_err(|err| {
+                    ApiError::InvalidInput(format!(
+                        "Invalid SPDX license identifier: {}",
+                        err
+                    ))
+                })?;
 
                 sqlx::query!(
                     "
@@ -870,7 +889,7 @@ pub async fn project_edit(
                     SET license = $1
                     WHERE (id = $2)
                     ",
-                    license_id as database::models::LicenseId,
+                    license,
                     id as database::models::ids::ProjectId,
                 )
                 .execute(&mut *transaction)
@@ -992,6 +1011,92 @@ pub async fn project_edit(
                 .await?;
             }
 
+            if let Some(project) = &new_project.flame_anvil_project {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the external syncing project!"
+                            .to_string(),
+                    ));
+                }
+
+                if project_item.project_type == "modpack" {
+                    return Err(ApiError::InvalidInput(
+                        "This project syncing feature is not available for modpacks!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET flame_anvil_project = $1
+                    WHERE (id = $2)
+                    ",
+                    *project,
+                    id as database::models::ids::ProjectId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+
+            if let Some(user_id) = &new_project.flame_anvil_user {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the syncing user for this project!"
+                            .to_string(),
+                    ));
+                }
+
+                if project_item.project_type == "modpack" {
+                    return Err(ApiError::InvalidInput(
+                        "This project syncing feature is not available for modpacks!"
+                            .to_string(),
+                    ));
+                }
+
+                if let Some(user_id) = user_id {
+                    if user_id != &user.id && !user.role.is_admin() {
+                        return Err(ApiError::InvalidInput(
+                            "You may only set yourself as the syncing user!"
+                                .to_string(),
+                        ));
+                    }
+
+                    let results = sqlx::query!(
+                        "
+                        SELECT EXISTS(
+                            SELECT 1 FROM team_members
+                            INNER JOIN users u on team_members.user_id = u.id AND u.flame_anvil_key IS NOT NULL
+                            WHERE team_id = $1 AND user_id = $2 AND accepted = TRUE
+                        )
+                        ",
+                        project_item.inner.team_id as database::models::ids::TeamId,
+                        database::models::ids::UserId::from(*user_id) as database::models::ids::UserId,
+                    )
+                        .fetch_one(&mut *transaction)
+                        .await?;
+
+                    if !results.exists.unwrap_or(true) {
+                        return Err(ApiError::InvalidInput(
+                            "The given user is not part of your team or does not have a syncing key added to their account!"
+                                .to_string(),
+                        ));
+                    }
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET flame_anvil_user = $1
+                    WHERE (id = $2)
+                    ",
+                    user_id.map(|x| x.0 as i64),
+                    id as database::models::ids::ProjectId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
@@ -1019,9 +1124,9 @@ pub async fn project_icon_edit(
     mut payload: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) =
-        crate::util::ext::get_image_content_type(&*ext.ext)
+        crate::util::ext::get_image_content_type(&ext.ext)
     {
-        let cdn_url = dotenv::var("CDN_URL")?;
+        let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let string = info.into_inner().0;
 
@@ -1059,7 +1164,7 @@ pub async fn project_icon_edit(
         }
 
         if let Some(icon) = project_item.icon_url {
-            let name = icon.split('/').next();
+            let name = icon.split(&format!("{cdn_url}/")).nth(1);
 
             if let Some(icon_path) = name {
                 file_host.delete_file_version("", icon_path).await?;
@@ -1149,8 +1254,9 @@ pub async fn delete_project_icon(
         }
     }
 
+    let cdn_url = dotenvy::var("CDN_URL")?;
     if let Some(icon) = project_item.icon_url {
-        let name = icon.split('/').next();
+        let name = icon.split(&format!("{cdn_url}/")).nth(1);
 
         if let Some(icon_path) = name {
             file_host.delete_file_version("", icon_path).await?;
@@ -1195,13 +1301,13 @@ pub async fn add_gallery_item(
     mut payload: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) =
-        crate::util::ext::get_image_content_type(&*ext.ext)
+        crate::util::ext::get_image_content_type(&ext.ext)
     {
         item.validate().map_err(|err| {
             ApiError::Validation(validation_errors_to_string(err, None))
         })?;
 
-        let cdn_url = dotenv::var("CDN_URL")?;
+        let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let string = info.into_inner().0;
 
@@ -1502,10 +1608,11 @@ pub async fn delete_gallery_item(
     })?
     .id;
 
-    let name = item.url.split('/').next();
+    let cdn_url = dotenvy::var("CDN_URL")?;
+    let name = item.url.split(&format!("{cdn_url}/")).nth(1);
 
-    if let Some(item_path) = name {
-        file_host.delete_file_version("", item_path).await?;
+    if let Some(icon_path) = name {
+        file_host.delete_file_version("", icon_path).await?;
     }
 
     let mut transaction = pool.begin().await?;

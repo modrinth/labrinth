@@ -20,7 +20,7 @@ pub enum IndexingError {
     #[error("Database Error: {0}")]
     Database(#[from] crate::database::models::DatabaseError),
     #[error("Environment Error")]
-    Env(#[from] dotenv::Error),
+    Env(#[from] dotenvy::Error),
     #[error("Error while awaiting index creation task")]
     Task,
 }
@@ -58,15 +58,6 @@ pub async fn index_projects(
 
     // Write Indices
     add_projects(docs_to_add, config).await?;
-
-    Ok(())
-}
-
-pub async fn reset_indices(config: &SearchConfig) -> Result<(), IndexingError> {
-    let client = config.make_client();
-
-    client.delete_index("projects").await?;
-    client.delete_index("projects_filtered").await?;
 
     Ok(())
 }
@@ -226,6 +217,7 @@ const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "date_created",
     "date_modified",
     "project_id",
+    "open_source",
 ];
 
 const DEFAULT_SORTABLE_ATTRIBUTES: &[&str] =

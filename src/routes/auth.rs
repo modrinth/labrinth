@@ -22,6 +22,7 @@ use actix_web::http::StatusCode;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, HttpResponse};
 use chrono::Utc;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use thiserror::Error;
@@ -33,7 +34,7 @@ pub fn config(cfg: &mut ServiceConfig) {
 #[derive(Error, Debug)]
 pub enum AuthorizationError {
     #[error("Environment Error")]
-    Env(#[from] dotenv::Error),
+    Env(#[from] dotenvy::Error),
     #[error("An unknown database error occured: {0}")]
     SqlxDatabase(#[from] sqlx::Error),
     #[error("Database Error: {0}")]
@@ -148,7 +149,7 @@ pub async fn init(
 
     transaction.commit().await?;
 
-    let client_id = dotenv::var("GITHUB_CLIENT_ID")?;
+    let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
     let url = format!(
         "https://github.com/login/oauth/authorize?client_id={}&state={}&scope={}",
         client_id,
@@ -167,7 +168,7 @@ pub async fn auth_callback(
     client: Data<PgPool>,
 ) -> Result<HttpResponse, AuthorizationError> {
     let mut transaction = client.begin().await?;
-    let state_id = parse_base62(&*info.state)?;
+    let state_id = parse_base62(&info.state)?;
 
     let result_option = sqlx::query!(
         "
@@ -196,8 +197,8 @@ pub async fn auth_callback(
         .execute(&mut *transaction)
         .await?;
 
-        let client_id = dotenv::var("GITHUB_CLIENT_ID")?;
-        let client_secret = dotenv::var("GITHUB_CLIENT_SECRET")?;
+        let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
+        let client_secret = dotenvy::var("GITHUB_CLIENT_SECRET")?;
 
         let url = format!(
             "https://github.com/login/oauth/access_token?client_id={}&client_secret={}&code={}",
@@ -212,7 +213,7 @@ pub async fn auth_callback(
             .json()
             .await?;
 
-        let user = get_github_user_from_token(&*token.access_token).await?;
+        let user = get_github_user_from_token(&token.access_token).await?;
 
         let user_result =
             User::get_from_github_id(user.id, &mut *transaction).await?;
@@ -240,7 +241,7 @@ pub async fn auth_callback(
                 while username.is_none() {
                     let test_username = format!(
                         "{}{}",
-                        &*user.login,
+                        &user.login,
                         if username_increment > 0 {
                             username_increment.to_string()
                         } else {
@@ -249,7 +250,7 @@ pub async fn auth_callback(
                     );
 
                     let new_id = crate::database::models::User::get_id_from_username_or_id(
-                        &*test_username,
+                        &test_username,
                         &**client,
                     )
                     .await?;
@@ -273,6 +274,11 @@ pub async fn auth_callback(
                         created: Utc::now(),
                         role: Role::Developer.to_string(),
                         badges: Badges::default(),
+                        balance: Decimal::ZERO,
+                        payout_wallet: None,
+                        payout_wallet_type: None,
+                        payout_address: None,
+                        flame_anvil_key: None,
                     }
                     .insert(&mut transaction)
                     .await?;
