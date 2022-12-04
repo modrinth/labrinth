@@ -1,9 +1,7 @@
 use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
-use crate::models::projects::{
-    DonationLink, License, ProjectId, ProjectStatus, SideType, VersionId,
-};
+use crate::models::projects::{DonationLink, License, ProjectId, ProjectStatus, SideType, VersionId, VersionStatus};
 use crate::models::users::UserId;
 use crate::queue::flameanvil::FlameAnvilQueue;
 use crate::routes::version_creation::InitialVersionData;
@@ -902,7 +900,9 @@ async fn create_initial_version(
         game_versions,
         loaders,
         featured: version_data.featured,
+        status: VersionStatus::Listed,
         version_type: version_data.release_channel.to_string(),
+        requested_status: None,
     };
 
     Ok(version)

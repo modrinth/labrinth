@@ -5,10 +5,7 @@ use crate::database::models::version_item::{
 };
 use crate::file_hosting::FileHost;
 use crate::models::pack::PackFileHash;
-use crate::models::projects::{
-    Dependency, DependencyType, GameVersion, Loader, ProjectId, Version,
-    VersionFile, VersionId, VersionType,
-};
+use crate::models::projects::{Dependency, DependencyType, GameVersion, Loader, ProjectId, Version, VersionFile, VersionId, VersionStatus, VersionType};
 use crate::models::teams::Permissions;
 use crate::queue::flameanvil::{FlameAnvilQueue, UploadFile};
 use crate::routes::project_creation::{CreateError, UploadedFile};
@@ -59,6 +56,7 @@ pub struct InitialVersionData {
     pub loaders: Vec<Loader>,
     pub featured: bool,
     pub primary_file: Option<String>,
+    pub status: VersionStatus,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -159,6 +157,12 @@ async fn version_create_inner(
                     err, None,
                 ))
             })?;
+
+            if !version_create_data.status.can_be_requested() {
+                return Err(CreateError::InvalidInput(
+                    "Status specified cannot be requested".to_string(),
+                ));
+            }
 
             let project_id: models::ProjectId =
                 version_create_data.project_id.unwrap().into();
@@ -274,6 +278,8 @@ async fn version_create_inner(
                 loaders,
                 version_type: version_create_data.release_channel.to_string(),
                 featured: version_create_data.featured,
+                status: version_create_data.status,
+                requested_status: None,
             });
 
             continue;
@@ -415,6 +421,8 @@ async fn version_create_inner(
         date_published: Utc::now(),
         downloads: 0,
         version_type: version_data.release_channel,
+        status: builder.status,
+        requested_status: builder.requested_status,
         files: builder
             .files
             .iter()

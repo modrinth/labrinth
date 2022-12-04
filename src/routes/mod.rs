@@ -67,6 +67,7 @@ pub fn projects_config(cfg: &mut web::ServiceConfig) {
             .service(projects::delete_gallery_item)
             .service(projects::project_follow)
             .service(projects::project_unfollow)
+            .service(projects::project_schedule)
             .service(teams::team_members_get_project)
             .service(
                 web::scope("{project_id}")

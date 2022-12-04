@@ -223,16 +223,16 @@ impl Project {
             INSERT INTO mods (
                 id, team_id, title, description, body,
                 published, downloads, icon_url, issues_url,
-                source_url, wiki_url, status, discord_url,
+                source_url, wiki_url, status, requested_status, discord_url,
                 client_side, server_side, license_url, license,
                 slug, project_type
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8, $9,
-                $10, $11, $12, $13,
-                $14, $15, $16, $17,
-                LOWER($18), $19
+                $10, $11, $12, $13, $14,
+                $15, $16, $17, $18,
+                LOWER($19), $20
             )
             ",
             self.id as ProjectId,
@@ -247,6 +247,7 @@ impl Project {
             self.source_url.as_ref(),
             self.wiki_url.as_ref(),
             self.status.as_str(),
+            self.requested_status.map(|x| x.as_str()),
             self.discord_url.as_ref(),
             self.client_side as SideTypeId,
             self.server_side as SideTypeId,

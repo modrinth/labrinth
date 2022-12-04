@@ -20,14 +20,15 @@ pub async fn get_stats(
     )
     .fetch_one(&**pool);
 
+    // TODO: add version statuses check
     let versions = sqlx::query!(
         "
         SELECT COUNT(v.id)
         FROM versions v
         INNER JOIN mods m on v.mod_id = m.id
         WHERE
-            status = $1 OR
-            status = $2
+            m.status = $1 OR
+            m.status = $2
         ",
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()
@@ -55,8 +56,8 @@ pub async fn get_stats(
         INNER JOIN versions v on f.version_id = v.id
         INNER JOIN mods m on v.mod_id = m.id
         WHERE
-            status = $1 OR
-            status = $2
+            m.status = $1 OR
+            m.status = $2
         ",
         crate::models::projects::ProjectStatus::Approved.as_str(),
         crate::models::projects::ProjectStatus::Archived.as_str()

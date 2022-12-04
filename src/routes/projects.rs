@@ -12,7 +12,7 @@ use crate::util::auth::{get_user_from_headers, is_authorized};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -449,7 +449,6 @@ pub async fn project_edit(
                 .await?;
             }
 
-            //TODO: add requested statuses and change how setting statuses works/permission checks
             if let Some(status) = &new_project.status {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
@@ -458,12 +457,11 @@ pub async fn project_edit(
                     ));
                 }
 
-                if (status == &ProjectStatus::Rejected
-                    || status == &ProjectStatus::Approved)
+                if (status.is_approved() || !status.can_be_requested())
                     && !user.role.is_mod()
                 {
                     return Err(ApiError::CustomAuthentication(
-                        "You don't have permission to set this status"
+                        "You don't have permission to set this status!"
                             .to_string(),
                     ));
                 }
@@ -509,8 +507,7 @@ pub async fn project_edit(
                     }
                 }
 
-                if status == &ProjectStatus::Approved
-                    || status == &ProjectStatus::Unlisted
+                if status.is_approved()
                 {
                     sqlx::query!(
                         "
@@ -541,6 +538,33 @@ pub async fn project_edit(
                 {
                     delete_from_index(id.into(), config).await?;
                 }
+            }
+
+            if let Some(requested_status) = &new_project.requested_status {
+                if !perms.contains(Permissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the requested status of this project!"
+                            .to_string(),
+                    ));
+                }
+
+                if !requested_status.map(|x| x.can_be_requested()).unwrap_or(true) {
+                    return Err(ApiError::InvalidInput(String::from(
+                        "Specified status cannot be requested!",
+                    )));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET requested_status = $1
+                    WHERE (id = $2)
+                    ",
+                    requested_status.map(|x| x.as_str()),
+                    id as database::models::ids::ProjectId,
+                )
+                    .execute(&mut *transaction)
+                    .await?;
             }
 
             if perms.contains(Permissions::EDIT_DETAILS) {
@@ -1085,6 +1109,73 @@ pub async fn project_edit(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
+
+#[derive(Deserialize)]
+pub struct SchedulingData {
+    pub time: DateTime<Utc>,
+    pub requested_status: ProjectStatus,
+}
+
+#[post("{id}/schedule")]
+pub async fn project_schedule(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    scheduling_data: web::Json<SchedulingData>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    if scheduling_data.time < Utc::now() {
+        return Err(ApiError::InvalidInput(
+            "You cannot schedule a project to be released in the past!".to_string(),
+        ));
+    }
+
+    if !scheduling_data.requested_status.can_be_requested() {
+        return Err(ApiError::InvalidInput(
+            "Specified requested status cannot be requested!".to_string(),
+        ));
+    }
+
+    let string = info.into_inner().0;
+    let result = database::models::Project::get_from_slug_or_project_id(
+        &string, &**pool,
+    )
+        .await?;
+
+    if let Some(project_item) = result {
+        let team_member = database::models::TeamMember::get_from_user_id(
+            project_item.team_id,
+            user.id.into(),
+            &**pool,
+        )
+            .await?;
+
+        if user.role.is_mod() || team_member.map(|x| x.permissions.contains(Permissions::EDIT_DETAILS)).unwrap_or(false) {
+            return Err(ApiError::CustomAuthentication(
+                "You do not have permission to edit this project!".to_string(),
+            ));
+        }
+
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET status = $1, approved = $2
+            WHERE (id = $3)
+            ",
+            ProjectStatus::Scheduled.as_str(),
+            scheduling_data.time,
+            project_item.id as database::models::ids::ProjectId,
+        )
+            .execute(&**pool)
+            .await?;
+
+        Ok(HttpResponse::NoContent().body(""))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
 
 #[derive(Serialize, Deserialize)]
 pub struct Extension {

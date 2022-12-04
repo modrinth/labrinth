@@ -4,6 +4,7 @@ use crate::database::models::convert_postgres_date;
 use chrono::{DateTime, Utc};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use crate::models::projects::VersionStatus;
 
 pub struct VersionBuilder {
     pub version_id: VersionId,
@@ -18,6 +19,8 @@ pub struct VersionBuilder {
     pub loaders: Vec<LoaderId>,
     pub version_type: String,
     pub featured: bool,
+    pub status: VersionStatus,
+    pub requested_status: Option<VersionStatus>,
 }
 
 pub struct DependencyBuilder {
@@ -149,6 +152,8 @@ impl VersionBuilder {
             downloads: 0,
             featured: self.featured,
             version_type: self.version_type,
+            status: self.status,
+            requested_status: self.requested_status,
         };
 
         version.insert(&mut *transaction).await?;
@@ -249,6 +254,8 @@ pub struct Version {
     pub downloads: i32,
     pub version_type: String,
     pub featured: bool,
+    pub status: VersionStatus,
+    pub requested_status: Option<VersionStatus>,
 }
 
 impl Version {
@@ -261,13 +268,13 @@ impl Version {
             INSERT INTO versions (
                 id, mod_id, author_id, name, version_number,
                 changelog, changelog_url, date_published,
-                downloads, version_type, featured
+                downloads, version_type, featured, status
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7,
                 $8, $9,
-                $10, $11
+                $10, $11, $12
             )
             ",
             self.id as VersionId,
@@ -280,7 +287,8 @@ impl Version {
             self.date_published,
             self.downloads,
             &self.version_type,
-            self.featured
+            self.featured,
+            self.status.as_str()
         )
         .execute(&mut *transaction)
         .await?;
@@ -531,7 +539,7 @@ impl Version {
             "
             SELECT v.mod_id, v.author_id, v.name, v.version_number,
                 v.changelog, v.changelog_url, v.date_published, v.downloads,
-                v.version_type, v.featured
+                v.version_type, v.featured, v.status, v.requested_status
             FROM versions v
             WHERE v.id = $1
             ",
@@ -553,6 +561,9 @@ impl Version {
                 downloads: row.downloads,
                 version_type: row.version_type,
                 featured: row.featured,
+                status: VersionStatus::from_str(&row.status),
+                requested_status: row.requested_status
+                    .map(|x| VersionStatus::from_str(&x)),
             }))
         } else {
             Ok(None)
@@ -574,7 +585,7 @@ impl Version {
             "
             SELECT v.id, v.mod_id, v.author_id, v.name, v.version_number,
                 v.changelog, v.changelog_url, v.date_published, v.downloads,
-                v.version_type, v.featured
+                v.version_type, v.featured, v.status, v.requested_status
             FROM versions v
             WHERE v.id = ANY($1)
             ORDER BY v.date_published ASC
@@ -595,6 +606,9 @@ impl Version {
                 downloads: v.downloads,
                 featured: v.featured,
                 version_type: v.version_type,
+                status: VersionStatus::from_str(&v.status),
+                requested_status: v.requested_status
+                    .map(|x| VersionStatus::from_str(&x)),
             }))
         })
         .try_collect::<Vec<Version>>()
@@ -614,7 +628,7 @@ impl Version {
             "
             SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
             v.changelog changelog, v.changelog_url changelog_url, v.date_published date_published, v.downloads downloads,
-            v.version_type version_type, v.featured featured,
+            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,
             ARRAY_AGG(DISTINCT gv.version || ' |||| ' || gv.created) filter (where gv.version is not null) game_versions, ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
             ARRAY_AGG(DISTINCT f.id || ' |||| ' || f.is_primary || ' |||| ' || f.size || ' |||| ' || f.url || ' |||| ' || f.filename) filter (where f.id is not null) files,
             ARRAY_AGG(DISTINCT h.algorithm || ' |||| ' || encode(h.hash, 'escape') || ' |||| ' || h.file_id) filter (where h.hash is not null) hashes,
@@ -774,6 +788,9 @@ impl Version {
                     })
                     .collect(),
                 version_type: v.version_type,
+                status: VersionStatus::from_str(&v.status),
+                requested_status: v.requested_status
+                    .map(|x| VersionStatus::from_str(&x)),
             }))
         } else {
             Ok(None)
@@ -795,7 +812,7 @@ impl Version {
             "
             SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
             v.changelog changelog, v.changelog_url changelog_url, v.date_published date_published, v.downloads downloads,
-            v.version_type version_type, v.featured featured,
+            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,
             ARRAY_AGG(DISTINCT gv.version || ' |||| ' || gv.created) filter (where gv.version is not null) game_versions, ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
             ARRAY_AGG(DISTINCT f.id || ' |||| ' || f.is_primary || ' |||| ' || f.size || ' |||| ' || f.url || ' |||| ' || f.filename) filter (where f.id is not null) files,
             ARRAY_AGG(DISTINCT h.algorithm || ' |||| ' || encode(h.hash, 'escape') || ' |||| ' || h.file_id) filter (where h.hash is not null) hashes,
@@ -944,7 +961,10 @@ impl Version {
                                     None
                                 }
                             }).collect(),
-                        version_type: v.version_type
+                        version_type: v.version_type,
+                        status: VersionStatus::from_str(&v.status),
+                        requested_status: v.requested_status
+                            .map(|x| VersionStatus::from_str(&x)),
                     }
                 ))
             })
@@ -978,8 +998,10 @@ pub struct QueryVersion {
     pub changelog_url: Option<String>,
     pub date_published: DateTime<Utc>,
     pub downloads: i32,
-
     pub version_type: String,
+    pub status: VersionStatus,
+    pub requested_status: Option<VersionStatus>,
+
     pub files: Vec<QueryFile>,
     pub game_versions: Vec<String>,
     pub loaders: Vec<String>,

@@ -19,4 +19,5 @@ DROP TABLE statuses;
 
 ALTER TABLE mods ALTER COLUMN status SET NOT NULL;
 
---TODO: version statuses
+ALTER TABlE versions ADD COLUMN status varchar(128) NOT NULL DEFAULT 'listed';
+ALTER TABLE versions ADD COLUMN requested_status varchar(128) NULL;

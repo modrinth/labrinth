@@ -245,6 +245,7 @@ pub struct DonationLink {
 /// Withheld - Same as unlisted, but set by a moderator. Cannot be switched to another type without moderator approval
 /// Processing - Project is not displayed on search, and not accessible by URL (Temporary state, project under review)
 /// Scheduled - Project is scheduled to be released in the future
+/// Private - Project is approved, but is not viewable to the public
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
@@ -256,6 +257,7 @@ pub enum ProjectStatus {
     Processing,
     Withheld,
     Scheduled,
+    Private,
     Unknown,
 }
 
@@ -275,6 +277,7 @@ impl ProjectStatus {
             "unlisted" => ProjectStatus::Unlisted,
             "archived" => ProjectStatus::Archived,
             "withheld" => ProjectStatus::Withheld,
+            "private" => ProjectStatus::Private,
             _ => ProjectStatus::Unknown,
         }
     }
@@ -289,37 +292,56 @@ impl ProjectStatus {
             ProjectStatus::Archived => "archived",
             ProjectStatus::Withheld => "withheld",
             ProjectStatus::Scheduled => "scheduled",
+            ProjectStatus::Private => "private",
         }
     }
 
+    // Project pages + info cannot be viewed
     pub fn is_hidden(&self) -> bool {
         match self {
-            ProjectStatus::Approved => false,
             ProjectStatus::Rejected => true,
             ProjectStatus::Draft => true,
-            ProjectStatus::Unlisted => false,
             ProjectStatus::Processing => true,
             ProjectStatus::Unknown => true,
+            ProjectStatus::Scheduled => true,
+            ProjectStatus::Private => true,
+
+            ProjectStatus::Approved => false,
+            ProjectStatus::Unlisted => false,
             ProjectStatus::Archived => false,
             ProjectStatus::Withheld => false,
-            ProjectStatus::Scheduled => true,
         }
     }
 
+    // Project can be displayed in search
     pub fn is_searchable(&self) -> bool {
         match self {
             ProjectStatus::Approved => true,
             ProjectStatus::Archived => true,
-            _ => {}
+            _ => false
         }
     }
 
+    // Project is "Approved" by moderators
+    pub fn is_approved(&self) -> bool {
+        match self {
+            ProjectStatus::Approved => true,
+            ProjectStatus::Archived => true,
+            ProjectStatus::Unlisted => true,
+            ProjectStatus::Private => true,
+
+            _ => false,
+        }
+    }
+
+    // Project status can be requested after moderator approval
     pub fn can_be_requested(&self) -> bool {
         match self {
             ProjectStatus::Approved => true,
             ProjectStatus::Archived => true,
-            ProjectStatus::Draft => true,
             ProjectStatus::Unlisted => true,
+            ProjectStatus::Private => true,
+            ProjectStatus::Draft => true,
 
             ProjectStatus::Rejected => false,
             ProjectStatus::Processing => false,
@@ -357,6 +379,10 @@ pub struct Version {
     pub downloads: u32,
     /// The type of the release - `Alpha`, `Beta`, or `Release`.
     pub version_type: VersionType,
+    /// The status of tne version
+    pub status: VersionStatus,
+    /// The requested status of the version (used for scheduling)
+    pub requested_status: Option<VersionStatus>,
 
     /// A list of files available for download for this version.
     pub files: Vec<VersionFile>,
@@ -389,6 +415,8 @@ impl From<QueryVersion> for Version {
                 _ => VersionType::Release,
             },
 
+            status: data.status,
+            requested_status: data.requested_status,
             files: data
                 .files
                 .into_iter()
@@ -427,6 +455,80 @@ impl From<QueryVersion> for Version {
                 .map(GameVersion)
                 .collect(),
             loaders: data.loaders.into_iter().map(Loader).collect(),
+        }
+    }
+}
+
+/// A status decides the visibility of a project in search, URLs, and the whole site itself.
+/// Listed - Version is displayed on project, and accessible by URL
+/// Draft - Version is not displayed on project, and not accessible by URL
+/// Unlisted - Version is not displayed on project, and accessible by URL
+/// Scheduled - Version is scheduled to be released in the future
+#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum VersionStatus {
+    Listed,
+    Draft,
+    Unlisted,
+    Scheduled,
+    Unknown,
+}
+
+impl std::fmt::Display for VersionStatus {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}", self.as_str())
+    }
+}
+
+impl VersionStatus {
+    pub fn from_str(string: &str) -> VersionStatus {
+        match string {
+            "listed" => VersionStatus::Listed,
+            "draft" => VersionStatus::Draft,
+            "unlisted" => VersionStatus::Unlisted,
+            _ => VersionStatus::Unknown,
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VersionStatus::Listed => "listed",
+            VersionStatus::Draft => "draft",
+            VersionStatus::Unlisted => "unlisted",
+            VersionStatus::Unknown => "unknown",
+            VersionStatus::Scheduled => "scheduled",
+        }
+    }
+
+    // Version pages + info cannot be viewed
+    pub fn is_hidden(&self) -> bool {
+        match self {
+            VersionStatus::Listed => false,
+            VersionStatus::Unlisted => false,
+
+            VersionStatus::Draft => true,
+            VersionStatus::Scheduled => true,
+            VersionStatus::Unknown => true,
+        }
+    }
+
+    // Whether version is listed on project / returned in aggregate routes
+    pub fn is_listed(&self) -> bool {
+        match self {
+            VersionStatus::Listed => true,
+
+            _ => false,
+        }
+    }
+
+    // Whether a version status can be requested
+    pub fn can_be_requested(&self) -> bool {
+        match self {
+            VersionStatus::Listed => true,
+            VersionStatus::Draft => true,
+            VersionStatus::Unlisted => true,
+            VersionStatus::Scheduled => false,
+
+            VersionStatus::Unknown => false,
         }
     }
 }
