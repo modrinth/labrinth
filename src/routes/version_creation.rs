@@ -5,7 +5,10 @@ use crate::database::models::version_item::{
 };
 use crate::file_hosting::FileHost;
 use crate::models::pack::PackFileHash;
-use crate::models::projects::{Dependency, DependencyType, GameVersion, Loader, ProjectId, Version, VersionFile, VersionId, VersionStatus, VersionType};
+use crate::models::projects::{
+    Dependency, DependencyType, GameVersion, Loader, ProjectId, Version,
+    VersionFile, VersionId, VersionStatus, VersionType,
+};
 use crate::models::teams::Permissions;
 use crate::queue::flameanvil::{FlameAnvilQueue, UploadFile};
 use crate::routes::project_creation::{CreateError, UploadedFile};
@@ -457,8 +460,6 @@ async fn version_create_inner(
     Ok(HttpResponse::Ok().json(response))
 }
 
-// TODO: file deletion, listing, etc
-
 // under /api/v1/version/{version_id}
 #[post("{version_id}/file")]
 pub async fn upload_file_to_version(
@@ -559,7 +560,7 @@ async fn upload_file_to_version_inner(
         ));
     }
 
-    let project_id = ProjectId(version.project_id.0 as u64);
+    let project_id = ProjectId(version.inner.project_id.0 as u64);
 
     let project_type = sqlx::query!(
         "
@@ -567,7 +568,7 @@ async fn upload_file_to_version_inner(
         INNER JOIN mods ON mods.project_type = pt.id
         WHERE mods.id = $1
         ",
-        version.project_id as models::ProjectId,
+        version.inner.project_id as models::ProjectId,
     )
     .fetch_one(&mut *transaction)
     .await?
@@ -636,9 +637,9 @@ async fn upload_file_to_version_inner(
             all_game_versions.clone(),
             true,
             false,
-            version.name.clone(),
-            version.changelog.clone(),
-            version.version_type.clone(),
+            version.inner.name.clone(),
+            version.inner.changelog.clone(),
+            version.inner.version_type.clone(),
             flame_anvil_queue,
             None,
             None,

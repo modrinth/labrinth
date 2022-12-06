@@ -676,12 +676,13 @@ impl Project {
             LEFT JOIN donation_platforms dp ON md.joining_platform_id = dp.id
             LEFT JOIN mods_categories mc ON mc.joining_mod_id = m.id
             LEFT JOIN categories c ON mc.joining_category_id = c.id
-            LEFT JOIN versions v ON v.mod_id = m.id
+            LEFT JOIN versions v ON v.mod_id = m.id AND v.status = ANY($2)
             LEFT JOIN mods_gallery mg ON mg.mod_id = m.id
             WHERE m.id = $1
             GROUP BY pt.id, cs.id, ss.id, l.id, m.id;
             ",
             id as ProjectId,
+            &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_listed()).map(|x| x.to_string()).collect::<Vec<String>>()
         )
             .fetch_optional(executor)
             .await?;
@@ -864,12 +865,13 @@ impl Project {
             LEFT JOIN donation_platforms dp ON md.joining_platform_id = dp.id
             LEFT JOIN mods_categories mc ON mc.joining_mod_id = m.id
             LEFT JOIN categories c ON mc.joining_category_id = c.id
-            LEFT JOIN versions v ON v.mod_id = m.id
+            LEFT JOIN versions v ON v.mod_id = m.id AND v.status = ANY($2)
             LEFT JOIN mods_gallery mg ON mg.mod_id = m.id
             WHERE m.id = ANY($1)
             GROUP BY pt.id, cs.id, ss.id, l.id, m.id;
             ",
-            &project_ids_parsed
+            &project_ids_parsed,
+            &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_listed()).map(|x| x.to_string()).collect::<Vec<String>>()
         )
             .fetch_many(exec)
             .try_filter_map(|e| async {

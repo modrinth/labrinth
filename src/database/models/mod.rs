@@ -18,9 +18,7 @@ pub use project_item::Project;
 pub use team_item::Team;
 pub use team_item::TeamMember;
 pub use user_item::User;
-pub use version_item::FileHash;
 pub use version_item::Version;
-pub use version_item::VersionFile;
 
 #[derive(Error, Debug)]
 pub enum DatabaseError {

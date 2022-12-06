@@ -1,10 +1,10 @@
 use super::ids::*;
 use super::DatabaseError;
 use crate::database::models::convert_postgres_date;
+use crate::models::projects::VersionStatus;
 use chrono::{DateTime, Utc};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use crate::models::projects::VersionStatus;
 
 pub struct VersionBuilder {
     pub version_id: VersionId,
@@ -242,6 +242,7 @@ impl VersionBuilder {
     }
 }
 
+#[derive(Clone)]
 pub struct Version {
     pub id: VersionId,
     pub project_id: ProjectId,
@@ -368,37 +369,6 @@ impl Version {
         )
         .execute(&mut *transaction)
         .await?;
-
-        let files = sqlx::query!(
-            "
-            SELECT files.id, files.url, files.filename, files.is_primary FROM files
-            WHERE files.version_id = $1
-            ",
-            id as VersionId,
-        )
-        .fetch_many(&mut *transaction)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|c| VersionFile {
-                id: FileId(c.id),
-                version_id: id,
-                url: c.url,
-                filename: c.filename,
-                primary: c.is_primary,
-            }))
-        })
-        .try_collect::<Vec<VersionFile>>()
-        .await?;
-
-        for file in files {
-            // TODO: store backblaze id in database so that we can delete the files here
-            // For now, we can't delete the files since we don't have the backblaze id
-            log::warn!(
-                "Can't delete version file id: {} (url: {}, name: {})",
-                file.id.0,
-                file.url,
-                file.filename
-            )
-        }
 
         sqlx::query!(
             "
@@ -562,7 +532,8 @@ impl Version {
                 version_type: row.version_type,
                 featured: row.featured,
                 status: VersionStatus::from_str(&row.status),
-                requested_status: row.requested_status
+                requested_status: row
+                    .requested_status
                     .map(|x| VersionStatus::from_str(&x)),
             }))
         } else {
@@ -607,7 +578,8 @@ impl Version {
                 featured: v.featured,
                 version_type: v.version_type,
                 status: VersionStatus::from_str(&v.status),
-                requested_status: v.requested_status
+                requested_status: v
+                    .requested_status
                     .map(|x| VersionStatus::from_str(&x)),
             }))
         })
@@ -651,15 +623,23 @@ impl Version {
 
         if let Some(v) = result {
             Ok(Some(QueryVersion {
-                id: VersionId(v.id),
-                project_id: ProjectId(v.mod_id),
-                author_id: UserId(v.author_id),
-                name: v.version_name,
-                version_number: v.version_number,
-                changelog: v.changelog,
-                changelog_url: v.changelog_url,
-                date_published: v.date_published,
-                downloads: v.downloads,
+                inner: Version {
+                    id: VersionId(v.id),
+                    project_id: ProjectId(v.mod_id),
+                    author_id: UserId(v.author_id),
+                    name: v.version_name,
+                    version_number: v.version_number,
+                    changelog: v.changelog,
+                    changelog_url: v.changelog_url,
+                    date_published: v.date_published,
+                    downloads: v.downloads,
+                    version_type: v.version_type,
+                    featured: v.featured,
+                    status: VersionStatus::from_str(&v.status),
+                    requested_status: v
+                        .requested_status
+                        .map(|x| VersionStatus::from_str(&x)),
+                },
                 files: {
                     let hashes: Vec<(FileId, String, Vec<u8>)> = v
                         .hashes
@@ -751,7 +731,6 @@ impl Version {
                     gv.into_iter().map(|x| x.0).collect()
                 },
                 loaders: v.loaders.unwrap_or_default(),
-                featured: v.featured,
                 dependencies: v
                     .dependencies
                     .unwrap_or_default()
@@ -787,10 +766,6 @@ impl Version {
                         }
                     })
                     .collect(),
-                version_type: v.version_type,
-                status: VersionStatus::from_str(&v.status),
-                requested_status: v.requested_status
-                    .map(|x| VersionStatus::from_str(&x)),
             }))
         } else {
             Ok(None)
@@ -835,15 +810,22 @@ impl Version {
             .try_filter_map(|e| async {
                 Ok(e.right().map(|v|
                     QueryVersion {
-                        id: VersionId(v.id),
-                        project_id: ProjectId(v.mod_id),
-                        author_id: UserId(v.author_id),
-                        name: v.version_name,
-                        version_number: v.version_number,
-                        changelog: v.changelog,
-                        changelog_url: v.changelog_url,
-                        date_published: v.date_published,
-                        downloads: v.downloads,
+                        inner: Version {
+                            id: VersionId(v.id),
+                            project_id: ProjectId(v.mod_id),
+                            author_id: UserId(v.author_id),
+                            name: v.version_name,
+                            version_number: v.version_number,
+                            changelog: v.changelog,
+                            changelog_url: v.changelog_url,
+                            date_published: v.date_published,
+                            downloads: v.downloads,
+                            version_type: v.version_type,
+                            featured: v.featured,
+                            status: VersionStatus::from_str(&v.status),
+                            requested_status: v.requested_status
+                                .map(|x| VersionStatus::from_str(&x)),
+                        },
                         files: {
                             let hashes: Vec<(FileId, String, Vec<u8>)> = v.hashes.unwrap_or_default()
                                 .into_iter()
@@ -926,7 +908,6 @@ impl Version {
                                 .collect()
                         },
                         loaders: v.loaders.unwrap_or_default(),
-                        featured: v.featured,
                         dependencies: v.dependencies
                             .unwrap_or_default()
                             .into_iter()
@@ -961,10 +942,6 @@ impl Version {
                                     None
                                 }
                             }).collect(),
-                        version_type: v.version_type,
-                        status: VersionStatus::from_str(&v.status),
-                        requested_status: v.requested_status
-                            .map(|x| VersionStatus::from_str(&x)),
                     }
                 ))
             })
@@ -973,39 +950,13 @@ impl Version {
     }
 }
 
-pub struct VersionFile {
-    pub id: FileId,
-    pub version_id: VersionId,
-    pub url: String,
-    pub filename: String,
-    pub primary: bool,
-}
-
-pub struct FileHash {
-    pub file_id: FileId,
-    pub algorithm: String,
-    pub hash: Vec<u8>,
-}
-
 #[derive(Clone)]
 pub struct QueryVersion {
-    pub id: VersionId,
-    pub project_id: ProjectId,
-    pub author_id: UserId,
-    pub name: String,
-    pub version_number: String,
-    pub changelog: String,
-    pub changelog_url: Option<String>,
-    pub date_published: DateTime<Utc>,
-    pub downloads: i32,
-    pub version_type: String,
-    pub status: VersionStatus,
-    pub requested_status: Option<VersionStatus>,
+    pub inner: Version,
 
     pub files: Vec<QueryFile>,
     pub game_versions: Vec<String>,
     pub loaders: Vec<String>,
-    pub featured: bool,
     pub dependencies: Vec<QueryDependency>,
 }
 

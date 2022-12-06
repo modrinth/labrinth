@@ -32,14 +32,6 @@ pub struct Pepper {
     pub pepper: String,
 }
 
-// TODO: note to self- what needs to be done in this PR
-// Redo version syncing to align w/ scheduling + add github sync (maybe make a seperate PR)
-// Add route for scheduling versions
-// Audit that permissions checking for project viewing still works
-// Redo/Implement permission checks for version requests
-// Add status editing to version editing route
-// Add version scheduling to sync route below VV
-// Make sure to register new routes in appropriate configs!
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
@@ -161,29 +153,46 @@ async fn main() -> std::io::Result<()> {
     let pool_ref = pool.clone();
     scheduler.run(std::time::Duration::from_secs(60), move || {
         let pool_ref = pool_ref.clone();
-        // Use sqlx to delete records more than an hour old
-        info!("Syncing scheduled statuses or releases!");
+        info!("Releasing scheduled versions/projects!");
 
         async move {
-            let states_result = sqlx::query!(
+            let projects_results = sqlx::query!(
                 "
                 UPDATE mods
                 SET status = requested_status
-                WHERE status = $1 AND approved < CURRENT_DATE
+                WHERE status = $1 AND approved < CURRENT_DATE AND requested_status IS NOT NULL
                 ",
                 crate::models::projects::ProjectStatus::Scheduled.as_str(),
             )
                 .execute(&pool_ref)
                 .await;
 
-            if let Err(e) = states_result {
+            if let Err(e) = projects_results {
                 warn!(
-                    "Syncing scheduled statuses or releases failed: {:?}",
+                    "Syncing scheduled releases for projects failed: {:?}",
                     e
                 );
             }
 
-            info!("Finished scheduled syncing statuses or releases");
+            let versions_results = sqlx::query!(
+                "
+                UPDATE versions
+                SET status = requested_status
+                WHERE status = $1 AND date_published < CURRENT_DATE AND requested_status IS NOT NULL
+                ",
+                crate::models::projects::VersionStatus::Scheduled.as_str(),
+            )
+                .execute(&pool_ref)
+                .await;
+
+            if let Err(e) = versions_results {
+                warn!(
+                    "Syncing scheduled releases for versions failed: {:?}",
+                    e
+                );
+            }
+
+            info!("Finished releasing scheduled versions/projects");
         }
     });
 

@@ -1,7 +1,10 @@
 use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
-use crate::models::projects::{DonationLink, License, ProjectId, ProjectStatus, SideType, VersionId, VersionStatus};
+use crate::models::projects::{
+    DonationLink, License, ProjectId, ProjectStatus, SideType, VersionId,
+    VersionStatus,
+};
 use crate::models::users::UserId;
 use crate::queue::flameanvil::FlameAnvilQueue;
 use crate::routes::version_creation::InitialVersionData;

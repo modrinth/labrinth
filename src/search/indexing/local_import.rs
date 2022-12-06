@@ -10,6 +10,7 @@ pub async fn index_local(
     pool: PgPool,
 ) -> Result<Vec<UploadSearchProject>, IndexingError> {
     info!("Indexing local projects!");
+
     Ok(
         sqlx::query!(
             "
@@ -24,7 +25,7 @@ pub async fn index_local(
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
-            LEFT OUTER JOIN versions v ON v.mod_id = m.id
+            LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ANY($1)
             LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
             LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
@@ -36,11 +37,11 @@ pub async fn index_local(
             INNER JOIN licenses l ON m.license = l.id
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
             INNER JOIN users u ON tm.user_id = u.id
-            WHERE m.status = $1 OR m.status = $2
+            WHERE m.status = ANY($2)
             GROUP BY m.id, cs.id, ss.id, l.id, pt.id, u.id;
             ",
-            crate::models::projects::ProjectStatus::Approved.as_str(),
-            crate::models::projects::ProjectStatus::Archived.as_str(),
+            &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>(),
+            &*crate::models::projects::ProjectStatus::iterator().filter(|x| x.is_searchable()).map(|x| x.to_string()).collect::<Vec<String>>(),
             crate::models::teams::OWNER_ROLE,
         )
             .fetch_many(&pool)

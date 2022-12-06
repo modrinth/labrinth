@@ -96,7 +96,8 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
             .service(versions::version_get)
             .service(versions::version_delete)
             .service(version_creation::upload_file_to_version)
-            .service(versions::version_edit),
+            .service(versions::version_edit)
+            .service(versions::version_schedule),
     );
     cfg.service(
         web::scope("version_file")

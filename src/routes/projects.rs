@@ -52,7 +52,7 @@ pub async fn projects_get(
 
     let projects: Vec<_> = futures::stream::iter(projects_data)
         .filter_map(|data| async {
-            if is_authorized(&data, &user_option, &pool).await.ok()? {
+            if is_authorized(&data.inner, &user_option, &pool).await.ok()? {
                 Some(Project::from(data))
             } else {
                 None
@@ -81,7 +81,7 @@ pub async fn project_get(
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
     if let Some(data) = project_data {
-        if is_authorized(&data, &user_option, &pool).await? {
+        if is_authorized(&data.inner, &user_option, &pool).await? {
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
     }
@@ -159,7 +159,7 @@ pub async fn dependency_list(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
-    let result = database::models::Project::get_full_from_slug_or_project_id(
+    let result = database::models::Project::get_from_slug_or_project_id(
         &string, &**pool,
     )
     .await?;
@@ -171,7 +171,7 @@ pub async fn dependency_list(
             return Ok(HttpResponse::NotFound().body(""));
         }
 
-        let id = project.inner.id;
+        let id = project.id;
 
         use futures::stream::TryStreamExt;
 
@@ -507,8 +507,7 @@ pub async fn project_edit(
                     }
                 }
 
-                if status.is_approved()
-                {
+                if status.is_approved() {
                     sqlx::query!(
                         "
                         UPDATE mods
@@ -548,7 +547,10 @@ pub async fn project_edit(
                     ));
                 }
 
-                if !requested_status.map(|x| x.can_be_requested()).unwrap_or(true) {
+                if !requested_status
+                    .map(|x| x.can_be_requested())
+                    .unwrap_or(true)
+                {
                     return Err(ApiError::InvalidInput(String::from(
                         "Specified status cannot be requested!",
                     )));
@@ -563,8 +565,8 @@ pub async fn project_edit(
                     requested_status.map(|x| x.as_str()),
                     id as database::models::ids::ProjectId,
                 )
-                    .execute(&mut *transaction)
-                    .await?;
+                .execute(&mut *transaction)
+                .await?;
             }
 
             if perms.contains(Permissions::EDIT_DETAILS) {
@@ -1127,7 +1129,8 @@ pub async fn project_schedule(
 
     if scheduling_data.time < Utc::now() {
         return Err(ApiError::InvalidInput(
-            "You cannot schedule a project to be released in the past!".to_string(),
+            "You cannot schedule a project to be released in the past!"
+                .to_string(),
         ));
     }
 
@@ -1141,7 +1144,7 @@ pub async fn project_schedule(
     let result = database::models::Project::get_from_slug_or_project_id(
         &string, &**pool,
     )
-        .await?;
+    .await?;
 
     if let Some(project_item) = result {
         let team_member = database::models::TeamMember::get_from_user_id(
@@ -1149,11 +1152,15 @@ pub async fn project_schedule(
             user.id.into(),
             &**pool,
         )
-            .await?;
+        .await?;
 
-        if user.role.is_mod() || team_member.map(|x| x.permissions.contains(Permissions::EDIT_DETAILS)).unwrap_or(false) {
+        if user.role.is_mod()
+            || team_member
+                .map(|x| x.permissions.contains(Permissions::EDIT_DETAILS))
+                .unwrap_or(false)
+        {
             return Err(ApiError::CustomAuthentication(
-                "You do not have permission to edit this project!".to_string(),
+                "You do not have permission to edit this project's scheduling data!".to_string(),
             ));
         }
 
@@ -1167,15 +1174,14 @@ pub async fn project_schedule(
             scheduling_data.time,
             project_item.id as database::models::ids::ProjectId,
         )
-            .execute(&**pool)
-            .await?;
+        .execute(&**pool)
+        .await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 pub struct Extension {

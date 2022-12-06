@@ -296,6 +296,23 @@ impl ProjectStatus {
         }
     }
 
+    pub fn iterator() -> impl Iterator<Item = ProjectStatus> {
+        [
+            ProjectStatus::Approved,
+            ProjectStatus::Archived,
+            ProjectStatus::Rejected,
+            ProjectStatus::Draft,
+            ProjectStatus::Unlisted,
+            ProjectStatus::Processing,
+            ProjectStatus::Withheld,
+            ProjectStatus::Scheduled,
+            ProjectStatus::Private,
+            ProjectStatus::Unknown,
+        ]
+        .iter()
+        .copied()
+    }
+
     // Project pages + info cannot be viewed
     pub fn is_hidden(&self) -> bool {
         match self {
@@ -318,7 +335,7 @@ impl ProjectStatus {
         match self {
             ProjectStatus::Approved => true,
             ProjectStatus::Archived => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -396,27 +413,29 @@ pub struct Version {
 
 impl From<QueryVersion> for Version {
     fn from(data: QueryVersion) -> Version {
-        Version {
-            id: data.id.into(),
-            project_id: data.project_id.into(),
-            author_id: data.author_id.into(),
+        let v = data.inner;
 
-            featured: data.featured,
-            name: data.name,
-            version_number: data.version_number,
-            changelog: data.changelog,
-            changelog_url: data.changelog_url,
-            date_published: data.date_published,
-            downloads: data.downloads as u32,
-            version_type: match data.version_type.as_str() {
+        Version {
+            id: v.id.into(),
+            project_id: v.project_id.into(),
+            author_id: v.author_id.into(),
+
+            featured: v.featured,
+            name: v.name,
+            version_number: v.version_number,
+            changelog: v.changelog,
+            changelog_url: v.changelog_url,
+            date_published: v.date_published,
+            downloads: v.downloads as u32,
+            version_type: match v.version_type.as_str() {
                 "release" => VersionType::Release,
                 "beta" => VersionType::Beta,
                 "alpha" => VersionType::Alpha,
                 _ => VersionType::Release,
             },
 
-            status: data.status,
-            requested_status: data.requested_status,
+            status: v.status,
+            requested_status: v.requested_status,
             files: data
                 .files
                 .into_iter()
@@ -497,6 +516,18 @@ impl VersionStatus {
             VersionStatus::Unknown => "unknown",
             VersionStatus::Scheduled => "scheduled",
         }
+    }
+
+    pub fn iterator() -> impl Iterator<Item = VersionStatus> {
+        [
+            VersionStatus::Listed,
+            VersionStatus::Draft,
+            VersionStatus::Unlisted,
+            VersionStatus::Scheduled,
+            VersionStatus::Unknown,
+        ]
+        .iter()
+        .copied()
     }
 
     // Version pages + info cannot be viewed
