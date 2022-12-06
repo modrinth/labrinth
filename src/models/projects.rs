@@ -126,7 +126,7 @@ impl From<QueryProject> for Project {
             },
             license: License {
                 id: m.license.clone(),
-                name: match spdx::Expression::parse(&*m.license) {
+                name: match spdx::Expression::parse(&m.license) {
                     Ok(spdx_expr) => {
                         let mut vec: Vec<&str> = Vec::new();
                         for node in spdx_expr.iter() {
@@ -350,23 +350,18 @@ impl ProjectStatus {
 
     // Project can be displayed in search
     pub fn is_searchable(&self) -> bool {
-        match self {
-            ProjectStatus::Approved => true,
-            ProjectStatus::Archived => true,
-            _ => false,
-        }
+        matches!(self, ProjectStatus::Approved | ProjectStatus::Archived)
     }
 
     // Project is "Approved" by moderators
     pub fn is_approved(&self) -> bool {
-        match self {
-            ProjectStatus::Approved => true,
-            ProjectStatus::Archived => true,
-            ProjectStatus::Unlisted => true,
-            ProjectStatus::Private => true,
-
-            _ => false,
-        }
+        matches!(
+            self,
+            ProjectStatus::Approved
+                | ProjectStatus::Archived
+                | ProjectStatus::Unlisted
+                | ProjectStatus::Private
+        )
     }
 
     // Project status can be requested after moderator approval
@@ -562,11 +557,7 @@ impl VersionStatus {
 
     // Whether version is listed on project / returned in aggregate routes
     pub fn is_listed(&self) -> bool {
-        match self {
-            VersionStatus::Listed => true,
-
-            _ => false,
-        }
+        matches!(self, VersionStatus::Listed)
     }
 
     // Whether a version status can be requested

@@ -72,7 +72,7 @@ pub async fn index_local(
 
                     let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
 
-                    let license = match m.license.split(" ").next() {
+                    let license = match m.license.split(' ').next() {
                         Some(license) => license.to_string(),
                         None => m.license,
                     };

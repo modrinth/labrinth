@@ -885,7 +885,7 @@ pub async fn project_edit(
                     license = models::projects::DEFAULT_LICENSE_ID.to_string();
                 }
 
-                spdx::Expression::parse(&*license).map_err(|err| {
+                spdx::Expression::parse(&license).map_err(|err| {
                     ApiError::InvalidInput(format!(
                         "Invalid SPDX license identifier: {}",
                         err
