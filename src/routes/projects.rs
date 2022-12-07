@@ -500,7 +500,7 @@ pub async fn project_edit(
                     {
                         crate::util::webhook::send_discord_webhook(
                             project_item.inner.id.into(),
-                            &*pool,
+                            &pool,
                             webhook_url,
                         )
                         .await
@@ -529,7 +529,7 @@ pub async fn project_edit(
                     {
                         crate::util::webhook::send_discord_webhook(
                             project_item.inner.id.into(),
-                            &*pool,
+                            &pool,
                             webhook_url,
                         )
                         .await

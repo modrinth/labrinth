@@ -1,6 +1,5 @@
 use super::ids::*;
 use super::DatabaseError;
-use crate::database::models::convert_postgres_date;
 use crate::models::projects::VersionStatus;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;

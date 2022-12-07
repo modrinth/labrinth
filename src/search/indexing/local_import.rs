@@ -48,13 +48,13 @@ pub async fn index_local(
             .fetch_many(&pool)
             .try_filter_map(|e| async {
                 Ok(e.right().map(|m| {
-                    let additional_categories = m.additional_categories.unwrap_or_default();
+                    let mut additional_categories = m.additional_categories.unwrap_or_default();
                     let mut categories = m.categories.unwrap_or_default();
 
                     categories.append(&mut m.loaders.unwrap_or_default());
 
                     let display_categories = categories.clone();
-                    categories.append(&mut additional_categories.clone());
+                    categories.append(&mut additional_categories);
 
                     let versions = m.versions.unwrap_or_default();
 

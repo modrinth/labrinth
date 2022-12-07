@@ -96,7 +96,7 @@ pub async fn send_discord_webhook(
             &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>(),
             crate::models::teams::OWNER_ROLE,
         )
-        .fetch_optional(&*pool)
+        .fetch_optional(pool)
         .await?;
 
     if let Some(project) = row {
@@ -203,12 +203,8 @@ pub async fn send_discord_webhook(
                 project.featured_gallery.unwrap_or_default().first()
             {
                 Some(first.clone())
-            } else if let Some(first) =
-                project.gallery.unwrap_or_default().first()
-            {
-                Some(first.clone())
             } else {
-                None
+                project.gallery.unwrap_or_default().first().cloned()
             }
             .map(|x| DiscordEmbedImage { url: Some(x) }),
             footer: Some(DiscordEmbedFooter {
@@ -263,8 +259,8 @@ fn get_gv_range(
 
     const MAX_VALUE: usize = 1000000;
 
-    for i in 0..game_versions.len() {
-        let current_version = &*game_versions[i].version;
+    for (i, current_version) in game_versions.iter().enumerate() {
+        let current_version = &current_version.version;
 
         let index = all_game_versions
             .iter()
