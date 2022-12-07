@@ -1483,14 +1483,13 @@ pub async fn add_gallery_item(
         }
 
         database::models::project_item::GalleryItem {
-            project_id: project_item.id,
             image_url: format!("{}/{}", cdn_url, url),
             featured: item.featured,
             title: item.title,
             description: item.description,
             created: Utc::now(),
         }
-        .insert(&mut transaction)
+        .insert(project_item.id, &mut transaction)
         .await?;
 
         transaction.commit().await?;

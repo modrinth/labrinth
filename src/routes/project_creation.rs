@@ -723,7 +723,6 @@ pub async fn project_create_inner(
                 })?;
 
                 donation_urls.push(models::project_item::DonationUrl {
-                    project_id: project_id.into(),
                     platform_id,
                     platform_short: "".to_string(),
                     platform_name: "".to_string(),
@@ -759,7 +758,6 @@ pub async fn project_create_inner(
             gallery_items: gallery_urls
                 .iter()
                 .map(|x| models::project_item::GalleryItem {
-                    project_id: project_id.into(),
                     image_url: x.url.clone(),
                     featured: x.featured,
                     title: x.title.clone(),
