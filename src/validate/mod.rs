@@ -92,7 +92,7 @@ static VALIDATORS: [&dyn Validator; 12] = [
     &VelocityValidator,
     &SpongeValidator,
     &CanvasShaderValidator,
-    ShaderValidator,
+    &ShaderValidator,
 ];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file

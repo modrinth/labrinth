@@ -69,3 +69,43 @@ impl super::Validator for CanvasShaderValidator {
         Ok(ValidationResult::Pass)
     }
 }
+
+pub struct CoreShaderValidator;
+
+impl super::Validator for CoreShaderValidator {
+    fn get_file_extensions(&self) -> &[&str] {
+        &["zip"]
+    }
+
+    fn get_project_types(&self) -> &[&str] {
+        &["shader"]
+    }
+
+    fn get_supported_loaders(&self) -> &[&str] {
+        &["core"]
+    }
+
+    fn get_supported_game_versions(&self) -> SupportedGameVersions {
+        SupportedGameVersions::All
+    }
+
+    fn validate(
+        &self,
+        archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
+    ) -> Result<ValidationResult, ValidationError> {
+        archive.by_name("pack.mcmeta").map_err(|_| {
+            ValidationError::InvalidInput(
+                "No pack.mcmeta present for pack file. Tip: Make sure pack.mcmeta is in the root directory of your pack!".into(),
+            )
+        })?;
+
+        if !archive.file_names().any(|x| x.contains("/pipelines/")) {
+            return Err(ValidationError::InvalidInput(
+                "No shaders folder present for core shaders.".into(),
+            ))
+        }
+
+        Ok(ValidationResult::Pass)
+    }
+}
+
