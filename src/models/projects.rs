@@ -452,15 +452,12 @@ impl From<QueryVersion> for Version {
             files: data
                 .files
                 .into_iter()
-                .map(|f| {
-                    VersionFile {
-                        url: f.url,
-                        filename: f.filename,
-                        hashes: f
-                            .hashes,
-                        primary: f.primary,
-                        size: f.size,
-                    }
+                .map(|f| VersionFile {
+                    url: f.url,
+                    filename: f.filename,
+                    hashes: f.hashes,
+                    primary: f.primary,
+                    size: f.size,
                 })
                 .collect(),
             dependencies: data
