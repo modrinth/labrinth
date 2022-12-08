@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use std::io::Cursor;
 use thiserror::Error;
 use zip::ZipArchive;
+use crate::validate::shader::{CanvasShaderValidator, ShaderValidator};
 
 mod fabric;
 mod forge;
@@ -19,6 +20,7 @@ mod modpack;
 pub mod plugin;
 mod quilt;
 mod resourcepack;
+mod shader;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -89,6 +91,8 @@ static VALIDATORS: [&dyn Validator; 12] = [
     &BungeeCordValidator,
     &VelocityValidator,
     &SpongeValidator,
+    &CanvasShaderValidator,
+    ShaderValidator,
 ];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
