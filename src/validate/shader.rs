@@ -66,6 +66,12 @@ impl super::Validator for CanvasShaderValidator {
             )
         })?;
 
+        if !archive.file_names().any(|x| x.contains("/pipelines/")) {
+            return Err(ValidationError::InvalidInput(
+                "No pipeline shaders folder present for canvas shaders.".into(),
+            ))
+        }
+
         Ok(ValidationResult::Pass)
     }
 }
@@ -99,7 +105,7 @@ impl super::Validator for CoreShaderValidator {
             )
         })?;
 
-        if !archive.file_names().any(|x| x.contains("/pipelines/")) {
+        if !archive.file_names().any(|x| x.starts_with("assets/minecraft/shaders/")) {
             return Err(ValidationError::InvalidInput(
                 "No shaders folder present for core shaders.".into(),
             ))
