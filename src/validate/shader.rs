@@ -88,7 +88,7 @@ impl super::Validator for CoreShaderValidator {
     }
 
     fn get_supported_loaders(&self) -> &[&str] {
-        &["core"]
+        &["vanilla"]
     }
 
     fn get_supported_game_versions(&self) -> SupportedGameVersions {
@@ -107,7 +107,7 @@ impl super::Validator for CoreShaderValidator {
 
         if !archive.file_names().any(|x| x.starts_with("assets/minecraft/shaders/")) {
             return Err(ValidationError::InvalidInput(
-                "No shaders folder present for core shaders.".into(),
+                "No shaders folder present for vanilla shaders.".into(),
             ))
         }
 
