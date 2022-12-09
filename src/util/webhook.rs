@@ -57,7 +57,7 @@ struct DiscordWebhook {
     pub embeds: Vec<DiscordEmbed>,
 }
 
-const PLUGIN_LOADERS : &[&str] = &[
+const PLUGIN_LOADERS: &[&str] = &[
     "bukkit",
     "spigot",
     "paper",
@@ -220,7 +220,10 @@ pub async fn send_discord_webhook(
             }
             .map(|x| DiscordEmbedImage { url: Some(x) }),
             footer: Some(DiscordEmbedFooter {
-                text: format!("{project_type}{} on Modrinth", project_type.remove(0).to_uppercase()),
+                text: format!(
+                    "{project_type}{} on Modrinth",
+                    project_type.remove(0).to_uppercase()
+                ),
                 icon_url: Some(
                     "https://cdn-raw.modrinth.com/modrinth-new.png".to_string(),
                 ),
