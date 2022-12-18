@@ -5,6 +5,11 @@ authors = ["geometrically <jai@modrinth.com>"]
 edition = "2018"
 license = "AGPL-3.0"
 
+# This seems redundant, but it's necessary for Docker to work
+[[bin]]
+name = "labrinth"
+path = "src/main.rs"
+
 [dependencies]
 actix = "0.13.0"
 actix-web = "4.2.1"
