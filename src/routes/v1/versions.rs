@@ -4,6 +4,7 @@ use crate::models::projects::{
     Dependency, GameVersion, Loader, Version, VersionFile, VersionType,
 };
 use crate::models::teams::Permissions;
+use crate::routes::version_file::Algorithm;
 use crate::routes::versions::{VersionIds, VersionListFilters};
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
@@ -41,7 +42,7 @@ fn convert_to_legacy(version: Version) -> LegacyVersion {
         name: version.name,
         version_number: version.version_number,
         changelog: version.changelog,
-        changelog_url: version.changelog_url,
+        changelog_url: None,
         date_published: version.date_published,
         downloads: version.downloads,
         version_type: version.version_type,
@@ -193,16 +194,6 @@ pub async fn version_get(
     }
 }
 
-#[derive(Deserialize)]
-pub struct Algorithm {
-    #[serde(default = "default_algorithm")]
-    algorithm: String,
-}
-
-fn default_algorithm() -> String {
-    "sha1".into()
-}
-
 // under /api/v1/version_file/{hash}
 #[get("{version_id}")]
 pub async fn get_version_from_hash(
@@ -237,44 +228,6 @@ pub async fn get_version_from_hash(
         } else {
             Ok(HttpResponse::NotFound().body(""))
         }
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct DownloadRedirect {
-    pub url: String,
-}
-
-// under /api/v1/version_file/{hash}/download
-#[allow(clippy::await_holding_refcell_ref)]
-#[get("{version_id}/download")]
-pub async fn download_version(
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    algorithm: web::Query<Algorithm>,
-) -> Result<HttpResponse, ApiError> {
-    let hash = info.into_inner().0;
-
-    let result = sqlx::query!(
-        "
-        SELECT f.url url, f.id id, f.version_id version_id, v.mod_id mod_id FROM hashes h
-        INNER JOIN files f ON h.file_id = f.id
-        INNER JOIN versions v ON v.id = f.version_id
-        WHERE h.algorithm = $2 AND h.hash = $1
-        ",
-        hash.as_bytes(),
-        algorithm.algorithm
-    )
-    .fetch_optional(&**pool)
-    .await
-    .map_err(|e| ApiError::Database(e.into()))?;
-
-    if let Some(id) = result {
-        Ok(HttpResponse::TemporaryRedirect()
-            .append_header(("Location", &*id.url))
-            .json(DownloadRedirect { url: id.url }))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }

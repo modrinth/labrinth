@@ -17,7 +17,6 @@ use tokio::sync::Mutex;
 
 mod database;
 mod file_hosting;
-mod health;
 mod models;
 mod queue;
 mod ratelimit;
@@ -284,7 +283,6 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::v1_config)
             .configure(routes::v2_config)
             .service(routes::index_get)
-            .service(routes::health_get)
             .service(web::scope("maven").configure(routes::maven_config))
             .service(web::scope("updates").configure(routes::updates))
             .default_service(web::get().to(routes::not_found))
