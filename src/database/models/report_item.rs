@@ -4,9 +4,9 @@ use chrono::{DateTime, Utc};
 pub struct Report {
     pub id: ReportId,
     pub report_type_id: ReportTypeId,
-    pub project_id: Option<ProjectId>,
-    pub version_id: Option<VersionId>,
-    pub user_id: Option<UserId>,
+    pub project_id: Option<i64>,
+    pub version_id: Option<i64>,
+    pub user_id: Option<i64>,
     pub body: String,
     pub reporter: UserId,
     pub created: DateTime<Utc>,
@@ -41,9 +41,9 @@ impl Report {
             ",
             self.id as ReportId,
             self.report_type_id as ReportTypeId,
-            self.project_id.map(|x| x.0 as i64),
-            self.version_id.map(|x| x.0 as i64),
-            self.user_id.map(|x| x.0 as i64),
+            self.project_id,
+            self.version_id,
+            self.user_id,
             self.body,
             self.reporter as UserId
         )
