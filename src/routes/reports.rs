@@ -67,11 +67,12 @@ pub async fn report_create(
 
     match new_report.item_type {
         ItemType::Project | ItemType::Mod => {
-            let project_id = parse_base62(new_report.item_id.as_str())? as i64;
+            let project_id =
+                ProjectId(parse_base62(new_report.item_id.as_str())?);
 
             let result = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)",
-                project_id
+                project_id.0 as i64
             )
             .fetch_one(&mut transaction)
             .await?;
@@ -83,14 +84,15 @@ pub async fn report_create(
                 )));
             }
 
-            report.project_id = Some(project_id)
+            report.project_id = Some(project_id.into())
         }
         ItemType::Version => {
-            let version_id = parse_base62(new_report.item_id.as_str())? as i64;
+            let version_id =
+                VersionId(parse_base62(new_report.item_id.as_str())?);
 
             let result = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM versions WHERE id = $1)",
-                version_id
+                version_id.0 as i64
             )
             .fetch_one(&mut transaction)
             .await?;
@@ -102,14 +104,14 @@ pub async fn report_create(
                 )));
             }
 
-            report.version_id = Some(version_id)
+            report.version_id = Some(version_id.into())
         }
         ItemType::User => {
-            let user_id = parse_base62(new_report.item_id.as_str())? as i64;
+            let user_id = UserId(parse_base62(new_report.item_id.as_str())?);
 
             let result = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
-                user_id
+                user_id.0 as i64
             )
             .fetch_one(&mut transaction)
             .await?;
@@ -121,7 +123,7 @@ pub async fn report_create(
                 )));
             }
 
-            report.user_id = Some(user_id)
+            report.user_id = Some(user_id.into())
         }
         ItemType::Unknown => {
             return Err(ApiError::InvalidInput(format!(
