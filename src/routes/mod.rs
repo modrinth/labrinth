@@ -3,6 +3,7 @@ pub use v1::v1_config;
 
 mod admin;
 mod auth;
+mod health;
 mod index;
 mod maven;
 mod midas;
@@ -24,6 +25,7 @@ mod versions;
 pub use auth::config as auth_config;
 pub use tags::config as tags_config;
 
+pub use self::health::health_get;
 pub use self::index::index_get;
 pub use self::not_found::not_found;
 use crate::file_hosting::FileHostingError;
