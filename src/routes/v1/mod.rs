@@ -122,5 +122,4 @@ pub fn moderation_config(cfg: &mut web::ServiceConfig) {
 
 pub fn reports_config(cfg: &mut web::ServiceConfig) {
     cfg.service(super::reports::report_create);
-    cfg.service(super::reports::delete_report);
 }

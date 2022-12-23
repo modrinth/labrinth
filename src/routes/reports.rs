@@ -1,4 +1,6 @@
-use crate::models::ids::{ProjectId, UserId, VersionId};
+use crate::models::ids::{
+    base62_impl::parse_base62, ProjectId, UserId, VersionId,
+};
 use crate::models::reports::{ItemType, Report};
 use crate::routes::ApiError;
 use crate::util::auth::{
@@ -65,10 +67,8 @@ pub async fn report_create(
 
     match new_report.item_type {
         ItemType::Project | ItemType::Mod => {
-            let project_id = serde_json::from_str::<ProjectId>(&format!(
-                "\"{}\"",
-                new_report.item_id
-            ))?;
+            let project_id =
+                ProjectId(parse_base62(new_report.item_id.as_str())?);
 
             let result = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)",
@@ -87,10 +87,8 @@ pub async fn report_create(
             report.project_id = Some(project_id.into())
         }
         ItemType::Version => {
-            let version_id = serde_json::from_str::<VersionId>(&format!(
-                "\"{}\"",
-                new_report.item_id
-            ))?;
+            let version_id =
+                VersionId(parse_base62(new_report.item_id.as_str())?);
 
             let result = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM versions WHERE id = $1)",
@@ -109,10 +107,7 @@ pub async fn report_create(
             report.version_id = Some(version_id.into())
         }
         ItemType::User => {
-            let user_id = serde_json::from_str::<UserId>(&format!(
-                "\"{}\"",
-                new_report.item_id
-            ))?;
+            let user_id = UserId(parse_base62(new_report.item_id.as_str())?);
 
             let result = sqlx::query!(
                 "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
