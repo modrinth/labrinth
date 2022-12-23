@@ -59,8 +59,9 @@ pub fn versions_config(cfg: &mut web::ServiceConfig) {
     );
     cfg.service(
         web::scope("version_file")
-            .service(versions::delete_file)
-            .service(versions::get_version_from_hash),
+            .service(super::version_file::delete_file)
+            .service(super::version_file::get_version_from_hash)
+            .service(super::version_file::download_version),
     );
 }
 
@@ -103,5 +104,4 @@ pub fn notifications_config(cfg: &mut web::ServiceConfig) {
 
 pub fn reports_config(cfg: &mut web::ServiceConfig) {
     cfg.service(super::reports::report_create);
-    cfg.service(super::reports::delete_report);
 }
