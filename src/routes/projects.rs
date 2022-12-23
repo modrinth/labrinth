@@ -1399,6 +1399,7 @@ pub struct GalleryCreateQuery {
     pub title: Option<String>,
     #[validate(length(min = 1, max = 2048))]
     pub description: Option<String>,
+    pub ordering: Option<i64>,
 }
 
 #[post("{id}/gallery")]
@@ -1510,6 +1511,7 @@ pub async fn add_gallery_item(
             title: item.title,
             description: item.description,
             created: Utc::now(),
+            ordering: item.ordering.unwrap_or(0),
         }
         .insert(project_item.inner.id, &mut transaction)
         .await?;
@@ -1544,6 +1546,7 @@ pub struct GalleryEditQuery {
     )]
     #[validate(length(min = 1, max = 2048))]
     pub description: Option<Option<String>>,
+    pub ordering: Option<i64>,
 }
 
 #[patch("{id}/gallery")]
@@ -1661,6 +1664,19 @@ pub async fn edit_gallery_item(
             ",
             id,
             description
+        )
+        .execute(&mut *transaction)
+        .await?;
+    }
+    if let Some(ordering) = item.ordering {
+        sqlx::query!(
+            "
+            UPDATE mods_gallery
+            SET ordering = $2
+            WHERE id = $1
+            ",
+            id,
+            ordering
         )
         .execute(&mut *transaction)
         .await?;

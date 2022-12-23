@@ -1,4 +1,6 @@
-use crate::models::ids::{ProjectId, UserId, VersionId};
+use crate::models::ids::{
+    base62_impl::parse_base62, ProjectId, UserId, VersionId,
+};
 use crate::models::reports::{ItemType, Report};
 use crate::routes::ApiError;
 use crate::util::auth::{
@@ -64,32 +66,64 @@ pub async fn report_create(
     };
 
     match new_report.item_type {
-        ItemType::Project => {
-            report.project_id = Some(
-                serde_json::from_str::<ProjectId>(&format!(
-                    "\"{}\"",
-                    new_report.item_id
-                ))?
-                .into(),
+        ItemType::Project | ItemType::Mod => {
+            let project_id =
+                ProjectId(parse_base62(new_report.item_id.as_str())?);
+
+            let result = sqlx::query!(
+                "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)",
+                project_id.0 as i64
             )
+            .fetch_one(&mut transaction)
+            .await?;
+
+            if !result.exists.unwrap_or(false) {
+                return Err(ApiError::InvalidInput(format!(
+                    "Project could not be found: {}",
+                    new_report.item_id
+                )));
+            }
+
+            report.project_id = Some(project_id.into())
         }
         ItemType::Version => {
-            report.version_id = Some(
-                serde_json::from_str::<VersionId>(&format!(
-                    "\"{}\"",
-                    new_report.item_id
-                ))?
-                .into(),
+            let version_id =
+                VersionId(parse_base62(new_report.item_id.as_str())?);
+
+            let result = sqlx::query!(
+                "SELECT EXISTS(SELECT 1 FROM versions WHERE id = $1)",
+                version_id.0 as i64
             )
+            .fetch_one(&mut transaction)
+            .await?;
+
+            if !result.exists.unwrap_or(false) {
+                return Err(ApiError::InvalidInput(format!(
+                    "Version could not be found: {}",
+                    new_report.item_id
+                )));
+            }
+
+            report.version_id = Some(version_id.into())
         }
         ItemType::User => {
-            report.user_id = Some(
-                serde_json::from_str::<UserId>(&format!(
-                    "\"{}\"",
-                    new_report.item_id
-                ))?
-                .into(),
+            let user_id = UserId(parse_base62(new_report.item_id.as_str())?);
+
+            let result = sqlx::query!(
+                "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
+                user_id.0 as i64
             )
+            .fetch_one(&mut transaction)
+            .await?;
+
+            if !result.exists.unwrap_or(false) {
+                return Err(ApiError::InvalidInput(format!(
+                    "User could not be found: {}",
+                    new_report.item_id
+                )));
+            }
+
+            report.user_id = Some(user_id.into())
         }
         ItemType::Unknown => {
             return Err(ApiError::InvalidInput(format!(

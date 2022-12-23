@@ -238,6 +238,7 @@ pub struct NewGalleryItem {
     #[validate(length(min = 1, max = 2048))]
     /// The description of the gallery item
     pub description: Option<String>,
+    pub ordering: i64,
 }
 
 pub struct UploadedFile {
@@ -548,6 +549,7 @@ pub async fn project_create_inner(
                     title: item.title.clone(),
                     description: item.description.clone(),
                     created: Utc::now(),
+                    ordering: item.ordering,
                 });
 
                 continue;
@@ -640,6 +642,7 @@ pub async fn project_create_inner(
                 permissions: crate::models::teams::Permissions::ALL,
                 accepted: true,
                 payouts_split: Decimal::ONE_HUNDRED,
+                ordering: 0,
             }],
         };
 
@@ -753,6 +756,7 @@ pub async fn project_create_inner(
                     title: x.title.clone(),
                     description: x.description.clone(),
                     created: x.created,
+                    ordering: x.ordering,
                 })
                 .collect(),
         };
