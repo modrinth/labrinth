@@ -220,8 +220,14 @@ pub struct EditVersion {
     pub primary_file: Option<(String, String)>,
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
-    // algo, hash, status
-    pub file_types: Option<Vec<(String, String, Option<FileType>)>>,
+    pub file_types: Option<Vec<EditVersionFileType>>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EditVersionFileType {
+    pub algorithm: String,
+    pub hash: String,
+    pub file_type: Option<FileType>,
 }
 
 #[patch("{id}")]
@@ -560,15 +566,15 @@ pub async fn version_edit(
                         INNER JOIN files f ON h.file_id = f.id
                         WHERE h.algorithm = $2 AND h.hash = $1
                         ",
-                        file_type.1.as_bytes(),
-                        file_type.0
+                        file_type.hash.as_bytes(),
+                        file_type.algorithm
                     )
                     .fetch_optional(&**pool)
                     .await?
                     .ok_or_else(|| {
                         ApiError::InvalidInput(format!(
                             "Specified file with hash {} does not exist.",
-                            file_type.1.clone()
+                            file_type.algorithm.clone()
                         ))
                     })?;
 
@@ -579,7 +585,7 @@ pub async fn version_edit(
                         WHERE (id = $1)
                         ",
                         result.id,
-                        file_type.2.as_ref().map(|x| x.as_str()),
+                        file_type.file_type.as_ref().map(|x| x.as_str()),
                     )
                     .execute(&mut *transaction)
                     .await?;
