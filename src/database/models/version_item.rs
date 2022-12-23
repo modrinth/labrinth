@@ -1,6 +1,6 @@
 use super::ids::*;
 use super::DatabaseError;
-use crate::models::projects::VersionStatus;
+use crate::models::projects::{FileType, VersionStatus};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::cmp::Ordering;
@@ -87,6 +87,7 @@ pub struct VersionFileBuilder {
     pub hashes: Vec<HashBuilder>,
     pub primary: bool,
     pub size: u32,
+    pub file_type: Option<FileType>,
 }
 
 impl VersionFileBuilder {
@@ -99,15 +100,16 @@ impl VersionFileBuilder {
 
         sqlx::query!(
             "
-            INSERT INTO files (id, version_id, url, filename, is_primary, size)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ",
             file_id as FileId,
             version_id as VersionId,
             self.url,
             self.filename,
             self.primary,
-            self.size as i32
+            self.size as i32,
+            self.file_type.map(|x| x.as_str()),
         )
         .execute(&mut *transaction)
         .await?;
@@ -603,7 +605,7 @@ impl Version {
             v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,
             JSONB_AGG(DISTINCT jsonb_build_object('version', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,
             ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
-            JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size))  filter (where f.id is not null) files,
+            JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,
             JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,
             JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies
             FROM versions v
@@ -656,6 +658,7 @@ impl Version {
                         pub filename: String,
                         pub primary: bool,
                         pub size: u32,
+                        pub file_type: Option<FileType>,
                     }
 
                     let hashes: Vec<Hash> =
@@ -689,6 +692,7 @@ impl Version {
                                 hashes: file_hashes,
                                 primary: x.primary,
                                 size: x.size,
+                                file_type: x.file_type,
                             }
                         })
                         .collect::<Vec<_>>();
@@ -753,7 +757,7 @@ impl Version {
             v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,
             JSONB_AGG(DISTINCT jsonb_build_object('version', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,
             ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
-            JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size))  filter (where f.id is not null) files,
+            JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,
             JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,
             JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies
             FROM versions v
@@ -805,6 +809,7 @@ impl Version {
                                 pub filename: String,
                                 pub primary: bool,
                                 pub size: u32,
+                                pub file_type: Option<FileType>,
                             }
 
                             let hashes: Vec<Hash> = serde_json::from_value(
@@ -838,6 +843,7 @@ impl Version {
                                     hashes: file_hashes,
                                     primary: x.primary,
                                     size: x.size,
+                                    file_type: x.file_type,
                                 }
                             }).collect::<Vec<_>>();
 
@@ -910,4 +916,5 @@ pub struct QueryFile {
     pub hashes: HashMap<String, String>,
     pub primary: bool,
     pub size: u32,
+    pub file_type: Option<FileType>,
 }

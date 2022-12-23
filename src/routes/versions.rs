@@ -1,7 +1,7 @@
 use super::ApiError;
 use crate::database;
 use crate::models;
-use crate::models::projects::{Dependency, Version, VersionStatus};
+use crate::models::projects::{Dependency, FileType, Version, VersionStatus};
 use crate::models::teams::Permissions;
 use crate::util::auth::{
     get_user_from_headers, is_authorized, is_authorized_version,
@@ -220,6 +220,8 @@ pub struct EditVersion {
     pub primary_file: Option<(String, String)>,
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
+    // algo, hash, status
+    pub file_types: Option<Vec<(String, String, Option<FileType>)>>,
 }
 
 #[patch("{id}")]
@@ -548,6 +550,40 @@ pub async fn version_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+            }
+
+            if let Some(file_types) = &new_version.file_types {
+                for file_type in file_types {
+                    let result = sqlx::query!(
+                        "
+                        SELECT f.id id FROM hashes h
+                        INNER JOIN files f ON h.file_id = f.id
+                        WHERE h.algorithm = $2 AND h.hash = $1
+                        ",
+                        file_type.1.as_bytes(),
+                        file_type.0
+                    )
+                    .fetch_optional(&**pool)
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInput(format!(
+                            "Specified file with hash {} does not exist.",
+                            file_type.1.clone()
+                        ))
+                    })?;
+
+                    sqlx::query!(
+                        "
+                        UPDATE files
+                        SET file_type = $2
+                        WHERE (id = $1)
+                        ",
+                        result.id,
+                        file_type.2.as_ref().map(|x| x.as_str()),
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
             }
 
             transaction.commit().await?;
