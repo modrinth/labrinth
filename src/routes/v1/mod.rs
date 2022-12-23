@@ -2,7 +2,6 @@ use actix_web::web;
 
 mod moderation;
 mod mods;
-mod reports;
 mod tags;
 mod teams;
 mod users;
@@ -122,7 +121,6 @@ pub fn moderation_config(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn reports_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(reports::reports);
-    cfg.service(reports::report_create);
+    cfg.service(super::reports::report_create);
     cfg.service(super::reports::delete_report);
 }
