@@ -1,5 +1,5 @@
 use crate::models::pack::PackFormat;
-use crate::models::projects::{GameVersion, Loader};
+use crate::models::projects::{FileType, GameVersion, Loader};
 use crate::validate::fabric::FabricValidator;
 use crate::validate::forge::{ForgeValidator, LegacyForgeValidator};
 use crate::validate::liteloader::LiteLoaderValidator;
@@ -14,6 +14,7 @@ use chrono::{DateTime, Utc};
 use std::io::Cursor;
 use thiserror::Error;
 use zip::ZipArchive;
+use crate::validate::datapack::DataPackValidator;
 
 mod fabric;
 mod forge;
@@ -23,6 +24,7 @@ pub mod plugin;
 mod quilt;
 mod resourcepack;
 mod shader;
+mod datapack;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -80,7 +82,7 @@ pub trait Validator: Sync {
     ) -> Result<ValidationResult, ValidationError>;
 }
 
-static VALIDATORS: [&dyn Validator; 15] = [
+static VALIDATORS: [&dyn Validator; 16] = [
     &ModpackValidator,
     &FabricValidator,
     &ForgeValidator,
@@ -96,20 +98,32 @@ static VALIDATORS: [&dyn Validator; 15] = [
     &CanvasShaderValidator,
     &ShaderValidator,
     &CoreShaderValidator,
+    &DataPackValidator,
 ];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
 pub async fn validate_file(
     data: bytes::Bytes,
     file_extension: String,
-    project_type: String,
-    loaders: Vec<Loader>,
+    mut project_type: String,
+    mut loaders: Vec<Loader>,
     game_versions: Vec<GameVersion>,
     all_game_versions: Vec<crate::database::models::categories::GameVersion>,
+    file_type: Option<FileType>,
 ) -> Result<ValidationResult, ValidationError> {
     actix_web::web::block(move || {
         let reader = Cursor::new(data);
         let mut zip = ZipArchive::new(reader)?;
+
+        if let Some(file_type) = file_type {
+            match file_type {
+                FileType::RequiredResourcePack | FileType::OptionalResourcePack => {
+                    project_type = "resourcepack".to_string();
+                    loaders = vec![Loader("minecraft".to_string())];
+                }
+                FileType::Unknown => {}
+            }
+        }
 
         let mut visited = false;
         for validator in &VALIDATORS {
