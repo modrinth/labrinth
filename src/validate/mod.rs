@@ -1,5 +1,6 @@
 use crate::models::pack::PackFormat;
 use crate::models::projects::{FileType, GameVersion, Loader};
+use crate::validate::datapack::DataPackValidator;
 use crate::validate::fabric::FabricValidator;
 use crate::validate::forge::{ForgeValidator, LegacyForgeValidator};
 use crate::validate::liteloader::LiteLoaderValidator;
@@ -14,8 +15,8 @@ use chrono::{DateTime, Utc};
 use std::io::Cursor;
 use thiserror::Error;
 use zip::ZipArchive;
-use crate::validate::datapack::DataPackValidator;
 
+mod datapack;
 mod fabric;
 mod forge;
 mod liteloader;
@@ -24,7 +25,6 @@ pub mod plugin;
 mod quilt;
 mod resourcepack;
 mod shader;
-mod datapack;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -117,7 +117,8 @@ pub async fn validate_file(
 
         if let Some(file_type) = file_type {
             match file_type {
-                FileType::RequiredResourcePack | FileType::OptionalResourcePack => {
+                FileType::RequiredResourcePack
+                | FileType::OptionalResourcePack => {
                     project_type = "resourcepack".to_string();
                     loaders = vec![Loader("minecraft".to_string())];
                 }
