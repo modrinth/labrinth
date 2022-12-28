@@ -1,3 +1,4 @@
+use std::io::Cursor;
 use crate::database::models;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
@@ -22,8 +23,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
+use color_thief::ColorFormat;
 use thiserror::Error;
 use validator::Validate;
+use image::{io::Reader as ImageReader, imageops, GenericImageView};
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -803,6 +806,7 @@ pub async fn project_create_inner(
             gallery: gallery_urls,
             flame_anvil_project: None,
             flame_anvil_user: None,
+            color: project_builder.color,
         };
 
         let _project_id = project_builder.insert(&mut *transaction).await?;
@@ -923,6 +927,14 @@ async fn process_icon_upload(
             "Icons must be smaller than 256KiB",
         )
         .await?;
+
+        let mut img = ImageReader::new(Cursor::new(data)).with_guessed_format().unwrap();
+
+        let image = img.decode().unwrap();
+        let (width, height) = image.dimensions();
+        let subimg = imageops::crop(&mut img, 0, height - 1, width, height).to_image();
+        let colors = color_thief::get_palette(subimg.as_raw(), ColorFormat::Rgba, 10, 10).unwrap();
+
 
         let hash = sha1::Sha1::from(&data).hexdigest();
         let upload_data = file_host
