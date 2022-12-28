@@ -558,10 +558,10 @@ pub async fn project_edit(
                     "
                     SELECT tm.user_id id
                     FROM team_members tm
-                    WHERE tm.team_id = $1 --AND tm.user_id <> $2
+                    WHERE tm.team_id = $1 AND tm.user_id <> $2
                     ",
                     project_item.inner.team_id as database::models::ids::TeamId,
-                    // user_id as database::models::ids::UserId
+                    user_id as database::models::ids::UserId
                 )
                 .fetch_many(&mut *transaction)
                 .try_filter_map(|e| async { Ok(e.right().map(|c| database::models::UserId(c.id))) })
