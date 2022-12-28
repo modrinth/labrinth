@@ -572,10 +572,10 @@ pub async fn project_edit(
                     notification_type: Some("status_update".to_string()),
                     title: format!("**{}**'s status has changed!", project_item.inner.title),
                     text: format!(
-                        "The project {}'s status has changed from **{}** to **{}**",
+                        "The project {}'s status has changed from {} to {}",
                         project_item.inner.title,
-                        project_item.inner.status,
-                        status
+                        project_item.inner.status.as_friendly_str(),
+                        status.as_friendly_str()
                     ),
                     link: format!(
                         "/{}/{}",

@@ -315,6 +315,20 @@ impl ProjectStatus {
             ProjectStatus::Private => "private",
         }
     }
+    pub fn as_friendly_str(&self) -> &'static str {
+        match self {
+            ProjectStatus::Approved => "Approved",
+            ProjectStatus::Rejected => "Rejected",
+            ProjectStatus::Draft => "Draft",
+            ProjectStatus::Unlisted => "Unlisted",
+            ProjectStatus::Processing => "Processing",
+            ProjectStatus::Unknown => "Unknown",
+            ProjectStatus::Archived => "Archived",
+            ProjectStatus::Withheld => "Withheld",
+            ProjectStatus::Scheduled => "Scheduled",
+            ProjectStatus::Private => "Private",
+        }
+    }
 
     pub fn iterator() -> impl Iterator<Item = ProjectStatus> {
         [
