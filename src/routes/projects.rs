@@ -553,15 +553,13 @@ pub async fn project_edit(
                 }
 
                 if team_member.map(|x| !x.accepted).unwrap_or(true) {
-                    let user_id: database::models::ids::UserId = user.id.into();
                     let notified_members = sqlx::query!(
                         "
                         SELECT tm.user_id id
                         FROM team_members tm
-                        WHERE tm.team_id = $1 AND tm.user_id != $2 AND tm.accepted
+                        WHERE tm.team_id = $1 AND tm.accepted
                         ",
-                        project_item.inner.team_id as database::models::ids::TeamId,
-                        user_id as database::models::ids::UserId
+                        project_item.inner.team_id as database::models::ids::TeamId
                     )
                     .fetch_many(&mut *transaction)
                     .try_filter_map(|e| async { Ok(e.right().map(|c| database::models::UserId(c.id))) })
