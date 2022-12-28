@@ -907,27 +907,6 @@
     },
     "query": "\n                    UPDATE mods\n                    SET license = $1\n                    WHERE (id = $2)\n                    "
   },
-  "1a5288adcf99f686c1605359439bc982df7c6e6b770d277ef41b2ca7ad6139a5": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                    SELECT tm.user_id id\n                    FROM team_members tm\n                    WHERE tm.team_id = $1 AND tm.user_id <> $2\n                    "
-  },
   "1ab781d26c93aa74bf90b78b74b99e50004d25d42d56b734e5e83f2333d0c0d2": {
     "describe": {
       "columns": [],
@@ -7344,6 +7323,27 @@
       }
     },
     "query": "\n            DELETE FROM team_members\n            WHERE user_id = $1\n            "
+  },
+  "f29b4e167615fd59070595f0bade75278ceb6848cbbbf29ea9caaff5e43c02bf": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                        SELECT tm.user_id id\n                        FROM team_members tm\n                        WHERE tm.team_id = $1 AND tm.user_id <> $2 AND tm.accepted\n                        "
   },
   "f3a8ad4a802dde0eb9304078e0368066e7d48121dfe73a63b2911b0998840a79": {
     "describe": {
