@@ -558,7 +558,7 @@ pub async fn project_edit(
                     "
                     SELECT tm.user_id id
                     FROM team_members tm
-                    WHERE tm.team_id = $1 AND tm.user_id <> $2
+                    WHERE tm.team_id = $1 AND tm.user_id <> $2 AND tm.accepted
                     ",
                     project_item.inner.team_id as database::models::ids::TeamId,
                     user_id as database::models::ids::UserId
