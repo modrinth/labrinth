@@ -396,7 +396,7 @@ pub async fn project_edit(
 
         if user.role.is_admin() {
             permissions = Some(Permissions::ALL)
-        } else if let Some(member) = team_member {
+        } else if let Some(ref member) = team_member {
             permissions = Some(member.permissions)
         } else if user.role.is_mod() {
             permissions =
@@ -552,40 +552,41 @@ pub async fn project_edit(
                     }
                 }
 
+                if team_member.map(|x| !x.accepted).unwrap_or(true) {
+                    let user_id: database::models::ids::UserId = user.id.into();
+                    let notified_members = sqlx::query!(
+                        "
+                        SELECT tm.user_id id
+                        FROM team_members tm
+                        WHERE tm.team_id = $1 AND tm.user_id <> $2 AND tm.accepted
+                        ",
+                        project_item.inner.team_id as database::models::ids::TeamId,
+                        user_id as database::models::ids::UserId
+                    )
+                    .fetch_many(&mut *transaction)
+                    .try_filter_map(|e| async { Ok(e.right().map(|c| database::models::UserId(c.id))) })
+                    .try_collect::<Vec<_>>()
+                    .await?;
 
-                let user_id: database::models::ids::UserId = user.id.into();
-                let notified_members = sqlx::query!(
-                    "
-                    SELECT tm.user_id id
-                    FROM team_members tm
-                    WHERE tm.team_id = $1 AND tm.user_id <> $2 AND tm.accepted
-                    ",
-                    project_item.inner.team_id as database::models::ids::TeamId,
-                    user_id as database::models::ids::UserId
-                )
-                .fetch_many(&mut *transaction)
-                .try_filter_map(|e| async { Ok(e.right().map(|c| database::models::UserId(c.id))) })
-                .try_collect::<Vec<_>>()
-                .await?;
-
-                NotificationBuilder {
-                    notification_type: Some("status_update".to_string()),
-                    title: format!("**{}**'s status has changed!", project_item.inner.title),
-                    text: format!(
-                        "The project {}'s status has changed from {} to {}",
-                        project_item.inner.title,
-                        project_item.inner.status.as_friendly_str(),
-                        status.as_friendly_str()
-                    ),
-                    link: format!(
-                        "/{}/{}",
-                        project_item.project_type,
-                        ProjectId::from(id)
-                    ),
-                    actions: vec![],
+                    NotificationBuilder {
+                        notification_type: Some("status_update".to_string()),
+                        title: format!("**{}**'s status has changed!", project_item.inner.title),
+                        text: format!(
+                            "The project {}'s status has changed from {} to {}",
+                            project_item.inner.title,
+                            project_item.inner.status.as_friendly_str(),
+                            status.as_friendly_str()
+                        ),
+                        link: format!(
+                            "/{}/{}",
+                            project_item.project_type,
+                            ProjectId::from(id)
+                        ),
+                        actions: vec![],
+                    }
+                    .insert_many(notified_members, &mut transaction)
+                    .await?;
                 }
-                .insert_many(notified_members, &mut transaction)
-                .await?;
 
                 sqlx::query!(
                     "
