@@ -317,11 +317,11 @@ impl ProjectStatus {
     }
     pub fn as_friendly_str(&self) -> &'static str {
         match self {
-            ProjectStatus::Approved => "Approved",
+            ProjectStatus::Approved => "Listed",
             ProjectStatus::Rejected => "Rejected",
             ProjectStatus::Draft => "Draft",
             ProjectStatus::Unlisted => "Unlisted",
-            ProjectStatus::Processing => "Processing",
+            ProjectStatus::Processing => "Under review",
             ProjectStatus::Unknown => "Unknown",
             ProjectStatus::Archived => "Archived",
             ProjectStatus::Withheld => "Withheld",
