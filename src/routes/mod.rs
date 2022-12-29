@@ -283,7 +283,9 @@ impl actix_web::ResponseError for ApiError {
                 actix_web::http::StatusCode::FAILED_DEPENDENCY
             }
             ApiError::Decoding(..) => actix_web::http::StatusCode::BAD_REQUEST,
-            ApiError::ImageError(..) => actix_web::http::StatusCode::BAD_REQUEST,
+            ApiError::ImageError(..) => {
+                actix_web::http::StatusCode::BAD_REQUEST
+            }
         }
     }
 
