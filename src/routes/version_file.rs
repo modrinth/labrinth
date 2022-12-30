@@ -77,7 +77,7 @@ pub async fn get_version_from_hash(
             Ok(HttpResponse::Ok().json(
                 versions_data
                     .into_iter()
-                    .map(|x| models::projects::Version::from(x))
+                    .map(models::projects::Version::from)
                     .collect::<Vec<_>>(),
             ))
         } else {
