@@ -153,10 +153,17 @@ pub async fn send_discord_webhook(
                     "sponge" => 1049793416969605231,
                     "velocity" => 1049793419108700170,
                     "waterfall" => 1049793420937412638,
+                    "datapack" => 1057895494652788866,
                     _ => 1049805243866681424,
                 };
 
-                let mut x = loader.clone();
+                let mut x = if loader == "datapack" {
+                    "Data Pack"
+                } else {
+                    loader
+                }
+                .to_string();
+
                 formatted_loaders.push_str(&format!(
                     "<:{loader}:{emoji_id}> {}{x}\n",
                     x.remove(0).to_uppercase()
@@ -185,7 +192,16 @@ pub async fn send_discord_webhook(
 
         if loaders.iter().all(|x| PLUGIN_LOADERS.contains(&&**x)) {
             project_type = "plugin".to_string();
+        } else if loaders.iter().any(|x| x == "datapack") {
+            project_type = "datapack".to_string();
         }
+
+        let mut display_project_type = match &*project_type {
+            "datapack" => "data pack",
+            "resourcepack" => "resource pack",
+            _ => &*project_type,
+        }
+        .to_string();
 
         let embed = DiscordEmbed {
             author: Some(DiscordEmbedAuthor {
@@ -221,8 +237,8 @@ pub async fn send_discord_webhook(
             .map(|x| DiscordEmbedImage { url: Some(x) }),
             footer: Some(DiscordEmbedFooter {
                 text: format!(
-                    "{}{project_type} on Modrinth",
-                    project_type.remove(0).to_uppercase()
+                    "{}{display_project_type} on Modrinth",
+                    display_project_type.remove(0).to_uppercase()
                 ),
                 icon_url: Some(
                     "https://cdn-raw.modrinth.com/modrinth-new.png".to_string(),
