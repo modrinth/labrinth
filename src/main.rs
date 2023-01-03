@@ -274,6 +274,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::QueryConfig::default().error_handler(|err, _req| {
                 routes::ApiError::Validation(err.to_string()).into()
             }))
+            .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+                routes::ApiError::Validation(err.to_string()).into()
+            }))
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(file_host.clone()))
             .app_data(web::Data::new(search_config.clone()))
