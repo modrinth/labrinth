@@ -86,8 +86,7 @@ pub async fn projects_get(
             .collect();
 
     let projects_data =
-        database::models::Project::get_many_full(&*project_ids, &**pool)
-            .await?;
+        database::models::Project::get_many_full(&project_ids, &**pool).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -263,7 +262,7 @@ pub async fn dependency_list(
             .collect::<Vec<_>>();
 
         let (projects_result, versions_result) = futures::join!(
-            database::Project::get_many_full(&*project_ids, &**pool,),
+            database::Project::get_many_full(&project_ids, &**pool,),
             database::Version::get_many_full(
                 dependencies.iter().filter_map(|x| x.0).collect(),
                 &**pool,
@@ -1219,12 +1218,11 @@ pub async fn projects_edit(
             .collect();
 
     let projects_data =
-        database::models::Project::get_many_full(&*project_ids, &**pool)
-            .await?;
+        database::models::Project::get_many_full(&project_ids, &**pool).await?;
 
     if let Some(id) = project_ids
         .iter()
-        .find(|x| projects_data.iter().find(|y| x == &&y.inner.id).is_none())
+        .find(|x| !projects_data.iter().any(|y| x == &&y.inner.id))
     {
         return Err(ApiError::InvalidInput(format!(
             "Project {} not found",
@@ -1247,7 +1245,7 @@ pub async fn projects_edit(
 
     for project in projects_data {
         if !user.role.is_mod() {
-            if let Some(ref member) = team_members
+            if let Some(member) = team_members
                 .iter()
                 .find(|x| x.team_id == project.inner.team_id)
             {
@@ -1397,7 +1395,7 @@ pub async fn projects_edit(
             }
         }
 
-        let project_donations = project
+        let project_donations: Vec<DonationLink> = project
             .donation_urls
             .into_iter()
             .map(|d| DonationLink {
@@ -1417,9 +1415,10 @@ pub async fn projects_edit(
         if let Some(delete_donations) = &bulk_edit_project.remove_donation_urls
         {
             for donation in delete_donations {
-                if let Some(pos) = set_donation_links.iter().position(|x| {
-                    donation.url == x.url && donation.id == x.platform_short
-                }) {
+                if let Some(pos) = set_donation_links
+                    .iter()
+                    .position(|x| donation.url == x.url && donation.id == x.id)
+                {
                     set_donation_links.remove(pos);
                 }
             }
@@ -1449,7 +1448,8 @@ pub async fn projects_edit(
                             "Platform {} does not exist.",
                             donation.id.clone()
                         ))
-                    })?;
+                    })?
+                    .id;
 
                 sqlx::query!(
                         "

@@ -793,7 +793,7 @@ impl Project {
         use futures::TryStreamExt;
 
         let project_ids_parsed: Vec<i64> =
-            project_ids.into_iter().map(|x| x.0).collect();
+            project_ids.iter().map(|x| x.0).collect();
         sqlx::query!(
             "
             SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,

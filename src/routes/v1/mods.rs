@@ -98,8 +98,7 @@ pub async fn mods_get(
             .collect();
 
     let projects_data =
-        database::models::Project::get_many_full(&*project_ids, &**pool)
-            .await?;
+        database::models::Project::get_many_full(&project_ids, &**pool).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
