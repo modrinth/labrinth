@@ -784,7 +784,7 @@ impl Project {
     }
 
     pub async fn get_many_full<'a, E>(
-        project_ids: Vec<ProjectId>,
+        project_ids: &[ProjectId],
         exec: E,
     ) -> Result<Vec<QueryProject>, sqlx::Error>
     where
