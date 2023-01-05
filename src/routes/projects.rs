@@ -1185,16 +1185,6 @@ pub struct BulkEditProject {
         custom(function = "crate::util::validate::validate_url"),
         length(max = 2048)
     )]
-    pub license_url: Option<Option<String>>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "::serde_with::rust::double_option"
-    )]
-    #[validate(
-        custom(function = "crate::util::validate::validate_url"),
-        length(max = 2048)
-    )]
     pub discord_url: Option<Option<String>>,
 }
 
@@ -1315,13 +1305,13 @@ pub async fn projects_edit(
                     .id;
 
                 sqlx::query!(
-                        "
-                        INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
-                        VALUES ($1, $2, FALSE)
-                        ",
-                        project.inner.id as database::models::ids::ProjectId,
-                        category_id as database::models::ids::CategoryId,
-                    )
+                    "
+                    INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
+                    VALUES ($1, $2, FALSE)
+                    ",
+                    project.inner.id as database::models::ids::ProjectId,
+                    category_id as database::models::ids::CategoryId,
+                )
                     .execute(&mut *transaction)
                     .await?;
             }
@@ -1452,14 +1442,14 @@ pub async fn projects_edit(
                     .id;
 
                 sqlx::query!(
-                        "
-                        INSERT INTO mods_donations (joining_mod_id, joining_platform_id, url)
-                        VALUES ($1, $2, $3)
-                        ",
-                        project.inner.id as database::models::ids::ProjectId,
-                        platform_id as database::models::ids::DonationPlatformId,
-                        donation.url
-                    )
+                    "
+                    INSERT INTO mods_donations (joining_mod_id, joining_platform_id, url)
+                    VALUES ($1, $2, $3)
+                    ",
+                    project.inner.id as database::models::ids::ProjectId,
+                    platform_id as database::models::ids::DonationPlatformId,
+                    donation.url
+                )
                     .execute(&mut *transaction)
                     .await?;
             }
@@ -1468,10 +1458,10 @@ pub async fn projects_edit(
         if let Some(issues_url) = &bulk_edit_project.issues_url {
             sqlx::query!(
                 "
-                    UPDATE mods
-                    SET issues_url = $1
-                    WHERE (id = $2)
-                    ",
+                UPDATE mods
+                SET issues_url = $1
+                WHERE (id = $2)
+                ",
                 issues_url.as_deref(),
                 project.inner.id as database::models::ids::ProjectId,
             )
@@ -1482,10 +1472,10 @@ pub async fn projects_edit(
         if let Some(source_url) = &bulk_edit_project.source_url {
             sqlx::query!(
                 "
-                    UPDATE mods
-                    SET source_url = $1
-                    WHERE (id = $2)
-                    ",
+                UPDATE mods
+                SET source_url = $1
+                WHERE (id = $2)
+                ",
                 source_url.as_deref(),
                 project.inner.id as database::models::ids::ProjectId,
             )
@@ -1496,25 +1486,11 @@ pub async fn projects_edit(
         if let Some(wiki_url) = &bulk_edit_project.wiki_url {
             sqlx::query!(
                 "
-                    UPDATE mods
-                    SET wiki_url = $1
-                    WHERE (id = $2)
-                    ",
+                UPDATE mods
+                SET wiki_url = $1
+                WHERE (id = $2)
+                ",
                 wiki_url.as_deref(),
-                project.inner.id as database::models::ids::ProjectId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
-
-        if let Some(license_url) = &bulk_edit_project.license_url {
-            sqlx::query!(
-                "
-                    UPDATE mods
-                    SET license_url = $1
-                    WHERE (id = $2)
-                    ",
-                license_url.as_deref(),
                 project.inner.id as database::models::ids::ProjectId,
             )
             .execute(&mut *transaction)
@@ -1524,10 +1500,10 @@ pub async fn projects_edit(
         if let Some(discord_url) = &bulk_edit_project.discord_url {
             sqlx::query!(
                 "
-                    UPDATE mods
-                    SET discord_url = $1
-                    WHERE (id = $2)
-                    ",
+                UPDATE mods
+                SET discord_url = $1
+                WHERE (id = $2)
+                ",
                 discord_url.as_deref(),
                 project.inner.id as database::models::ids::ProjectId,
             )

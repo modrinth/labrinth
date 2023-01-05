@@ -3795,6 +3795,19 @@
     },
     "query": "\n            INSERT INTO notifications_actions (\n                notification_id, title, action_route, action_route_method\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            "
   },
+  "83d428e1c07d16e356ef26bdf1d707940b1683b5f631ded1f6674a081453d67b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                UPDATE mods\n                SET source_url = $1\n                WHERE (id = $2)\n                "
+  },
   "85b40877c48fc4f23039c1b556007f92056a015f160fe1059b0d3b13615af0fb": {
     "describe": {
       "columns": [],
@@ -4018,6 +4031,19 @@
     },
     "query": "\n            DELETE FROM payouts_values\n            WHERE user_id = $1\n            "
   },
+  "8abb317c85f48c7dd9ccf4a7b8fbc0b58ac73f7ae87ff2dfe67009a51089f784": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                UPDATE mods\n                SET wiki_url = $1\n                WHERE (id = $2)\n                "
+  },
   "8ba2b2c38958f1c542e514fc62ab4682f58b0b442ac1842d20625420698e34ec": {
     "describe": {
       "columns": [],
@@ -4181,6 +4207,20 @@
       }
     },
     "query": "\n                    UPDATE mods\n                    SET wiki_url = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "9aab2350d576fd934b0541d1f71f320ac939b44a179fee3d1638113cdb3ddfe7": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int4",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n                    INSERT INTO mods_donations (joining_mod_id, joining_platform_id, url)\n                    VALUES ($1, $2, $3)\n                    "
   },
   "9c8f3f9503b5bb52e05bbc8a8eee7f640ab7d6b04a59ec111ce8b23e886911de": {
     "describe": {
@@ -5107,6 +5147,19 @@
     },
     "query": "\n            DELETE FROM notifications_actions\n            WHERE notification_id = ANY($1)\n            "
   },
+  "bad7cae347771e801976c26f2afaf33bda371051923b8f74a2f32a0ef5c65e57": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                UPDATE mods\n                SET discord_url = $1\n                WHERE (id = $2)\n                "
+  },
   "bbfb47ae2c972734785df6b7c3e62077dc544ef4ccf8bb89e9c22c2f50a933c1": {
     "describe": {
       "columns": [],
@@ -5855,6 +5908,19 @@
       }
     },
     "query": "\n            DELETE FROM hashes\n            WHERE file_id = $1\n            "
+  },
+  "cdf20036b29b61da40bf990c9ab04c509297a4d65bc9b136c9fb20f1e97e1149": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n                    INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)\n                    VALUES ($1, $2, FALSE)\n                    "
   },
   "ce46915d4ce10f3fc2d4328157b06016da838672c8336b3b8d27e09eeec979d3": {
     "describe": {
@@ -6826,6 +6892,19 @@
       }
     },
     "query": "\n            DELETE FROM files\n            WHERE files.id = $1\n            "
+  },
+  "e3fb74a94a6a78b1007dd99ad11bdcfaa0957ed7d1683997aef7301e0f15baba": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                UPDATE mods\n                SET issues_url = $1\n                WHERE (id = $2)\n                "
   },
   "e42d3a64ae4d88b73136a319fe79a8b070c193707e3560d18deca478662d8d90": {
     "describe": {
