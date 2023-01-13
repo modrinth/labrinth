@@ -287,9 +287,6 @@ pub async fn project_create(
         let undo_result = undo_uploads(&***file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
 
-        // fix multipart error bug:
-        payload.for_each(|_| ready(())).await;
-
         undo_result?;
         if let Err(e) = rollback_result {
             return Err(e.into());
