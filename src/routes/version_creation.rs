@@ -134,6 +134,10 @@ async fn version_create_inner(
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
 
+        if error.is_some() {
+            continue;
+        }
+
         let result = async {
             let content_disposition = field.content_disposition().clone();
             let name = content_disposition.get_name().ok_or_else(|| {
@@ -586,6 +590,10 @@ async fn upload_file_to_version_inner(
     let mut error = None;
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
+
+        if error.is_some() {
+            continue;
+        }
 
         let result = async {
             let content_disposition = field.content_disposition().clone();

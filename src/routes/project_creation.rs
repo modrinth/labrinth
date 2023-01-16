@@ -475,6 +475,10 @@ pub async fn project_create_inner(
     while let Some(item) = payload.next().await {
         let mut field: Field = item.map_err(CreateError::MultipartError)?;
 
+        if error.is_some() {
+            continue;
+        }
+
         let result = async {
             let content_disposition = field.content_disposition().clone();
 
@@ -550,7 +554,7 @@ pub async fn project_create_inner(
 
                     uploaded_files.push(UploadedFile {
                         file_id: upload_data.file_id,
-                        file_name: upload_data.file_name.clone(),
+                        file_name: upload_data.file_name,
                     });
 
                     gallery_urls.push(crate::models::projects::GalleryItem {
