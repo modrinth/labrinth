@@ -11,7 +11,6 @@ use crate::search::indexing::IndexingError;
 use crate::util::auth::{get_user_from_headers, AuthenticationError};
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
-use actix::fut::ready;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
@@ -286,9 +285,6 @@ pub async fn project_create(
     if result.is_err() {
         let undo_result = undo_uploads(&***file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
-
-        // fix multipart error bug:
-        payload.for_each(|_| ready(())).await;
 
         undo_result?;
         if let Err(e) = rollback_result {

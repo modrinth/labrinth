@@ -15,7 +15,6 @@ use crate::util::auth::get_user_from_headers;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use crate::validate::{validate_file, ValidationResult};
-use actix::fut::ready;
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, web, HttpRequest, HttpResponse};
@@ -100,8 +99,6 @@ pub async fn version_create(
         )
         .await;
         let rollback_result = transaction.rollback().await;
-
-        payload.for_each(|_| ready(())).await;
 
         undo_result?;
         if let Err(e) = rollback_result {
@@ -479,8 +476,6 @@ pub async fn upload_file_to_version(
         .await;
         let rollback_result = transaction.rollback().await;
 
-        payload.for_each(|_| ready(())).await;
-
         undo_result?;
         if let Err(e) = rollback_result {
             return Err(e.into());
@@ -664,6 +659,12 @@ pub async fn upload_file(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<(), CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
+
+    if file_name.contains('/') {
+        return Err(CreateError::InvalidInput(
+            "File names must not contain slashes!".to_string(),
+        ));
+    }
 
     let content_type = crate::util::ext::project_file_type(file_extension)
         .ok_or_else(|| {
