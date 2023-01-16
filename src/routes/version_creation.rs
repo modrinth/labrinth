@@ -132,7 +132,7 @@ async fn version_create_inner(
 
     let mut error = None;
     while let Some(item) = payload.next().await {
-        let mut field: Field = item.map_err(CreateError::MultipartError)?;
+        let mut field: Field = item?;
 
         if error.is_some() {
             continue;
@@ -149,9 +149,7 @@ async fn version_create_inner(
             if name == "data" {
                 let mut data = Vec::new();
                 while let Some(chunk) = field.next().await {
-                    data.extend_from_slice(
-                        &chunk.map_err(CreateError::MultipartError)?,
-                    );
+                    data.extend_from_slice(&chunk?);
                 }
 
                 let version_create_data: InitialVersionData =
@@ -589,7 +587,7 @@ async fn upload_file_to_version_inner(
 
     let mut error = None;
     while let Some(item) = payload.next().await {
-        let mut field: Field = item.map_err(CreateError::MultipartError)?;
+        let mut field: Field = item?;
 
         if error.is_some() {
             continue;
@@ -606,9 +604,7 @@ async fn upload_file_to_version_inner(
             if name == "data" {
                 let mut data = Vec::new();
                 while let Some(chunk) = field.next().await {
-                    data.extend_from_slice(
-                        &chunk.map_err(CreateError::MultipartError)?,
-                    );
+                    data.extend_from_slice(&chunk?);
                 }
                 let file_data: InitialFileData = serde_json::from_slice(&data)?;
 

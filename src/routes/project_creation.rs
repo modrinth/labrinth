@@ -35,8 +35,8 @@ pub enum CreateError {
     DatabaseError(#[from] models::DatabaseError),
     #[error("Indexing Error: {0}")]
     IndexingError(#[from] IndexingError),
-    #[error("Error while parsing multipart payload")]
-    MultipartError(actix_multipart::MultipartError),
+    #[error("Error while parsing multipart payload: {0}")]
+    MultipartError(#[from] actix_multipart::MultipartError),
     #[error("Error while parsing JSON: {0}")]
     SerDeError(#[from] serde_json::Error),
     #[error("Error while validating input: {0}")]
@@ -473,7 +473,7 @@ pub async fn project_create_inner(
 
     let mut error = None;
     while let Some(item) = payload.next().await {
-        let mut field: Field = item.map_err(CreateError::MultipartError)?;
+        let mut field: Field = item?;
 
         if error.is_some() {
             continue;
