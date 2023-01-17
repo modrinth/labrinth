@@ -108,7 +108,7 @@ pub async fn mod_get(
             data.inner.description =
                 format!("[STOP USING API v1] {}", data.inner.description);
             data.inner.body =
-                format!("[STOP USING API v1 - whatever application you're using right now is likely deprecated or abandoned]\n{}", data.inner.body);
+                format!("# STOP USING API v1 - whatever application you're using right now is likely deprecated or abandoned\n{}", data.inner.body);
             return Ok(HttpResponse::Ok().json(models::projects::Project::from(data)));
         }
     }
@@ -142,7 +142,7 @@ pub async fn mods_get(
             proj.inner.description =
                 format!("[STOP USING API v1] {}", proj.inner.description);
             proj.inner.body =
-                format!("[STOP USING API v1 - whatever application you're using right now is likely deprecated or abandoned]\n{}", proj.inner.body);
+                format!("# STOP USING API v1 - whatever application you're using right now is likely deprecated or abandoned\n{}", proj.inner.body);
             projects.push(crate::models::projects::Project::from(proj))
         }
     }

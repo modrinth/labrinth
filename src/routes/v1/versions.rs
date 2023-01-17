@@ -38,7 +38,7 @@ fn convert_to_legacy(version: Version) -> LegacyVersion {
         featured: version.featured,
         name: format!("[STOP USING API v1] {}", version.name),
         version_number: version.version_number,
-        changelog: format!("[STOP USING API v1 - whatever application you're using right now is likely deprecated or abandoned]\n{}", version.changelog),
+        changelog: format!("# STOP USING API v1 - whatever application you're using right now is likely deprecated or abandoned\n{}", version.changelog),
         changelog_url: None,
         date_published: version.date_published,
         downloads: version.downloads,
