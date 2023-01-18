@@ -373,6 +373,19 @@
     },
     "query": "\n            INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            "
   },
+  "0d012575af806bf58cbb2b180c98a1cf5a0a32185f769689be80d05458f9c99d": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Timestamptz",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE versions\n                    SET date_published = $1\n                    WHERE (id = $2)\n                    "
+  },
   "0dbd0fa9a25416716a047184944d243ed5cb55808c6f300d7335c887f02a7f6e": {
     "describe": {
       "columns": [

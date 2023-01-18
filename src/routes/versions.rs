@@ -221,7 +221,7 @@ pub struct EditVersion {
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
     pub file_types: Option<Vec<EditVersionFileType>>,
-    pub date_published: Option<DateTime<Utc>>
+    pub date_published: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -596,7 +596,8 @@ pub async fn version_edit(
             if let Some(date_published) = &new_version.date_published {
                 if !user.role.is_mod() {
                     return Err(ApiError::CustomAuthentication(
-                        "You do not have permission to set the published date.".to_string(),
+                        "You do not have permission to set the published date."
+                            .to_string(),
                     ));
                 }
 
@@ -609,8 +610,8 @@ pub async fn version_edit(
                     date_published,
                     id as database::models::ids::VersionId,
                 )
-                    .execute(&mut *transaction)
-                    .await?;
+                .execute(&mut *transaction)
+                .await?;
             }
 
             transaction.commit().await?;

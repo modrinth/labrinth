@@ -935,7 +935,7 @@ async fn create_initial_version(
         status: VersionStatus::Listed,
         version_type: version_data.release_channel.to_string(),
         requested_status: None,
-        date_published: version_data.date_published.unwrap_or_else(|| Utc::now()),
+        date_published: version_data.date_published.unwrap_or_else(Utc::now),
     };
 
     Ok(version)
