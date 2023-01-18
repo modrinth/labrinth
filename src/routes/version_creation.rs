@@ -18,7 +18,7 @@ use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{post, web, HttpRequest, HttpResponse};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
@@ -64,6 +64,9 @@ pub struct InitialVersionData {
     pub status: VersionStatus,
     #[serde(default = "HashMap::new")]
     pub file_types: HashMap<String, Option<FileType>>,
+
+    // Only settable by a moderator
+    pub date_published: Option<DateTime<Utc>>
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -168,6 +171,12 @@ async fn version_create_inner(
                         err, None,
                     ))
                 })?;
+
+                if version_create_data.date_published.is_some() && !user.role.is_mod() {
+                    return Err(CreateError::InvalidInput(
+                        "You do not have permission to set the published date.".to_string(),
+                    ));
+                }
 
                 if !version_create_data.status.can_be_requested() {
                     return Err(CreateError::InvalidInput(
@@ -296,6 +305,7 @@ async fn version_create_inner(
                     featured: version_create_data.featured,
                     status: version_create_data.status,
                     requested_status: None,
+                    date_published: version_create_data.date_published.unwrap_or_else(|| Utc::now()),
                 });
 
                 return Ok(());
@@ -431,7 +441,7 @@ async fn version_create_inner(
         version_number: builder.version_number.clone(),
         changelog: builder.changelog.clone(),
         changelog_url: None,
-        date_published: Utc::now(),
+        date_published: version_data.date_published.unwrap_or_else(|| Utc::now()),
         downloads: 0,
         version_type: version_data.release_channel,
         status: builder.status,

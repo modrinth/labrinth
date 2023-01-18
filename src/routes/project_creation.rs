@@ -5,7 +5,7 @@ use crate::models::projects::{
     DonationLink, License, ProjectId, ProjectStatus, SideType, VersionId,
     VersionStatus,
 };
-use crate::models::users::UserId;
+use crate::models::users::User;
 use crate::routes::version_creation::InitialVersionData;
 use crate::search::indexing::IndexingError;
 use crate::util::auth::{get_user_from_headers, AuthenticationError};
@@ -444,7 +444,7 @@ pub async fn project_create_inner(
                 create_initial_version(
                     data,
                     project_id,
-                    current_user.id,
+                    &current_user,
                     &all_game_versions,
                     &all_loaders,
                     &create_data.project_type,
@@ -855,7 +855,7 @@ pub async fn project_create_inner(
 async fn create_initial_version(
     version_data: &InitialVersionData,
     project_id: ProjectId,
-    author: UserId,
+    author: &User,
     all_game_versions: &[models::categories::GameVersion],
     all_loaders: &[models::categories::Loader],
     project_type: &str,
@@ -865,6 +865,12 @@ async fn create_initial_version(
         return Err(CreateError::InvalidInput(String::from(
             "Found project id in initial version for new project",
         )));
+    }
+
+    if version_data.date_published.is_some() && !author.role.is_mod() {
+        return Err(CreateError::InvalidInput(
+            "You do not have permission to set the published date.".to_string(),
+        ));
     }
 
     version_data.validate().map_err(|err| {
@@ -917,7 +923,7 @@ async fn create_initial_version(
     let version = models::version_item::VersionBuilder {
         version_id: version_id.into(),
         project_id: project_id.into(),
-        author_id: author.into(),
+        author_id: author.id.into(),
         name: version_data.version_title.clone(),
         version_number: version_data.version_number.clone(),
         changelog: version_data.version_body.clone().unwrap_or_default(),
@@ -929,6 +935,7 @@ async fn create_initial_version(
         status: VersionStatus::Listed,
         version_type: version_data.release_channel.to_string(),
         requested_status: None,
+        date_published: version_data.date_published.unwrap_or_else(|| Utc::now()),
     };
 
     Ok(version)

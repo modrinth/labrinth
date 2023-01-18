@@ -21,6 +21,7 @@ pub struct VersionBuilder {
     pub featured: bool,
     pub status: VersionStatus,
     pub requested_status: Option<VersionStatus>,
+    pub date_published: DateTime<Utc>,
 }
 
 pub struct DependencyBuilder {
@@ -150,7 +151,7 @@ impl VersionBuilder {
             version_number: self.version_number,
             changelog: self.changelog,
             changelog_url: None,
-            date_published: Utc::now(),
+            date_published: self.date_published,
             downloads: 0,
             featured: self.featured,
             version_type: self.version_type,
