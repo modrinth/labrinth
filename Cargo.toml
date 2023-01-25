@@ -72,3 +72,4 @@ sentry-actix = "0.29.1"
 
 image = "0.24.5"
 color-thief = "0.2.2"
+atom_syndication = { version = "0.12.0", default-features = false }

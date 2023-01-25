@@ -365,6 +365,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "atom_syndication"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91a85f2ee28cbd1ecf91288460f6dc74661fd99b4e9a559836a667ccf63aa38c"
+dependencies = [
+ "chrono",
+ "diligent-date-parser",
+ "quick-xml 0.27.1",
+]
+
+[[package]]
 name = "attohttpc"
 version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -985,6 +996,15 @@ dependencies = [
  "block-buffer 0.10.3",
  "crypto-common",
  "subtle",
+]
+
+[[package]]
+name = "diligent-date-parser"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6cf7fe294274a222363f84bcb63cdea762979a0443b4cf1f4f8fd17c86b1182"
+dependencies = [
+ "chrono",
 ]
 
 [[package]]
@@ -1678,6 +1698,7 @@ dependencies = [
  "actix-rt",
  "actix-web",
  "async-trait",
+ "atom_syndication",
  "base64 0.20.0",
  "bitflags",
  "bytes",
@@ -2253,7 +2274,7 @@ dependencies = [
  "itertools 0.9.0",
  "lazy_static",
  "nom 5.1.2",
- "quick-xml",
+ "quick-xml 0.18.1",
  "regex",
  "regex-cache",
  "serde",
@@ -2370,6 +2391,16 @@ version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3cc440ee4802a86e357165021e3e255a9143724da31db1e2ea540214c96a0f82"
 dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffc053f057dd768a56f62cd7e434c42c831d296968997e9ac1f76ea7c2d14c41"
+dependencies = [
+ "encoding_rs",
  "memchr",
 ]
 

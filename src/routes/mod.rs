@@ -89,6 +89,7 @@ pub fn maven_config(cfg: &mut web::ServiceConfig) {
 
 pub fn updates(cfg: &mut web::ServiceConfig) {
     cfg.service(updates::forge_updates);
+    cfg.service(updates::atom_feed);
 }
 
 pub fn versions_config(cfg: &mut web::ServiceConfig) {
