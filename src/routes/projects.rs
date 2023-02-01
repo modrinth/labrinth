@@ -2,6 +2,7 @@ use crate::database;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::file_hosting::FileHost;
 use crate::models;
+use crate::models::ids::base62_impl::parse_base62;
 use crate::models::projects::{
     DonationLink, Project, ProjectId, ProjectStatus, SearchRequest, SideType,
 };
@@ -873,16 +874,14 @@ pub async fn project_edit(
                     ));
                 }
 
-                let slug_project_id_option: Option<ProjectId> =
-                    serde_json::from_str(&format!("\"{}\"", slug)).ok();
+                let slug_project_id_option: Option<u64> =
+                    parse_base62(slug).ok();
                 if let Some(slug_project_id) = slug_project_id_option {
-                    let slug_project_id: database::models::ids::ProjectId =
-                        slug_project_id.into();
                     let results = sqlx::query!(
                         "
-                            SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
-                            ",
-                        slug_project_id as database::models::ids::ProjectId
+                        SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
+                        ",
+                        slug_project_id as i64
                     )
                     .fetch_one(&mut *transaction)
                     .await?;
