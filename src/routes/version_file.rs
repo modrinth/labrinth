@@ -301,6 +301,9 @@ pub async fn get_update_from_hash(
                     .map(|x| x.0)
                     .collect(),
             ),
+            None,
+            None,
+            None,
             &**pool,
         )
         .await?;
@@ -493,6 +496,9 @@ pub async fn update_files(
                     .map(|x| x.0.clone())
                     .collect(),
             ),
+            None,
+            None,
+            None,
             &**pool,
         )
         .await?;
@@ -531,8 +537,7 @@ pub async fn update_files(
                     version.inner.id.into();
 
                 return Err(ApiError::Database(DatabaseError::Other(format!(
-                    "Could not parse hash for version {}",
-                    version_id
+                    "Could not parse hash for version {version_id}"
                 ))));
             }
         }

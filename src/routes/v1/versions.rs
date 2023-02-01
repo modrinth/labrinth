@@ -36,9 +36,9 @@ fn convert_to_legacy(version: Version) -> LegacyVersion {
         mod_id: version.project_id,
         author_id: version.author_id,
         featured: version.featured,
-        name: version.name,
+        name: format!("[STOP USING API v1] {}", version.name),
         version_number: version.version_number,
-        changelog: version.changelog,
+        changelog: format!("# STOP USING API v1 - whatever application you're using right now is likely deprecated or abandoned\n{}", version.changelog),
         changelog_url: None,
         date_published: version.date_published,
         downloads: version.downloads,
@@ -76,6 +76,9 @@ pub async fn version_list(
                 .loaders
                 .as_ref()
                 .map(|x| serde_json::from_str(x).unwrap_or_default()),
+            filters.version_type,
+            filters.limit,
+            filters.offset,
             &**pool,
         )
         .await?;

@@ -43,7 +43,13 @@ async fn main() -> std::io::Result<()> {
 
     // DSN is from SENTRY_DSN env variable.
     // Has no effect if not set.
-    let sentry = sentry::init(());
+    let sentry = sentry::init(sentry::ClientOptions {
+        release: sentry::release_name!(),
+        traces_sample_rate: 0.1,
+        enable_profiling: true,
+        profiles_sample_rate: 0.1,
+        ..Default::default()
+    });
     if sentry.is_enabled() {
         info!("Enabled Sentry integration");
         std::env::set_var("RUST_BACKTRACE", "1");
@@ -271,6 +277,12 @@ async fn main() -> std::io::Result<()> {
                         dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok(),
                     ),
             )
+            .app_data(web::QueryConfig::default().error_handler(|err, _req| {
+                routes::ApiError::Validation(err.to_string()).into()
+            }))
+            .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+                routes::ApiError::Validation(err.to_string()).into()
+            }))
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(file_host.clone()))
             .app_data(web::Data::new(search_config.clone()))

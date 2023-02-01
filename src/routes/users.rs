@@ -61,7 +61,7 @@ pub async fn user_get(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
     let id_option: Option<UserId> =
-        serde_json::from_str(&format!("\"{}\"", string)).ok();
+        serde_json::from_str(&format!("\"{string}\"")).ok();
 
     let mut user_data;
 
@@ -104,10 +104,10 @@ pub async fn projects_list(
         let project_data = User::get_projects(id, &**pool).await?;
 
         let response: Vec<_> =
-            crate::database::Project::get_many_full(project_data, &**pool)
+            crate::database::Project::get_many_full(&project_data, &**pool)
                 .await?
                 .into_iter()
-                .filter(|x| can_view_private || x.inner.status.is_approved())
+                .filter(|x| can_view_private || x.inner.status.is_searchable())
                 .map(Project::from)
                 .collect();
 
@@ -222,8 +222,7 @@ pub async fn user_edit(
                     .await?;
                 } else {
                     return Err(ApiError::InvalidInput(format!(
-                        "Username {} is taken!",
-                        username
+                        "Username {username} is taken!"
                     )));
                 }
             }
@@ -600,7 +599,7 @@ pub async fn user_follows(
         .await?;
 
         let projects: Vec<_> =
-            crate::database::Project::get_many_full(project_ids, &**pool)
+            crate::database::Project::get_many_full(&project_ids, &**pool)
                 .await?
                 .into_iter()
                 .map(Project::from)
