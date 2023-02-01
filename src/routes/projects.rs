@@ -979,8 +979,7 @@ pub async fn project_edit(
 
                 spdx::Expression::parse(&license).map_err(|err| {
                     ApiError::InvalidInput(format!(
-                        "Invalid SPDX license identifier: {}",
-                        err
+                        "Invalid SPDX license identifier: {err}"
                     ))
                 })?;
 
@@ -1845,7 +1844,7 @@ pub async fn add_gallery_item(
         let id: ProjectId = project_item.inner.id.into();
         let url = format!("data/{}/images/{}.{}", id, hash, &*ext.ext);
 
-        let file_url = format!("{}/{}", cdn_url, url);
+        let file_url = format!("{cdn_url}/{url}");
         if project_item
             .gallery_items
             .iter()
@@ -2358,7 +2357,7 @@ pub async fn delete_from_index(
     let indexes: Vec<meilisearch_sdk::indexes::Index> =
         client.get_indexes().await?;
     for index in indexes {
-        index.delete_document(format!("{}", id)).await?;
+        index.delete_document(id.to_string()).await?;
     }
 
     Ok(())

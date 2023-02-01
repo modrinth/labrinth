@@ -5067,26 +5067,6 @@
     },
     "query": "\n                    SELECT id FROM users\n                    WHERE LOWER(username) = LOWER($1)\n                    "
   },
-  "ac840a3ba466cfa1f914a1e44fcc9052bd1e0e908140e7147d1ff72d1794cfbf": {
-    "describe": {
-      "columns": [
-        {
-          "name": "exists",
-          "ordinal": 0,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                            SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)\n                            "
-  },
   "acbafe265c4b7a1c95b0494a0a03c8bd2cd778ae561ef5a662fa931ca26cf603": {
     "describe": {
       "columns": [],
@@ -7517,6 +7497,26 @@
       }
     },
     "query": "\n            DELETE FROM team_members\n            WHERE user_id = $1\n            "
+  },
+  "f34bbe639ad21801258dc8beaab9877229a451761be07f85a1dd04d027832329": {
+    "describe": {
+      "columns": [
+        {
+          "name": "exists",
+          "ordinal": 0,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                        SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)\n                        "
   },
   "f3a8ad4a802dde0eb9304078e0368066e7d48121dfe73a63b2911b0998840a79": {
     "describe": {
