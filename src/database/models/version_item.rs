@@ -499,7 +499,7 @@ impl Version {
             INNER JOIN loaders_versions lv ON lv.version_id = v.id
             INNER JOIN loaders l on lv.loader_id = l.id AND (cardinality($3::varchar[]) = 0 OR l.loader = ANY($3::varchar[]))
             WHERE v.mod_id = $1 AND ($4::varchar IS NULL OR v.version_type = $4)
-            ORDER BY v.date_published, v.id ASC
+            ORDER BY v.date_published, v.id DESC
             LIMIT $5 OFFSET $6
             ",
             project_id as ProjectId,
@@ -904,6 +904,32 @@ impl Version {
             })
             .try_collect::<Vec<QueryVersion>>()
             .await
+    }
+
+    pub async fn get_full_from_id_slug<'a, 'b, E>(
+        project_id: ProjectId,
+        slug: &str,
+        executor: E,
+    ) -> Result<Option<QueryVersion>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let id = sqlx::query!(
+            "
+            SELECT id FROM versions
+            WHERE mod_id = $1 AND slug = $2
+            ",
+            project_id
+            slug
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        if let Some(version_id) = id {
+            Version::get_full(VersionId(version_id.id), executor).await
+        } else {
+            Ok(None)
+        }
     }
 }
 
