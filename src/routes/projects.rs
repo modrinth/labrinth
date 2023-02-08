@@ -2,7 +2,6 @@ use crate::database;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::ids::base62_impl::parse_base62;
 use crate::models::projects::{
     DonationLink, Project, ProjectId, ProjectStatus, SearchRequest, SideType,
 };
@@ -873,25 +872,20 @@ pub async fn project_edit(
                             .to_string(),
                     ));
                 }
+                
+                {
+                  let results = sqlx::query!(
+                      "
+                      SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
+                      ",
+                      slug
+                  )
+                  .fetch_one(&mut *transaction)
+                  .await?;
 
-                let slug_project_id_option: Option<u64> =
-                    parse_base62(slug).ok();
-                if let Some(slug_project_id) = slug_project_id_option {
-                    let results = sqlx::query!(
-                        "
-                        SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
-                        ",
-                        slug_project_id as i64
-                    )
-                    .fetch_one(&mut *transaction)
-                    .await?;
-
-                    if results.exists.unwrap_or(true) {
-                        return Err(ApiError::InvalidInput(
-                            "Slug collides with other project's id!"
-                                .to_string(),
-                        ));
-                    }
+                  if results.exists.unwrap_or(true) {
+                      return Err(ApiError::InvalidInput("Slug collides with other project's id!".to_string()));
+                  }
                 }
 
                 sqlx::query!(
