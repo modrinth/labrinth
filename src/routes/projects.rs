@@ -872,20 +872,23 @@ pub async fn project_edit(
                             .to_string(),
                     ));
                 }
-                
+
                 {
-                  let results = sqlx::query!(
-                      "
+                    let results = sqlx::query!(
+                        "
                       SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
                       ",
-                      slug
-                  )
-                  .fetch_one(&mut *transaction)
-                  .await?;
+                        slug
+                    )
+                    .fetch_one(&mut *transaction)
+                    .await?;
 
-                  if results.exists.unwrap_or(true) {
-                      return Err(ApiError::InvalidInput("Slug collides with other project's id!".to_string()));
-                  }
+                    if results.exists.unwrap_or(true) {
+                        return Err(ApiError::InvalidInput(
+                            "Slug collides with other project's id!"
+                                .to_string(),
+                        ));
+                    }
                 }
 
                 sqlx::query!(
