@@ -18,3 +18,8 @@ pub fn get_color_from_img(data: &[u8]) -> Result<Option<u32>, ImageError> {
 
     Ok(color)
 }
+
+pub fn get_image_size(data: &[u8]) -> Result<(u32, u32), ImageError> {
+    let image = &image::load_from_memory(data)?;
+    Ok((image.width(), image.height()))
+}
