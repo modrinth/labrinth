@@ -1655,6 +1655,15 @@ pub async fn project_icon_edit(
         )
         .await?;
 
+        let (image_width, image_height) =
+            crate::util::img::get_image_size(&bytes)?;
+
+        if image_width < 100 || image_height < 100 {
+            return Err(ApiError::InvalidInput(
+                "Icon must meet the minimum 100x100px requirements".to_string(),
+            ));
+        }
+
         let color = crate::util::img::get_color_from_img(&bytes)?;
 
         let hash = sha1::Sha1::from(&bytes).hexdigest();
