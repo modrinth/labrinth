@@ -107,3 +107,20 @@ pub fn validate_name(value: &str) -> Result<(), validator::ValidationError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_name_with_valid_input() {
+        let result = validate_name("My Test mod");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_name_with_invalid_input_returns_error() {
+        let result = validate_name("  ");
+        assert!(result.is_err());
+    }
+}
