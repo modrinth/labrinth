@@ -41,16 +41,39 @@ pub async fn users_get(
     web::Query(ids): web::Query<UserIds>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_ids = serde_json::from_str::<Vec<UserId>>(&ids.ids)?
-        .into_iter()
-        .map(|x| x.into())
-        .collect();
+    let mut users_data;
 
-    let users_data = User::get_many(user_ids, &**pool).await?;
+    let decoded_user_ids = serde_json::from_str::<Vec<UserId>>(&ids.ids);
+    if decoded_user_ids.is_ok() {
+        let user_ids = decoded_user_ids
+            .unwrap()
+            .into_iter()
+            .map(|x| x.into())
+            .collect();
+        users_data = Some(User::get_many(user_ids, &**pool).await?);
+
+        if let Some(users) = &users_data {
+            if users.is_empty() {
+                let user_names = serde_json::from_str::<Vec<String>>(&ids.ids)?
+                    .into_iter()
+                    .map(|x| x.to_lowercase())
+                    .collect();
+                users_data = Some(
+                    User::get_many_from_usernames(user_names, &**pool).await?,
+                );
+            }
+        }
+    } else {
+        let user_names = serde_json::from_str::<Vec<String>>(&ids.ids)?
+            .into_iter()
+            .map(|x| x.to_lowercase())
+            .collect();
+        users_data =
+            Some(User::get_many_from_usernames(user_names, &**pool).await?);
+    }
 
     let users: Vec<crate::models::users::User> =
-        users_data.into_iter().map(From::from).collect();
-
+        users_data.unwrap().into_iter().map(From::from).collect();
     Ok(HttpResponse::Ok().json(users))
 }
 
