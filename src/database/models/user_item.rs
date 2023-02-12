@@ -280,6 +280,57 @@ impl User {
         Ok(projects)
     }
 
+    pub async fn get_many_from_usernames<'a, E>(
+        user_names: Vec<String>,
+        exec: E,
+    ) -> Result<Vec<User>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let users = sqlx::query!(
+            "
+            SELECT u.id, u.github_id, u.name, u.email,
+                u.avatar_url, u.username, u.bio,
+                u.created, u.role, u.badges,
+                u.balance, u.payout_wallet, u.payout_wallet_type,
+                u.payout_address, u.flame_anvil_key
+            FROM users u
+            WHERE LOWER(u.username) = ANY($1)
+            ",
+            &user_names
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|u| User {
+                id: UserId(u.id),
+                github_id: u.github_id,
+                name: u.name,
+                email: u.email,
+                avatar_url: u.avatar_url,
+                username: u.username,
+                bio: u.bio,
+                created: u.created,
+                role: u.role,
+                badges: Badges::from_bits(u.badges as u64).unwrap_or_default(),
+                balance: u.balance,
+                payout_wallet: u
+                    .payout_wallet
+                    .map(|x| RecipientWallet::from_string(&x)),
+                payout_wallet_type: u
+                    .payout_wallet_type
+                    .map(|x| RecipientType::from_string(&x)),
+                payout_address: u.payout_address,
+                flame_anvil_key: u.flame_anvil_key,
+            }))
+        })
+        .try_collect::<Vec<User>>()
+        .await?;
+
+        Ok(users)
+    }
+
     pub async fn remove(
         id: UserId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
