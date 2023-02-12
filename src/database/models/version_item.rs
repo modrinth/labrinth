@@ -642,7 +642,7 @@ impl Version {
             LEFT OUTER JOIN files f on v.id = f.version_id
             LEFT OUTER JOIN hashes h on f.id = h.file_id
             LEFT OUTER JOIN dependencies d on v.id = d.dependent_id
-            LEFT OUTER JOIN mods m ON v.mod_id = m.id
+            INNER JOIN mods m ON v.mod_id = m.id
             WHERE v.id = $1
             GROUP BY v.id, m.title;
             ",

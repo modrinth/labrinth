@@ -422,6 +422,128 @@
     },
     "query": "\n                            UPDATE mods\n                            SET webhook_sent = TRUE\n                            WHERE id = $1\n                            "
   },
+  "1422106bd86418811371637ae279bb0423199e7b14ad4a785735e7ec2451f2e7": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "mod_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "author_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "version_name",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "version_number",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "changelog",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "date_published",
+          "ordinal": 6,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "downloads",
+          "ordinal": 7,
+          "type_info": "Int4"
+        },
+        {
+          "name": "version_type",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "featured",
+          "ordinal": 9,
+          "type_info": "Bool"
+        },
+        {
+          "name": "status",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "requested_status",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "project_name",
+          "ordinal": 12,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "game_versions",
+          "ordinal": 13,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "loaders",
+          "ordinal": 14,
+          "type_info": "VarcharArray"
+        },
+        {
+          "name": "files",
+          "ordinal": 15,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "hashes",
+          "ordinal": 16,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "dependencies",
+          "ordinal": 17,
+          "type_info": "Jsonb"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,\n            v.changelog changelog, v.date_published date_published, v.downloads downloads,\n            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, m.title project_name,\n            JSONB_AGG(DISTINCT jsonb_build_object('version', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,\n            ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,\n            JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,\n            JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies\n            FROM versions v\n            LEFT OUTER JOIN game_versions_versions gvv on v.id = gvv.joining_version_id\n            LEFT OUTER JOIN game_versions gv on gvv.game_version_id = gv.id\n            LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id\n            LEFT OUTER JOIN loaders l on lv.loader_id = l.id\n            LEFT OUTER JOIN files f on v.id = f.version_id\n            LEFT OUTER JOIN hashes h on f.id = h.file_id\n            LEFT OUTER JOIN dependencies d on v.id = d.dependent_id\n            INNER JOIN mods m ON v.mod_id = m.id\n            WHERE v.id = $1\n            GROUP BY v.id, m.title;\n            "
+  },
   "15b8ea323c2f6d03c2e385d9c46d7f13460764f2f106fd638226c42ae0217f75": {
     "describe": {
       "columns": [],
@@ -5221,128 +5343,6 @@
       }
     },
     "query": "\n            SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split, tm.ordering ordering,\n            u.id user_id, u.github_id github_id, u.name user_name, u.email email,\n            u.avatar_url avatar_url, u.username username, u.bio bio,\n            u.created created, u.role user_role, u.badges badges, u.balance balance,\n            u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,\n            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key\n            FROM team_members tm\n            INNER JOIN users u ON u.id = tm.user_id\n            WHERE tm.team_id = $1\n            ORDER BY tm.ordering\n            "
-  },
-  "b533ede67d4b926505b459d225cc15e55bdd2522fa9c1d4490fe2564dfdd7df1": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "mod_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "author_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "version_name",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "version_number",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "changelog",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "date_published",
-          "ordinal": 6,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "downloads",
-          "ordinal": 7,
-          "type_info": "Int4"
-        },
-        {
-          "name": "version_type",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "featured",
-          "ordinal": 9,
-          "type_info": "Bool"
-        },
-        {
-          "name": "status",
-          "ordinal": 10,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "requested_status",
-          "ordinal": 11,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "project_name",
-          "ordinal": 12,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "game_versions",
-          "ordinal": 13,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "loaders",
-          "ordinal": 14,
-          "type_info": "VarcharArray"
-        },
-        {
-          "name": "files",
-          "ordinal": 15,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "hashes",
-          "ordinal": 16,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "dependencies",
-          "ordinal": 17,
-          "type_info": "Jsonb"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-        null,
-        null,
-        null,
-        null,
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,\n            v.changelog changelog, v.date_published date_published, v.downloads downloads,\n            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, m.title project_name,\n            JSONB_AGG(DISTINCT jsonb_build_object('version', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,\n            ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,\n            JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,\n            JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies\n            FROM versions v\n            LEFT OUTER JOIN game_versions_versions gvv on v.id = gvv.joining_version_id\n            LEFT OUTER JOIN game_versions gv on gvv.game_version_id = gv.id\n            LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id\n            LEFT OUTER JOIN loaders l on lv.loader_id = l.id\n            LEFT OUTER JOIN files f on v.id = f.version_id\n            LEFT OUTER JOIN hashes h on f.id = h.file_id\n            LEFT OUTER JOIN dependencies d on v.id = d.dependent_id\n            LEFT OUTER JOIN mods m ON v.mod_id = m.id\n            WHERE v.id = $1\n            GROUP BY v.id, m.title;\n            "
   },
   "b69a6f42965b3e7103fcbf46e39528466926789ff31e9ed2591bb175527ec169": {
     "describe": {
