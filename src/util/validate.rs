@@ -97,3 +97,13 @@ pub fn validate_url(value: &str) -> Result<(), validator::ValidationError> {
 
     Ok(())
 }
+
+pub fn validate_name(value: &str) -> Result<(), validator::ValidationError> {
+    if value.trim().is_empty() {
+        return Err(validator::ValidationError::new(
+            "Name can not contain only whitespace.",
+        ));
+    }
+
+    Ok(())
+}
