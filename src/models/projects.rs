@@ -416,6 +416,8 @@ pub struct Version {
     pub id: VersionId,
     /// The ID of the project this version is for.
     pub project_id: ProjectId,
+    /// The name of the project this version is for.
+    pub project_name: String,
     /// The ID of the author who published this version
     pub author_id: UserId,
     /// Whether the version is featured or not
@@ -458,6 +460,7 @@ impl From<QueryVersion> for Version {
         Version {
             id: v.id.into(),
             project_id: v.project_id.into(),
+            project_name: v.project_name,
             author_id: v.author_id.into(),
 
             featured: v.featured,

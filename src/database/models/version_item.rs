@@ -9,6 +9,7 @@ use std::collections::HashMap;
 pub struct VersionBuilder {
     pub version_id: VersionId,
     pub project_id: ProjectId,
+    pub project_name: String,
     pub author_id: UserId,
     pub name: String,
     pub version_number: String,
@@ -145,6 +146,7 @@ impl VersionBuilder {
         let version = Version {
             id: self.version_id,
             project_id: self.project_id,
+            project_name: self.project_name,
             author_id: self.author_id,
             name: self.name,
             version_number: self.version_number,
@@ -248,6 +250,7 @@ impl VersionBuilder {
 pub struct Version {
     pub id: VersionId,
     pub project_id: ProjectId,
+    pub project_name: String,
     pub author_id: UserId,
     pub name: String,
     pub version_number: String,
@@ -528,8 +531,10 @@ impl Version {
             "
             SELECT v.mod_id, v.author_id, v.name, v.version_number,
                 v.changelog, v.date_published, v.downloads,
-                v.version_type, v.featured, v.status, v.requested_status
+                v.version_type, v.featured, v.status, v.requested_status,
+                m.title AS project_name
             FROM versions v
+            INNER JOIN mods m ON v.mod_id = m.id
             WHERE v.id = $1
             ",
             id as VersionId,
@@ -541,6 +546,7 @@ impl Version {
             Ok(Some(Version {
                 id,
                 project_id: ProjectId(row.mod_id),
+                project_name: row.project_name,
                 author_id: UserId(row.author_id),
                 name: row.name,
                 version_number: row.version_number,
@@ -575,8 +581,10 @@ impl Version {
             "
             SELECT v.id, v.mod_id, v.author_id, v.name, v.version_number,
                 v.changelog, v.date_published, v.downloads,
-                v.version_type, v.featured, v.status, v.requested_status
+                v.version_type, v.featured, v.status, v.requested_status,
+                m.title AS project_name
             FROM versions v
+            INNER JOIN mods m ON v.mod_id = m.id
             WHERE v.id = ANY($1)
             ORDER BY v.date_published ASC
             ",
@@ -587,6 +595,7 @@ impl Version {
             Ok(e.right().map(|v| Version {
                 id: VersionId(v.id),
                 project_id: ProjectId(v.mod_id),
+                project_name: v.project_name,
                 author_id: UserId(v.author_id),
                 name: v.name,
                 version_number: v.version_number,
@@ -619,7 +628,7 @@ impl Version {
             "
             SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
             v.changelog changelog, v.date_published date_published, v.downloads downloads,
-            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,
+            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, m.title project_name,
             JSONB_AGG(DISTINCT jsonb_build_object('version', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,
             ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
             JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,
@@ -633,8 +642,9 @@ impl Version {
             LEFT OUTER JOIN files f on v.id = f.version_id
             LEFT OUTER JOIN hashes h on f.id = h.file_id
             LEFT OUTER JOIN dependencies d on v.id = d.dependent_id
+            LEFT OUTER JOIN mods m ON v.mod_id = m.id
             WHERE v.id = $1
-            GROUP BY v.id;
+            GROUP BY v.id, m.title;
             ",
             id as VersionId,
         )
@@ -646,6 +656,7 @@ impl Version {
                 inner: Version {
                     id: VersionId(v.id),
                     project_id: ProjectId(v.mod_id),
+                    project_name: v.project_name,
                     author_id: UserId(v.author_id),
                     name: v.version_name,
                     version_number: v.version_number,
@@ -771,7 +782,7 @@ impl Version {
             "
             SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
             v.changelog changelog, v.date_published date_published, v.downloads downloads,
-            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,
+            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, m.title project_name,
             JSONB_AGG(DISTINCT jsonb_build_object('version', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,
             ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
             JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,
@@ -785,8 +796,9 @@ impl Version {
             LEFT OUTER JOIN files f on v.id = f.version_id
             LEFT OUTER JOIN hashes h on f.id = h.file_id
             LEFT OUTER JOIN dependencies d on v.id = d.dependent_id
+            INNER JOIN mods m ON v.mod_id = m.id
             WHERE v.id = ANY($1)
-            GROUP BY v.id
+            GROUP BY v.id, m.title
             ORDER BY v.date_published ASC;
             ",
             &version_ids_parsed
@@ -798,6 +810,7 @@ impl Version {
                         inner: Version {
                             id: VersionId(v.id),
                             project_id: ProjectId(v.mod_id),
+                            project_name: v.project_name,
                             author_id: UserId(v.author_id),
                             name: v.version_name,
                             version_number: v.version_number,

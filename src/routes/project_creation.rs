@@ -444,6 +444,7 @@ pub async fn project_create_inner(
                 create_initial_version(
                     data,
                     project_id,
+                    &create_data.title,
                     current_user.id,
                     &all_game_versions,
                     &all_loaders,
@@ -854,6 +855,7 @@ pub async fn project_create_inner(
 async fn create_initial_version(
     version_data: &InitialVersionData,
     project_id: ProjectId,
+    project_name: &str,
     author: UserId,
     all_game_versions: &[models::categories::GameVersion],
     all_loaders: &[models::categories::Loader],
@@ -916,6 +918,7 @@ async fn create_initial_version(
     let version = models::version_item::VersionBuilder {
         version_id: version_id.into(),
         project_id: project_id.into(),
+        project_name: project_name.to_owned(),
         author_id: author.into(),
         name: version_data.version_title.clone(),
         version_number: version_data.version_number.clone(),

@@ -276,9 +276,18 @@ async fn version_create_inner(
                     })
                     .collect::<Vec<_>>();
 
+                let project_name = sqlx::query!(
+                    "SELECT m.title FROM mods m WHERE m.id = $1",
+                    project_id as models::ProjectId
+                )
+                .fetch_one(&mut *transaction)
+                .await?
+                .title;
+
                 version_builder = Some(VersionBuilder {
                     version_id: version_id.into(),
                     project_id,
+                    project_name,
                     author_id: user.id.into(),
                     name: version_create_data.version_title.clone(),
                     version_number: version_create_data.version_number.clone(),
@@ -433,6 +442,7 @@ async fn version_create_inner(
     let response = Version {
         id: builder.version_id.into(),
         project_id: builder.project_id.into(),
+        project_name: builder.project_name.clone(),
         author_id: user.id,
         featured: builder.featured,
         name: builder.name.clone(),
