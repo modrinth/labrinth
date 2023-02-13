@@ -41,7 +41,10 @@ pub struct InitialVersionData {
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
     pub version_number: String,
-    #[validate(length(min = 1, max = 64))]
+    #[validate(
+        length(min = 1, max = 64),
+        custom(function = "crate::util::validate::validate_name")
+    )]
     #[serde(alias = "name")]
     pub version_title: String,
     #[validate(length(max = 65536))]
@@ -275,7 +278,7 @@ async fn version_create_inner(
                         file_name: None,
                     })
                     .collect::<Vec<_>>();
-
+                println!("{}", version_create_data.version_title.clone());
                 version_builder = Some(VersionBuilder {
                     version_id: version_id.into(),
                     project_id,
