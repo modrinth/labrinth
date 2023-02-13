@@ -278,6 +278,7 @@ async fn version_create_inner(
                         file_name: None,
                     })
                     .collect::<Vec<_>>();
+
                 version_builder = Some(VersionBuilder {
                     version_id: version_id.into(),
                     project_id,
