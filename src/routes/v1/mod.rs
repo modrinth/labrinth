@@ -12,7 +12,7 @@ pub fn v1_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("api/v1")
             .wrap_fn(|req, srv| {
-                let current_minute = Utc::now().timestamp() / 60;
+                let current_minute = Utc::now().minute();
 
                 if current_minute % 10 > 5 {
                     srv.call(req).boxed_local()
