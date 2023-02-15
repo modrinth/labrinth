@@ -1,5 +1,5 @@
 use actix_web::{dev::Service, web, HttpResponse};
-use chrono::Utc;
+use chrono::{Timelike, Utc};
 use futures::FutureExt;
 
 mod mods;
