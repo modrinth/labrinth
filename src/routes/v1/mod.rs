@@ -1,4 +1,6 @@
-use actix_web::web;
+use actix_web::{dev::Service, web, HttpResponse};
+use chrono::Utc;
+use futures::FutureExt;
 
 mod mods;
 mod tags;
@@ -9,6 +11,23 @@ mod versions;
 pub fn v1_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("api/v1")
+            .wrap_fn(|req, srv| {
+                let current_minute = Utc::now().timestamp() / 60;
+
+                if current_minute % 10 > 5 {
+                    srv.call(req).boxed_local()
+                } else {
+                    async {
+                        Ok(
+                            req.into_response(
+                                HttpResponse::Gone()
+                                    .content_type("application/json")
+                                    .body(r#"{"error":"api_deprecated","description":"API V1 was deprecated several months ago. Please upgrade to V2. Check out https://docs.modrinth.com/docs/migrations/v1-to-v2/"}"#)
+                            )
+                        )
+                    }.boxed_local()
+                }
+            })
             .configure(tags_config)
             .configure(mods_config)
             .configure(versions_config)
