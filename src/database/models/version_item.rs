@@ -1,5 +1,6 @@
 use super::ids::*;
 use super::DatabaseError;
+use crate::models::ids::base62_impl::parse_base62;
 use crate::models::projects::{FileType, VersionStatus, VersionType};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -907,19 +908,26 @@ impl Version {
     }
 
     pub async fn get_full_from_id_slug<'a, 'b, E>(
-        project_id: ProjectId,
+        project_id_or_slug: &str,
         slug: &str,
         executor: E,
     ) -> Result<Option<QueryVersion>, sqlx::error::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
+        let project_id_opt =
+            parse_base62(project_id_or_slug).ok().map(|x| x as i64);
+        let id_opt = parse_base62(slug).ok().map(|x| x as i64);
         let id = sqlx::query!(
             "
-            SELECT id FROM versions
-            WHERE mod_id = $1 AND slug = $2
+            SELECT v.id FROM versions v
+            INNER JOIN mods m ON mod_id = m.id
+            WHERE (m.id = $1 OR m.slug = $2) AND (v.id = $3 OR v.version_number = $4)
+            ORDER BY date_published ASC
             ",
-            project_id
+            project_id_opt,
+            project_id_or_slug,
+            id_opt,
             slug
         )
         .fetch_optional(executor)

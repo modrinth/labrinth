@@ -144,20 +144,17 @@ pub async fn version_list(
     }
 }
 
-// Given a project ID and a version slug
+// Given a project ID/slug and a version slug
 #[get("version/{slug}")]
 pub async fn version_project_get(
     req: HttpRequest,
-    info: web::Path<(models::projects::ProjectId, String)>,
+    info: web::Path<(String, String)>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner();
-    let version_data = database::models::Version::get_full_from_id_slug(
-        id.0.into(),
-        &id.1,
-        &**pool,
-    )
-    .await?;
+    let version_data =
+        database::models::Version::get_full_from_id_slug(&id.0, &id.1, &**pool)
+            .await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
