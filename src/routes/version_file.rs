@@ -536,8 +536,7 @@ pub async fn update_files(
                     models::projects::Version::from(version),
                 );
             } else {
-                let version_id: VersionId =
-                    version.inner.id.into();
+                let version_id: VersionId = version.inner.id.into();
 
                 return Err(ApiError::Database(DatabaseError::Other(format!(
                     "Could not parse hash for version {version_id}"
