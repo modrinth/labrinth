@@ -922,6 +922,24 @@ impl Project {
             .try_collect::<Vec<QueryProject>>()
             .await
     }
+    
+    pub async fn get_many_full_from_slug_or_project_id<'a, 'b, E>(
+        ids: &[&str],
+        executor: E,
+    ) -> Result<Vec<QueryProject>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let mut projects = Vec::with_capacity(ids.len());
+
+        for id in ids {
+            if let Some(project) = get_full_from_slug_or_project_id(id, executor).await? {
+                projects.push(project);
+            }
+        }
+
+        Ok(projects)
+    }
 
     pub async fn update_game_versions(
         id: ProjectId,
