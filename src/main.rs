@@ -234,7 +234,7 @@ async fn main() -> std::io::Result<()> {
                             project.into(),
                             &pool_ref,
                             webhook_url,
-                            Some("<@783155186491195394> This project has been in the queue for over 24 hours!".to_string()),
+                            Some("<@&783155186491195394> This project has been in the queue for over 24 hours!".to_string()),
                         )
                             .await
                             .ok();
