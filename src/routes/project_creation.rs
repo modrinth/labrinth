@@ -799,6 +799,7 @@ pub async fn project_create_inner(
             published: now,
             updated: now,
             approved: None,
+            queued: None,
             status,
             requested_status: project_builder.requested_status,
             moderator_message: None,
@@ -841,6 +842,7 @@ pub async fn project_create_inner(
                     response.id,
                     pool,
                     webhook_url,
+                    None,
                 )
                 .await
                 .ok();

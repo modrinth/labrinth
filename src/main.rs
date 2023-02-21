@@ -201,6 +201,60 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
+    // Reminding moderators to review projects which have been in the queue longer than 24hr
+    let pool_ref = pool.clone();
+    scheduler.run(std::time::Duration::from_secs(10 * 60), move || {
+        let pool_ref = pool_ref.clone();
+        info!("Checking reviewed projects submitted more than 24hrs ago");
+
+        async move {
+            let do_steps = async {
+                use futures::TryStreamExt;
+
+                let project_ids = sqlx::query!(
+                    "
+                    SELECT id FROM mods
+                    WHERE status = $1 AND queued < NOW() - INTERVAL '1 day'
+                    ORDER BY updated ASC
+                    ",
+                    crate::models::projects::ProjectStatus::Processing.as_str(),
+                )
+                    .fetch_many(&pool_ref)
+                    .try_filter_map(|e| async {
+                        Ok(e.right().map(|m| database::models::ProjectId(m.id)))
+                    })
+                    .try_collect::<Vec<database::models::ProjectId>>()
+                    .await?;
+
+                for project in project_ids {
+                    if let Ok(webhook_url) =
+                        dotenvy::var("MODERATION_DISCORD_WEBHOOK")
+                    {
+                        util::webhook::send_discord_webhook(
+                            project.into(),
+                            &pool_ref,
+                            webhook_url,
+                            Some("<@783155186491195394> This project has been in the queue for over 24 hours!".to_string()),
+                        )
+                            .await
+                            .ok();
+                    }
+                }
+
+                Ok::<(), crate::routes::ApiError>(())
+            };
+
+            if let Err(e) = do_steps.await {
+                warn!(
+                    "Checking reviewed projects submitted more than 24hrs ago failed: {:?}",
+                    e
+                );
+            }
+
+            info!("Finished checking reviewed projects submitted more than 24hrs ago");
+        }
+    });
+
     scheduler::schedule_versions(&mut scheduler, pool.clone());
 
     let download_queue = Arc::new(DownloadQueue::new());

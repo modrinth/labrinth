@@ -262,12 +262,13 @@ pub async fn dependency_list(
             })
             .collect::<Vec<_>>();
 
+        let dep_version_ids = dependencies
+            .iter()
+            .filter_map(|x| x.0)
+            .collect::<Vec<database::models::VersionId>>();
         let (projects_result, versions_result) = futures::join!(
             database::Project::get_many_full(&project_ids, &**pool,),
-            database::Version::get_many_full(
-                dependencies.iter().filter_map(|x| x.0).collect(),
-                &**pool,
-            )
+            database::Version::get_many_full(&dep_version_ids, &**pool,)
         );
 
         let mut projects = projects_result?
@@ -504,18 +505,7 @@ pub async fn project_edit(
                     sqlx::query!(
                         "
                         UPDATE mods
-                        SET moderation_message = NULL
-                        WHERE (id = $1)
-                        ",
-                        id as database::models::ids::ProjectId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-
-                    sqlx::query!(
-                        "
-                        UPDATE mods
-                        SET moderation_message_body = NULL
+                        SET moderation_message = NULL, moderation_message_body = NULL, queued = NOW()
                         WHERE (id = $1)
                         ",
                         id as database::models::ids::ProjectId,
@@ -530,6 +520,7 @@ pub async fn project_edit(
                             project_item.inner.id.into(),
                             &pool,
                             webhook_url,
+                            None,
                         )
                         .await
                         .ok();
@@ -559,6 +550,7 @@ pub async fn project_edit(
                             project_item.inner.id.into(),
                             &pool,
                             webhook_url,
+                            None,
                         )
                         .await
                         .ok();
@@ -1236,9 +1228,12 @@ pub async fn projects_edit(
         )));
     }
 
+    let team_ids = projects_data
+        .iter()
+        .map(|x| x.inner.team_id)
+        .collect::<Vec<database::models::TeamId>>();
     let team_members = database::models::TeamMember::get_from_team_full_many(
-        projects_data.iter().map(|x| x.inner.team_id).collect(),
-        &**pool,
+        &team_ids, &**pool,
     )
     .await?;
 
