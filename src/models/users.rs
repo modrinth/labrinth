@@ -48,6 +48,10 @@ pub struct User {
     pub badges: Badges,
     pub payout_data: Option<UserPayoutData>,
     pub has_flame_anvil_key: Option<bool>,
+    pub issues_url: Option<String>,
+    pub source_url: Option<String>,
+    pub wiki_url: Option<String>,
+    pub discord_url: Option<String>
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -142,6 +146,10 @@ impl From<DBUser> for User {
             badges: data.badges,
             payout_data: None,
             has_flame_anvil_key: None,
+            issues_url: data.issues_url,
+            source_url: data.source_url,
+            wiki_url: data.wiki_url,
+            discord_url: data.discord_url
         }
     }
 }

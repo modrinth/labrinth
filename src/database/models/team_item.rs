@@ -168,7 +168,9 @@ impl TeamMember {
             u.avatar_url avatar_url, u.username username, u.bio bio,
             u.created created, u.role user_role, u.badges badges, u.balance balance,
             u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,
-            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key
+            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key,
+            u.issues_url issues_url, u.source_url source_url, u.wiki_url wiki_url,
+            u.discord_url discord_url
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             WHERE tm.team_id = $1
@@ -202,6 +204,10 @@ impl TeamMember {
                             payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
                             payout_address: m.payout_address,
                             flame_anvil_key: m.flame_anvil_key,
+                            issues_url: m.issues_url,
+                            source_url: m.source_url,
+                            wiki_url: m.wiki_url,
+                            discord_url: m.discord_url
                         },
                         payouts_split: m.payouts_split,
                         ordering: m.ordering,
@@ -239,7 +245,9 @@ impl TeamMember {
             u.avatar_url avatar_url, u.username username, u.bio bio,
             u.created created, u.role user_role, u.badges badges, u.balance balance,
             u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,
-            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key
+            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key,
+            u.issues_url issues_url, u.source_url source_url, u.wiki_url wiki_url,
+            u.discord_url discord_url
             FROM team_members tm
             INNER JOIN users u ON u.id = tm.user_id
             WHERE tm.team_id = ANY($1)
@@ -273,6 +281,10 @@ impl TeamMember {
                               payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
                               payout_address: m.payout_address,
                               flame_anvil_key: m.flame_anvil_key,
+                              issues_url: m.issues_url,
+                              source_url: m.source_url,
+                              wiki_url: m.wiki_url,
+                              discord_url: m.discord_url
                           },
                           payouts_split: m.payouts_split,
                           ordering: m.ordering,

@@ -19,6 +19,10 @@ pub struct User {
     pub payout_wallet_type: Option<RecipientType>,
     pub payout_address: Option<String>,
     pub flame_anvil_key: Option<String>,
+    pub issues_url: Option<String>,
+    pub source_url: Option<String>,
+    pub wiki_url: Option<String>,
+    pub discord_url: Option<String>,
 }
 
 impl User {
@@ -64,7 +68,7 @@ impl User {
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address, u.flame_anvil_key
+                u.payout_address, u.flame_anvil_key, u.issues_url, u.source_url, u.wiki_url, u.discord_url
             FROM users u
             WHERE u.id = $1
             ",
@@ -95,6 +99,10 @@ impl User {
                     .map(|x| RecipientType::from_string(&x)),
                 payout_address: row.payout_address,
                 flame_anvil_key: row.flame_anvil_key,
+                issues_url: row.issues_url,
+                source_url: row.source_url,
+                wiki_url: row.wiki_url,
+                discord_url: row.discord_url
             }))
         } else {
             Ok(None)
@@ -114,7 +122,7 @@ impl User {
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address, u.flame_anvil_key
+                u.payout_address, u.flame_anvil_key, u.issues_url, u.source_url, u.wiki_url, u.discord_url
             FROM users u
             WHERE u.github_id = $1
             ",
@@ -145,6 +153,10 @@ impl User {
                     .map(|x| RecipientType::from_string(&x)),
                 payout_address: row.payout_address,
                 flame_anvil_key: row.flame_anvil_key,
+                issues_url: row.issues_url,
+                source_url: row.source_url,
+                wiki_url: row.wiki_url,
+                discord_url: row.discord_url
             }))
         } else {
             Ok(None)
@@ -164,7 +176,7 @@ impl User {
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address, u.flame_anvil_key
+                u.payout_address, u.flame_anvil_key, u.issues_url, u.source_url, u.wiki_url, u.discord_url
             FROM users u
             WHERE LOWER(u.username) = LOWER($1)
             ",
@@ -195,6 +207,10 @@ impl User {
                     .map(|x| RecipientType::from_string(&x)),
                 payout_address: row.payout_address,
                 flame_anvil_key: row.flame_anvil_key,
+                issues_url: row.issues_url,
+                source_url: row.source_url,
+                wiki_url: row.wiki_url,
+                discord_url: row.discord_url
             }))
         } else {
             Ok(None)
@@ -218,7 +234,7 @@ impl User {
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address, u.flame_anvil_key
+                u.payout_address, u.flame_anvil_key, u.issues_url, u.source_url, u.wiki_url, u.discord_url
             FROM users u
             WHERE u.id = ANY($1)
             ",
@@ -246,6 +262,10 @@ impl User {
                     .map(|x| RecipientType::from_string(&x)),
                 payout_address: u.payout_address,
                 flame_anvil_key: u.flame_anvil_key,
+                issues_url: u.issues_url,
+                source_url: u.source_url,
+                wiki_url: u.wiki_url,
+                discord_url: u.discord_url
             }))
         })
         .try_collect::<Vec<User>>()
