@@ -177,19 +177,19 @@ pub struct EditUser {
     #[validate(url, length(max = 2048))]
     pub source_url: Option<Option<String>>,
     #[serde(
-    default,
-    skip_serializing_if = "Option::is_none",
-    with = "::serde_with::rust::double_option"
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
     )]
     #[validate(url, length(max = 2048))]
     pub wiki_url: Option<Option<String>>,
     #[serde(
-    default,
-    skip_serializing_if = "Option::is_none",
-    with = "::serde_with::rust::double_option"
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
     )]
     #[validate(url, length(max = 2048))]
-    pub discord_url: Option<Option<String>>
+    pub discord_url: Option<Option<String>>,
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -444,7 +444,7 @@ pub async fn user_edit(
                     SET issues_url = $1
                     WHERE id = $2
                     ",
-                    issues_url.as_deref( ),
+                    issues_url.as_deref(),
                     id as crate::database::models::ids::UserId,
                 )
                 .execute(&mut *transaction)
@@ -458,11 +458,11 @@ pub async fn user_edit(
                     SET source_url = $1
                     WHERE id = $2
                     ",
-                    source_url.as_deref( ),
+                    source_url.as_deref(),
                     id as crate::database::models::ids::UserId,
                 )
-                    .execute(&mut *transaction)
-                    .await?;
+                .execute(&mut *transaction)
+                .await?;
             }
 
             if let Some(wiki_url) = &new_user.wiki_url {
@@ -472,11 +472,11 @@ pub async fn user_edit(
                     SET wiki_url = $1
                     WHERE id = $2
                     ",
-                    wiki_url.as_deref( ),
+                    wiki_url.as_deref(),
                     id as crate::database::models::ids::UserId,
                 )
-                    .execute(&mut *transaction)
-                    .await?;
+                .execute(&mut *transaction)
+                .await?;
             }
 
             if let Some(discord_url) = &new_user.discord_url {
@@ -486,11 +486,11 @@ pub async fn user_edit(
                     SET discord_url = $1
                     WHERE id = $2
                     ",
-                    discord_url.as_deref( ),
+                    discord_url.as_deref(),
                     id as crate::database::models::ids::UserId,
                 )
-                    .execute(&mut *transaction)
-                    .await?;
+                .execute(&mut *transaction)
+                .await?;
             }
 
             transaction.commit().await?;
@@ -504,8 +504,6 @@ pub async fn user_edit(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
-
-
 
 #[derive(Serialize, Deserialize)]
 pub struct Extension {

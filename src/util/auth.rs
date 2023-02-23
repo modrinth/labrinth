@@ -82,7 +82,7 @@ where
             issues_url: result.issues_url,
             source_url: result.source_url,
             wiki_url: result.wiki_url,
-            discord_url: result.discord_url
+            discord_url: result.discord_url,
         }),
         None => Err(AuthenticationError::InvalidCredentials),
     }

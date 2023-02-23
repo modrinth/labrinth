@@ -51,7 +51,7 @@ pub struct User {
     pub issues_url: Option<String>,
     pub source_url: Option<String>,
     pub wiki_url: Option<String>,
-    pub discord_url: Option<String>
+    pub discord_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -149,7 +149,7 @@ impl From<DBUser> for User {
             issues_url: data.issues_url,
             source_url: data.source_url,
             wiki_url: data.wiki_url,
-            discord_url: data.discord_url
+            discord_url: data.discord_url,
         }
     }
 }

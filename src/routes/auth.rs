@@ -282,7 +282,7 @@ pub async fn auth_callback(
                         issues_url: None,
                         source_url: None,
                         wiki_url: None,
-                        discord_url: None
+                        discord_url: None,
                     }
                     .insert(&mut transaction)
                     .await?;

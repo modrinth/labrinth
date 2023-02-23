@@ -102,7 +102,7 @@ impl User {
                 issues_url: row.issues_url,
                 source_url: row.source_url,
                 wiki_url: row.wiki_url,
-                discord_url: row.discord_url
+                discord_url: row.discord_url,
             }))
         } else {
             Ok(None)
@@ -156,7 +156,7 @@ impl User {
                 issues_url: row.issues_url,
                 source_url: row.source_url,
                 wiki_url: row.wiki_url,
-                discord_url: row.discord_url
+                discord_url: row.discord_url,
             }))
         } else {
             Ok(None)
@@ -210,7 +210,7 @@ impl User {
                 issues_url: row.issues_url,
                 source_url: row.source_url,
                 wiki_url: row.wiki_url,
-                discord_url: row.discord_url
+                discord_url: row.discord_url,
             }))
         } else {
             Ok(None)
