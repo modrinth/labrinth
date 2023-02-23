@@ -2180,6 +2180,19 @@
     },
     "query": "\n                UPDATE team_members\n                SET ordering = $1\n                WHERE (team_id = $2 AND user_id = $3)\n                "
   },
+  "2b0876c17ef112b77bc197ee825b69915ca4a4371ed73b285fd3561de052bb3a": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE users\n                    SET wiki_url = $1\n                    WHERE id = $2\n                    "
+  },
   "2b8dafe9c3df9fd25235a13868e8e7607decfbe96a413cc576919a1fb510f269": {
     "describe": {
       "columns": [],
@@ -2737,6 +2750,19 @@
     },
     "query": "\n                    UPDATE mods\n                    SET title = $1\n                    WHERE (id = $2)\n                    "
   },
+  "3dc6ce77a82d391507c56f1502248217b954485f922c0360346e25310dd51e35": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE users\n                    SET discord_url = $1\n                    WHERE id = $2\n                    "
+  },
   "3f2f05653552ce8c1be95ce0a922ab41f52f40f8ff6c91c6621481102c8f35e3": {
     "describe": {
       "columns": [],
@@ -2749,6 +2775,19 @@
       }
     },
     "query": "\n                        INSERT INTO game_versions_versions (game_version_id, joining_version_id)\n                        VALUES ($1, $2)\n                        "
+  },
+  "3f48f7df435e4ae64302051099f9045efc544003121df532e21d4f6db3b88df3": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE users\n                    SET source_url = $1\n                    WHERE id = $2\n                    "
   },
   "3fcfed18cbfb37866e0fa57a4e95efb326864f8219941d1b696add39ed333ad1": {
     "describe": {
@@ -7842,6 +7881,19 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM notifications WHERE id=$1)"
+  },
+  "fcc0d965b64d5414e626bcbf97710c2c16aa435f5c628e3a422df49bb7f42567": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE users\n                    SET issues_url = $1\n                    WHERE id = $2\n                    "
   },
   "fcd15905507769ab7f9839d64d1be3ee3f61cd555aee57dace76f8e53e91d344": {
     "describe": {
