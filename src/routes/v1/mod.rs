@@ -1,4 +1,4 @@
-use actix_web::{dev::Service, web, HttpMessage, HttpResponse};
+use actix_web::{dev::Service, http::Method, web, HttpResponse};
 use chrono::{Timelike, Utc};
 use futures::FutureExt;
 
@@ -14,7 +14,7 @@ pub fn v1_config(cfg: &mut web::ServiceConfig) {
             .wrap_fn(|req, srv| {
                 let time = Utc::now();
 
-                if req.method().as_str() == "GET" && time.hour12().1 < 6 && time.minute() % 10 < 5 {
+                if req.method() == Method::GET && time.hour12().1 < 6 && time.minute() % 10 < 5 {
                     srv.call(req).boxed_local()
                 } else {
                     async {
