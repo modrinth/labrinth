@@ -8,7 +8,7 @@ mod teams;
 mod users;
 mod versions;
 
-pub fn v1_config(cfg: &mut web::ServiceConfig) {
+pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("api/v1")
             .wrap_fn(|req, srv| {

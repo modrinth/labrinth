@@ -1,3 +1,4 @@
+use super::project_creation::{CreateError, UploadedFile};
 use crate::database::models;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
@@ -10,7 +11,6 @@ use crate::models::projects::{
     Version, VersionFile, VersionId, VersionStatus, VersionType,
 };
 use crate::models::teams::Permissions;
-use crate::routes::project_creation::{CreateError, UploadedFile};
 use crate::util::auth::get_user_from_headers;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
