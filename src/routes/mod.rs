@@ -1,10 +1,19 @@
 use crate::file_hosting::FileHostingError;
 use actix_web::http::StatusCode;
-use image::ImageError;
-use std::fmt::{Display, Formatter};
 
-pub mod v1;
 pub mod v2;
+
+mod health;
+mod index;
+mod maven;
+mod not_found;
+mod updates;
+
+pub use self::health::health_get;
+pub use self::index::index_get;
+pub use self::maven::config as maven_config;
+pub use self::not_found::not_found;
+pub use self::updates::config as updates_config;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
@@ -43,7 +52,7 @@ pub enum ApiError {
     #[error("Error while decoding Base62: {0}")]
     Decoding(#[from] crate::models::ids::DecodingError),
     #[error("Image Parsing Error: {0}")]
-    ImageError(#[from] ImageError),
+    ImageError(#[from] image::ImageError),
 }
 
 impl actix_web::ResponseError for ApiError {

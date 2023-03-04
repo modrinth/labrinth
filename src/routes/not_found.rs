@@ -1,4 +1,4 @@
-use super::ApiError;
+use crate::models::error::ApiError;
 use actix_web::{HttpResponse, Responder};
 
 pub async fn not_found() -> impl Responder {

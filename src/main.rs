@@ -366,12 +366,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(payouts_queue.clone()))
             .app_data(web::Data::new(ip_salt.clone()))
             .wrap(sentry_actix::Sentry::new())
-            .configure(routes::v1::config)
             .configure(routes::v2::config)
             .service(routes::index_get)
             .service(routes::health_get)
             .service(web::scope("maven").configure(routes::maven_config))
-            .service(web::scope("updates").configure(routes::updates))
+            .service(web::scope("updates").configure(routes::updates_config))
             .default_service(web::get().to(routes::not_found))
     })
     .bind(dotenvy::var("BIND_ADDR").unwrap())?

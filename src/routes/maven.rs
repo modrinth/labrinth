@@ -9,6 +9,13 @@ use sqlx::PgPool;
 use std::collections::HashSet;
 use yaserde_derive::YaSerialize;
 
+pub fn config(cfg: &mut web::ServiceConfig) {
+    cfg.service(maven_metadata);
+    cfg.service(version_file_sha512);
+    cfg.service(version_file_sha1);
+    cfg.service(version_file);
+}
+
 #[derive(Default, Debug, Clone, YaSerialize)]
 #[yaserde(root = "metadata", rename = "metadata")]
 pub struct Metadata {

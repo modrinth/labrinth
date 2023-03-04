@@ -1,11 +1,7 @@
 mod admin;
 mod auth;
-mod health;
-mod index;
-mod maven;
 mod midas;
 mod moderation;
-mod not_found;
 mod notifications;
 pub(crate) mod project_creation;
 mod projects;
@@ -13,7 +9,6 @@ mod reports;
 mod statistics;
 mod tags;
 mod teams;
-mod updates;
 mod users;
 mod version_creation;
 mod version_file;
@@ -22,13 +17,8 @@ mod versions;
 pub use auth::config as auth_config;
 pub use tags::config as tags_config;
 
-pub use self::health::health_get;
-pub use self::index::index_get;
-pub use self::not_found::not_found;
 pub use super::ApiError;
-use crate::file_hosting::FileHostingError;
 use actix_web::web;
-use image::ImageError;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -77,17 +67,6 @@ pub fn projects_config(cfg: &mut web::ServiceConfig) {
                     .service(versions::version_project_get),
             ),
     );
-}
-
-pub fn maven_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(maven::maven_metadata);
-    cfg.service(maven::version_file_sha512);
-    cfg.service(maven::version_file_sha1);
-    cfg.service(maven::version_file);
-}
-
-pub fn updates(cfg: &mut web::ServiceConfig) {
-    cfg.service(updates::forge_updates);
 }
 
 pub fn versions_config(cfg: &mut web::ServiceConfig) {
