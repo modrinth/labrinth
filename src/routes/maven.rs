@@ -25,6 +25,7 @@ pub struct Metadata {
     artifact_id: String,
     versioning: Versioning,
 }
+
 #[derive(Default, Debug, Clone, YaSerialize)]
 #[yaserde(rename = "versioning")]
 pub struct Versioning {
@@ -34,12 +35,14 @@ pub struct Versioning {
     #[yaserde(rename = "lastUpdated")]
     last_updated: String,
 }
+
 #[derive(Default, Debug, Clone, YaSerialize)]
 #[yaserde(rename = "versions")]
 pub struct Versions {
     #[yaserde(rename = "version")]
     versions: Vec<String>,
 }
+
 #[derive(Default, Debug, Clone, YaSerialize)]
 #[yaserde(rename = "project", namespace = "http://maven.apache.org/POM/4.0.0")]
 pub struct MavenPom {

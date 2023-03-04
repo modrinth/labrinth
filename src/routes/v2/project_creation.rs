@@ -25,6 +25,10 @@ use std::sync::Arc;
 use thiserror::Error;
 use validator::Validate;
 
+pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
+    cfg.service(project_create);
+}
+
 #[derive(Error, Debug)]
 pub enum CreateError {
     #[error("Environment Error")]

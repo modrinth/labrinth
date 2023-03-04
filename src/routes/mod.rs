@@ -1,7 +1,9 @@
 use crate::file_hosting::FileHostingError;
 use actix_web::http::StatusCode;
+use actix_web::web;
 
 pub mod v2;
+pub mod v3;
 
 mod health;
 mod index;
@@ -9,11 +11,14 @@ mod maven;
 mod not_found;
 mod updates;
 
-pub use self::health::health_get;
-pub use self::index::index_get;
-pub use self::maven::config as maven_config;
 pub use self::not_found::not_found;
-pub use self::updates::config as updates_config;
+
+pub fn root_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(index::index_get);
+    cfg.service(health::health_get);
+    cfg.service(web::scope("maven").configure(maven::config));
+    cfg.service(web::scope("updates").configure(updates::config));
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
