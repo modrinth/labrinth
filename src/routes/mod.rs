@@ -1,6 +1,8 @@
 use crate::file_hosting::FileHostingError;
-use actix_web::http::StatusCode;
-use actix_web::web;
+use actix_web::http::{Method, StatusCode};
+use actix_web::{web, HttpResponse};
+use chrono::{Timelike, Utc};
+use futures::FutureExt;
 
 pub mod v2;
 pub mod v3;
@@ -18,6 +20,17 @@ pub fn root_config(cfg: &mut web::ServiceConfig) {
     cfg.service(health::health_get);
     cfg.service(web::scope("maven").configure(maven::config));
     cfg.service(web::scope("updates").configure(updates::config));
+    cfg.service(
+        web::scope("api/v1").wrap_fn(|req, srv| {
+            async {
+                Ok(req.into_response(
+                    HttpResponse::Gone()
+                        .content_type("application/json")
+                        .body(r#"{"error":"api_deprecated","description":"You are using an application that uses an outdated version of Modrinth's API. Please either update it or switch to another application. For developers: https://docs.modrinth.com/docs/migrations/v1-to-v2/"}"#)
+                ))
+            }.boxed_local()
+        })
+    );
 }
 
 #[derive(thiserror::Error, Debug)]
