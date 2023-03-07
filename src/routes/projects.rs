@@ -893,11 +893,13 @@ pub async fn project_edit(
                 }
 
                 {
+                    // We exclude the ID of the project we are editing, so that we can edit the slug to the same value
                     let results = sqlx::query!(
-                        "
-                      SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
+                      "
+                      SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1) AND id != $2)
                       ",
-                        slug
+                        slug,
+                        id as database::models::ids::ProjectId,
                     )
                     .fetch_one(&mut *transaction)
                     .await?;
