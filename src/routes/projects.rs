@@ -892,14 +892,14 @@ pub async fn project_edit(
                     }
                 }
 
-                {
-                    // We exclude the ID of the project we are editing, so that we can edit the slug to the same value
+                // Make sure the new slug is different from the old one
+                // We are able to unwrap here because the slug is always set
+                if !slug.eq(&project_item.inner.slug.unwrap_or_default()) {
                     let results = sqlx::query!(
                       "
-                      SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1) AND id != $2)
+                      SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
                       ",
-                        slug,
-                        id as database::models::ids::ProjectId,
+                        slug
                     )
                     .fetch_one(&mut *transaction)
                     .await?;
