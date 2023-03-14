@@ -7,6 +7,7 @@ use crate::ratelimit::middleware::RateLimiter;
 use crate::util::env::{parse_strings_from_var, parse_var};
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
+use chrono::{DateTime, Utc};
 use env_logger::Env;
 use log::{error, info, warn};
 use search::indexing::index_projects;
@@ -203,8 +204,14 @@ async fn main() -> std::io::Result<()> {
 
     // Reminding moderators to review projects which have been in the queue longer than 24hr
     let pool_ref = pool.clone();
+    let webhook_message_sent = Arc::new(Mutex::new(Vec::<(
+        database::models::ProjectId,
+        DateTime<Utc>,
+    )>::new()));
+
     scheduler.run(std::time::Duration::from_secs(10 * 60), move || {
         let pool_ref = pool_ref.clone();
+        let webhook_message_sent_ref = webhook_message_sent.clone();
         info!("Checking reviewed projects submitted more than 24hrs ago");
 
         async move {
@@ -226,7 +233,13 @@ async fn main() -> std::io::Result<()> {
                     .try_collect::<Vec<database::models::ProjectId>>()
                     .await?;
 
+                let mut webhook_message_sent_ref = webhook_message_sent_ref.lock().await;
+
+                webhook_message_sent_ref.retain(|x| Utc::now() - x.1 > chrono::Duration::hours(12));
+
                 for project in project_ids {
+                    if webhook_message_sent_ref.iter().any(|x| x.0 == project) { continue; }
+
                     if let Ok(webhook_url) =
                         dotenvy::var("MODERATION_DISCORD_WEBHOOK")
                     {
@@ -238,6 +251,8 @@ async fn main() -> std::io::Result<()> {
                         )
                             .await
                             .ok();
+
+                        webhook_message_sent_ref.push((project, Utc::now()));
                     }
                 }
 
