@@ -1,7 +1,6 @@
 use crate::file_hosting::FileHostingError;
-use actix_web::http::{Method, StatusCode};
+use actix_web::http::StatusCode;
 use actix_web::{web, HttpResponse};
-use chrono::{Timelike, Utc};
 use futures::FutureExt;
 
 pub mod v2;
@@ -21,7 +20,7 @@ pub fn root_config(cfg: &mut web::ServiceConfig) {
     cfg.service(web::scope("maven").configure(maven::config));
     cfg.service(web::scope("updates").configure(updates::config));
     cfg.service(
-        web::scope("api/v1").wrap_fn(|req, srv| {
+        web::scope("api/v1").wrap_fn(|req, _srv| {
             async {
                 Ok(req.into_response(
                     HttpResponse::Gone()
@@ -97,8 +96,8 @@ impl actix_web::ResponseError for ApiError {
         }
     }
 
-    fn error_response(&self) -> actix_web::HttpResponse {
-        actix_web::HttpResponse::build(self.status_code()).json(
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::build(self.status_code()).json(
             crate::models::error::ApiError {
                 error: match self {
                     ApiError::Env(..) => "environment_error",
