@@ -260,10 +260,11 @@ pub async fn dependency_list(
             .iter()
             .filter_map(|x| x.0)
             .collect::<Vec<database::models::VersionId>>();
-        let (projects_result, versions_result) = futures::try_join(
-            database::Project::get_many_full(&project_ids, &**pool,),
-            database::Version::get_many_full(&dep_version_ids, &**pool,)
-        ).await?;
+        let (projects_result, versions_result) = futures::future::try_join(
+            database::Project::get_many_full(&project_ids, &**pool),
+            database::Version::get_many_full(&dep_version_ids, &**pool),
+        )
+        .await?;
 
         let mut projects = projects_result
             .into_iter()
