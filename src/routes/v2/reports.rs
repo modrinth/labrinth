@@ -20,7 +20,9 @@ use validator::Validate;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(reports);
     cfg.service(report_create);
-    cfg.service(delete_report);
+    cfg.service(report_edit);
+    cfg.service(report_delete);
+    cfg.service(report_get);
 }
 
 #[derive(Deserialize)]
@@ -241,34 +243,33 @@ pub async fn reports(
     let mut reports = Vec::new();
 
     for x in query_reports {
-        let mut item_id = "".to_string();
-        let mut item_type = ItemType::Unknown;
-
-        if let Some(project_id) = x.project_id {
-            item_id = serde_json::to_string::<ProjectId>(&project_id.into())?;
-            item_type = ItemType::Project;
-        } else if let Some(version_id) = x.version_id {
-            item_id = serde_json::to_string::<VersionId>(&version_id.into())?;
-            item_type = ItemType::Version;
-        } else if let Some(user_id) = x.user_id {
-            item_id = serde_json::to_string::<UserId>(&user_id.into())?;
-            item_type = ItemType::User;
-        }
-
-        reports.push(Report {
-            id: x.id.into(),
-            report_type: x.report_type,
-            item_id,
-            item_type,
-            reporter: x.reporter.into(),
-            body: x.body,
-            created: x.created,
-            closed: x.closed,
-            thread_id: x.thread_id.map(|x| x.into()),
-        })
+        reports.push(to_report(x)?);
     }
 
     Ok(HttpResponse::Ok().json(reports))
+}
+
+#[get("report/{id}")]
+pub async fn report_get(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    info: web::Path<(crate::models::reports::ReportId,)>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let id = info.into_inner().0.into();
+
+    let report =
+        crate::database::models::report_item::Report::get(id, &**pool).await?;
+
+    if let Some(report) = report {
+        if !user.role.is_mod() && report.user_id != Some(user.id.into()) {
+            return Ok(HttpResponse::NotFound().body(""));
+        }
+
+        Ok(HttpResponse::Ok().json(to_report(report)?))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
 }
 
 #[derive(Deserialize, Validate)]
@@ -279,7 +280,7 @@ pub struct EditReport {
 }
 
 #[patch("report/{id}")]
-pub async fn edit_report(
+pub async fn report_edit(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
@@ -351,7 +352,7 @@ pub async fn edit_report(
 }
 
 #[delete("report/{id}")]
-pub async fn delete_report(
+pub async fn report_delete(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
@@ -371,4 +372,34 @@ pub async fn delete_report(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+fn to_report(
+    x: crate::database::models::report_item::QueryReport,
+) -> Result<Report, ApiError> {
+    let mut item_id = "".to_string();
+    let mut item_type = ItemType::Unknown;
+
+    if let Some(project_id) = x.project_id {
+        item_id = serde_json::to_string::<ProjectId>(&project_id.into())?;
+        item_type = ItemType::Project;
+    } else if let Some(version_id) = x.version_id {
+        item_id = serde_json::to_string::<VersionId>(&version_id.into())?;
+        item_type = ItemType::Version;
+    } else if let Some(user_id) = x.user_id {
+        item_id = serde_json::to_string::<UserId>(&user_id.into())?;
+        item_type = ItemType::User;
+    }
+
+    Ok(Report {
+        id: x.id.into(),
+        report_type: x.report_type,
+        item_id,
+        item_type,
+        reporter: x.reporter.into(),
+        body: x.body,
+        created: x.created,
+        closed: x.closed,
+        thread_id: x.thread_id.map(|x| x.into()),
+    })
 }

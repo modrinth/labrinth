@@ -7,7 +7,7 @@ use crate::models::threads::{
 use crate::models::users::User;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use sqlx::PgPool;
 
@@ -123,7 +123,7 @@ pub struct NewThreadMessage {
     pub body: MessageBody,
 }
 
-#[patch("{id}")]
+#[post("{id}")]
 pub async fn thread_send_message(
     req: HttpRequest,
     info: web::Path<(ThreadId,)>,

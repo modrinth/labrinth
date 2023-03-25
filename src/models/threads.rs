@@ -66,9 +66,9 @@ impl ThreadType {
 
     pub fn from_str(string: &str) -> ThreadType {
         match string {
-            "required" => ThreadType::Report,
-            "optional" => ThreadType::Project,
-            "unsupported" => ThreadType::DirectMessage,
+            "report" => ThreadType::Report,
+            "project" => ThreadType::Project,
+            "direct_message" => ThreadType::DirectMessage,
             _ => ThreadType::DirectMessage,
         }
     }
