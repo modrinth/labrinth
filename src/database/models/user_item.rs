@@ -453,6 +453,27 @@ impl User {
 
         sqlx::query!(
             "
+            UPDATE threads_messages
+            SET body = 'This user has been deleted', author_id = NULL
+            WHERE author_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM threads_members
+            WHERE user_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
             DELETE FROM users
             WHERE id = $1
             ",
