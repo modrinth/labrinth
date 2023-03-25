@@ -13,7 +13,7 @@ CREATE TABLE threads_messages (
     thread_id bigint REFERENCES threads ON UPDATE CASCADE NOT NULL,
     -- If this is null, it's a system message
     author_id bigint REFERENCES users ON UPDATE CASCADE NULL,
-    body varchar(65536) NOT NULL,
+    body jsonb NOT NULL,
     created timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 

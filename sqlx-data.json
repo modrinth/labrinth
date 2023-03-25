@@ -441,6 +441,44 @@
     },
     "query": "\n            INSERT INTO reports (\n                id, report_type_id, mod_id, version_id, user_id,\n                body, reporter, thread_id\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8\n            )\n            "
   },
+  "141370c3df1e8746397d71fd8cda5776c82b98af6bbc97f2072b9877d52479b8": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "thread_type",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "members",
+          "ordinal": 2,
+          "type_info": "Int8Array"
+        },
+        {
+          "name": "messages",
+          "ordinal": 3,
+          "type_info": "Jsonb"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        null,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT t.id, t.thread_type,\n            ARRAY_AGG(DISTINCT tm.user_id) filter (where tm.user_id is not null) members,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', tmsg.id, 'author_id', tmsg.author_id, 'thread_id', tmsg.thread_id, 'body', tmsg.body, 'created', tmsg.created)) filter (where tmsg.id is not null) messages\n            FROM threads t\n            LEFT OUTER JOIN threads_messages tmsg ON tmsg.thread_id = t.id\n            LEFT OUTER JOIN threads_members tm ON tm.thread_id = t.id\n            WHERE t.id = ANY($1)\n            GROUP BY t.id\n            "
+  },
   "15b8ea323c2f6d03c2e385d9c46d7f13460764f2f106fd638226c42ae0217f75": {
     "describe": {
       "columns": [],
@@ -1590,6 +1628,50 @@
     },
     "query": "DELETE FROM banned_users WHERE github_id = $1;"
   },
+  "320d73cd900a6e00f0e74b7a8c34a7658d16034b01a35558cb42fa9c16185eb5": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "author_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "thread_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "body",
+          "ordinal": 3,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT tm.id, tm.author_id, tm.thread_id, tm.body, tm.created\n            FROM threads_messages tm\n            WHERE tm.id = ANY($1)\n            "
+  },
   "33a965c7dc615d3b701c05299889357db8dd36d378850625d2602ba471af4885": {
     "describe": {
       "columns": [],
@@ -2118,44 +2200,6 @@
       }
     },
     "query": "\n            SELECT d.dependency_id, COALESCE(vd.mod_id, 0) mod_id, d.mod_dependency_id\n            FROM versions v\n            INNER JOIN dependencies d ON d.dependent_id = v.id\n            LEFT JOIN versions vd ON d.dependency_id = vd.id\n            WHERE v.mod_id = $1\n            "
-  },
-  "4934f3441d99da44a84e380d779c8445ad856754a0e74ca26613dd7b83b442e5": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "author_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "body",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 3,
-          "type_info": "Timestamptz"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      }
-    },
-    "query": "\n            SELECT tm.id, tm.author_id, tm.body, tm.created\n            FROM threads_messages tm\n            WHERE tm.id = ANY($1)\n            "
   },
   "49a5d21a1454afc6383b78e468fd0decc75b9163e7286f34ceab22d563a0d3f7": {
     "describe": {
@@ -4319,43 +4363,17 @@
     },
     "query": "\n            SELECT id FROM categories\n            WHERE category = $1 AND project_type = $2\n            "
   },
-  "abca406264661603f5cedd90614b3d67fd5cdb5135525cd71fc95bcbccdbb7ea": {
+  "ab59462cbae40d9eaefd208a1eae6d50be0c504b366fe726962957b038944d24": {
     "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "thread_type",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "members",
-          "ordinal": 2,
-          "type_info": "Int8Array"
-        },
-        {
-          "name": "messages",
-          "ordinal": 3,
-          "type_info": "Jsonb"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        null,
-        null
-      ],
+      "columns": [],
+      "nullable": [],
       "parameters": {
         "Left": [
-          "Int8Array"
+          "Int8"
         ]
       }
     },
-    "query": "\n            SELECT t.id, t.thread_type,\n            ARRAY_AGG(DISTINCT tm.user_id) filter (where tm.user_id is not null) members,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', tmsg.id, 'author_id', tmsg.author_id, 'body', tmsg.body, 'created', tmsg.created)) filter (where tmsg.id is not null) messages\n            FROM threads t\n            LEFT OUTER JOIN threads_messages tmsg ON tmsg.thread_id = t.id\n            LEFT OUTER JOIN threads_members tm ON tm.thread_id = t.id\n            WHERE t.id = ANY($1)\n            GROUP BY t.id\n            "
+    "query": "\n            UPDATE threads_messages\n            SET body = '{\"type\": \"deleted\"}', author_id = NULL\n            WHERE author_id = $1\n            "
   },
   "abf790170e3a807ffe8b3a188da620c89e6398f38ff066220fdadffe8e7481c1": {
     "describe": {
@@ -4464,6 +4482,21 @@
       }
     },
     "query": "\n            DELETE FROM dependencies WHERE mod_dependency_id = NULL AND dependency_id = NULL AND dependency_file_name = NULL\n            "
+  },
+  "b0c29c51bd3ae5b93d487471a98ee9bbb43a4df468ba781852b137dd315b9608": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Jsonb",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO threads_messages (\n                id, author_id, body, thread_id\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            "
   },
   "b0e3d1c70b87bb54819e3fac04b684a9b857aeedb4dcb7cb400c2af0dbb12922": {
     "describe": {
@@ -5287,20 +5320,6 @@
       }
     },
     "query": "\n            INSERT INTO mod_follows (follower_id, mod_id)\n            VALUES ($1, $2)\n            "
-  },
-  "c587689a34538f35daba68464b6aaf3c755f51adde8173d47da8092552d89ce7": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Varchar"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO threads_messages (\n                id, author_id, body\n            )\n            VALUES (\n                $1, $2, $3\n            )\n            "
   },
   "c5d44333c62223bd3e68185d1fb3f95152fafec593da8d06c9b2b665218a02be": {
     "describe": {
@@ -6540,18 +6559,6 @@
       }
     },
     "query": "\n                    UPDATE users\n                    SET bio = $1\n                    WHERE (id = $2)\n                    "
-  },
-  "f46bab52bc35f4559fb7ec56190d4b9ff8ff5c974388624e6bfd0cb2b8e33e46": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            UPDATE threads_messages\n            SET body = 'This user has been deleted', author_id = NULL\n            WHERE author_id = $1\n            "
   },
   "f6eae06931e9cde0f18e7031bc93c33fa689de4d9676c1a8a3fc14a182d5fb08": {
     "describe": {

@@ -1,9 +1,11 @@
-use crate::database::models::thread_item::ThreadBuilder;
+use crate::database::models::thread_item::{
+    ThreadBuilder, ThreadMessageBuilder,
+};
 use crate::models::ids::{
     base62_impl::parse_base62, ProjectId, UserId, VersionId,
 };
 use crate::models::reports::{ItemType, Report};
-use crate::models::threads::ThreadType;
+use crate::models::threads::{MessageBody, ThreadType};
 use crate::routes::ApiError;
 use crate::util::auth::{
     check_is_moderator_from_headers, get_user_from_headers,
@@ -315,6 +317,16 @@ pub async fn edit_report(
                 return Err(ApiError::InvalidInput(
                     "You cannot reopen a report!".to_string(),
                 ));
+            }
+
+            if let Some(thread) = report.thread_id {
+                ThreadMessageBuilder {
+                    author_id: Some(user.id.into()),
+                    body: MessageBody::ThreadClosure,
+                    thread_id: thread,
+                }
+                .insert(&mut transaction)
+                .await?;
             }
 
             sqlx::query!(

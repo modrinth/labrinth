@@ -1,5 +1,6 @@
 use crate::database;
 use crate::database::models::notification_item::NotificationBuilder;
+use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
@@ -7,6 +8,7 @@ use crate::models::projects::{
     DonationLink, Project, ProjectId, ProjectStatus, SearchRequest, SideType,
 };
 use crate::models::teams::Permissions;
+use crate::models::threads::MessageBody;
 use crate::routes::ApiError;
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::auth::{
@@ -632,6 +634,18 @@ pub async fn project_edit(
                         actions: vec![],
                     }
                     .insert_many(notified_members, &mut transaction)
+                    .await?;
+                }
+
+                if let Some(thread) = project_item.inner.thread_id {
+                    ThreadMessageBuilder {
+                        author_id: Some(user.id.into()),
+                        body: MessageBody::StatusChange {
+                            new_status: *status,
+                        },
+                        thread_id: thread,
+                    }
+                    .insert(&mut transaction)
                     .await?;
                 }
 

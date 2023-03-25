@@ -1,15 +1,15 @@
 use crate::database;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::models::ids::ThreadMessageId;
-use crate::models::threads::{Thread, ThreadId, ThreadMessage, ThreadType};
+use crate::models::threads::{
+    MessageBody, Thread, ThreadId, ThreadMessage, ThreadType,
+};
 use crate::models::users::User;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
-use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use sqlx::PgPool;
-use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -118,10 +118,9 @@ pub async fn thread_get(
     Ok(HttpResponse::NotFound().body(""))
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Deserialize)]
 pub struct NewThreadMessage {
-    #[validate(length(max = 65536))]
-    pub body: String,
+    pub body: MessageBody,
 }
 
 #[patch("{id}")]
@@ -133,9 +132,13 @@ pub async fn thread_send_message(
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    new_message.validate().map_err(|err| {
-        ApiError::Validation(validation_errors_to_string(err, None))
-    })?;
+    if let MessageBody::Text { body } = &new_message.body {
+        if body.len() > 65536 {
+            return Err(ApiError::InvalidInput(
+                "Input body is too long!".to_string(),
+            ));
+        }
+    }
 
     let string: database::models::ThreadId = info.into_inner().0.into();
     let result = database::models::Thread::get(string, &**pool).await?;
@@ -149,6 +152,7 @@ pub async fn thread_send_message(
         ThreadMessageBuilder {
             author_id: Some(user.id.into()),
             body: new_message.body.clone(),
+            thread_id: thread.id,
         }
         .insert(&mut transaction)
         .await?;
@@ -194,5 +198,3 @@ pub async fn message_delete(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
-
-// add system messages for changing project status and closing a report

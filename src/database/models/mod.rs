@@ -26,4 +26,6 @@ pub enum DatabaseError {
     RandomId,
     #[error("A database request failed")]
     Other(String),
+    #[error("Error while parsing JSON: {0}")]
+    Json(#[from] serde_json::Error),
 }

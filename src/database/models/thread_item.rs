@@ -1,6 +1,6 @@
 use super::ids::*;
 use crate::database::models::DatabaseError;
-use crate::models::threads::ThreadType;
+use crate::models::threads::{MessageBody, ThreadType};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
@@ -18,14 +18,16 @@ pub struct Thread {
 
 pub struct ThreadMessageBuilder {
     pub author_id: Option<UserId>,
-    pub body: String,
+    pub body: MessageBody,
+    pub thread_id: ThreadId,
 }
 
 #[derive(Deserialize)]
 pub struct ThreadMessage {
     pub id: ThreadMessageId,
+    pub thread_id: ThreadId,
     pub author_id: Option<UserId>,
-    pub body: String,
+    pub body: MessageBody,
     pub created: DateTime<Utc>,
 }
 
@@ -40,15 +42,16 @@ impl ThreadMessageBuilder {
         sqlx::query!(
             "
             INSERT INTO threads_messages (
-                id, author_id, body
+                id, author_id, body, thread_id
             )
             VALUES (
-                $1, $2, $3
+                $1, $2, $3, $4
             )
             ",
             thread_message_id as ThreadMessageId,
             self.author_id.map(|x| x.0),
-            self.body,
+            serde_json::value::to_value(self.body.clone())?,
+            self.thread_id as ThreadId,
         )
         .execute(&mut *transaction)
         .await?;
@@ -128,7 +131,7 @@ impl Thread {
             "
             SELECT t.id, t.thread_type,
             ARRAY_AGG(DISTINCT tm.user_id) filter (where tm.user_id is not null) members,
-            JSONB_AGG(DISTINCT jsonb_build_object('id', tmsg.id, 'author_id', tmsg.author_id, 'body', tmsg.body, 'created', tmsg.created)) filter (where tmsg.id is not null) messages
+            JSONB_AGG(DISTINCT jsonb_build_object('id', tmsg.id, 'author_id', tmsg.author_id, 'thread_id', tmsg.thread_id, 'body', tmsg.body, 'created', tmsg.created)) filter (where tmsg.id is not null) messages
             FROM threads t
             LEFT OUTER JOIN threads_messages tmsg ON tmsg.thread_id = t.id
             LEFT OUTER JOIN threads_members tm ON tm.thread_id = t.id
@@ -218,7 +221,7 @@ impl ThreadMessage {
             message_ids.iter().map(|x| x.0).collect();
         let messages = sqlx::query!(
             "
-            SELECT tm.id, tm.author_id, tm.body, tm.created
+            SELECT tm.id, tm.author_id, tm.thread_id, tm.body, tm.created
             FROM threads_messages tm
             WHERE tm.id = ANY($1)
             ",
@@ -228,8 +231,10 @@ impl ThreadMessage {
         .try_filter_map(|e| async {
             Ok(e.right().map(|x| ThreadMessage {
                 id: ThreadMessageId(x.id),
+                thread_id: ThreadId(x.thread_id),
                 author_id: x.author_id.map(UserId),
-                body: x.body,
+                body: serde_json::from_value(x.body)
+                    .unwrap_or(MessageBody::Deleted),
                 created: x.created,
             }))
         })

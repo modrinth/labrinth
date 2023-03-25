@@ -1,4 +1,5 @@
 use super::ids::Base62Id;
+use crate::models::projects::ProjectStatus;
 use crate::models::users::{User, UserId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -26,8 +27,17 @@ pub struct Thread {
 pub struct ThreadMessage {
     pub id: ThreadMessageId,
     pub author_id: Option<UserId>,
-    pub body: String,
+    pub body: MessageBody,
     pub created: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum MessageBody {
+    Text { body: String },
+    StatusChange { new_status: ProjectStatus },
+    ThreadClosure,
+    Deleted,
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Copy, Clone)]
