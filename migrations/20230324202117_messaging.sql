@@ -14,7 +14,8 @@ CREATE TABLE threads_messages (
     -- If this is null, it's a system message
     author_id bigint REFERENCES users ON UPDATE CASCADE NULL,
     body jsonb NOT NULL,
-    created timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
+    created timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    show_in_mod_inbox BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE threads_members (

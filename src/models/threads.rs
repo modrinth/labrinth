@@ -34,8 +34,13 @@ pub struct ThreadMessage {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MessageBody {
-    Text { body: String },
-    StatusChange { new_status: ProjectStatus },
+    Text {
+        body: String,
+    },
+    StatusChange {
+        new_status: ProjectStatus,
+        old_status: ProjectStatus,
+    },
     ThreadClosure,
     Deleted,
 }

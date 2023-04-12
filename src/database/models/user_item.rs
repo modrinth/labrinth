@@ -454,10 +454,11 @@ impl User {
         sqlx::query!(
             r#"
             UPDATE threads_messages
-            SET body = '{"type": "deleted"}', author_id = NULL
+            SET body = '{"type": "deleted"}', author_id = $2
             WHERE author_id = $1
             "#,
             id as UserId,
+            deleted_user as UserId,
         )
         .execute(&mut *transaction)
         .await?;

@@ -1,12 +1,15 @@
 use crate::database;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::models::ids::ThreadMessageId;
+use crate::models::projects::ProjectStatus;
 use crate::models::threads::{
     MessageBody, Thread, ThreadId, ThreadMessage, ThreadType,
 };
 use crate::models::users::User;
 use crate::routes::ApiError;
-use crate::util::auth::get_user_from_headers;
+use crate::util::auth::{
+    check_is_moderator_from_headers, get_user_from_headers,
+};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -14,6 +17,7 @@ use sqlx::PgPool;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("thread")
+            .service(moderation_inbox)
             .service(thread_get)
             .service(thread_send_message),
     );
@@ -148,11 +152,27 @@ pub async fn thread_send_message(
             return Ok(HttpResponse::NotFound().body(""));
         }
 
+        let mod_notif = if thread.type_ == ThreadType::Project {
+            let status = sqlx::query!(
+                "SELECT m.status FROM mods m WHERE thread_id = $1",
+                thread.id as database::models::ids::ThreadId,
+            )
+            .fetch_one(&**pool)
+            .await?;
+
+            let status = ProjectStatus::from_str(&status.status);
+
+            status == ProjectStatus::Processing && !user.role.is_mod()
+        } else {
+            false
+        };
+
         let mut transaction = pool.begin().await?;
         ThreadMessageBuilder {
             author_id: Some(user.id.into()),
             body: new_message.body.clone(),
             thread_id: thread.id,
+            show_in_mod_inbox: Some(mod_notif),
         }
         .insert(&mut transaction)
         .await?;
@@ -162,6 +182,64 @@ pub async fn thread_send_message(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+#[get("inbox")]
+pub async fn moderation_inbox(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_moderator_from_headers(req.headers(), &**pool).await?;
+
+    let messages = sqlx::query!(
+        "
+        SELECT tm.id, tm.thread_id, tm.author_id, tm.body, tm.created, m.id project_id FROM threads_messages tm
+        INNER JOIN mods m ON m.thread_id = tm.thread_id
+        WHERE tm.show_in_mod_inbox = TRUE
+        "
+    )
+        .fetch_all(&**pool)
+        .await?
+        .into_iter()
+        .map(|x| serde_json::json! ({
+            "message": ThreadMessage {
+                id: ThreadMessageId(x.id as u64),
+                author_id: x.author_id.map(|x| crate::models::users::UserId(x as u64)),
+                body: serde_json::from_value(x.body).unwrap_or(MessageBody::Deleted),
+                created: x.created
+            },
+            "project_id": crate::models::projects::ProjectId(x.project_id as u64),
+        }))
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(messages))
+}
+
+#[post("{id}/read")]
+pub async fn read_message(
+    req: HttpRequest,
+    info: web::Path<(ThreadMessageId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_moderator_from_headers(req.headers(), &**pool).await?;
+
+    let id = info.into_inner().0;
+    let mut transaction = pool.begin().await?;
+
+    sqlx::query!(
+        "
+        UPDATE threads_messages
+        SET show_in_mod_inbox = FALSE
+        WHERE id = $1
+        ",
+        id.0 as i64,
+    )
+    .execute(&mut *transaction)
+    .await?;
+
+    transaction.commit().await?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("{id}")]

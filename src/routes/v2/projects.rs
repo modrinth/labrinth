@@ -642,8 +642,10 @@ pub async fn project_edit(
                         author_id: Some(user.id.into()),
                         body: MessageBody::StatusChange {
                             new_status: *status,
+                            old_status: project_item.inner.status,
                         },
                         thread_id: thread,
+                        show_in_mod_inbox: None,
                     }
                     .insert(&mut transaction)
                     .await?;

@@ -325,6 +325,7 @@ pub async fn report_edit(
                     author_id: Some(user.id.into()),
                     body: MessageBody::ThreadClosure,
                     thread_id: thread,
+                    show_in_mod_inbox: None,
                 }
                 .insert(&mut transaction)
                 .await?;

@@ -20,6 +20,7 @@ pub struct ThreadMessageBuilder {
     pub author_id: Option<UserId>,
     pub body: MessageBody,
     pub thread_id: ThreadId,
+    pub show_in_mod_inbox: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -29,6 +30,7 @@ pub struct ThreadMessage {
     pub author_id: Option<UserId>,
     pub body: MessageBody,
     pub created: DateTime<Utc>,
+    pub show_in_mod_inbox: bool,
 }
 
 impl ThreadMessageBuilder {
@@ -42,16 +44,17 @@ impl ThreadMessageBuilder {
         sqlx::query!(
             "
             INSERT INTO threads_messages (
-                id, author_id, body, thread_id
+                id, author_id, body, thread_id, show_in_mod_inbox
             )
             VALUES (
-                $1, $2, $3, $4
+                $1, $2, $3, $4, $5
             )
             ",
             thread_message_id as ThreadMessageId,
             self.author_id.map(|x| x.0),
             serde_json::value::to_value(self.body.clone())?,
             self.thread_id as ThreadId,
+            self.show_in_mod_inbox,
         )
         .execute(&mut *transaction)
         .await?;
@@ -221,7 +224,7 @@ impl ThreadMessage {
             message_ids.iter().map(|x| x.0).collect();
         let messages = sqlx::query!(
             "
-            SELECT tm.id, tm.author_id, tm.thread_id, tm.body, tm.created
+            SELECT tm.id, tm.author_id, tm.thread_id, tm.body, tm.created, tm.show_in_mod_inbox
             FROM threads_messages tm
             WHERE tm.id = ANY($1)
             ",
@@ -236,6 +239,7 @@ impl ThreadMessage {
                 body: serde_json::from_value(x.body)
                     .unwrap_or(MessageBody::Deleted),
                 created: x.created,
+                show_in_mod_inbox: x.show_in_mod_inbox,
             }))
         })
         .try_collect::<Vec<ThreadMessage>>()
