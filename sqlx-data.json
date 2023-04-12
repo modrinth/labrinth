@@ -287,6 +287,56 @@
     },
     "query": "\n            INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            "
   },
+  "0eee1b0969f3ee800ccf5105d878c8c417f09bdced6bbbefcdc339534d1baf2a": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "author_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "thread_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "body",
+          "ordinal": 3,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "show_in_mod_inbox",
+          "ordinal": 5,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT tm.id, tm.author_id, tm.thread_id, tm.body, tm.created, tm.show_in_mod_inbox\n            FROM threads_messages tm\n            WHERE tm.id = ANY($1)\n            "
+  },
   "0f0244e77f60e69b3ab1320265749656e25da0b021b3df9013a2da470dbc8d46": {
     "describe": {
       "columns": [],
@@ -1628,50 +1678,6 @@
     },
     "query": "DELETE FROM banned_users WHERE github_id = $1;"
   },
-  "320d73cd900a6e00f0e74b7a8c34a7658d16034b01a35558cb42fa9c16185eb5": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "author_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "thread_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "body",
-          "ordinal": 3,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "created",
-          "ordinal": 4,
-          "type_info": "Timestamptz"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      }
-    },
-    "query": "\n            SELECT tm.id, tm.author_id, tm.thread_id, tm.body, tm.created\n            FROM threads_messages tm\n            WHERE tm.id = ANY($1)\n            "
-  },
   "33a965c7dc615d3b701c05299889357db8dd36d378850625d2602ba471af4885": {
     "describe": {
       "columns": [],
@@ -2048,6 +2054,19 @@
       }
     },
     "query": "\n                    UPDATE mods\n                    SET title = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "3dd2c3bfd40e2a3c0bf0fd94023d35bd821186670780a6883691ab1a097e2956": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE threads_messages\n            SET body = '{\"type\": \"deleted\"}', author_id = $2\n            WHERE author_id = $1\n            "
   },
   "3f2f05653552ce8c1be95ce0a922ab41f52f40f8ff6c91c6621481102c8f35e3": {
     "describe": {
@@ -2527,6 +2546,54 @@
       }
     },
     "query": "\n                    UPDATE versions\n                    SET version_number = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "59859b611ac75b266671daacee0ae3eb0eff1808a046dd0c7b70154f590c28eb": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "thread_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "author_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "body",
+          "ordinal": 3,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "project_id",
+          "ordinal": 5,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "\n        SELECT tm.id, tm.thread_id, tm.author_id, tm.body, tm.created, m.id project_id FROM threads_messages tm\n        INNER JOIN mods m ON m.thread_id = tm.thread_id\n        WHERE tm.show_in_mod_inbox = TRUE\n        "
   },
   "599df07263a2705e57fc70a7c4f5dc606e1730c281e3b573d2f2a2030bed04e0": {
     "describe": {
@@ -3127,6 +3194,41 @@
     },
     "query": "\n            INSERT INTO game_versions (version, type, created)\n            VALUES ($1, COALESCE($2, 'other'), COALESCE($3, timezone('utc', now())))\n            ON CONFLICT (version) DO UPDATE\n                SET type = COALESCE($2, game_versions.type),\n                    created = COALESCE($3, game_versions.created)\n            RETURNING id\n            "
   },
+  "72ce04d19ba84b29ecfa52bdb9b9f5fdc84d1d2371610a7bdeb222ff625cfbed": {
+    "describe": {
+      "columns": [
+        {
+          "name": "hash",
+          "ordinal": 0,
+          "type_info": "Bytea"
+        },
+        {
+          "name": "algorithm",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "project_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "TextArray",
+          "ByteaArray",
+          "Text",
+          "TextArray"
+        ]
+      }
+    },
+    "query": "\n        SELECT h.hash hash, h.algorithm algorithm, m.id project_id FROM hashes h\n        INNER JOIN files f ON h.file_id = f.id\n        INNER JOIN versions v ON v.id = f.version_id AND v.status != ANY($1)\n        INNER JOIN mods m on v.mod_id = m.id\n        WHERE h.algorithm = $3 AND h.hash = ANY($2::bytea[]) AND m.status != ANY($4)\n        "
+  },
   "72d6b5f2f11d88981db82c7247c9e7e5ebfd8d34985a1a8209d6628e66490f37": {
     "describe": {
       "columns": [
@@ -3368,6 +3470,18 @@
       }
     },
     "query": "\n        SELECT v.mod_id project_id FROM hashes h\n        INNER JOIN files f ON h.file_id = f.id\n        INNER JOIN versions v ON v.id = f.version_id AND v.status != ANY($1)\n        INNER JOIN mods m on v.mod_id = m.id\n        WHERE h.algorithm = $3 AND h.hash = $2 AND m.status != ANY($4)\n        ORDER BY v.date_published ASC\n        "
+  },
+  "7a4b588622729603f4c8d0c6e471baa67d19e9b4c333b2a79c28d2dd84fd869a": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        UPDATE threads_messages\n        SET show_in_mod_inbox = FALSE\n        WHERE id = $1\n        "
   },
   "7ab21e7613dd88e97cf602e76bff62170c13ceef8104a4ce4cb2d101f8ce4f48": {
     "describe": {
@@ -3934,6 +4048,26 @@
     },
     "query": "\n            SELECT id FROM mods\n            WHERE slug = LOWER($1)\n            "
   },
+  "965a8a34ae559d402f0112ce5f04f1ad18de1eebc92299f4d2ce7250e3fa12d5": {
+    "describe": {
+      "columns": [
+        {
+          "name": "status",
+          "ordinal": 0,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT m.status FROM mods m WHERE thread_id = $1"
+  },
   "96b2f4e0e619e7ed312d191dc90d64113235d72254fbda8f528ce866d1795cb5": {
     "describe": {
       "columns": [
@@ -4089,6 +4223,22 @@
       }
     },
     "query": "\n                INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering)\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n                "
+  },
+  "9d975d279fa869aad310922653de2fcbe0d2bfb896588067721e5f5560a57593": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Jsonb",
+          "Int8",
+          "Bool"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO threads_messages (\n                id, author_id, body, thread_id, show_in_mod_inbox\n            )\n            VALUES (\n                $1, $2, $3, $4, $5\n            )\n            "
   },
   "9dc32a9ef59f57fbad862520b6d3a4795a95d7d0db17e05eb8aedc3a2fe600dc": {
     "describe": {
@@ -4363,18 +4513,6 @@
     },
     "query": "\n            SELECT id FROM categories\n            WHERE category = $1 AND project_type = $2\n            "
   },
-  "ab59462cbae40d9eaefd208a1eae6d50be0c504b366fe726962957b038944d24": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            UPDATE threads_messages\n            SET body = '{\"type\": \"deleted\"}', author_id = NULL\n            WHERE author_id = $1\n            "
-  },
   "abf790170e3a807ffe8b3a188da620c89e6398f38ff066220fdadffe8e7481c1": {
     "describe": {
       "columns": [
@@ -4482,21 +4620,6 @@
       }
     },
     "query": "\n            DELETE FROM dependencies WHERE mod_dependency_id = NULL AND dependency_id = NULL AND dependency_file_name = NULL\n            "
-  },
-  "b0c29c51bd3ae5b93d487471a98ee9bbb43a4df468ba781852b137dd315b9608": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Jsonb",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO threads_messages (\n                id, author_id, body, thread_id\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            "
   },
   "b0e3d1c70b87bb54819e3fac04b684a9b857aeedb4dcb7cb400c2af0dbb12922": {
     "describe": {
