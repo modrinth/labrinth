@@ -22,6 +22,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(thread_send_message),
     );
     cfg.service(web::scope("message").service(message_delete));
+    cfg.service(threads_get);
 }
 
 pub async fn is_authorized_thread(
