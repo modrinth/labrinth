@@ -244,7 +244,10 @@ fn convert_thread(
                 created: x.created,
             })
             .collect(),
-        members: users,
+        members: users
+            .into_iter()
+            .filter(|x| !x.role.is_mod() || user.role.is_mod())
+            .collect(),
     }
 }
 
