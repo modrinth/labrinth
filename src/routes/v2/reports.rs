@@ -326,7 +326,7 @@ pub async fn report_edit(
                 ThreadMessageBuilder {
                     author_id: Some(user.id.into()),
                     body: if !edit_closed && report.closed {
-                        MessageBody::ThreadReOpen
+                        MessageBody::ThreadReopen
                     } else {
                         MessageBody::ThreadClosure
                     },

@@ -49,7 +49,7 @@ pub enum MessageBody {
         old_status: ProjectStatus,
     },
     ThreadClosure,
-    ThreadReOpen,
+    ThreadReopen,
     Deleted,
 }
 
