@@ -1642,7 +1642,7 @@ pub async fn project_schedule(
         .await?;
 
         if !user.role.is_mod()
-            && team_member
+            && !team_member
                 .map(|x| x.permissions.contains(Permissions::EDIT_DETAILS))
                 .unwrap_or(false)
         {
