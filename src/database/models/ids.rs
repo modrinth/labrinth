@@ -106,7 +106,7 @@ generate_ids!(
     NotificationId
 );
 
-generate_ids!(
+Sgenerate_ids!(
     pub generate_thread_id,
     ThreadId,
     8,
