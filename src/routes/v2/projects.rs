@@ -45,10 +45,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(project_unfollow)
             .service(project_schedule)
             .service(super::teams::team_members_get_project)
-            .service(web::scope("{project_id}")
-                .service(super::versions::version_list)
-                .service(super::versions::version_project_get)
-                .service(dependency_list)),
+            .service(
+                web::scope("{project_id}")
+                    .service(super::versions::version_list)
+                    .service(super::versions::version_project_get)
+                    .service(dependency_list),
+            ),
     );
 }
 
@@ -916,7 +918,7 @@ pub async fn project_edit(
                 // We are able to unwrap here because the slug is always set
                 if !slug.eq(&project_item.inner.slug.unwrap_or_default()) {
                     let results = sqlx::query!(
-                      "
+                        "
                       SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
                       ",
                         slug
@@ -1598,8 +1600,8 @@ pub async fn project_schedule(
         )
         .await?;
 
-        if user.role.is_mod()
-            || team_member
+        if !user.role.is_mod()
+            && !team_member
                 .map(|x| x.permissions.contains(Permissions::EDIT_DETAILS))
                 .unwrap_or(false)
         {
@@ -2271,6 +2273,10 @@ pub async fn project_follow(
 
     let user_id: database::models::ids::UserId = user.id.into();
     let project_id: database::models::ids::ProjectId = result.id;
+
+    if !is_authorized(&result, &Some(user), &pool).await? {
+        return Ok(HttpResponse::NotFound().body(""));
+    }
 
     let following = sqlx::query!(
         "
