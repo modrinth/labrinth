@@ -2312,12 +2312,12 @@ pub async fn project_follow(
         )
     })?;
 
-    if !is_authorized(*result, &Some(user), &pool)? {
-        return Ok(HttpResponse::NotFound().body(""));
-    }
-
     let user_id: database::models::ids::UserId = user.id.into();
     let project_id: database::models::ids::ProjectId = result.id;
+
+    if !is_authorized(*result, &Some(user), &pool).await? {
+        return Ok(HttpResponse::NotFound().body(""));
+    }
 
     let following = sqlx::query!(
         "
