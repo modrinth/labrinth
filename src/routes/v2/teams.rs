@@ -108,7 +108,10 @@ pub async fn team_members_get(
 
     let team_members: Vec<_> = members_data
         .into_iter()
-        .filter(|x| x.accepted)
+        .filter(|x| {
+            x.accepted
+                || current_user.map(|y| y.id == x.user.id).unwrap_or(false)
+        })
         .map(|data| crate::models::teams::TeamMember::from(data, true))
         .collect();
 
