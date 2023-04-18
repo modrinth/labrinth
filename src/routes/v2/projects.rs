@@ -1641,8 +1641,8 @@ pub async fn project_schedule(
         )
         .await?;
 
-        if user.role.is_mod()
-            || team_member
+        if !user.role.is_mod()
+            && team_member
                 .map(|x| x.permissions.contains(Permissions::EDIT_DETAILS))
                 .unwrap_or(false)
         {
@@ -2311,6 +2311,10 @@ pub async fn project_follow(
             "The specified project does not exist!".to_string(),
         )
     })?;
+
+    if !is_authorized(*result, &Some(user), &pool)? {
+        return Ok(HttpResponse::NotFound().body(""));
+    }
 
     let user_id: database::models::ids::UserId = user.id.into();
     let project_id: database::models::ids::ProjectId = result.id;
