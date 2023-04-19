@@ -205,8 +205,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "color",
 ];
 
-const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] =
-    &["title", "description", "author", "slug"];
+const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["title", "description", "author", "slug"];
 
 const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "categories",

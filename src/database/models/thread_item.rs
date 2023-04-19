@@ -42,8 +42,7 @@ impl ThreadMessageBuilder {
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<ThreadMessageId, DatabaseError> {
-        let thread_message_id =
-            generate_thread_message_id(&mut *transaction).await?;
+        let thread_message_id = generate_thread_message_id(&mut *transaction).await?;
 
         sqlx::query!(
             "
@@ -110,10 +109,7 @@ impl ThreadBuilder {
 }
 
 impl Thread {
-    pub async fn get<'a, E>(
-        id: ThreadId,
-        exec: E,
-    ) -> Result<Option<Thread>, sqlx::Error>
+    pub async fn get<'a, E>(id: ThreadId, exec: E) -> Result<Option<Thread>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
@@ -131,8 +127,7 @@ impl Thread {
     {
         use futures::stream::TryStreamExt;
 
-        let thread_ids_parsed: Vec<i64> =
-            thread_ids.iter().map(|x| x.0).collect();
+        let thread_ids_parsed: Vec<i64> = thread_ids.iter().map(|x| x.0).collect();
         let threads = sqlx::query!(
             "
             SELECT t.id, t.thread_type, t.show_in_mod_inbox, t.project_id, t.report_id,
@@ -230,8 +225,7 @@ impl ThreadMessage {
     {
         use futures::stream::TryStreamExt;
 
-        let message_ids_parsed: Vec<i64> =
-            message_ids.iter().map(|x| x.0).collect();
+        let message_ids_parsed: Vec<i64> = message_ids.iter().map(|x| x.0).collect();
         let messages = sqlx::query!(
             "
             SELECT tm.id, tm.author_id, tm.thread_id, tm.body, tm.created
@@ -246,8 +240,7 @@ impl ThreadMessage {
                 id: ThreadMessageId(x.id),
                 thread_id: ThreadId(x.thread_id),
                 author_id: x.author_id.map(UserId),
-                body: serde_json::from_value(x.body)
-                    .unwrap_or(MessageBody::Deleted),
+                body: serde_json::from_value(x.body).unwrap_or(MessageBody::Deleted),
                 created: x.created,
             }))
         })
@@ -268,8 +261,7 @@ impl ThreadMessage {
             WHERE id = $1
             ",
             id as ThreadMessageId,
-            serde_json::to_value(MessageBody::Deleted)
-                .unwrap_or(serde_json::json!({}))
+            serde_json::to_value(MessageBody::Deleted).unwrap_or(serde_json::json!({}))
         )
         .execute(&mut *transaction)
         .await?;

@@ -102,8 +102,7 @@ impl Notification {
     {
         use futures::stream::TryStreamExt;
 
-        let notification_ids_parsed: Vec<i64> =
-            notification_ids.iter().map(|x| x.0).collect();
+        let notification_ids_parsed: Vec<i64> = notification_ids.iter().map(|x| x.0).collect();
         sqlx::query!(
             "
             SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read, n.type notification_type, n.body,
@@ -215,8 +214,7 @@ impl Notification {
         notification_ids: &[NotificationId],
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Option<()>, sqlx::error::Error> {
-        let notification_ids_parsed: Vec<i64> =
-            notification_ids.iter().map(|x| x.0).collect();
+        let notification_ids_parsed: Vec<i64> = notification_ids.iter().map(|x| x.0).collect();
 
         sqlx::query!(
             "
