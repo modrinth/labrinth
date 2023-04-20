@@ -525,26 +525,6 @@
     },
     "query": "\n                SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)\n                "
   },
-  "0f6469055265ad8b114136368001aa927b587df9f64f0e19fd37d1f4b4adab60": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n                    SELECT id FROM mods\n                    WHERE status = $1 AND queued < NOW() - INTERVAL '1 day'\n                    ORDER BY updated ASC\n                    "
-  },
   "0fb1cca8a2a37107104244953371fe2f8a5e6edd57f4b325c5842c6571eb16b4": {
     "describe": {
       "columns": [
@@ -2856,6 +2836,26 @@
       }
     },
     "query": "\n                    UPDATE versions\n                    SET version_number = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "5586d60c8f3d58a31e6635ffb3cb30bac389bf21b190dfd1e64a44e837f3879c": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n                    SELECT id FROM mods\n                    WHERE status = $1 AND queued < NOW() - INTERVAL '40 hours'\n                    ORDER BY updated ASC\n                    "
   },
   "57743e20646dab2bcc02fe555d6b8ddb999697b7e95ec732d1a1a9e2bfdb8181": {
     "describe": {

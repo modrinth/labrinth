@@ -191,7 +191,7 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    // Reminding moderators to review projects which have been in the queue longer than 24hr
+    // Reminding moderators to review projects which have been in the queue longer than 40hr
     let pool_ref = pool.clone();
     let webhook_message_sent = Arc::new(Mutex::new(Vec::<(
         database::models::ProjectId,
@@ -201,7 +201,7 @@ async fn main() -> std::io::Result<()> {
     scheduler.run(std::time::Duration::from_secs(10 * 60), move || {
         let pool_ref = pool_ref.clone();
         let webhook_message_sent_ref = webhook_message_sent.clone();
-        info!("Checking reviewed projects submitted more than 24hrs ago");
+        info!("Checking reviewed projects submitted more than 40hrs ago");
 
         async move {
             let do_steps = async {
@@ -210,7 +210,7 @@ async fn main() -> std::io::Result<()> {
                 let project_ids = sqlx::query!(
                     "
                     SELECT id FROM mods
-                    WHERE status = $1 AND queued < NOW() - INTERVAL '1 day'
+                    WHERE status = $1 AND queued < NOW() - INTERVAL '40 hours'
                     ORDER BY updated ASC
                     ",
                     crate::models::projects::ProjectStatus::Processing.as_str(),
@@ -236,7 +236,7 @@ async fn main() -> std::io::Result<()> {
                             project.into(),
                             &pool_ref,
                             webhook_url,
-                            Some("<@&783155186491195394> This project has been in the queue for over 24 hours!".to_string()),
+                            Some("<@&783155186491195394> This project has been in the queue for over 40 hours!".to_string()),
                         )
                             .await
                             .ok();
@@ -250,12 +250,12 @@ async fn main() -> std::io::Result<()> {
 
             if let Err(e) = do_steps.await {
                 warn!(
-                    "Checking reviewed projects submitted more than 24hrs ago failed: {:?}",
+                    "Checking reviewed projects submitted more than 40hrs ago failed: {:?}",
                     e
                 );
             }
 
-            info!("Finished checking reviewed projects submitted more than 24hrs ago");
+            info!("Finished checking reviewed projects submitted more than 40hrs ago");
         }
     });
 
