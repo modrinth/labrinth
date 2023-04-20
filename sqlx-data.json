@@ -2062,19 +2062,6 @@
     },
     "query": "\n            SELECT r.id, rt.name, r.mod_id, r.version_id, r.user_id, r.body, r.reporter, r.created, r.thread_id, r.closed\n            FROM reports r\n            INNER JOIN report_types rt ON rt.id = r.report_type_id\n            WHERE r.id = ANY($1)\n            ORDER BY r.created DESC\n            "
   },
-  "3ae7c4a29dab8bce0e84a9c47a4a4f50a3be4bcb86e5b13d7dd60975d62e9ea3": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Varchar"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO threads (\n                id, thread_type\n            )\n            VALUES (\n                $1, $2\n            )\n            "
-  },
   "3af747b5543a5a9b10dcce0a1eb9c2a1926dd5a507fe0d8b7f52d8ccc7fcd0af": {
     "describe": {
       "columns": [],
@@ -5416,6 +5403,21 @@
       }
     },
     "query": "\n                    SELECT v.id version_id, v.mod_id project_id, h.hash hash FROM hashes h\n                    INNER JOIN files f on h.file_id = f.id\n                    INNER JOIN versions v on f.version_id = v.id\n                    WHERE h.algorithm = 'sha1' AND h.hash = ANY($1)\n                    "
+  },
+  "d0a65443aef9d3781000d0a59d8d81d1a8e51613dfee343d079c233375cebd12": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Varchar",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO threads (\n                id, thread_type, report_id, project_id\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            "
   },
   "d12bc07adb4dc8147d0ddccd72a4f23ed38cd31d7db3d36ebbe2c9b627130f0b": {
     "describe": {

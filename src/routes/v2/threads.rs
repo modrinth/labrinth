@@ -400,7 +400,17 @@ pub async fn thread_send_message(
                 ),
             )
         } else {
-            (false, (thread.type_ == ThreadType::Report, None))
+            (
+                !user.role.is_mod(),
+                (
+                    thread.type_ == ThreadType::Report
+                        && !report
+                            .as_ref()
+                            .map(|x| x.reporter == user.id.into())
+                            .unwrap_or(false),
+                    None,
+                ),
+            )
         };
 
         let mut transaction = pool.begin().await?;

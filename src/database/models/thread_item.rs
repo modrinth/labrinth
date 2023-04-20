@@ -75,14 +75,16 @@ impl ThreadBuilder {
         sqlx::query!(
             "
             INSERT INTO threads (
-                id, thread_type
+                id, thread_type, report_id, project_id
             )
             VALUES (
-                $1, $2
+                $1, $2, $3, $4
             )
             ",
             thread_id as ThreadId,
             self.type_.as_str(),
+            self.report_id.map(|x| x.0),
+            self.project_id.map(|x| x.0),
         )
         .execute(&mut *transaction)
         .await?;
