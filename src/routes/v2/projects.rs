@@ -912,7 +912,7 @@ pub async fn project_edit(
                 // We are able to unwrap here because the slug is always set
                 if !slug.eq(&project_item.inner.slug.unwrap_or_default()) {
                     let results = sqlx::query!(
-                      "
+                        "
                       SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
                       ",
                         slug
@@ -1280,7 +1280,10 @@ pub async fn projects_edit(
                     ));
                 }
             } else if project.inner.status.is_hidden() {
-                return Ok(HttpResponse::NotFound().body(""));
+                return Err(ApiError::InvalidInput(format!(
+                    "Project {} not found",
+                    ProjectId(project.inner.id.0 as u64)
+                )));
             } else {
                 return Err(ApiError::CustomAuthentication(format!(
                     "You are not a member of project {}!",
