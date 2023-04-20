@@ -3,17 +3,19 @@ use crate::models::ids::NotificationId;
 use crate::models::notifications::Notification;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
-use actix_web::{delete, get, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(notifications_get);
     cfg.service(notifications_delete);
+    cfg.service(notifications_read);
 
     cfg.service(
         web::scope("notification")
             .service(notification_get)
+            .service(notifications_read)
             .service(notification_delete),
     );
 }
@@ -31,7 +33,6 @@ pub async fn notifications_get(
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
-    // TODO: this is really confusingly named.
     use database::models::notification_item::Notification as DBNotification;
     use database::models::NotificationId as DBNotificationId;
 
@@ -78,6 +79,39 @@ pub async fn notification_get(
     }
 }
 
+#[patch("{id}")]
+pub async fn notification_read(
+    req: HttpRequest,
+    info: web::Path<(NotificationId,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    let id = info.into_inner().0;
+
+    let notification_data =
+        database::models::notification_item::Notification::get(id.into(), &**pool).await?;
+
+    if let Some(data) = notification_data {
+        if data.user_id == user.id.into() || user.role.is_admin() {
+            let mut transaction = pool.begin().await?;
+
+            database::models::notification_item::Notification::read(id.into(), &mut transaction)
+                .await?;
+
+            transaction.commit().await?;
+
+            Ok(HttpResponse::NoContent().body(""))
+        } else {
+            Err(ApiError::CustomAuthentication(
+                "You are not authorized to read this notification!".to_string(),
+            ))
+        }
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
 #[delete("{id}")]
 pub async fn notification_delete(
     req: HttpRequest,
@@ -109,6 +143,41 @@ pub async fn notification_delete(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+#[patch("notifications")]
+pub async fn notifications_read(
+    req: HttpRequest,
+    web::Query(ids): web::Query<NotificationIds>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    let notification_ids = serde_json::from_str::<Vec<NotificationId>>(&ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect::<Vec<_>>();
+
+    let mut transaction = pool.begin().await?;
+
+    let notifications_data =
+        database::models::notification_item::Notification::get_many(&notification_ids, &**pool)
+            .await?;
+
+    let mut notifications: Vec<database::models::ids::NotificationId> = Vec::new();
+
+    for notification in notifications_data {
+        if notification.user_id == user.id.into() || user.role.is_admin() {
+            notifications.push(notification.id);
+        }
+    }
+
+    database::models::notification_item::Notification::read_many(&notifications, &mut transaction)
+        .await?;
+
+    transaction.commit().await?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("notifications")]

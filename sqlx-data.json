@@ -783,6 +783,18 @@
     },
     "query": "\n                            UPDATE mods\n                            SET webhook_sent = TRUE\n                            WHERE id = $1\n                            "
   },
+  "127691940ca7e542e246dd2a1c9cb391041b30ddf0547d73b49c1dd9dc59d2ae": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            UPDATE notifications\n            SET read = TRUE\n            WHERE id = ANY($1)\n            "
+  },
   "1411c9ae3af067679aa21d7f45937cd94d457e4eb17a108566776a9bd1ee77e2": {
     "describe": {
       "columns": [],
@@ -4545,6 +4557,32 @@
       }
     },
     "query": "\n            SELECT u.id, u.github_id, u.name, u.email,\n                u.avatar_url, u.username, u.bio,\n                u.created, u.role, u.badges,\n                u.balance, u.payout_wallet, u.payout_wallet_type,\n                u.payout_address\n            FROM users u\n            WHERE u.id = ANY($1)\n            "
+  },
+  "a962f21969bba402258fca169c45f3d71bc1b71f754cdcc1f5c968e4948653b2": {
+    "describe": {
+      "columns": [
+        {
+          "name": "notifs_count",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "followed_projects",
+          "ordinal": 1,
+          "type_info": "Int8Array"
+        }
+      ],
+      "nullable": [
+        null,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        SELECT COUNT(DISTINCT n.id) notifs_count, ARRAY_AGG(mf.mod_id) followed_projects FROM notifications n\n        LEFT OUTER JOIN mod_follows mf ON mf.follower_id = $1\n        WHERE user_id = $1 AND read = FALSE\n        "
   },
   "aa59f79136ef87dd4121d5f367f5dbdbca80e936c1b986ec99c09c3e95daa756": {
     "describe": {

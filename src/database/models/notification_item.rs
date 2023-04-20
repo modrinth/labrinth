@@ -203,6 +203,33 @@ impl Notification {
             .await
     }
 
+    pub async fn read(
+        id: NotificationId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Option<()>, sqlx::error::Error> {
+        Self::read_many(&[id], transaction).await
+    }
+
+    pub async fn read_many(
+        notification_ids: &[NotificationId],
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Option<()>, sqlx::error::Error> {
+        let notification_ids_parsed: Vec<i64> = notification_ids.iter().map(|x| x.0).collect();
+
+        sqlx::query!(
+            "
+            UPDATE notifications
+            SET read = TRUE
+            WHERE id = ANY($1)
+            ",
+            &notification_ids_parsed
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        Ok(Some(()))
+    }
+
     pub async fn remove(
         id: NotificationId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,

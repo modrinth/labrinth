@@ -22,6 +22,7 @@ use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(user_auth_get);
+    cfg.service(user_data_get);
     cfg.service(users_get);
 
     cfg.service(
@@ -44,6 +45,43 @@ pub async fn user_auth_get(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     Ok(HttpResponse::Ok().json(get_user_from_headers(req.headers(), &**pool).await?))
+}
+
+#[derive(Serialize)]
+pub struct UserData {
+    pub notifs_count: u64,
+    pub followed_projects: Vec<crate::models::ids::ProjectId>,
+}
+
+#[get("user_data")]
+pub async fn user_data_get(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+
+    let data = sqlx::query!(
+        "
+        SELECT COUNT(DISTINCT n.id) notifs_count, ARRAY_AGG(mf.mod_id) followed_projects FROM notifications n
+        LEFT OUTER JOIN mod_follows mf ON mf.follower_id = $1
+        WHERE user_id = $1 AND read = FALSE
+        ",
+        user.id.0 as i64
+    ).fetch_optional(&**pool).await?;
+
+    if let Some(data) = data {
+        Ok(HttpResponse::Ok().json(UserData {
+            notifs_count: data.notifs_count.map(|x| x as u64).unwrap_or(0),
+            followed_projects: data
+                .followed_projects
+                .unwrap_or_default()
+                .into_iter()
+                .map(|x| crate::models::ids::ProjectId(x as u64))
+                .collect(),
+        }))
+    } else {
+        Ok(HttpResponse::NoContent().body(""))
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -526,9 +564,7 @@ pub async fn user_follows(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option =
-        crate::database::models::User::get_id_from_username_or_id(&info.into_inner().0, &**pool)
-            .await?;
+    let id_option = User::get_id_from_username_or_id(&info.into_inner().0, &**pool).await?;
 
     if let Some(id) = id_option {
         if !user.role.is_admin() && user.id != id.into() {
@@ -573,9 +609,7 @@ pub async fn user_notifications(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option =
-        crate::database::models::User::get_id_from_username_or_id(&info.into_inner().0, &**pool)
-            .await?;
+    let id_option = User::get_id_from_username_or_id(&info.into_inner().0, &**pool).await?;
 
     if let Some(id) = id_option {
         if !user.role.is_admin() && user.id != id.into() {
