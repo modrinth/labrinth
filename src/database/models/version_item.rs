@@ -37,31 +37,20 @@ impl DependencyBuilder {
         version_id: VersionId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), DatabaseError> {
-        let (version_dependency_id, project_dependency_id): (
-            Option<VersionId>,
-            Option<ProjectId>,
-        ) = if self.version_id.is_some() {
-            (self.version_id, None)
-        } else if let Some(project_id) = self.project_id {
-            let version_id = sqlx::query!(
-                    "
-                    SELECT version.id id FROM (
-                        SELECT DISTINCT ON(v.id) v.id, v.date_published FROM versions v
-                        INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id AND gvv.game_version_id IN (SELECT game_version_id FROM game_versions_versions WHERE joining_version_id = $2)
-                        INNER JOIN loaders_versions lv ON lv.version_id = v.id AND lv.loader_id IN (SELECT loader_id FROM loaders_versions WHERE version_id = $2)
-                        WHERE v.mod_id = $1
-                    ) AS version
-                    ORDER BY version.date_published DESC
-                    LIMIT 1
+        let project_id = if let Some(project_id) = self.project_id {
+            Some(project_id)
+        } else if let Some(version_id) = self.version_id {
+            sqlx::query!(
+                "
+                    SELECT mod_id FROM versions WHERE id = $1
                     ",
-                    project_id as ProjectId,
-                    version_id as VersionId,
-                )
-                .fetch_optional(&mut *transaction).await?.map(|x| VersionId(x.id));
-
-            (version_id, Some(project_id))
+                version_id as VersionId,
+            )
+            .fetch_optional(&mut *transaction)
+            .await?
+            .map(|x| ProjectId(x.mod_id))
         } else {
-            (None, None)
+            None
         };
 
         sqlx::query!(
@@ -71,8 +60,8 @@ impl DependencyBuilder {
             ",
             version_id as VersionId,
             self.dependency_type,
-            version_dependency_id.map(|x| x.0),
-            project_dependency_id.map(|x| x.0),
+            project_id.map(|x| x.0),
+            self.version_id.map(|x| x.0),
             self.file_name,
         )
         .execute(&mut *transaction)
@@ -206,41 +195,6 @@ impl VersionBuilder {
             .await?;
         }
 
-        // Sync dependencies
-
-        use futures::stream::TryStreamExt;
-
-        let dependencies = sqlx::query!(
-            "
-            SELECT d.id id
-            FROM dependencies d
-            INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = d.dependent_id AND gvv.game_version_id = ANY($2)
-            INNER JOIN loaders_versions lv ON lv.version_id = d.dependent_id AND lv.loader_id = ANY($3)
-            WHERE d.mod_dependency_id = $1
-            ",
-            self.project_id as ProjectId,
-            &self.game_versions.iter().map(|x| x.0).collect::<Vec<i32>>(),
-            &self.loaders.iter().map(|x| x.0).collect::<Vec<i32>>(),
-        )
-            .fetch_many(&mut *transaction)
-            .try_filter_map(|e| async {
-                Ok(e.right().map(|d| d.id as i64))
-            })
-            .try_collect::<Vec<i64>>()
-            .await?;
-
-        sqlx::query!(
-            "
-            UPDATE dependencies
-            SET dependency_id = $2
-            WHERE id = ANY($1::bigint[])
-            ",
-            dependencies.as_slice(),
-            self.version_id as VersionId,
-        )
-        .execute(&mut *transaction)
-        .await?;
-
         Ok(self.version_id)
     }
 }
@@ -325,32 +279,6 @@ impl Version {
         .execute(&mut *transaction)
         .await?;
 
-        use futures::TryStreamExt;
-
-        let game_versions: Vec<i32> = sqlx::query!(
-            "
-                SELECT game_version_id id FROM game_versions_versions
-                WHERE joining_version_id = $1
-                ",
-            id as VersionId,
-        )
-        .fetch_many(&mut *transaction)
-        .try_filter_map(|e| async { Ok(e.right().map(|c| c.id)) })
-        .try_collect::<Vec<i32>>()
-        .await?;
-
-        let loaders: Vec<i32> = sqlx::query!(
-            "
-                SELECT loader_id id FROM loaders_versions
-                WHERE version_id = $1
-                ",
-            id as VersionId,
-        )
-        .fetch_many(&mut *transaction)
-        .try_filter_map(|e| async { Ok(e.right().map(|c| c.id)) })
-        .try_collect::<Vec<i32>>()
-        .await?;
-
         sqlx::query!(
             "
             DELETE FROM game_versions_versions gvv
@@ -406,32 +334,14 @@ impl Version {
         .fetch_one(&mut *transaction)
         .await?;
 
-        let new_version_id = sqlx::query!(
-            "
-            SELECT v.id id
-            FROM versions v
-            INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id AND gvv.game_version_id = ANY($2)
-            INNER JOIN loaders_versions lv ON lv.version_id = v.id AND lv.loader_id = ANY($3)
-            WHERE v.mod_id = $1
-            ORDER BY v.date_published DESC
-            LIMIT 1
-            ",
-            project_id.mod_id,
-            &game_versions,
-            &loaders,
-        )
-            .fetch_optional(&mut *transaction)
-            .await?
-            .map(|x| x.id);
-
         sqlx::query!(
             "
             UPDATE dependencies
-            SET dependency_id = $2
+            SET dependency_id = NULL, mod_dependency_id = $2
             WHERE dependency_id = $1
             ",
             id as VersionId,
-            new_version_id,
+            project_id.mod_id,
         )
         .execute(&mut *transaction)
         .await?;
@@ -568,66 +478,6 @@ impl Version {
         Ok(map)
     }
 
-    pub async fn get<'a, 'b, E>(
-        id: VersionId,
-        executor: E,
-    ) -> Result<Option<Self>, sqlx::error::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
-    {
-        Self::get_many(&[id], executor)
-            .await
-            .map(|x| x.into_iter().next())
-    }
-
-    pub async fn get_many<'a, E>(
-        version_ids: &[VersionId],
-        exec: E,
-    ) -> Result<Vec<Version>, sqlx::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
-    {
-        use futures::stream::TryStreamExt;
-
-        let version_ids_parsed: Vec<i64> =
-            version_ids.iter().map(|x| x.0).collect();
-        let versions = sqlx::query!(
-            "
-            SELECT v.id, v.mod_id, v.author_id, v.name, v.version_number,
-                v.changelog, v.date_published, v.downloads,
-                v.version_type, v.featured, v.status, v.requested_status
-            FROM versions v
-            WHERE v.id = ANY($1)
-            ORDER BY v.date_published ASC
-            ",
-            &version_ids_parsed
-        )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|v| Version {
-                id: VersionId(v.id),
-                project_id: ProjectId(v.mod_id),
-                author_id: UserId(v.author_id),
-                name: v.name,
-                version_number: v.version_number,
-                changelog: v.changelog,
-                changelog_url: None,
-                date_published: v.date_published,
-                downloads: v.downloads,
-                featured: v.featured,
-                version_type: v.version_type,
-                status: VersionStatus::from_str(&v.status),
-                requested_status: v
-                    .requested_status
-                    .map(|x| VersionStatus::from_str(&x)),
-            }))
-        })
-        .try_collect::<Vec<Version>>()
-        .await?;
-
-        Ok(versions)
-    }
-
     pub async fn get_full<'a, 'b, E>(
         id: VersionId,
         executor: E,
@@ -649,8 +499,7 @@ impl Version {
     {
         use futures::stream::TryStreamExt;
 
-        let version_ids_parsed: Vec<i64> =
-            version_ids.iter().map(|x| x.0).collect();
+        let version_ids_parsed: Vec<i64> = version_ids.iter().map(|x| x.0).collect();
         sqlx::query!(
             "
             SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
@@ -798,8 +647,7 @@ impl Version {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let project_id_opt =
-            parse_base62(project_id_or_slug).ok().map(|x| x as i64);
+        let project_id_opt = parse_base62(project_id_or_slug).ok().map(|x| x as i64);
         let id_opt = parse_base62(slug).ok().map(|x| x as i64);
         let id = sqlx::query!(
             "

@@ -1,6 +1,4 @@
-use crate::validate::{
-    SupportedGameVersions, ValidationError, ValidationResult,
-};
+use crate::validate::{SupportedGameVersions, ValidationError, ValidationResult};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use std::io::Cursor;
 use zip::ZipArchive;
@@ -32,11 +30,11 @@ impl super::Validator for PackValidator {
         &self,
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        archive.by_name("pack.mcmeta").map_err(|_| {
-            ValidationError::InvalidInput(
-                "No pack.mcmeta present for pack file. Tip: Make sure pack.mcmeta is in the root directory of your pack!".into(),
-            )
-        })?;
+        if archive.by_name("pack.mcmeta").is_err() {
+            return Ok(ValidationResult::Warning(
+                "No pack.mcmeta present for pack file. Tip: Make sure pack.mcmeta is in the root directory of your pack!",
+            ));
+        }
 
         Ok(ValidationResult::Pass)
     }
@@ -75,11 +73,11 @@ impl super::Validator for TexturePackValidator {
         &self,
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        archive.by_name("pack.txt").map_err(|_| {
-            ValidationError::InvalidInput(
-                "No pack.txt present for pack file.".into(),
-            )
-        })?;
+        if archive.by_name("pack.txt").is_err() {
+            return Ok(ValidationResult::Warning(
+                "No pack.txt present for pack file.",
+            ));
+        }
 
         Ok(ValidationResult::Pass)
     }

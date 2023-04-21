@@ -1,6 +1,4 @@
-use crate::validate::{
-    SupportedGameVersions, ValidationError, ValidationResult,
-};
+use crate::validate::{SupportedGameVersions, ValidationError, ValidationResult};
 use std::io::Cursor;
 use zip::ZipArchive;
 
@@ -27,11 +25,11 @@ impl super::Validator for LiteLoaderValidator {
         &self,
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        archive.by_name("litemod.json").map_err(|_| {
-            ValidationError::InvalidInput(
-                "No litemod.json present for LiteLoader file.".into(),
-            )
-        })?;
+        if archive.by_name("litemod.json").is_err() {
+            return Ok(ValidationResult::Warning(
+                "No litemod.json present for LiteLoader file.",
+            ));
+        }
 
         Ok(ValidationResult::Pass)
     }

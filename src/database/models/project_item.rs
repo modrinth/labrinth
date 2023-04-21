@@ -1,5 +1,5 @@
 use super::ids::*;
-use crate::models::projects::ProjectStatus;
+use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
@@ -101,6 +101,8 @@ pub struct ProjectBuilder {
     pub donation_urls: Vec<DonationUrl>,
     pub gallery_items: Vec<GalleryItem>,
     pub color: Option<u32>,
+    pub thread_id: ThreadId,
+    pub monetization_status: MonetizationStatus,
 }
 
 impl ProjectBuilder {
@@ -140,12 +142,12 @@ impl ProjectBuilder {
             slug: self.slug,
             moderation_message: None,
             moderation_message_body: None,
-            flame_anvil_project: None,
-            flame_anvil_user: None,
             webhook_sent: false,
             color: self.color,
             loaders: vec![],
             game_versions: vec![],
+            thread_id: Some(self.thread_id),
+            monetization_status: self.monetization_status,
         };
         project_struct.insert(&mut *transaction).await?;
 
@@ -184,12 +186,11 @@ impl ProjectBuilder {
                 self.project_id as ProjectId,
                 category as CategoryId,
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
         }
 
-        Project::update_game_versions(self.project_id, &mut *transaction)
-            .await?;
+        Project::update_game_versions(self.project_id, &mut *transaction).await?;
         Project::update_loaders(self.project_id, &mut *transaction).await?;
 
         Ok(self.project_id)
@@ -224,12 +225,12 @@ pub struct Project {
     pub slug: Option<String>,
     pub moderation_message: Option<String>,
     pub moderation_message_body: Option<String>,
-    pub flame_anvil_project: Option<i32>,
-    pub flame_anvil_user: Option<UserId>,
     pub webhook_sent: bool,
     pub color: Option<u32>,
     pub loaders: Vec<String>,
     pub game_versions: Vec<String>,
+    pub thread_id: Option<ThreadId>,
+    pub monetization_status: MonetizationStatus,
 }
 
 impl Project {
@@ -244,14 +245,14 @@ impl Project {
                 published, downloads, icon_url, issues_url,
                 source_url, wiki_url, status, requested_status, discord_url,
                 client_side, server_side, license_url, license,
-                slug, project_type, color
+                slug, project_type, color, thread_id, monetization_status
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8, $9,
                 $10, $11, $12, $13, $14,
                 $15, $16, $17, $18,
-                LOWER($19), $20, $21
+                LOWER($19), $20, $21, $22, $23
             )
             ",
             self.id as ProjectId,
@@ -274,7 +275,9 @@ impl Project {
             &self.license,
             self.slug.as_ref(),
             self.project_type as ProjectTypeId,
-            self.color.map(|x| x as i32)
+            self.color.map(|x| x as i32),
+            self.thread_id.map(|x| x.0),
+            self.monetization_status.as_str(),
         )
         .execute(&mut *transaction)
         .await?;
@@ -303,8 +306,7 @@ impl Project {
     {
         use futures::stream::TryStreamExt;
 
-        let project_ids_parsed: Vec<i64> =
-            project_ids.iter().map(|x| x.0).collect();
+        let project_ids_parsed: Vec<i64> = project_ids.iter().map(|x| x.0).collect();
         let projects = sqlx::query!(
             "
             SELECT id, project_type, title, description, downloads, follows,
@@ -312,8 +314,8 @@ impl Project {
                    updated, approved, queued, status, requested_status,
                    issues_url, source_url, wiki_url, discord_url, license_url,
                    team_id, client_side, server_side, license, slug,
-                   moderation_message, moderation_message_body, flame_anvil_project,
-                   flame_anvil_user, webhook_sent, color, loaders, game_versions
+                   moderation_message, moderation_message_body,
+                   webhook_sent, color, loaders, game_versions, thread_id, monetization_status
             FROM mods
             WHERE id = ANY($1)
             ",
@@ -338,12 +340,8 @@ impl Project {
                 license_url: m.license_url,
                 discord_url: m.discord_url,
                 client_side: SideTypeId(m.client_side),
-                status: ProjectStatus::from_str(
-                    &m.status,
-                ),
-                requested_status: m.requested_status.map(|x| ProjectStatus::from_str(
-                    &x,
-                )),
+                status: ProjectStatus::from_str(&m.status),
+                requested_status: m.requested_status.map(|x| ProjectStatus::from_str(&x)),
                 server_side: SideTypeId(m.server_side),
                 license: m.license,
                 slug: m.slug,
@@ -352,13 +350,13 @@ impl Project {
                 moderation_message: m.moderation_message,
                 moderation_message_body: m.moderation_message_body,
                 approved: m.approved,
-                flame_anvil_project: m.flame_anvil_project,
-                flame_anvil_user: m.flame_anvil_user.map(UserId),
                 webhook_sent: m.webhook_sent,
                 color: m.color.map(|x| x as u32),
                 loaders: m.loaders,
                 game_versions: m.game_versions,
                 queued: m.queued,
+                thread_id: m.thread_id.map(ThreadId),
+                monetization_status: MonetizationStatus::from_str(&m.monetization_status),
             }))
         })
         .try_collect::<Vec<Project>>()
@@ -385,6 +383,22 @@ impl Project {
         } else {
             return Ok(None);
         };
+
+        let thread_id = sqlx::query!(
+            "
+            SELECT thread_id FROM mods
+            WHERE id = $1
+            ",
+            id as ProjectId
+        )
+        .fetch_optional(&mut *transaction)
+        .await?;
+
+        if let Some(thread_id) = thread_id {
+            if let Some(id) = thread_id.thread_id {
+                crate::database::models::Thread::remove_full(ThreadId(id), transaction).await?;
+            }
+        }
 
         sqlx::query!(
             "
@@ -571,23 +585,18 @@ impl Project {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let id_option =
-            crate::models::ids::base62_impl::parse_base62(slug_or_project_id)
-                .ok();
+        let id_option = crate::models::ids::base62_impl::parse_base62(slug_or_project_id).ok();
 
         if let Some(id) = id_option {
-            let mut project =
-                Project::get(ProjectId(id as i64), executor).await?;
+            let mut project = Project::get(ProjectId(id as i64), executor).await?;
 
             if project.is_none() {
-                project = Project::get_from_slug(slug_or_project_id, executor)
-                    .await?;
+                project = Project::get_from_slug(slug_or_project_id, executor).await?;
             }
 
             Ok(project)
         } else {
-            let project =
-                Project::get_from_slug(slug_or_project_id, executor).await?;
+            let project = Project::get_from_slug(slug_or_project_id, executor).await?;
 
             Ok(project)
         }
@@ -600,25 +609,18 @@ impl Project {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let id_option =
-            crate::models::ids::base62_impl::parse_base62(slug_or_project_id)
-                .ok();
+        let id_option = crate::models::ids::base62_impl::parse_base62(slug_or_project_id).ok();
 
         if let Some(id) = id_option {
-            let mut project =
-                Project::get_full(ProjectId(id as i64), executor).await?;
+            let mut project = Project::get_full(ProjectId(id as i64), executor).await?;
 
             if project.is_none() {
-                project =
-                    Project::get_full_from_slug(slug_or_project_id, executor)
-                        .await?;
+                project = Project::get_full_from_slug(slug_or_project_id, executor).await?;
             }
 
             Ok(project)
         } else {
-            let project =
-                Project::get_full_from_slug(slug_or_project_id, executor)
-                    .await?;
+            let project = Project::get_full_from_slug(slug_or_project_id, executor).await?;
             Ok(project)
         }
     }
@@ -644,8 +646,7 @@ impl Project {
     {
         use futures::TryStreamExt;
 
-        let project_ids_parsed: Vec<i64> =
-            project_ids.iter().map(|x| x.0).collect();
+        let project_ids_parsed: Vec<i64> = project_ids.iter().map(|x| x.0).collect();
         sqlx::query!(
             "
             SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
@@ -653,8 +654,8 @@ impl Project {
             m.updated updated, m.approved approved, m.queued, m.status status, m.requested_status requested_status,
             m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
             m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
-            cs.name client_side_type, ss.name server_side_type, pt.name project_type_name, m.flame_anvil_project flame_anvil_project, m.flame_anvil_user flame_anvil_user, m.webhook_sent, m.color,
-            m.loaders loaders, m.game_versions game_versions,
+            cs.name client_side_type, ss.name server_side_type, pt.name project_type_name, m.webhook_sent, m.color,
+            m.loaders loaders, m.game_versions game_versions, m.thread_id thread_id, m.monetization_status monetization_status,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,
             JSONB_AGG(DISTINCT jsonb_build_object('id', v.id, 'date_published', v.date_published)) filter (where v.id is not null) versions,
@@ -713,13 +714,15 @@ impl Project {
                             moderation_message: m.moderation_message,
                             moderation_message_body: m.moderation_message_body,
                             approved: m.approved,
-                            flame_anvil_project: m.flame_anvil_project,
-                            flame_anvil_user: m.flame_anvil_user.map(UserId),
                             webhook_sent: m.webhook_sent,
                             color: m.color.map(|x| x as u32),
                             loaders: m.loaders,
                             game_versions: m.game_versions,
                             queued: m.queued,
+                            thread_id: m.thread_id.map(ThreadId),
+                            monetization_status: MonetizationStatus::from_str(
+                                &m.monetization_status,
+                            ),
                         },
                         project_type: m.project_type_name,
                         categories: m.categories.unwrap_or_default(),

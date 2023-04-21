@@ -4,6 +4,8 @@ pub use super::notifications::NotificationId;
 pub use super::projects::{ProjectId, VersionId};
 pub use super::reports::ReportId;
 pub use super::teams::TeamId;
+pub use super::threads::ThreadId;
+pub use super::threads::ThreadMessageId;
 pub use super::users::UserId;
 
 /// Generates a random 64 bit integer that is exactly `n` characters
@@ -109,6 +111,8 @@ base62_id_impl!(VersionId, VersionId);
 base62_id_impl!(TeamId, TeamId);
 base62_id_impl!(ReportId, ReportId);
 base62_id_impl!(NotificationId, NotificationId);
+base62_id_impl!(ThreadId, ThreadId);
+base62_id_impl!(ThreadMessageId, ThreadMessageId);
 
 pub mod base62_impl {
     use serde::de::{self, Deserializer, Visitor};
@@ -127,10 +131,7 @@ pub mod base62_impl {
             impl<'de> Visitor<'de> for Base62Visitor {
                 type Value = Base62Id;
 
-                fn expecting(
-                    &self,
-                    formatter: &mut std::fmt::Formatter,
-                ) -> std::fmt::Result {
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                     formatter.write_str("a base62 string id")
                 }
 
@@ -186,9 +187,7 @@ pub mod base62_impl {
             }
 
             // We don't want this panicking or wrapping on integer overflow
-            if let Some(n) =
-                num.checked_mul(62).and_then(|n| n.checked_add(next_digit))
-            {
+            if let Some(n) = num.checked_mul(62).and_then(|n| n.checked_add(next_digit)) {
                 num = n;
             } else {
                 return Err(DecodingError::Overflow);

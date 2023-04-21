@@ -18,7 +18,6 @@ pub struct User {
     pub payout_wallet: Option<RecipientWallet>,
     pub payout_wallet_type: Option<RecipientType>,
     pub payout_address: Option<String>,
-    pub flame_anvil_key: Option<String>,
 }
 
 impl User {
@@ -51,10 +50,7 @@ impl User {
 
         Ok(())
     }
-    pub async fn get<'a, 'b, E>(
-        id: UserId,
-        executor: E,
-    ) -> Result<Option<Self>, sqlx::error::Error>
+    pub async fn get<'a, 'b, E>(id: UserId, executor: E) -> Result<Option<Self>, sqlx::error::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
@@ -76,7 +72,7 @@ impl User {
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address, u.flame_anvil_key
+                u.payout_address
             FROM users u
             WHERE u.github_id = $1
             ",
@@ -96,17 +92,13 @@ impl User {
                 bio: row.bio,
                 created: row.created,
                 role: row.role,
-                badges: Badges::from_bits(row.badges as u64)
-                    .unwrap_or_default(),
+                badges: Badges::from_bits(row.badges as u64).unwrap_or_default(),
                 balance: row.balance,
-                payout_wallet: row
-                    .payout_wallet
-                    .map(|x| RecipientWallet::from_string(&x)),
+                payout_wallet: row.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
                 payout_wallet_type: row
                     .payout_wallet_type
                     .map(|x| RecipientType::from_string(&x)),
                 payout_address: row.payout_address,
-                flame_anvil_key: row.flame_anvil_key,
             }))
         } else {
             Ok(None)
@@ -126,7 +118,7 @@ impl User {
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address, u.flame_anvil_key
+                u.payout_address
             FROM users u
             WHERE LOWER(u.username) = LOWER($1)
             ",
@@ -146,27 +138,20 @@ impl User {
                 bio: row.bio,
                 created: row.created,
                 role: row.role,
-                badges: Badges::from_bits(row.badges as u64)
-                    .unwrap_or_default(),
+                badges: Badges::from_bits(row.badges as u64).unwrap_or_default(),
                 balance: row.balance,
-                payout_wallet: row
-                    .payout_wallet
-                    .map(|x| RecipientWallet::from_string(&x)),
+                payout_wallet: row.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
                 payout_wallet_type: row
                     .payout_wallet_type
                     .map(|x| RecipientType::from_string(&x)),
                 payout_address: row.payout_address,
-                flame_anvil_key: row.flame_anvil_key,
             }))
         } else {
             Ok(None)
         }
     }
 
-    pub async fn get_many<'a, E>(
-        user_ids: &[UserId],
-        exec: E,
-    ) -> Result<Vec<User>, sqlx::Error>
+    pub async fn get_many<'a, E>(user_ids: &[UserId], exec: E) -> Result<Vec<User>, sqlx::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
@@ -179,7 +164,7 @@ impl User {
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address, u.flame_anvil_key
+                u.payout_address
             FROM users u
             WHERE u.id = ANY($1)
             ",
@@ -199,14 +184,9 @@ impl User {
                 role: u.role,
                 badges: Badges::from_bits(u.badges as u64).unwrap_or_default(),
                 balance: u.balance,
-                payout_wallet: u
-                    .payout_wallet
-                    .map(|x| RecipientWallet::from_string(&x)),
-                payout_wallet_type: u
-                    .payout_wallet_type
-                    .map(|x| RecipientType::from_string(&x)),
+                payout_wallet: u.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
+                payout_wallet_type: u.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
                 payout_address: u.payout_address,
-                flame_anvil_key: u.flame_anvil_key,
             }))
         })
         .try_collect::<Vec<User>>()
@@ -388,11 +368,8 @@ impl User {
         .await?;
 
         for project_id in projects {
-            let _result = super::project_item::Project::remove_full(
-                project_id,
-                transaction,
-            )
-            .await?;
+            let _result =
+                super::project_item::Project::remove_full(project_id, transaction).await?;
         }
 
         let notifications: Vec<i64> = sqlx::query!(
@@ -452,6 +429,28 @@ impl User {
         .await?;
 
         sqlx::query!(
+            r#"
+            UPDATE threads_messages
+            SET body = '{"type": "deleted"}', author_id = $2
+            WHERE author_id = $1
+            "#,
+            id as UserId,
+            deleted_user as UserId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM threads_members
+            WHERE user_id = $1
+            ",
+            id as UserId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
             "
             DELETE FROM users
             WHERE id = $1
@@ -471,8 +470,7 @@ impl User {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let id_option =
-            crate::models::ids::base62_impl::parse_base62(username_or_id).ok();
+        let id_option = crate::models::ids::base62_impl::parse_base62(username_or_id).ok();
 
         if let Some(id) = id_option {
             let id = UserId(id as i64);

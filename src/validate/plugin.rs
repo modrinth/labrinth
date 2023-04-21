@@ -1,6 +1,4 @@
-use crate::validate::{
-    SupportedGameVersions, ValidationError, ValidationResult,
-};
+use crate::validate::{SupportedGameVersions, ValidationError, ValidationResult};
 use std::io::Cursor;
 use zip::ZipArchive;
 
@@ -67,11 +65,11 @@ impl super::Validator for BungeeCordValidator {
         &self,
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        archive.by_name("bungee.yml").map_err(|_| {
-            ValidationError::InvalidInput(
-                "No bungee.yml present for plugin file.".into(),
-            )
-        })?;
+        if archive.by_name("bungee.yml").is_err() {
+            return Ok(ValidationResult::Warning(
+                "No bungee.yml present for plugin file.",
+            ));
+        }
 
         Ok(ValidationResult::Pass)
     }
