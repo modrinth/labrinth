@@ -1084,7 +1084,7 @@ pub async fn project_edit(
 
             if let Some(moderation_message) = &new_project.moderation_message {
                 if !user.role.is_mod()
-                    && (project_item.inner.status != ProjectStatus::Approved
+                    && (!project_item.inner.status.is_approved()
                         || moderation_message != &None)
                 {
                     return Err(ApiError::CustomAuthentication(
@@ -1110,7 +1110,7 @@ pub async fn project_edit(
                 &new_project.moderation_message_body
             {
                 if !user.role.is_mod()
-                    && (project_item.inner.status != ProjectStatus::Approved
+                    && (!project_item.inner.status.is_approved()
                         || moderation_message_body != &None)
                 {
                     return Err(ApiError::CustomAuthentication(
