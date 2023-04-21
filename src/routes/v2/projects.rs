@@ -1268,13 +1268,13 @@ pub async fn projects_edit(
         if !user.role.is_mod() {
             if let Some(member) = team_members
                 .iter()
-                .find(|x| x.team_id == project.inner.team_id)
+                .find(|x| x.team_id == project.inner.team_id && x.user.id == user.id.into())
             {
                 if !member.permissions.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(format!(
                         "You do not have the permissions to bulk edit project {}!",
                         project.inner.title
-                    )));
+                    ))fix);
                 }
             } else if project.inner.status.is_hidden() {
                 return Ok(HttpResponse::NotFound().body(""));
