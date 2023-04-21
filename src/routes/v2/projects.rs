@@ -45,10 +45,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(project_unfollow)
             .service(project_schedule)
             .service(super::teams::team_members_get_project)
-            .service(web::scope("{project_id}")
-                .service(super::versions::version_list)
-                .service(super::versions::version_project_get)
-                .service(dependency_list)),
+            .service(
+                web::scope("{project_id}")
+                    .service(super::versions::version_list)
+                    .service(super::versions::version_project_get)
+                    .service(dependency_list),
+            ),
     );
 }
 
@@ -916,7 +918,7 @@ pub async fn project_edit(
                 // We are able to unwrap here because the slug is always set
                 if !slug.eq(&project_item.inner.slug.unwrap_or_default()) {
                     let results = sqlx::query!(
-                      "
+                        "
                       SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
                       ",
                         slug
@@ -1274,10 +1276,9 @@ pub async fn projects_edit(
 
     for project in projects_data {
         if !user.role.is_mod() {
-            if let Some(member) = team_members
-                .iter()
-                .find(|x| x.team_id == project.inner.team_id)
-            {
+            if let Some(member) = team_members.iter().find(|x| {
+                x.team_id == project.inner.team_id && x.user.id == user.id.into()
+            }) {
                 if !member.permissions.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         format!("You do not have the permissions to bulk edit project {}!", project.inner.title),
