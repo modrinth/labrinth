@@ -1274,7 +1274,7 @@ pub async fn projects_edit(
                     return Err(ApiError::CustomAuthentication(format!(
                         "You do not have the permissions to bulk edit project {}!",
                         project.inner.title
-                    ))fix);
+                    )));
                 }
             } else if project.inner.status.is_hidden() {
                 return Ok(HttpResponse::NotFound().body(""));
