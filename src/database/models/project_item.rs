@@ -305,7 +305,8 @@ impl Project {
 
         let project_ids_parsed: Vec<i64> =
             project_ids.iter().map(|x| x.0).collect();
-        let projects = sqlx::query!(
+        let projects =
+            sqlx::query!(
             "
             SELECT id, project_type, title, description, downloads, follows,
                    icon_url, body, published,
