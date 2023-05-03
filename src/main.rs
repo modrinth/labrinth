@@ -404,6 +404,8 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("SITE_URL");
     failed |= check_var::<String>("CDN_URL");
+    failed |= check_var::<String>("MINOS_URL");
+    failed |= check_var::<String>("KRATOS_URL");
     failed |= check_var::<String>("LABRINTH_ADMIN_KEY");
     failed |= check_var::<String>("RATE_LIMIT_IGNORE_KEY");
     failed |= check_var::<String>("DATABASE_URL");

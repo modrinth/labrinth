@@ -1,14 +1,11 @@
 /*!
-This auth module is primarily for use within the main website. Applications interacting with the
-authenticated API (a very small portion - notifications, private projects, editing/creating projects
-and versions) should either retrieve the Modrinth GitHub token through the site, or create a personal
-app token for use with Modrinth.
+This auth module is how we allow for authentication within the Modrinth sphere. 
+It uses a self-hosted Ory Kratos instance on the backend, powered by our Minos backend.
 
-JUst as a summary: Don't implement this flow in your application! Instead, use a personal access token
-or create your own GitHub OAuth2 application.
+ Applications interacting with the authenticated API (a very small portion - notifications, private projects, editing/creating projects
+and versions) should include the Ory authentication cookie in their requests. This cookie is set by the Ory Kratos instance and Minos provides function to access these.
 
-This system will be revisited and allow easier interaction with the authenticated API once we roll
-out our own authentication system.
+Just as a summary: Don't implement this flow in your application! 
 */
 
 use crate::database::models::{generate_state_id, User};
@@ -17,10 +14,10 @@ use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
 use crate::models::users::{Badges, Role};
 use crate::parse_strings_from_var;
-use crate::util::auth::get_github_user_from_token;
-use actix_web::http::StatusCode;
+use crate::util::auth::{get_minos_user_from_minos, self, get_minos_user_from_headers};
+use actix_web::http::{StatusCode, header};
 use actix_web::web::{scope, Data, Query, ServiceConfig};
-use actix_web::{get, HttpResponse};
+use actix_web::{get, HttpResponse, HttpRequest};
 use chrono::Utc;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -41,8 +38,8 @@ pub enum AuthorizationError {
     Database(#[from] crate::database::models::DatabaseError),
     #[error("Error while parsing JSON: {0}")]
     SerDe(#[from] serde_json::Error),
-    #[error("Error while communicating to GitHub OAuth2")]
-    Github(#[from] reqwest::Error),
+    #[error("Error with intra-network communcation")]
+    Network(#[from] reqwest::Error),
     #[error("Invalid Authentication credentials")]
     InvalidCredentials,
     #[error("Authentication Error: {0}")]
@@ -65,7 +62,7 @@ impl actix_web::ResponseError for AuthorizationError {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
             AuthorizationError::SerDe(..) => StatusCode::BAD_REQUEST,
-            AuthorizationError::Github(..) => StatusCode::FAILED_DEPENDENCY,
+            AuthorizationError::Network(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthorizationError::InvalidCredentials => StatusCode::UNAUTHORIZED,
             AuthorizationError::Decoding(..) => StatusCode::BAD_REQUEST,
             AuthorizationError::Authentication(..) => StatusCode::UNAUTHORIZED,
@@ -81,7 +78,7 @@ impl actix_web::ResponseError for AuthorizationError {
                 AuthorizationError::SqlxDatabase(..) => "database_error",
                 AuthorizationError::Database(..) => "database_error",
                 AuthorizationError::SerDe(..) => "invalid_input",
-                AuthorizationError::Github(..) => "github_error",
+                AuthorizationError::Network(..) => "network_error",
                 AuthorizationError::InvalidCredentials => "invalid_credentials",
                 AuthorizationError::Decoding(..) => "decoding_error",
                 AuthorizationError::Authentication(..) => {
@@ -101,8 +98,7 @@ pub struct AuthorizationInit {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Authorization {
-    pub code: String,
+pub struct StateResponse {
     pub state: String,
 }
 
@@ -113,10 +109,12 @@ pub struct AccessToken {
     pub token_type: String,
 }
 
+
+// Init link takes us to Minos API and calls back to callback endpoint with a code and state
 //http://localhost:8000/api/v1/auth/init?url=https%3A%2F%2Fmodrinth.com%2Fmods
 #[get("init")]
 pub async fn init(
-    Query(info): Query<AuthorizationInit>,
+    Query(info): Query<AuthorizationInit>, // callback url
     client: Data<PgPool>,
 ) -> Result<HttpResponse, AuthorizationError> {
     let url =
@@ -149,14 +147,14 @@ pub async fn init(
 
     transaction.commit().await?;
 
-    let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
+    let kratos_url = dotenvy::var("KRATOS_URL")?;
+    let labrinth_url = dotenvy::var("BIND_ADDR")?;
     let url = format!(
-        "https://github.com/login/oauth/authorize?client_id={}&state={}&scope={}",
-        client_id,
-        to_base62(state.0 as u64),
-        "read%3Auser"
+        // Callback URL of initialization is /callback below.
+        "{kratos_url}/self-service/login/browser?return_to={}",
+        format!("http://{labrinth_url}/v2/auth/callback?state={}", to_base62(state.0 as u64))
     );
-
+    println!("url: {}", url);
     Ok(HttpResponse::TemporaryRedirect()
         .append_header(("Location", &*url))
         .json(AuthorizationInit { url }))
@@ -164,12 +162,14 @@ pub async fn init(
 
 #[get("callback")]
 pub async fn auth_callback(
-    Query(info): Query<Authorization>,
+    req: HttpRequest,
+    Query(state): Query<StateResponse>,
     client: Data<PgPool>,
 ) -> Result<HttpResponse, AuthorizationError> {
     let mut transaction = client.begin().await?;
-    let state_id = parse_base62(&info.state)?;
+    let state_id = parse_base62(&state.state)?;
 
+    println!("state_id: {}", state_id);
     let result_option = sqlx::query!(
         "
             SELECT url, expires FROM states
@@ -180,9 +180,15 @@ pub async fn auth_callback(
     .fetch_optional(&mut *transaction)
     .await?;
 
+    println!("result_option: {:?}", result_option);
+    // Extract cookie header from request
+    let cookie_header = req
+        .headers()
+        .get("Cookie");
+    println!("cookie_header: {:?}", cookie_header);
     if let Some(result) = result_option {
         let duration: chrono::Duration = result.expires - Utc::now();
-
+        println!("duration: {}", duration.num_seconds());
         if duration.num_seconds() < 0 {
             return Err(AuthorizationError::InvalidCredentials);
         }
@@ -197,32 +203,25 @@ pub async fn auth_callback(
         .execute(&mut *transaction)
         .await?;
 
-        let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
-        let client_secret = dotenvy::var("GITHUB_CLIENT_SECRET")?;
+        println!("result.url: {}", result.url);
 
-        let url = format!(
-            "https://github.com/login/oauth/access_token?client_id={}&client_secret={}&code={}",
-            client_id, client_secret, info.code
-        );
+        // Use extracted cookie header to get authenticated user from Minos
+        // TODO: check here
+        let user = get_minos_user_from_headers(None, cookie_header).await?;
+        // let user = get_minos_user_from_headers(None, cookie_header).await?;
 
-        let token: AccessToken = reqwest::Client::new()
-            .post(&url)
-            .header(reqwest::header::ACCEPT, "application/json")
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        let user = get_github_user_from_token(&token.access_token).await?;
-
+        println!("user: {:?}", user);
+        // Get user from database
         let user_result =
-            User::get_from_github_id(user.id, &mut *transaction).await?;
+            User::get_from_minos_kratos_id(user.id.clone(), &mut *transaction).await?;
+        
+        println!("user_result: ");
         match user_result {
             Some(_) => {}
             None => {
                 let banned_user = sqlx::query!(
-                    "SELECT user FROM banned_users WHERE github_id = $1",
-                    user.id as i64
+                    "SELECT user FROM banned_users bu LEFT OUTER JOIN users u ON bu.username = u.username WHERE u.kratos_id = $1",
+                    user.id.clone() as String
                 )
                 .fetch_optional(&mut *transaction)
                 .await?;
@@ -231,68 +230,17 @@ pub async fn auth_callback(
                     return Err(AuthorizationError::Banned);
                 }
 
-                let user_id =
-                    crate::database::models::generate_user_id(&mut transaction)
-                        .await?;
-
-                let mut username_increment: i32 = 0;
-                let mut username = None;
-
-                while username.is_none() {
-                    let test_username = format!(
-                        "{}{}",
-                        &user.login,
-                        if username_increment > 0 {
-                            username_increment.to_string()
-                        } else {
-                            "".to_string()
-                        }
-                    );
-
-                    let new_id = crate::database::models::User::get_id_from_username_or_id(
-                        &test_username,
-                        &**client,
-                    )
-                    .await?;
-
-                    if new_id.is_none() {
-                        username = Some(test_username);
-                    } else {
-                        username_increment += 1;
-                    }
-                }
-
-                if let Some(username) = username {
-                    User {
-                        id: user_id,
-                        github_id: Some(user.id as i64),
-                        username,
-                        name: user.name,
-                        email: user.email,
-                        avatar_url: Some(user.avatar_url),
-                        bio: user.bio,
-                        created: Utc::now(),
-                        role: Role::Developer.to_string(),
-                        badges: Badges::default(),
-                        balance: Decimal::ZERO,
-                        payout_wallet: None,
-                        payout_wallet_type: None,
-                        payout_address: None,
-                    }
-                    .insert(&mut transaction)
-                    .await?;
-                }
+                // New user sent from Minos, we insert!
+                auth::insert_new_user(&mut transaction, user).await?;
             }
         }
-
+        println!("user: ");
         transaction.commit().await?;
 
-        let redirect_url = if result.url.contains('?') {
-            format!("{}&code={}", result.url, token.access_token)
-        } else {
-            format!("{}?code={}", result.url, token.access_token)
-        };
-
+        let redirect_url = result.url;
+        println!("redirect_url: {}", redirect_url);
+        // Do not re-append cookie header, as it is not needed, 
+        // because all redirects are to various modrinth.com subdomains
         Ok(HttpResponse::TemporaryRedirect()
             .append_header(("Location", &*redirect_url))
             .json(AuthorizationInit { url: redirect_url }))

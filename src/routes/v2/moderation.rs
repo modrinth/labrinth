@@ -64,18 +64,18 @@ pub async fn get_projects(
 
 #[derive(Deserialize)]
 pub struct BanUser {
-    pub id: i64,
+    pub username: String,
 }
 
 #[get("ban")]
 pub async fn ban_user(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    id: web::Query<BanUser>,
+    username: web::Query<BanUser>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
-    sqlx::query!("INSERT INTO banned_users (github_id) VALUES ($1);", id.id)
+    sqlx::query!("INSERT INTO banned_users (username) VALUES ($1);", username.username)
         .execute(&**pool)
         .await?;
 
@@ -86,11 +86,11 @@ pub async fn ban_user(
 pub async fn unban_user(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    id: web::Query<BanUser>,
+    username: web::Query<BanUser>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
-    sqlx::query!("DELETE FROM banned_users WHERE github_id = $1;", id.id)
+    sqlx::query!("DELETE FROM banned_users WHERE username = $1;", username.username)
         .execute(&**pool)
         .await?;
 

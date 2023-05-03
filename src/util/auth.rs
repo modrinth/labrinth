@@ -2,13 +2,16 @@ use crate::database;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::database::{models, Project, Version};
-use crate::models::users::{Role, User, UserId, UserPayoutData};
+use crate::models::users::{Role, User, UserId, UserPayoutData, Badges};
 use crate::routes::ApiError;
 use actix_web::http::header::HeaderMap;
 use actix_web::web;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use thiserror::Error;
+use crate::Utc;
+use actix_web::http::header::COOKIE;
 
 #[derive(Error, Debug)]
 pub enum AuthenticationError {
@@ -25,65 +28,114 @@ pub enum AuthenticationError {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct GitHubUser {
-    pub login: String,
-    pub id: u64,
-    pub avatar_url: String,
+pub struct MinosUser {
+    pub id: String, // This is the unique generated Ory name
     pub name: Option<String>,
     pub email: Option<String>,
-    pub bio: Option<String>,
+    pub github_id: Option<i64>,
 }
 
-pub async fn get_github_user_from_token(
-    access_token: &str,
-) -> Result<GitHubUser, AuthenticationError> {
-    Ok(reqwest::Client::new()
-        .get("https://api.github.com/user")
-        .header(reqwest::header::USER_AGENT, "Modrinth")
-        .header(
+// Insert a new user into the database from a MinosUser without a corresponding entry
+pub async fn insert_new_user(
+    transaction : &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    minos_user: MinosUser,
+) -> Result<(), AuthenticationError> {
+    let user_id =
+    crate::database::models::generate_user_id(transaction)
+        .await?;
+
+    // TODO: username should reflect a real addable username, not just this dummy one for new accounts
+    let username = minos_user
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("modrinth-{}", user_id.0));
+
+    database::models::User {
+        id: user_id,
+        github_id: minos_user.github_id,
+        kratos_id: minos_user.id,
+        username,
+        name: minos_user.name,
+        email: minos_user.email,
+        avatar_url: None,
+        bio: None,
+        created: Utc::now(),
+        role: Role::Developer.to_string(),
+        badges: Badges::default(),
+        balance: Decimal::ZERO,
+        payout_wallet: None,
+        payout_wallet_type: None,
+        payout_address: None,
+    }
+    .insert(transaction)
+    .await?;
+
+    Ok(())
+
+}
+
+// To get a user, we pass either the access token or the authorization header through to minos
+// Access token is passed automatically through cookies
+pub async fn get_minos_user_from_minos(cookies: Option<&str>, access_token: Option<&str>,
+) -> Result<MinosUser, AuthenticationError> {
+    
+    let mut req = reqwest::Client::new()
+        .get(dotenvy::var("MINOS_URL").unwrap()+"/user/session")
+        .header(reqwest::header::USER_AGENT, "Modrinth");
+        // .header(reqwest::header::ACCESS_CONTROL_ALLOW_CREDENTIALS, "true");
+
+    if let Some(cookies) = cookies {
+        req = req        .header(reqwest::header::COOKIE, cookies);
+    }
+    dbg!("Hello111", &req);
+
+    // Add the access token if it exists
+    if let Some(access_token) = access_token {
+        req = req.header(
             reqwest::header::AUTHORIZATION,
-            format!("token {access_token}"),
-        )
+            format!("token {access_token}")
+        );
+        dbg!("Hello12", &req);
+
+    }
+
+    let res = req
         .send()
         .await?
+        .error_for_status()?;
+
+    dbg!("Hello");
+    dbg!(&res);
+    Ok(res
         .json()
         .await?)
 }
-
-pub async fn get_user_from_token<'a, 'b, E>(
-    access_token: &str,
-    executor: E,
-) -> Result<User, AuthenticationError>
-where
-    E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-{
-    let github_user = get_github_user_from_token(access_token).await?;
-
-    let res =
-        models::User::get_from_github_id(github_user.id, executor).await?;
-
-    match res {
-        Some(result) => Ok(User {
-            id: UserId::from(result.id),
-            github_id: result.github_id.map(|i| i as u64),
-            username: result.username,
-            name: result.name,
-            email: result.email,
-            avatar_url: result.avatar_url,
-            bio: result.bio,
-            created: result.created,
-            role: Role::from_string(&result.role),
-            badges: result.badges,
-            payout_data: Some(UserPayoutData {
-                balance: result.balance,
-                payout_wallet: result.payout_wallet,
-                payout_wallet_type: result.payout_wallet_type,
-                payout_address: result.payout_address,
-            }),
-        }),
-        None => Err(AuthenticationError::InvalidCredentials),
+// Extract MinosUser from oprtional token and cookie headers
+// If both are present, token is used
+// If neither are present, InvalidCredentials is returned
+pub async fn get_minos_user_from_headers(
+    token : Option<&reqwest::header::HeaderValue>,
+    cookies : Option<&reqwest::header::HeaderValue>,
+) -> Result<MinosUser, AuthenticationError> {
+    if let (None, None) = (token, cookies)  {
+        return Err(AuthenticationError::InvalidCredentials) // No credentials passed
     }
+
+    let token: Option<&str>  = if let Some(token) = token {
+        Some(token.to_str().map_err(|_| AuthenticationError::InvalidCredentials)?)
+    } else {
+        None
+    };
+
+    let cookies: Option<&str>  = if let Some(cookies) = cookies {
+        Some(cookies.to_str().map_err(|_| AuthenticationError::InvalidCredentials)?)
+    } else {
+        None
+    };
+
+    Ok(get_minos_user_from_minos(cookies, token).await?)
 }
+
 pub async fn get_user_from_headers<'a, 'b, E>(
     headers: &HeaderMap,
     executor: E,
@@ -91,14 +143,34 @@ pub async fn get_user_from_headers<'a, 'b, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
-    let token = headers
-        .get("Authorization")
-        .ok_or(AuthenticationError::InvalidCredentials)?
-        .to_str()
-        .map_err(|_| AuthenticationError::InvalidCredentials)?;
+    let token: Option<&reqwest::header::HeaderValue> = headers.get("Authorization");
+    let cookies_unparsed: Option<&reqwest::header::HeaderValue> = headers.get(COOKIE);
+    let minos_user = get_minos_user_from_headers(token, cookies_unparsed).await?;
+    let res =
+        models::User::get_from_minos_kratos_id(minos_user.id, executor).await?;
 
-    get_user_from_token(token, executor).await
-}
+        match res {
+            Some(result) => Ok(User {
+                id: UserId::from(result.id),
+                github_id: result.github_id.map(|i| i as u64),
+                username: result.username,
+                name: result.name,
+                email: result.email,
+                avatar_url: result.avatar_url,
+                bio: result.bio,
+                created: result.created,
+                role: Role::from_string(&result.role),
+                badges: result.badges,
+                payout_data: Some(UserPayoutData {
+                    balance: result.balance,
+                    payout_wallet: result.payout_wallet,
+                    payout_wallet_type: result.payout_wallet_type,
+                    payout_address: result.payout_address,
+                }),
+            }),
+            None => Err(AuthenticationError::InvalidCredentials),
+        }
+    }
 
 pub async fn check_is_moderator_from_headers<'a, 'b, E>(
     headers: &HeaderMap,
