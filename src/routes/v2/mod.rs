@@ -3,6 +3,7 @@ mod auth;
 mod midas;
 mod moderation;
 mod notifications;
+mod pat;
 pub(crate) mod project_creation;
 mod projects;
 mod reports;

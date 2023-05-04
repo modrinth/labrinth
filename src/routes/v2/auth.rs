@@ -1,25 +1,27 @@
 /*!
-This auth module is how we allow for authentication within the Modrinth sphere. 
+This auth module is how we allow for authentication within the Modrinth sphere.
 It uses a self-hosted Ory Kratos instance on the backend, powered by our Minos backend.
 
  Applications interacting with the authenticated API (a very small portion - notifications, private projects, editing/creating projects
 and versions) should include the Ory authentication cookie in their requests. This cookie is set by the Ory Kratos instance and Minos provides function to access these.
 
-Just as a summary: Don't implement this flow in your application! 
+Just as a summary: Don't implement this flow in your application!
 */
 
 use crate::database::models::{generate_state_id, User};
 use crate::models::error::ApiError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
-use crate::models::users::{Badges, Role};
+
 use crate::parse_strings_from_var;
-use crate::util::auth::{get_minos_user_from_minos, self, get_minos_user_from_headers};
-use actix_web::http::{StatusCode, header};
+use crate::util::auth::{
+    self, get_minos_user_from_headers,
+};
+use actix_web::http::{StatusCode};
 use actix_web::web::{scope, Data, Query, ServiceConfig};
-use actix_web::{get, HttpResponse, HttpRequest};
+use actix_web::{get, HttpRequest, HttpResponse};
 use chrono::Utc;
-use rust_decimal::Decimal;
+
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use thiserror::Error;
@@ -62,7 +64,9 @@ impl actix_web::ResponseError for AuthorizationError {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
             AuthorizationError::SerDe(..) => StatusCode::BAD_REQUEST,
-            AuthorizationError::Network(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthorizationError::Network(..) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
             AuthorizationError::InvalidCredentials => StatusCode::UNAUTHORIZED,
             AuthorizationError::Decoding(..) => StatusCode::BAD_REQUEST,
             AuthorizationError::Authentication(..) => StatusCode::UNAUTHORIZED,
@@ -101,14 +105,6 @@ pub struct AuthorizationInit {
 pub struct StateResponse {
     pub state: String,
 }
-
-#[derive(Serialize, Deserialize)]
-pub struct AccessToken {
-    pub access_token: String,
-    pub scope: String,
-    pub token_type: String,
-}
-
 
 // Init link takes us to Minos API and calls back to callback endpoint with a code and state
 //http://localhost:8000/api/v1/auth/init?url=https%3A%2F%2Fmodrinth.com%2Fmods
@@ -152,7 +148,10 @@ pub async fn init(
     let url = format!(
         // Callback URL of initialization is /callback below.
         "{kratos_url}/self-service/login/browser?return_to={}",
-        format!("http://{labrinth_url}/v2/auth/callback?state={}", to_base62(state.0 as u64))
+        format!(
+            "http://{labrinth_url}/v2/auth/callback?state={}",
+            to_base62(state.0 as u64)
+        )
     );
     println!("url: {}", url);
     Ok(HttpResponse::TemporaryRedirect()
@@ -182,9 +181,7 @@ pub async fn auth_callback(
 
     println!("result_option: {:?}", result_option);
     // Extract cookie header from request
-    let cookie_header = req
-        .headers()
-        .get("Cookie");
+    let cookie_header = req.headers().get("Cookie");
     println!("cookie_header: {:?}", cookie_header);
     if let Some(result) = result_option {
         let duration: chrono::Duration = result.expires - Utc::now();
@@ -213,8 +210,9 @@ pub async fn auth_callback(
         println!("user: {:?}", user);
         // Get user from database
         let user_result =
-            User::get_from_minos_kratos_id(user.id.clone(), &mut *transaction).await?;
-        
+            User::get_from_minos_kratos_id(user.id.clone(), &mut *transaction)
+                .await?;
+
         println!("user_result: ");
         match user_result {
             Some(_) => {}
@@ -239,7 +237,7 @@ pub async fn auth_callback(
 
         let redirect_url = result.url;
         println!("redirect_url: {}", redirect_url);
-        // Do not re-append cookie header, as it is not needed, 
+        // Do not re-append cookie header, as it is not needed,
         // because all redirects are to various modrinth.com subdomains
         Ok(HttpResponse::TemporaryRedirect()
             .append_header(("Location", &*redirect_url))

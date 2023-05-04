@@ -75,9 +75,12 @@ pub async fn ban_user(
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
-    sqlx::query!("INSERT INTO banned_users (username) VALUES ($1);", username.username)
-        .execute(&**pool)
-        .await?;
+    sqlx::query!(
+        "INSERT INTO banned_users (username) VALUES ($1);",
+        username.username
+    )
+    .execute(&**pool)
+    .await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -90,9 +93,12 @@ pub async fn unban_user(
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
-    sqlx::query!("DELETE FROM banned_users WHERE username = $1;", username.username)
-        .execute(&**pool)
-        .await?;
+    sqlx::query!(
+        "DELETE FROM banned_users WHERE username = $1;",
+        username.username
+    )
+    .execute(&**pool)
+    .await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }

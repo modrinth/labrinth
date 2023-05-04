@@ -84,6 +84,14 @@ generate_ids!(
     StateId
 );
 generate_ids!(
+    pub generate_pat_id,
+    PatId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM pats WHERE id=$1)",
+    PatId
+);
+
+generate_ids!(
     pub generate_user_id,
     UserId,
     8,
@@ -119,6 +127,14 @@ generate_ids!(
     8,
     "SELECT EXISTS(SELECT 1 FROM threads_messages WHERE id=$1)",
     ThreadMessageId
+);
+
+generate_ids!(
+    pub generate_pat_token,
+    PatToken,
+    64,
+    "SELECT EXISTS(SELECT 1 FROM pats WHERE access_token=$1)",
+    PatToken
 );
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Deserialize)]
@@ -177,6 +193,10 @@ pub struct FileId(pub i64);
 #[sqlx(transparent)]
 pub struct StateId(pub i64);
 
+#[derive(Copy, Clone, Debug, Type)]
+#[sqlx(transparent)]
+pub struct PatId(pub i64);
+
 #[derive(Copy, Clone, Debug, Type, Deserialize)]
 #[sqlx(transparent)]
 pub struct NotificationId(pub i64);
@@ -190,6 +210,10 @@ pub struct ThreadId(pub i64);
 #[derive(Copy, Clone, Debug, Type, Deserialize)]
 #[sqlx(transparent)]
 pub struct ThreadMessageId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type)]
+#[sqlx(transparent)]
+pub struct PatToken(pub i64);
 
 use crate::models::ids;
 

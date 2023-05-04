@@ -11,4 +11,12 @@ UPDATE users SET kratos_id = 'uninitialized_' || username;
 ALTER TABLE users ALTER COLUMN kratos_id SET NOT NULL;
 ALTER TABLE users ADD CONSTRAINT kratos_id_unique UNIQUE (kratos_id);
 
-
+-- Add pats table
+CREATE TABLE pats (
+    id BIGINT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL REFERENCES users(username),
+    access_token BIGINT NOT NULL,
+    scope VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL
+);
