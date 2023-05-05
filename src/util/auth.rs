@@ -5,7 +5,6 @@ use crate::database::{models, Project, Version};
 use crate::models::users::{Badges, Role, User, UserId, UserPayoutData};
 use crate::routes::ApiError;
 use crate::Utc;
-use crate::util::pat::check_pat;
 use actix_web::http::header::HeaderMap;
 use actix_web::http::header::COOKIE;
 use actix_web::web;
@@ -13,6 +12,9 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, pool};
 use thiserror::Error;
+
+use super::pat::get_user_from_pat;
+
 
 #[derive(Error, Debug)]
 pub enum AuthenticationError {
@@ -22,11 +24,14 @@ pub enum AuthenticationError {
     Database(#[from] models::DatabaseError),
     #[error("Error while parsing JSON: {0}")]
     SerDe(#[from] serde_json::Error),
-    #[error("Error while communicating to GitHub OAuth2: {0}")]
-    Github(#[from] reqwest::Error),
+    #[error("Error while communicating over the internet: {0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("Error while decoding PAT: {0}")]
+    Decoding(#[from] crate::models::ids::DecodingError),
     #[error("Invalid Authentication Credentials")]
     InvalidCredentials,
 }
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MinosUser {
@@ -89,33 +94,38 @@ pub async fn get_minos_user(
     dbg!(&res);
     Ok(res.json().await?)
 }
-// Extract MinosUser from oprtional token and cookie headers
+
+
+// Extract database from oprtional token and cookie headers
 // If both are present, token is used
 // If neither are present, InvalidCredentials is returned
-pub async fn get_minos_user_from_headers<'a, E>(
+pub async fn get_user_record_from_token_cookies<'a, E>(
     token: Option<&reqwest::header::HeaderValue>,
     cookies: Option<&reqwest::header::HeaderValue>,
     executor: E,
-) -> Result<MinosUser, AuthenticationError> where
+)
+ -> Result<Option<models::User>, AuthenticationError> 
+where         
 E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+
 {
-    if let Some(token) = token {
-        return check_pat(token
-            .to_str()
-            .map_err(|_| AuthenticationError::InvalidCredentials)?, executor.get_pool().await?);
-    } else {
-        None
-    };
 
-    if let Some(cookies) = cookies {
+    match (token, cookies) {
+        (Some(token), _) => {
+            Ok(get_user_from_pat(token
+                .to_str()
+                .map_err(|_| AuthenticationError::InvalidCredentials)?, executor).await?)
+        }
+        (_, Some(cookies)) => {
+            let minos_user= get_minos_user(cookies
+                .to_str()
+                .map_err(|_| AuthenticationError::InvalidCredentials)?).await?;
 
-                return get_minos_user(cookies
-                    .to_str()
-                    .map_err(|_| AuthenticationError::InvalidCredentials)?).await;
-
-    } 
-    
-    return Err(AuthenticationError::InvalidCredentials); // No credentials passed
+            
+                Ok(models::User::get_from_minos_kratos_id(minos_user.id, executor).await?)
+        }
+        _ => Err(AuthenticationError::InvalidCredentials), // No credentials passed
+    }
 }
 
 pub async fn get_user_from_headers<'a, 'b, E>(
@@ -129,14 +139,13 @@ where
         headers.get("Authorization");
     let cookies_unparsed: Option<&reqwest::header::HeaderValue> =
         headers.get(COOKIE);
-    let minos_user =
-        get_minos_user_from_headers(token, cookies_unparsed, executor).await?;
-    let res =
-        models::User::get_from_minos_kratos_id(minos_user.id, executor).await?;
 
-    match res {
+    let db_user =  get_user_record_from_token_cookies(token, cookies_unparsed, executor).await?;
+
+    match db_user {
         Some(result) => Ok(User {
             id: UserId::from(result.id),
+            kratos_id: result.kratos_id,
             github_id: result.github_id.map(|i| i as u64),
             username: result.username,
             name: result.name,

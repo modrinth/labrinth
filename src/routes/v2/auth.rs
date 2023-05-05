@@ -14,9 +14,8 @@ use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
 
 use crate::parse_strings_from_var;
-use crate::util::auth::{
-    self, get_minos_user_from_headers,
-};
+use crate::util::auth::{get_user_from_headers, get_user_record_from_token_cookies, AuthenticationError, get_minos_user, self};
+
 use actix_web::http::{StatusCode};
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, HttpRequest, HttpResponse};
@@ -184,42 +183,45 @@ pub async fn auth_callback(
     let cookie_header = req.headers().get("Cookie");
     println!("cookie_header: {:?}", cookie_header);
     if let Some(result) = result_option {
-        let duration: chrono::Duration = result.expires - Utc::now();
-        println!("duration: {}", duration.num_seconds());
-        if duration.num_seconds() < 0 {
-            return Err(AuthorizationError::InvalidCredentials);
-        }
+        if let Some(cookie_header) = cookie_header {
+            // Extract cookie header to get authenticated user from Minos
+            let duration: chrono::Duration = result.expires - Utc::now();
+            println!("duration: {}", duration.num_seconds());
+            if duration.num_seconds() < 0 {
+                return Err(AuthorizationError::InvalidCredentials);
+            }
+    
+            sqlx::query!(
+                "
+                DELETE FROM states
+                WHERE id = $1
+                ",
+                state_id as i64
+            )
+            .execute(&mut *transaction)
+            .await?;
+    
+            println!("result.url: {}", result.url);
+    
+            // Use extracted cookie header to get authenticated user from Minos
+            // TODO: check here
+            let user_result = get_user_record_from_token_cookies(None, Some(cookie_header), &mut transaction).await?;
+            // let user = get_minos_user_from_headers(None, cookie_header).await?;
+    
+            
+            println!("user_result: ");
+            // Cookies exist, but user does not exist in database, meaning they are new, invalid, or have been banned
+            if user_result.is_none() {
 
-        sqlx::query!(
-            "
-            DELETE FROM states
-            WHERE id = $1
-            ",
-            state_id as i64
-        )
-        .execute(&mut *transaction)
-        .await?;
-
-        println!("result.url: {}", result.url);
-
-        // Use extracted cookie header to get authenticated user from Minos
-        // TODO: check here
-        let user = get_minos_user_from_headers(None, cookie_header).await?;
-        // let user = get_minos_user_from_headers(None, cookie_header).await?;
-
-        println!("user: {:?}", user);
-        // Get user from database
-        let user_result =
-            User::get_from_minos_kratos_id(user.id.clone(), &mut *transaction)
-                .await?;
-
-        println!("user_result: ");
-        match user_result {
-            Some(_) => {}
-            None => {
+                // Attempt to create a minos user from the cookie header- if this fails, the user is invalid
+                let minos_user= get_minos_user(cookie_header
+                    .to_str()
+                    .map_err(|_| AuthenticationError::InvalidCredentials)?).await?;
+    
+                // Check if user is banned
                 let banned_user = sqlx::query!(
                     "SELECT user FROM banned_users bu LEFT OUTER JOIN users u ON bu.username = u.username WHERE u.kratos_id = $1",
-                    user.id.clone() as String
+                    minos_user.id.clone() as String
                 )
                 .fetch_optional(&mut *transaction)
                 .await?;
@@ -228,20 +230,20 @@ pub async fn auth_callback(
                     return Err(AuthorizationError::Banned);
                 }
 
-                // New user sent from Minos, we insert!
-                auth::insert_new_user(&mut transaction, user).await?;
+                // New user sent from Minos, we insert into Users!
+                auth::insert_new_user(&mut transaction, minos_user).await?;
             }
+            transaction.commit().await?;
+            
+            // Cookie is attached now, so redirect to the original URL
+            // Do not re-append cookie header, as it is not needed,
+            // because all redirects are to various modrinth.com subdomains
+            Ok(HttpResponse::TemporaryRedirect()
+                .append_header(("Location", &*result.url))
+                .json(AuthorizationInit { url: result.url }))    
+        } else {
+            Err(AuthorizationError::InvalidCredentials)
         }
-        println!("user: ");
-        transaction.commit().await?;
-
-        let redirect_url = result.url;
-        println!("redirect_url: {}", redirect_url);
-        // Do not re-append cookie header, as it is not needed,
-        // because all redirects are to various modrinth.com subdomains
-        Ok(HttpResponse::TemporaryRedirect()
-            .append_header(("Location", &*redirect_url))
-            .json(AuthorizationInit { url: redirect_url }))
     } else {
         Err(AuthorizationError::InvalidCredentials)
     }

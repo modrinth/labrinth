@@ -1,5 +1,5 @@
 use super::ids::{ProjectId, UserId};
-use crate::models::users::{Badges, RecipientType, RecipientWallet};
+use crate::{models::{users::{Badges, RecipientType, RecipientWallet}, ids::base62_impl::parse_base62}, util::auth::AuthenticationError};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
@@ -163,6 +163,8 @@ impl User {
             Ok(None)
         }
     }
+
+    
 
     pub async fn get_many<'a, E>(
         user_ids: &[UserId],
