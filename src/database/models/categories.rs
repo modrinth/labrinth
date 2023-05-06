@@ -178,6 +178,7 @@ pub struct GameVersionBuilder<'a> {
     pub version: Option<&'a str>,
     pub version_type: Option<&'a str>,
     pub date: Option<&'a DateTime<Utc>>,
+    pub major: bool
 }
 
 impl GameVersion {
@@ -333,25 +334,34 @@ impl<'a> GameVersionBuilder<'a> {
         }
     }
 
+    pub fn major(self, major: bool) -> GameVersionBuilder<'a> {
+        Self {
+            major,
+            ..self
+        }
+    }
+
     pub async fn insert<'b, E>(self, exec: E) -> Result<GameVersionId, DatabaseError>
     where
         E: sqlx::Executor<'b, Database = sqlx::Postgres>,
     {
-        // This looks like a mess, but it *should* work
-        // This allows game versions to be partially updated without
-        // replacing the unspecified fields with defaults.
+        // This looks like a mess, but it allows game versions to be
+        // partially updated without replacing the unspecified fields
+        // with defaults.
         let result = sqlx::query!(
             "
-            INSERT INTO game_versions (version, type, created)
-            VALUES ($1, COALESCE($2, 'other'), COALESCE($3, timezone('utc', now())))
+            INSERT INTO game_versions (version, type, created, major)
+            VALUES ($1, COALESCE($2, 'other'), COALESCE($3, timezone('utc', now())), $4)
             ON CONFLICT (version) DO UPDATE
                 SET type = COALESCE($2, game_versions.type),
-                    created = COALESCE($3, game_versions.created)
+                    created = COALESCE($3, game_versions.created),
+                    major = $4
             RETURNING id
             ",
             self.version,
             self.version_type,
             self.date.map(chrono::DateTime::naive_utc),
+            self.major,
         )
         .fetch_one(exec)
         .await?;

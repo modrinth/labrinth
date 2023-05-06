@@ -174,6 +174,7 @@ async fn update_versions(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), Versio
                     &version.release_time
                 },
             )
+            .major(type_ == "release")
             .insert(pool)
             .await?;
     }

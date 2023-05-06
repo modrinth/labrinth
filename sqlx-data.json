@@ -3064,6 +3064,29 @@
     },
     "query": "\n        SELECT f.url url, f.id id, f.version_id version_id, v.mod_id project_id FROM hashes h\n        INNER JOIN files f ON h.file_id = f.id\n        INNER JOIN versions v ON v.id = f.version_id AND v.status != ANY($1)\n        INNER JOIN mods m on v.mod_id = m.id\n        WHERE h.algorithm = $3 AND h.hash = $2 AND m.status != ANY($4)\n        ORDER BY v.date_published ASC\n        "
   },
+  "5e111c7a5d9d662e47d493083a144785a7fbb765107beeef7ff9a220bb6a2992": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Text",
+          "Timestamp",
+          "Bool"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO game_versions (version, type, created, major)\n            VALUES ($1, COALESCE($2, 'other'), COALESCE($3, timezone('utc', now())), $4)\n            ON CONFLICT (version) DO UPDATE\n                SET type = COALESCE($2, game_versions.type),\n                    created = COALESCE($3, game_versions.created),\n                    major = $4\n            RETURNING id\n            "
+  },
   "5eb2795d25d6d03e22564048c198d821cd5ff22eb4e39b9dd7f198c9113d4f87": {
     "describe": {
       "columns": [],
@@ -3446,28 +3469,6 @@
       }
     },
     "query": "\n                SELECT id FROM users\n                WHERE id = $1\n                "
-  },
-  "72c75313688dfd88a659c5250c71b9899abd6186ab32a067a7d4b8a0846ebd18": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int4"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Varchar",
-          "Text",
-          "Timestamp"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO game_versions (version, type, created)\n            VALUES ($1, COALESCE($2, 'other'), COALESCE($3, timezone('utc', now())))\n            ON CONFLICT (version) DO UPDATE\n                SET type = COALESCE($2, game_versions.type),\n                    created = COALESCE($3, game_versions.created)\n            RETURNING id\n            "
   },
   "72ce04d19ba84b29ecfa52bdb9b9f5fdc84d1d2371610a7bdeb222ff625cfbed": {
     "describe": {
