@@ -256,8 +256,7 @@ pub async fn filter_authorized_projects(
             .try_for_each(|e| {
                 if let Some(row) = e.right() {
                     check_projects.retain(|x| {
-                        let bool = x.inner.id.0 == row.id
-                            && x.inner.team_id.0 == row.team_id;
+                        let bool = x.inner.id.0 == row.id && x.inner.team_id.0 == row.team_id;
 
                         if bool {
                             return_projects.push(x.clone().into());
@@ -340,25 +339,29 @@ pub async fn filter_authorized_versions(
                 INNER JOIN team_members tm ON tm.team_id = m.team_id AND user_id = $2
                 WHERE m.id = ANY($1)
                 ",
-                &check_versions.iter().map(|x| x.inner.project_id.0).collect::<Vec<_>>(),
+                &check_versions
+                    .iter()
+                    .map(|x| x.inner.project_id.0)
+                    .collect::<Vec<_>>(),
                 user_id as database::models::ids::UserId,
             )
-                .fetch_many(&***pool)
-                .try_for_each(|e| {
-                    if let Some(row) = e.right() {
-                        check_versions.retain(|x| {
-                            let bool = x.inner.project_id.0 == row.id;
+            .fetch_many(&***pool)
+            .try_for_each(|e| {
+                if let Some(row) = e.right() {
+                    check_versions.retain(|x| {
+                        let bool = x.inner.project_id.0 == row.id;
 
-                            if bool {
-                                return_versions.push(x.clone().into());
-                            }
+                        if bool {
+                            return_versions.push(x.clone().into());
+                        }
 
-                            !bool
-                        });
-                    }
+                        !bool
+                    });
+                }
 
-                    futures::future::ready(Ok(()))
-                }).await?;
+                futures::future::ready(Ok(()))
+            })
+            .await?;
         }
     }
 

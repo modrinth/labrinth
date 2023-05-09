@@ -84,9 +84,7 @@ impl actix_web::ResponseError for AuthorizationError {
                 AuthorizationError::Network(..) => "network_error",
                 AuthorizationError::InvalidCredentials => "invalid_credentials",
                 AuthorizationError::Decoding(..) => "decoding_error",
-                AuthorizationError::Authentication(..) => {
-                    "authentication_error"
-                }
+                AuthorizationError::Authentication(..) => "authentication_error",
                 AuthorizationError::Url => "url_error",
                 AuthorizationError::Banned => "user_banned",
             },
@@ -112,16 +110,12 @@ pub async fn init(
     Query(info): Query<AuthorizationInit>, // callback url
     client: Data<PgPool>,
 ) -> Result<HttpResponse, AuthorizationError> {
-    let url =
-        url::Url::parse(&info.url).map_err(|_| AuthorizationError::Url)?;
+    let url = url::Url::parse(&info.url).map_err(|_| AuthorizationError::Url)?;
 
-    let allowed_callback_urls =
-        parse_strings_from_var("ALLOWED_CALLBACK_URLS").unwrap_or_default();
+    let allowed_callback_urls = parse_strings_from_var("ALLOWED_CALLBACK_URLS").unwrap_or_default();
 
     let domain = url.domain().ok_or(AuthorizationError::Url)?;
-    if !allowed_callback_urls.iter().any(|x| domain.ends_with(x))
-        && domain != "modrinth.com"
-    {
+    if !allowed_callback_urls.iter().any(|x| domain.ends_with(x)) && domain != "modrinth.com" {
         return Err(AuthorizationError::Url);
     }
 
