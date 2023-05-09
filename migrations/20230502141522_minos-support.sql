@@ -1,6 +1,6 @@
 -- Change banned_users to use username instead of github_id
-ALTER TABLE banned_users ADD COLUMN username varchar(255) UNIQUE;
-UPDATE banned_users SET username = users.username FROM users WHERE banned_users.github_id = users.github_id;
+ALTER TABLE banned_users ADD COLUMN id varchar(255) UNIQUE;
+UPDATE banned_users SET id = users.id FROM users WHERE banned_users.github_id = users.github_id;
 ALTER TABLE banned_users DROP COLUMN github_id;
 
 
@@ -14,7 +14,7 @@ ALTER TABLE users ADD CONSTRAINT kratos_id_unique UNIQUE (kratos_id);
 -- Add pats table
 CREATE TABLE pats (
     id BIGINT PRIMARY KEY,
-    username VARCHAR(255) NOT NULL REFERENCES users(username),
+    user_id VARCHAR(255) NOT NULL REFERENCES users(id),
     access_token BIGINT NOT NULL,
     scope VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
