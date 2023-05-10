@@ -109,8 +109,7 @@ pub async fn init(
     let url = url::Url::parse(&info.url).map_err(|_| AuthorizationError::Url)?;
 
     let allowed_callback_urls = parse_strings_from_var("ALLOWED_CALLBACK_URLS").unwrap_or_default();
-
-    let domain = url.domain().ok_or(AuthorizationError::Url)?;
+    let domain = url.host_str().ok_or(AuthorizationError::Url)?; // TODO: change back to .domain() (host_str is so we can use 127.0.0.1)
     if !allowed_callback_urls.iter().any(|x| domain.ends_with(x)) && domain != "modrinth.com" {
         return Err(AuthorizationError::Url);
     }

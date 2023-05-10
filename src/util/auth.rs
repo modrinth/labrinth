@@ -43,7 +43,7 @@ pub struct MinosUser {
     pub name: Option<String>, // real name
     pub github_id: Option<i64>,
     pub discord_id: Option<i64>,
-    pub google_id: Option<i64>,
+    pub google_id: Option<i128>,
     pub gitlab_id: Option<i64>,
     pub microsoft_id: Option<i64>,
     pub apple_id: Option<i64>,
