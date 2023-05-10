@@ -6,13 +6,13 @@ Just as a summary: Don't implement this flow in your application!
 */
 
 use crate::database;
-use crate::database::models::{generate_pat_id, generate_pat_token};
+use crate::database::models::generate_pat_id;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 
 use crate::models::users::UserId;
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
-use crate::util::pat::{extract_pat_id_from_str, PersonalAccessToken};
+use crate::util::pat::{generate_pat, PersonalAccessToken};
 
 use actix_web::web::{self, Data, Query};
 use actix_web::{delete, get, patch, post, HttpRequest, HttpResponse};
@@ -65,7 +65,7 @@ pub async fn get_pats(req: HttpRequest, pool: Data<PgPool>) -> Result<HttpRespon
             id: to_base62(pat.id as u64),
             scope: pat.scope,
             expires_at: pat.expires_at,
-            access_token: format!("mod_{}", to_base62(pat.access_token as u64)),
+            access_token: pat.access_token,
             user_id: UserId(pat.user_id as u64),
         })
         .collect::<Vec<_>>();
@@ -88,7 +88,7 @@ pub async fn create_pat(
     let mut transaction: sqlx::Transaction<sqlx::Postgres> = pool.begin().await?;
 
     let pat = generate_pat_id(&mut transaction).await?;
-    let access_token = generate_pat_token(&mut transaction).await?;
+    let access_token = generate_pat(&mut transaction).await?;
     let expiry = Utc::now().naive_utc() + Duration::days(info.expire_in_days);
 
     sqlx::query!(
@@ -97,7 +97,7 @@ pub async fn create_pat(
             VALUES ($1, $2, $3, $4, $5)
             ",
         pat.0,
-        access_token.0,
+        access_token,
         db_user_id.0,
         info.scope,
         expiry
@@ -109,7 +109,7 @@ pub async fn create_pat(
 
     Ok(HttpResponse::Ok().json(PersonalAccessToken {
         id: to_base62(pat.0 as u64),
-        access_token: format!("mod_{}", to_base62(access_token.0 as u64)),
+        access_token,
         scope: info.scope,
         user_id: user.id,
         expires_at: expiry,
@@ -125,7 +125,7 @@ pub async fn edit_pat(
     pool: Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user: crate::models::users::User = get_user_from_headers(req.headers(), &**pool).await?;
-    let access_token = extract_pat_id_from_str(&info.access_token)?;
+    let access_token = &info.access_token;
     let db_user_id: database::models::UserId = database::models::UserId::from(user.id);
 
     // Get the singular PAT and user combination (failing immediately if it doesn't exist)
@@ -135,7 +135,7 @@ pub async fn edit_pat(
         SELECT id, access_token, scope, user_id, expires_at FROM pats
         WHERE access_token = $1 AND user_id = $2
         ",
-        access_token.0,
+        access_token,
         db_user_id.0
     )
     .fetch_one(&**pool)
@@ -143,7 +143,7 @@ pub async fn edit_pat(
 
     let pat = PersonalAccessToken {
         id: to_base62(row.id as u64),
-        access_token: to_base62(row.access_token as u64),
+        access_token: row.access_token,
         user_id: UserId::from(db_user_id),
 
         scope: info.scope.unwrap_or(row.scope),
@@ -162,7 +162,7 @@ pub async fn edit_pat(
             expires_at = $4
         WHERE id = $5
         ",
-        parse_base62(&pat.access_token)? as i64,
+        &pat.access_token,
         pat.scope,
         db_user_id.0,
         pat.expires_at,
@@ -186,15 +186,13 @@ pub async fn delete_pat(
     let user: crate::models::users::User = get_user_from_headers(req.headers(), &**pool).await?;
     let db_user_id: database::models::UserId = database::models::UserId::from(user.id);
 
-    let access_token = extract_pat_id_from_str(&access_token)?;
-
     // Get the singular PAT and user combination (failing immediately if it doesn't exist)
     let pat_id = sqlx::query!(
         "
         SELECT id FROM pats
         WHERE access_token = $1 AND user_id = $2
         ",
-        access_token.0,
+        access_token,
         db_user_id.0
     )
     .fetch_one(&**pool)

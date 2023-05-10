@@ -129,14 +129,6 @@ generate_ids!(
     ThreadMessageId
 );
 
-generate_ids!(
-    pub generate_pat_token,
-    PatToken,
-    11,
-    "SELECT EXISTS(SELECT 1 FROM pats WHERE access_token=$1)",
-    PatToken
-);
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Deserialize)]
 #[sqlx(transparent)]
 pub struct UserId(pub i64);
@@ -213,7 +205,7 @@ pub struct ThreadMessageId(pub i64);
 
 #[derive(Copy, Clone, Debug, Type)]
 #[sqlx(transparent)]
-pub struct PatToken(pub i64);
+pub struct PatTokenPart(pub i64);
 
 use crate::models::ids;
 

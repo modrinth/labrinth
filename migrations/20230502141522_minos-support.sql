@@ -15,7 +15,7 @@ ALTER TABLE users ADD CONSTRAINT kratos_id_unique UNIQUE (kratos_id);
 CREATE TABLE pats (
     id BIGINT PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id),
-    access_token BIGINT NOT NULL,
+    access_token VARCHAR(64) NOT NULL,
     scope VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NOT NULL

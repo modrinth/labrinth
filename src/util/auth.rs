@@ -85,8 +85,6 @@ pub async fn get_minos_user(cookies: &str) -> Result<MinosUser, AuthenticationEr
         .get(dotenvy::var("MINOS_URL").unwrap() + "/user")
         .header(reqwest::header::USER_AGENT, "Modrinth")
         .header(reqwest::header::COOKIE, cookies);
-
-    dbg!("Hello111", &cookies);
     let res = req.send().await?;
 
     let res = match res.status() {
@@ -94,9 +92,6 @@ pub async fn get_minos_user(cookies: &str) -> Result<MinosUser, AuthenticationEr
         reqwest::StatusCode::UNAUTHORIZED => return Err(AuthenticationError::InvalidCredentials),
         _ => res.error_for_status()?,
     };
-
-    dbg!("Hello");
-    dbg!(&res);
     Ok(res.json().await?)
 }
 
