@@ -132,7 +132,7 @@ generate_ids!(
 generate_ids!(
     pub generate_pat_token,
     PatToken,
-    64,
+    11,
     "SELECT EXISTS(SELECT 1 FROM pats WHERE access_token=$1)",
     PatToken
 );

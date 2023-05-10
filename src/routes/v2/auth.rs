@@ -139,7 +139,6 @@ pub async fn init(
         "{kratos_url}/self-service/login/browser?return_to=http://{labrinth_url}/v2/auth/callback?state={}",
             to_base62(state.0 as u64)
     );
-    println!("url: {}", url);
     Ok(HttpResponse::TemporaryRedirect()
         .append_header(("Location", &*url))
         .json(AuthorizationInit { url }))
@@ -154,7 +153,6 @@ pub async fn auth_callback(
     let mut transaction = client.begin().await?;
     let state_id = parse_base62(&state.state)?;
 
-    println!("state_id: {}", state_id);
     let result_option = sqlx::query!(
         "
             SELECT url, expires FROM states
@@ -165,15 +163,12 @@ pub async fn auth_callback(
     .fetch_optional(&mut *transaction)
     .await?;
 
-    println!("result_option: {:?}", result_option);
     // Extract cookie header from request
     let cookie_header = req.headers().get("Cookie");
-    println!("cookie_header: {:?}", cookie_header);
     if let Some(result) = result_option {
         if let Some(cookie_header) = cookie_header {
             // Extract cookie header to get authenticated user from Minos
             let duration: chrono::Duration = result.expires - Utc::now();
-            println!("duration: {}", duration.num_seconds());
             if duration.num_seconds() < 0 {
                 return Err(AuthorizationError::InvalidCredentials);
             }
@@ -188,16 +183,12 @@ pub async fn auth_callback(
             .execute(&mut *transaction)
             .await?;
 
-            println!("result.url: {}", result.url);
-
             // Use extracted cookie header to get authenticated user from Minos
             // TODO: check here
             let user_result =
                 get_user_record_from_token_cookies(None, Some(cookie_header), &mut transaction)
                     .await?;
-            // let user = get_minos_user_from_headers(None, cookie_header).await?;
 
-            println!("user_result: ");
             // Cookies exist, but user does not exist in database, meaning they are new, invalid, or have been banned
             if user_result.is_none() {
                 // Attempt to create a minos user from the cookie header- if this fails, the user is invalid

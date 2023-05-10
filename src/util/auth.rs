@@ -1,5 +1,6 @@
 use crate::database;
 use crate::database::models::project_item::QueryProject;
+use crate::database::models::user_item;
 use crate::database::models::version_item::QueryVersion;
 use crate::database::{models, Project, Version};
 use crate::models::users::{Badges, Role, User, UserId, UserPayoutData};
@@ -8,6 +9,7 @@ use crate::Utc;
 use actix_web::http::header::HeaderMap;
 use actix_web::http::header::COOKIE;
 use actix_web::web;
+use reqwest::header::AUTHORIZATION;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -29,6 +31,8 @@ pub enum AuthenticationError {
     Decoding(#[from] crate::models::ids::DecodingError),
     #[error("Invalid Authentication Credentials")]
     InvalidCredentials,
+    #[error("Authentication method was not valid")]
+    InvalidAuthMethod,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -82,8 +86,14 @@ pub async fn get_minos_user(cookies: &str) -> Result<MinosUser, AuthenticationEr
         .header(reqwest::header::USER_AGENT, "Modrinth")
         .header(reqwest::header::COOKIE, cookies);
 
-    dbg!("Hello111", &req);
-    let res = req.send().await?.error_for_status()?;
+    dbg!("Hello111", &cookies);
+    let res = req.send().await?;
+
+    let res = match res.status() {
+        reqwest::StatusCode::OK => res,
+        reqwest::StatusCode::UNAUTHORIZED => return Err(AuthenticationError::InvalidCredentials),
+        _ => res.error_for_status()?,
+    };
 
     dbg!("Hello");
     dbg!(&res);
@@ -102,7 +112,7 @@ where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
     match (token, cookies) {
-        (Some(token), _) => Ok(get_user_from_pat(
+        (Some(token), _) => Ok(get_user_record_from_bearer_token(
             token
                 .to_str()
                 .map_err(|_| AuthenticationError::InvalidCredentials)?,
@@ -119,7 +129,7 @@ where
 
             Ok(models::User::get_from_minos_kratos_id(minos_user.id, executor).await?)
         }
-        _ => Err(AuthenticationError::InvalidCredentials), // No credentials passed
+        _ => Err(AuthenticationError::InvalidAuthMethod), // No credentials passed
     }
 }
 
@@ -130,7 +140,7 @@ pub async fn get_user_from_headers<'a, 'b, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
-    let token: Option<&reqwest::header::HeaderValue> = headers.get("Authorization");
+    let token: Option<&reqwest::header::HeaderValue> = headers.get(AUTHORIZATION);
     let cookies_unparsed: Option<&reqwest::header::HeaderValue> = headers.get(COOKIE);
 
     let db_user = get_user_record_from_token_cookies(token, cookies_unparsed, executor).await?;
@@ -156,6 +166,28 @@ where
             }),
         }),
         None => Err(AuthenticationError::InvalidCredentials),
+    }
+}
+
+pub async fn get_user_record_from_bearer_token<'a, 'b, E>(
+    token: &str,
+    executor: E,
+) -> Result<Option<user_item::User>, AuthenticationError>
+where
+    E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+{
+    if token.starts_with("Bearer ") {
+        let token: &str = token.trim_start_matches("Bearer ");
+
+        // Tokens beginning with Ory are considered to be Kratos tokens (extracted cookies) and forwarded to Minos
+        let possible_user = match token.split_at(4) {
+            ("mod_", _) => get_user_from_pat(token, executor).await?,
+            // TODO: forward Ory tokens directly to Minos
+            _ => return Err(AuthenticationError::InvalidAuthMethod),
+        };
+        Ok(possible_user)
+    } else {
+        Err(AuthenticationError::InvalidAuthMethod)
     }
 }
 

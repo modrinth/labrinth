@@ -6,10 +6,12 @@ Just as a summary: Don't implement this flow in your application!
 */
 
 use crate::database;
-use crate::database::models::UserId;
-use crate::models::ids::base62_impl::parse_base62;
+use crate::database::models::{PatToken, UserId};
+use crate::models::ids::base62_impl::{parse_base62};
+
 
 use crate::models::users::{self, Badges, RecipientType, RecipientWallet};
+
 
 use chrono::{NaiveDateTime, Utc};
 
@@ -26,7 +28,17 @@ pub struct PersonalAccessToken {
     pub expires_at: NaiveDateTime,
 }
 
-// Check if a PAT is valid, and if so, return the username of the user it belongs to.
+pub fn extract_pat_id_from_str(pat: &str) -> Result<PatToken, AuthenticationError> {
+    // If the PAT starts with "mod_", then we remove it and parse the rest as a base62 number
+    let access_token_id = if pat.starts_with("mod_") && pat.len() > 4 {
+        parse_base62(&pat[4..])? as i64
+    } else {
+        parse_base62(pat)? as i64
+    };
+    Ok(PatToken(access_token_id))
+}
+
+// Find user from PAT token
 // Separate to user_items as it may yet include further behaviour.
 pub async fn get_user_from_pat<'a, E>(
     access_token: &str,
@@ -35,8 +47,7 @@ pub async fn get_user_from_pat<'a, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
-    let access_id = parse_base62(access_token)? as i64;
-
+    let access_token_id = extract_pat_id_from_str(access_token)?;
     let row = sqlx::query!(
         "
                 SELECT pats.expires_at,
@@ -48,7 +59,7 @@ where
                 FROM pats LEFT OUTER JOIN users u ON pats.user_id = u.id
                 WHERE access_token = $1
                 ",
-        access_id
+        access_token_id.0
     )
     .fetch_optional(executor)
     .await?;
@@ -56,6 +67,7 @@ where
         if row.expires_at < Utc::now().naive_utc() {
             return Ok(None);
         }
+
         return Ok(Some(database::models::User {
             id: UserId(row.id),
             kratos_id: row.kratos_id,
