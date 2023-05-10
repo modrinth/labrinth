@@ -37,6 +37,7 @@ impl Default for Badges {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct User {
     pub id: UserId,
+    pub kratos_id: String,
     pub github_id: Option<u64>,
     pub username: String,
     pub name: Option<String>,
@@ -130,6 +131,7 @@ impl From<DBUser> for User {
     fn from(data: DBUser) -> Self {
         Self {
             id: data.id.into(),
+            kratos_id: data.kratos_id,
             github_id: data.github_id.map(|i| i as u64),
             username: data.username,
             name: data.name,

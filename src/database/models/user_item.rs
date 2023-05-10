@@ -5,6 +5,7 @@ use rust_decimal::Decimal;
 
 pub struct User {
     pub id: UserId,
+    pub kratos_id: String,
     pub github_id: Option<i64>,
     pub username: String,
     pub name: Option<String>,
@@ -28,15 +29,16 @@ impl User {
         sqlx::query!(
             "
             INSERT INTO users (
-                id, github_id, username, name, email,
+                id, kratos_id, github_id, username, name, email,
                 avatar_url, bio, created
             )
             VALUES (
                 $1, $2, $3, $4, $5,
-                $6, $7, $8
+                $6, $7, $8, $9
             )
             ",
             self.id as UserId,
+            self.kratos_id,
             self.github_id,
             &self.username,
             self.name.as_ref(),
@@ -59,8 +61,8 @@ impl User {
             .map(|x| x.into_iter().next())
     }
 
-    pub async fn get_from_github_id<'a, 'b, E>(
-        github_id: u64,
+    pub async fn get_from_minos_kratos_id<'a, 'b, E>(
+        kratos_id: String,
         executor: E,
     ) -> Result<Option<Self>, sqlx::error::Error>
     where
@@ -68,15 +70,15 @@ impl User {
     {
         let result = sqlx::query!(
             "
-            SELECT u.id, u.name, u.email,
+            SELECT u.id, u.name, u.kratos_id, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address
+                u.payout_address, u.github_id
             FROM users u
-            WHERE u.github_id = $1
+            WHERE u.kratos_id = $1
             ",
-            github_id as i64,
+            kratos_id as String,
         )
         .fetch_optional(executor)
         .await?;
@@ -84,7 +86,8 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id: UserId(row.id),
-                github_id: Some(github_id as i64),
+                kratos_id: row.kratos_id,
+                github_id: row.github_id,
                 name: row.name,
                 email: row.email,
                 avatar_url: row.avatar_url,
@@ -114,7 +117,7 @@ impl User {
     {
         let result = sqlx::query!(
             "
-            SELECT u.id, u.github_id, u.name, u.email,
+            SELECT u.id, u.kratos_id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
@@ -130,6 +133,7 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id: UserId(row.id),
+                kratos_id: row.kratos_id,
                 github_id: row.github_id,
                 name: row.name,
                 email: row.email,
@@ -160,7 +164,7 @@ impl User {
         let user_ids_parsed: Vec<i64> = user_ids.iter().map(|x| x.0).collect();
         let users = sqlx::query!(
             "
-            SELECT u.id, u.github_id, u.name, u.email,
+            SELECT u.id, u.kratos_id, u.github_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
@@ -174,6 +178,7 @@ impl User {
         .try_filter_map(|e| async {
             Ok(e.right().map(|u| User {
                 id: UserId(u.id),
+                kratos_id: u.kratos_id,
                 github_id: u.github_id,
                 name: u.name,
                 email: u.email,
