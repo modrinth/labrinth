@@ -1,5 +1,5 @@
 use super::ids::{ProjectId, UserId};
-use crate::{models::{users::{Badges, RecipientType, RecipientWallet}, ids::base62_impl::parse_base62}, util::auth::AuthenticationError};
+use crate::models::users::{Badges, RecipientType, RecipientWallet};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 

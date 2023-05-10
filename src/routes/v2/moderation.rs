@@ -73,7 +73,7 @@ pub async fn ban_user(
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
     sqlx::query!(
-        "INSERT INTO banned_users (username) VALUES ($1);",
+        "INSERT INTO banned_users (user_id) SELECT id FROM users WHERE username = $1;",
         username.username
     )
     .execute(&**pool)
@@ -91,7 +91,7 @@ pub async fn unban_user(
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
 
     sqlx::query!(
-        "DELETE FROM banned_users WHERE username = $1;",
+        "DELETE FROM banned_users WHERE user_id = (SELECT id FROM users WHERE username = $1);",
         username.username
     )
     .execute(&**pool)

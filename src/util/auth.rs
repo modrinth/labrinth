@@ -10,11 +10,10 @@ use actix_web::http::header::COOKIE;
 use actix_web::web;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, pool};
+use sqlx::PgPool;
 use thiserror::Error;
 
 use super::pat::get_user_from_pat;
-
 
 #[derive(Error, Debug)]
 pub enum AuthenticationError {
@@ -32,13 +31,18 @@ pub enum AuthenticationError {
     InvalidCredentials,
 }
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MinosUser {
-    pub id: String, // This is the unique generated Ory name
-    pub name: Option<String>,
-    pub email: Option<String>,
+    pub id: String,       // This is the unique generated Ory name
+    pub username: String, // unique username
+    pub email: String,
+    pub name: Option<String>, // real name
     pub github_id: Option<i64>,
+    pub discord_id: Option<String>,
+    pub google_id: Option<String>,
+    pub gitlab_id: Option<String>,
+    pub microsoft_id: Option<String>,
+    pub apple_id: Option<String>,
 }
 
 // Insert a new user into the database from a MinosUser without a corresponding entry
@@ -46,22 +50,15 @@ pub async fn insert_new_user(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     minos_user: MinosUser,
 ) -> Result<(), AuthenticationError> {
-    let user_id =
-        crate::database::models::generate_user_id(transaction).await?;
-
-    // TODO: username should reflect a real addable username, not just this dummy one for new accounts
-    let username = minos_user
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("modrinth-{}", user_id.0));
+    let user_id = crate::database::models::generate_user_id(transaction).await?;
 
     database::models::User {
         id: user_id,
         github_id: minos_user.github_id,
         kratos_id: minos_user.id,
-        username,
+        username: minos_user.username,
         name: minos_user.name,
-        email: minos_user.email,
+        email: Some(minos_user.email),
         avatar_url: None,
         bio: None,
         created: Utc::now(),
@@ -79,11 +76,9 @@ pub async fn insert_new_user(
 }
 
 // pass the cookies to Minos to get the user.
-pub async fn get_minos_user(
-    cookies: &str,
-) -> Result<MinosUser, AuthenticationError> {
+pub async fn get_minos_user(cookies: &str) -> Result<MinosUser, AuthenticationError> {
     let req = reqwest::Client::new()
-        .get(dotenvy::var("MINOS_URL").unwrap() + "/user/session")
+        .get(dotenvy::var("MINOS_URL").unwrap() + "/user")
         .header(reqwest::header::USER_AGENT, "Modrinth")
         .header(reqwest::header::COOKIE, cookies);
 
@@ -95,7 +90,6 @@ pub async fn get_minos_user(
     Ok(res.json().await?)
 }
 
-
 // Extract database from oprtional token and cookie headers
 // If both are present, token is used
 // If neither are present, InvalidCredentials is returned
@@ -103,26 +97,27 @@ pub async fn get_user_record_from_token_cookies<'a, E>(
     token: Option<&reqwest::header::HeaderValue>,
     cookies: Option<&reqwest::header::HeaderValue>,
     executor: E,
-)
- -> Result<Option<models::User>, AuthenticationError> 
-where         
-E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-
+) -> Result<Option<models::User>, AuthenticationError>
+where
+    E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
-
     match (token, cookies) {
-        (Some(token), _) => {
-            Ok(get_user_from_pat(token
+        (Some(token), _) => Ok(get_user_from_pat(
+            token
                 .to_str()
-                .map_err(|_| AuthenticationError::InvalidCredentials)?, executor).await?)
-        }
+                .map_err(|_| AuthenticationError::InvalidCredentials)?,
+            executor,
+        )
+        .await?),
         (_, Some(cookies)) => {
-            let minos_user= get_minos_user(cookies
-                .to_str()
-                .map_err(|_| AuthenticationError::InvalidCredentials)?).await?;
+            let minos_user = get_minos_user(
+                cookies
+                    .to_str()
+                    .map_err(|_| AuthenticationError::InvalidCredentials)?,
+            )
+            .await?;
 
-            
-                Ok(models::User::get_from_minos_kratos_id(minos_user.id, executor).await?)
+            Ok(models::User::get_from_minos_kratos_id(minos_user.id, executor).await?)
         }
         _ => Err(AuthenticationError::InvalidCredentials), // No credentials passed
     }
@@ -135,12 +130,10 @@ pub async fn get_user_from_headers<'a, 'b, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
-    let token: Option<&reqwest::header::HeaderValue> =
-        headers.get("Authorization");
-    let cookies_unparsed: Option<&reqwest::header::HeaderValue> =
-        headers.get(COOKIE);
+    let token: Option<&reqwest::header::HeaderValue> = headers.get("Authorization");
+    let cookies_unparsed: Option<&reqwest::header::HeaderValue> = headers.get(COOKIE);
 
-    let db_user =  get_user_record_from_token_cookies(token, cookies_unparsed, executor).await?;
+    let db_user = get_user_record_from_token_cookies(token, cookies_unparsed, executor).await?;
 
     match db_user {
         Some(result) => Ok(User {
