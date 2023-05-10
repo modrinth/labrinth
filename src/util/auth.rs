@@ -42,11 +42,11 @@ pub struct MinosUser {
     pub email: String,
     pub name: Option<String>, // real name
     pub github_id: Option<i64>,
-    pub discord_id: Option<String>,
-    pub google_id: Option<String>,
-    pub gitlab_id: Option<String>,
-    pub microsoft_id: Option<String>,
-    pub apple_id: Option<String>,
+    pub discord_id: Option<i64>,
+    pub google_id: Option<i64>,
+    pub gitlab_id: Option<i64>,
+    pub microsoft_id: Option<i64>,
+    pub apple_id: Option<i64>,
 }
 
 // Insert a new user into the database from a MinosUser without a corresponding entry

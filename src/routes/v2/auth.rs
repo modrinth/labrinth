@@ -100,7 +100,7 @@ pub struct StateResponse {
 }
 
 // Init link takes us to Minos API and calls back to callback endpoint with a code and state
-//http://localhost:8000/api/v1/auth/init?url=https%3A%2F%2Fmodrinth.com%2Fmods
+//http://<URL>:8000/api/v1/auth/init?url=https%3A%2F%2Fmodrinth.com%2Fmods
 #[get("init")]
 pub async fn init(
     Query(info): Query<AuthorizationInit>, // callback url
