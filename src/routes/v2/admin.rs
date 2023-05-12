@@ -1,6 +1,7 @@
 use crate::models::ids::ProjectId;
 use crate::models::projects::MonetizationStatus;
 use crate::routes::ApiError;
+use crate::util::auth::{insert_new_user, MinosUser};
 use crate::util::guards::admin_key_guard;
 use crate::DownloadQueue;
 use actix_web::{patch, post, web, HttpResponse};
@@ -8,6 +9,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::json;
+use serde_with::serde_as;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,8 +18,57 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("admin")
             .service(count_download)
+            .service(add_minos_user)
             .service(process_payout),
     );
+}
+
+use serde_with::DisplayFromStr;
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct MinosUserUnparsed {
+    pub id: String,       // This is the unique generated Ory name
+    pub username: String, // unique username
+    pub email: String,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub github_id: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub discord_id: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub google_id: Option<i128>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub gitlab_id: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub microsoft_id: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub apple_id: Option<i64>,
+}
+// Adds a Minos user to the database
+// This is an internal endpoint, and should not be used by applications, only by the Minos backend
+#[post("minos-user-callback", guard = "admin_key_guard")]
+pub async fn add_minos_user(
+    minos_user: web::Json<MinosUserUnparsed>, // getting directly from Kratos rather than Minos, so unparse
+    client: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    // Convert MinosUserUnparsed to MinosUser
+    let minos_user = minos_user.into_inner();
+    let minos_user = MinosUser {
+        id: minos_user.id,
+        username: minos_user.username,
+        email: minos_user.email,
+        name: None, // TODO: Minos extract OIDC name and pass
+        github_id: minos_user.github_id,
+        discord_id: minos_user.discord_id,
+        google_id: minos_user.google_id,
+        gitlab_id: minos_user.gitlab_id,
+        microsoft_id: minos_user.microsoft_id,
+        apple_id: minos_user.apple_id,
+    };
+    let mut transaction = client.begin().await?;
+    insert_new_user(&mut transaction, minos_user).await?;
+    transaction.commit().await?;
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[derive(Deserialize)]

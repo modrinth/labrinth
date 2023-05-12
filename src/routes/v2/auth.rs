@@ -14,9 +14,7 @@ use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
 
 use crate::parse_strings_from_var;
-use crate::util::auth::{
-    self, get_minos_user, get_user_record_from_token_cookies, AuthenticationError,
-};
+use crate::util::auth::{get_minos_user, get_user_record_from_token_cookies, AuthenticationError};
 
 use actix_web::http::StatusCode;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
@@ -51,6 +49,8 @@ pub enum AuthorizationError {
     Decoding(#[from] DecodingError),
     #[error("Invalid callback URL specified")]
     Url,
+    #[error("User exists in Minos but not in Labrinth")]
+    DatabaseMismatch,
     #[error("User is not allowed to access Modrinth services")]
     Banned,
 }
@@ -66,6 +66,7 @@ impl actix_web::ResponseError for AuthorizationError {
             AuthorizationError::Decoding(..) => StatusCode::BAD_REQUEST,
             AuthorizationError::Authentication(..) => StatusCode::UNAUTHORIZED,
             AuthorizationError::Url => StatusCode::BAD_REQUEST,
+            AuthorizationError::DatabaseMismatch => StatusCode::INTERNAL_SERVER_ERROR,
             AuthorizationError::Banned => StatusCode::FORBIDDEN,
         }
     }
@@ -82,6 +83,7 @@ impl actix_web::ResponseError for AuthorizationError {
                 AuthorizationError::Decoding(..) => "decoding_error",
                 AuthorizationError::Authentication(..) => "authentication_error",
                 AuthorizationError::Url => "url_error",
+                AuthorizationError::DatabaseMismatch => "database_mismatch",
                 AuthorizationError::Banned => "user_banned",
             },
             description: &self.to_string(),
@@ -93,7 +95,6 @@ impl actix_web::ResponseError for AuthorizationError {
 pub struct AuthorizationInit {
     pub url: String,
 }
-
 #[derive(Serialize, Deserialize)]
 pub struct StateResponse {
     pub state: String,
@@ -171,7 +172,6 @@ pub async fn auth_callback(
             if duration.num_seconds() < 0 {
                 return Err(AuthorizationError::InvalidCredentials);
             }
-
             sqlx::query!(
                 "
                 DELETE FROM states
@@ -188,7 +188,7 @@ pub async fn auth_callback(
                 get_user_record_from_token_cookies(None, Some(cookie_header), &mut transaction)
                     .await?;
 
-            // Cookies exist, but user does not exist in database, meaning they are new, invalid, or have been banned
+            // Cookies exist, but user does not exist in database, meaning they are invalid, or have been banned
             if user_result.is_none() {
                 // Attempt to create a minos user from the cookie header- if this fails, the user is invalid
                 let minos_user = get_minos_user(
@@ -208,10 +208,11 @@ pub async fn auth_callback(
 
                 if banned_user.is_some() {
                     return Err(AuthorizationError::Banned);
+                } else {
+                    // Banned user doesn't exist and does not exist in database, but does in Minos.
+                    // Shouldn't happen without manual database modification
+                    return Err(AuthorizationError::DatabaseMismatch);
                 }
-
-                // New user sent from Minos, we insert into Users!
-                auth::insert_new_user(&mut transaction, minos_user).await?;
             }
             transaction.commit().await?;
 
