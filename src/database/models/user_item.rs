@@ -6,7 +6,6 @@ use rust_decimal::Decimal;
 pub struct User {
     pub id: UserId,
     pub kratos_id: String,
-    pub github_id: Option<i64>,
     pub username: String,
     pub name: Option<String>,
     pub email: Option<String>,
@@ -29,17 +28,16 @@ impl User {
         sqlx::query!(
             "
             INSERT INTO users (
-                id, kratos_id, github_id, username, name, email,
+                id, kratos_id, username, name, email,
                 avatar_url, bio, created
             )
             VALUES (
                 $1, $2, $3, $4, $5,
-                $6, $7, $8, $9
+                $6, $7, $8
             )
             ",
             self.id as UserId,
             self.kratos_id,
-            self.github_id,
             &self.username,
             self.name.as_ref(),
             self.email.as_ref(),
@@ -74,7 +72,7 @@ impl User {
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address, u.github_id
+                u.payout_address
             FROM users u
             WHERE u.kratos_id = $1
             ",
@@ -87,7 +85,6 @@ impl User {
             Ok(Some(User {
                 id: UserId(row.id),
                 kratos_id: row.kratos_id,
-                github_id: row.github_id,
                 name: row.name,
                 email: row.email,
                 avatar_url: row.avatar_url,
@@ -117,7 +114,7 @@ impl User {
     {
         let result = sqlx::query!(
             "
-            SELECT u.id, u.kratos_id, u.github_id, u.name, u.email,
+            SELECT u.id, u.kratos_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
@@ -134,7 +131,6 @@ impl User {
             Ok(Some(User {
                 id: UserId(row.id),
                 kratos_id: row.kratos_id,
-                github_id: row.github_id,
                 name: row.name,
                 email: row.email,
                 avatar_url: row.avatar_url,
@@ -164,7 +160,7 @@ impl User {
         let user_ids_parsed: Vec<i64> = user_ids.iter().map(|x| x.0).collect();
         let users = sqlx::query!(
             "
-            SELECT u.id, u.kratos_id, u.github_id, u.name, u.email,
+            SELECT u.id, u.kratos_id, u.name, u.email,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
@@ -179,7 +175,6 @@ impl User {
             Ok(e.right().map(|u| User {
                 id: UserId(u.id),
                 kratos_id: u.kratos_id,
-                github_id: u.github_id,
                 name: u.name,
                 email: u.email,
                 avatar_url: u.avatar_url,

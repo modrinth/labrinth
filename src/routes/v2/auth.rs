@@ -8,13 +8,13 @@ and versions) should include the Ory authentication cookie in their requests. Th
 Just as a summary: Don't implement this flow in your application!
 */
 
-use crate::database::models::generate_state_id;
+use crate::database::models::{self, generate_state_id};
 use crate::models::error::ApiError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
 
 use crate::parse_strings_from_var;
-use crate::util::auth::{get_minos_user, get_user_record_from_token_cookies, AuthenticationError};
+use crate::util::auth::{get_minos_user_from_cookies, AuthenticationError};
 
 use actix_web::http::StatusCode;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
@@ -151,7 +151,7 @@ pub async fn auth_callback(
     client: Data<PgPool>,
 ) -> Result<HttpResponse, AuthorizationError> {
     let mut transaction = client.begin().await?;
-    let state_id = parse_base62(&state.state)?;
+    let state_id: u64 = parse_base62(&state.state)?;
 
     let result_option = sqlx::query!(
         "
@@ -182,22 +182,19 @@ pub async fn auth_callback(
             .execute(&mut *transaction)
             .await?;
 
-            // Use extracted cookie header to get authenticated user from Minos
-            // TODO: check here
+            // Attempt to create a minos user from the cookie header- if this fails, the user is invalid
+            let minos_user = get_minos_user_from_cookies(
+                cookie_header
+                    .to_str()
+                    .map_err(|_| AuthenticationError::InvalidCredentials)?,
+            )
+            .await?;
             let user_result =
-                get_user_record_from_token_cookies(None, Some(cookie_header), &mut transaction)
+                models::User::get_from_minos_kratos_id(minos_user.id.clone(), &mut transaction)
                     .await?;
 
             // Cookies exist, but user does not exist in database, meaning they are invalid, or have been banned
             if user_result.is_none() {
-                // Attempt to create a minos user from the cookie header- if this fails, the user is invalid
-                let minos_user = get_minos_user(
-                    cookie_header
-                        .to_str()
-                        .map_err(|_| AuthenticationError::InvalidCredentials)?,
-                )
-                .await?;
-
                 // Check if user is banned
                 let banned_user = sqlx::query!(
                     "SELECT user FROM banned_users bu LEFT OUTER JOIN users u ON bu.user_id = u.id WHERE u.kratos_id = $1",

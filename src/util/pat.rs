@@ -22,7 +22,7 @@ pub struct PersonalAccessToken {
     pub user_id: users::UserId,
     pub expires_at: NaiveDateTime,
 }
-// Find user from PAT token
+// Find database user from PAT token
 // Separate to user_items as it may yet include further behaviour.
 pub async fn get_user_from_pat<'a, E>(
     access_token: &str,
@@ -38,7 +38,7 @@ where
                     u.avatar_url, u.username, u.bio,
                     u.created, u.role, u.badges,
                     u.balance, u.payout_wallet, u.payout_wallet_type,
-                    u.payout_address, u.github_id
+                    u.payout_address
                 FROM pats LEFT OUTER JOIN users u ON pats.user_id = u.id
                 WHERE access_token = $1
                 ",
@@ -54,7 +54,6 @@ where
         return Ok(Some(database::models::User {
             id: UserId(row.id),
             kratos_id: row.kratos_id,
-            github_id: row.github_id,
             name: row.name,
             email: row.email,
             avatar_url: row.avatar_url,
