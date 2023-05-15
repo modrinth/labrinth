@@ -22,7 +22,7 @@ pub struct PersonalAccessToken {
     pub user_id: users::UserId,
     pub expires_at: NaiveDateTime,
 }
-// Find user from PAT token
+// Find database user from PAT token
 // Separate to user_items as it may yet include further behaviour.
 pub async fn get_user_from_pat<'a, E>(
     access_token: &str,

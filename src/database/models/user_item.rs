@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 
 pub struct User {
     pub id: UserId,
-    pub kratos_id: String,
+    pub kratos_id: Option<String>, // None if legacy user unconnected to Minos/Kratos
     pub github_id: Option<i64>,
     pub username: String,
     pub name: Option<String>,
@@ -52,6 +52,7 @@ impl User {
 
         Ok(())
     }
+
     pub async fn get<'a, 'b, E>(id: UserId, executor: E) -> Result<Option<Self>, sqlx::error::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
@@ -59,6 +60,53 @@ impl User {
         Self::get_many(&[id], executor)
             .await
             .map(|x| x.into_iter().next())
+    }
+
+    pub async fn get_from_github_id<'a, 'b, E>(
+        github_id: u64,
+        executor: E,
+    ) -> Result<Option<Self>, sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT u.id, u.name, u.email, u.kratos_id,
+                u.avatar_url, u.username, u.bio,
+                u.created, u.role, u.badges,
+                u.balance, u.payout_wallet, u.payout_wallet_type,
+                u.payout_address
+            FROM users u
+            WHERE u.github_id = $1
+            ",
+            github_id as i64,
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        if let Some(row) = result {
+            Ok(Some(User {
+                id: UserId(row.id),
+                github_id: Some(github_id as i64),
+                name: row.name,
+                email: row.email,
+                kratos_id: row.kratos_id,
+                avatar_url: row.avatar_url,
+                username: row.username,
+                bio: row.bio,
+                created: row.created,
+                role: row.role,
+                badges: Badges::from_bits(row.badges as u64).unwrap_or_default(),
+                balance: row.balance,
+                payout_wallet: row.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
+                payout_wallet_type: row
+                    .payout_wallet_type
+                    .map(|x| RecipientType::from_string(&x)),
+                payout_address: row.payout_address,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn get_from_minos_kratos_id<'a, 'b, E>(
@@ -518,5 +566,29 @@ impl User {
 
             Ok(id.map(|x| UserId(x.id)))
         }
+    }
+
+    pub async fn merge_minos_user<'a, 'b, E>(
+        &self,
+        kratos_id: &str,
+        executor: E,
+    ) -> Result<(), sqlx::error::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        // If the user exists, link the Minos user into the existing user rather tham create a new one
+        sqlx::query!(
+            "
+            UPDATE users
+            SET kratos_id = $1
+            WHERE (id = $2)
+        ",
+            kratos_id,
+            self.id.0,
+        )
+        .execute(executor)
+        .await?;
+
+        Ok(())
     }
 }
