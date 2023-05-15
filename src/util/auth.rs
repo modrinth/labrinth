@@ -61,10 +61,9 @@ pub struct MinosNewUser {
     pub email: String,
 
     pub name: Option<String>, // real name
+    pub default_picture: Option<String>, // uri of default avatar
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub github_id: Option<i64>, // we allow Github to be submitted to connect to an existing account
-    pub default_bio: Option<String>,
-    pub default_avatar: Option<String>,
 }
 
 // Attempt to append a Minos user to an existing user, if one exists
@@ -107,8 +106,8 @@ pub async fn insert_new_user(
         username: minos_new_user.username,
         name: minos_new_user.name,
         email: Some(minos_new_user.email),
-        avatar_url: minos_new_user.default_avatar,
-        bio: minos_new_user.default_bio,
+        avatar_url: minos_new_user.default_picture,
+        bio: None,
         github_id: minos_new_user.github_id,
         created: Utc::now(),
         role: Role::Developer.to_string(),
