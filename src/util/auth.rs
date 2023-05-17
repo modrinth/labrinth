@@ -60,7 +60,7 @@ pub struct MinosNewUser {
     pub username: String, // unique username
     pub email: String,
 
-    pub name: Option<String>, // real name
+    pub name: Option<String>,            // real name
     pub default_picture: Option<String>, // uri of default avatar
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub github_id: Option<i64>, // we allow Github to be submitted to connect to an existing account
