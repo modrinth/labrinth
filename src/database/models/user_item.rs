@@ -117,7 +117,7 @@ impl User {
     {
         let result = sqlx::query!(
             "
-            SELECT u.id, u.name, u.kratos_id, u.email,
+            SELECT u.id, u.name, u.kratos_id, u.email, u.github_id,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
@@ -134,6 +134,7 @@ impl User {
             Ok(Some(User {
                 id: UserId(row.id),
                 kratos_id: row.kratos_id,
+                github_id: row.github_id,
                 name: row.name,
                 email: row.email,
                 avatar_url: row.avatar_url,
@@ -163,7 +164,7 @@ impl User {
     {
         let result = sqlx::query!(
             "
-            SELECT u.id, u.kratos_id, u.name, u.email,
+            SELECT u.id, u.kratos_id, u.name, u.email, u.github_id,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
@@ -180,6 +181,7 @@ impl User {
             Ok(Some(User {
                 id: UserId(row.id),
                 kratos_id: row.kratos_id,
+                github_id: row.github_id,
                 name: row.name,
                 email: row.email,
                 avatar_url: row.avatar_url,
@@ -209,7 +211,7 @@ impl User {
         let user_ids_parsed: Vec<i64> = user_ids.iter().map(|x| x.0).collect();
         let users = sqlx::query!(
             "
-            SELECT u.id, u.kratos_id, u.name, u.email,
+            SELECT u.id, u.kratos_id, u.name, u.email, u.github_id,
                 u.avatar_url, u.username, u.bio,
                 u.created, u.role, u.badges,
                 u.balance, u.payout_wallet, u.payout_wallet_type,
@@ -224,6 +226,7 @@ impl User {
             Ok(e.right().map(|u| User {
                 id: UserId(u.id),
                 kratos_id: u.kratos_id,
+                github_id: u.github_id,
                 name: u.name,
                 email: u.email,
                 avatar_url: u.avatar_url,

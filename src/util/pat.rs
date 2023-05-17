@@ -34,7 +34,7 @@ where
     let row = sqlx::query!(
         "
                 SELECT pats.expires_at,
-                    u.id, u.name, u.kratos_id, u.email,
+                    u.id, u.name, u.kratos_id, u.email, u.github_id,
                     u.avatar_url, u.username, u.bio,
                     u.created, u.role, u.badges,
                     u.balance, u.payout_wallet, u.payout_wallet_type,
@@ -55,6 +55,7 @@ where
             id: UserId(row.id),
             kratos_id: row.kratos_id,
             name: row.name,
+            github_id: row.github_id,
             email: row.email,
             avatar_url: row.avatar_url,
             username: row.username,
