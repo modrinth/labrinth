@@ -15,6 +15,3 @@ CREATE TABLE pats (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NOT NULL
 );
-
--- Drop github_id from users table (offloaded to Minos)
-ALTER TABLE users ALTER COLUMN github_id DROP NOT NULL;
