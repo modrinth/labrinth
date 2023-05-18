@@ -31,7 +31,6 @@ pub async fn add_minos_user(
 ) -> Result<HttpResponse, ApiError> {
     let minos_new_user = minos_user.into_inner();
     let mut transaction = client.begin().await?;
-    println!("Adding user: {:?}", minos_new_user);
     link_or_insert_new_user(&mut transaction, minos_new_user).await?;
     transaction.commit().await?;
     Ok(HttpResponse::Ok().finish())

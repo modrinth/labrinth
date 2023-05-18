@@ -74,13 +74,9 @@ pub async fn link_or_insert_new_user(
 ) -> Result<(), AuthenticationError> {
     // If the user with this Github ID already exists, we can just merge the two accounts
     if let Some(github_id) = minos_new_user.github_id {
-        println!("found github id {github_id}");
-
         if let Some(existing_user) =
             user_item::User::get_from_github_id(github_id as u64, &mut *transaction).await?
         {
-            println!("found github id IN LABRINTH: {github_id}");
-
             existing_user
                 .merge_minos_user(&minos_new_user.id, &mut *transaction)
                 .await?;
