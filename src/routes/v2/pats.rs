@@ -6,7 +6,7 @@ Just as a summary: Don't implement this flow in your application!
 */
 
 use crate::database;
-use crate::database::models::generate_pat_id;
+use crate::database::models::{generate_pat_id};
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 
 use crate::models::users::UserId;
@@ -28,7 +28,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(delete_pat);
 }
 
-
 #[derive(Deserialize)]
 pub struct CreatePersonalAccessToken {
     pub scope: i64, // todo: should be a vec of enum
@@ -36,21 +35,16 @@ pub struct CreatePersonalAccessToken {
     pub expire_in_days: i64, // resets expiry to expire_in_days days from now
 }
 
-
 #[derive(Deserialize)]
 pub struct ModifyPersonalAccessToken {
-    pub access_token: String,
-    #[serde(
-        default,
-        with = "::serde_with::rust::double_option"
-    )]
+    #[serde(default, with = "::serde_with::rust::double_option")]
     pub name: Option<Option<String>>,
-    pub scope: Option<i64>, // todo: should be a vec of enum
     pub expire_in_days: Option<i64>, // resets expiry to expire_in_days days from now
 }
 
 // GET /pat
 // Get all personal access tokens for the given user. Minos/Kratos cookie must be attached for it to work.
+// Does not return the actual access token, only the ID + metadata.
 #[get("pat")]
 pub async fn get_pats(req: HttpRequest, pool: Data<PgPool>) -> Result<HttpResponse, ApiError> {
     let user: crate::models::users::User = get_user_from_headers(req.headers(), &**pool).await?;
@@ -58,7 +52,7 @@ pub async fn get_pats(req: HttpRequest, pool: Data<PgPool>) -> Result<HttpRespon
 
     let pats = sqlx::query!(
         "
-            SELECT id, name, access_token, user_id, scope, expires_at
+            SELECT id, name, user_id, scope, expires_at
             FROM pats
             WHERE user_id = $1
             ",
@@ -74,7 +68,7 @@ pub async fn get_pats(req: HttpRequest, pool: Data<PgPool>) -> Result<HttpRespon
             scope: pat.scope,
             name: pat.name,
             expires_at: pat.expires_at,
-            access_token: pat.access_token,
+            access_token: None,
             user_id: UserId(pat.user_id as u64),
         })
         .collect::<Vec<_>>();
@@ -99,6 +93,11 @@ pub async fn create_pat(
     let pat = generate_pat_id(&mut transaction).await?;
     let access_token = generate_pat(&mut transaction).await?;
     let expiry = Utc::now().naive_utc() + Duration::days(info.expire_in_days);
+    if info.expire_in_days <= 0 {
+        return Err(ApiError::InvalidInput(
+            "'expire_in_days' must be greater than 0".to_string(),
+        ));
+    }
 
     sqlx::query!(
         "
@@ -119,7 +118,7 @@ pub async fn create_pat(
 
     Ok(HttpResponse::Ok().json(PersonalAccessToken {
         id: to_base62(pat.0 as u64),
-        access_token,
+        access_token: Some(access_token),
         name: info.name,
         scope: info.scope,
         user_id: user.id,
@@ -127,37 +126,47 @@ pub async fn create_pat(
     }))
 }
 
-// PATCH /pat
-// Edit an access token for the given user. 'None' will mean not edited. Minos/Kratos cookie must be attached for it to work.
-#[patch("pat")]
+// PATCH /pat/(id)
+// Edit an access token of id "id" for the given user.
+// 'None' will mean not edited. Minos/Kratos cookie or PAT must be attached for it to work.
+#[patch("pat/{id}")]
 pub async fn edit_pat(
     req: HttpRequest,
+    id: web::Path<String>,
     Query(info): Query<ModifyPersonalAccessToken>, // callback url
     pool: Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user: crate::models::users::User = get_user_from_headers(req.headers(), &**pool).await?;
-    let access_token = &info.access_token;
+    let pat_id = database::models::PatId(parse_base62(&id)? as i64);
     let db_user_id: database::models::UserId = database::models::UserId::from(user.id);
+
+    if let Some(expire_in_days) = info.expire_in_days {
+        if expire_in_days <= 0 {
+            return Err(ApiError::InvalidInput(
+                "'expire_in_days' must be greater than 0".to_string(),
+            ));
+        }
+    }
 
     // Get the singular PAT and user combination (failing immediately if it doesn't exist)
     let mut transaction = pool.begin().await?;
     let row = sqlx::query!(
         "
-        SELECT id, name, access_token, scope, user_id, expires_at FROM pats
-        WHERE access_token = $1 AND user_id = $2
+        SELECT id, name, scope, user_id, expires_at FROM pats
+        WHERE id = $1 AND user_id = $2
         ",
-        access_token,
-        db_user_id.0
+        pat_id.0,
+        db_user_id.0 // included for safety
     )
     .fetch_one(&**pool)
     .await?;
 
     let pat = PersonalAccessToken {
         id: to_base62(row.id as u64),
-        access_token: row.access_token,
+        access_token: None,
         user_id: UserId::from(db_user_id),
         name: info.name.unwrap_or(row.name),
-        scope: info.scope.unwrap_or(row.scope),
+        scope: row.scope,
         expires_at: info
             .expire_in_days
             .map(|d| Utc::now().naive_utc() + Duration::days(d))
@@ -167,15 +176,11 @@ pub async fn edit_pat(
     sqlx::query!(
         "
         UPDATE pats SET
-            access_token = $1,
-            scope = $2,
-            user_id = $3,
-            expires_at = $4
-        WHERE id = $5
+            name = $1,
+            expires_at = $2
+        WHERE id = $3
         ",
-        &pat.access_token,
-        pat.scope,
-        db_user_id.0,
+        pat.name,
         pat.expires_at,
         parse_base62(&pat.id)? as i64
     )
@@ -188,22 +193,24 @@ pub async fn edit_pat(
 
 // DELETE /pat
 // Delete a personal access token for the given user. Minos/Kratos cookie must be attached for it to work.
-#[delete("pat")]
+#[delete("pat/{id}")]
 pub async fn delete_pat(
     req: HttpRequest,
-    Query(access_token): Query<String>, // callback url
+    id: web::Path<String>,
     pool: Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user: crate::models::users::User = get_user_from_headers(req.headers(), &**pool).await?;
+    let pat_id = database::models::PatId(parse_base62(&id)? as i64);
     let db_user_id: database::models::UserId = database::models::UserId::from(user.id);
 
     // Get the singular PAT and user combination (failing immediately if it doesn't exist)
+    // This is to prevent users from deleting other users' PATs
     let pat_id = sqlx::query!(
         "
         SELECT id FROM pats
-        WHERE access_token = $1 AND user_id = $2
+        WHERE id = $1 AND user_id = $2
         ",
-        access_token,
+        pat_id.0,
         db_user_id.0
     )
     .fetch_one(&**pool)

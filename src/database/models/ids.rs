@@ -203,10 +203,6 @@ pub struct ThreadId(pub i64);
 #[sqlx(transparent)]
 pub struct ThreadMessageId(pub i64);
 
-#[derive(Copy, Clone, Debug, Type)]
-#[sqlx(transparent)]
-pub struct PatTokenPart(pub i64);
-
 use crate::models::ids;
 
 impl From<ids::ProjectId> for ProjectId {

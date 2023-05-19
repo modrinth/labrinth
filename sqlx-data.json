@@ -261,27 +261,6 @@
     },
     "query": "\n            SELECT c.id id, c.category category, c.icon icon, c.header category_header, pt.name project_type\n            FROM categories c\n            INNER JOIN project_types pt ON c.project_type = pt.id\n            ORDER BY c.ordering, c.category\n            "
   },
-  "09311bac894517e8b2aea8e8cf5d99ed8de103a8878b8c2d3d5399eafe7a7640": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n        SELECT id FROM pats\n        WHERE access_token = $1 AND user_id = $2\n        "
-  },
   "0a1a470c12b84c7e171f0f51e8e541e9abe8bbee17fc441a5054e1dfd5607c05": {
     "describe": {
       "columns": [],
@@ -332,6 +311,20 @@
       }
     },
     "query": "\n            INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            "
+  },
+  "0d737f82a07a1cd578c4c14c9f718d872068d17e4b122c60765cbb3328b2378a": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Timestamp",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        UPDATE pats SET\n            name = $1,\n            expires_at = $2\n        WHERE id = $3\n        "
   },
   "0f0244e77f60e69b3ab1320265749656e25da0b021b3df9013a2da470dbc8d46": {
     "describe": {
@@ -591,51 +584,6 @@
       }
     },
     "query": "\n        SELECT EXISTS(SELECT 1 FROM mod_follows mf WHERE mf.follower_id = $1 AND mf.mod_id = $2)\n        "
-  },
-  "10322d884e46d28726a70c9429b2bc71fdd011a3553275ae46c3f65958f897ae": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "access_token",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "scope",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "expires_at",
-          "ordinal": 4,
-          "type_info": "Timestamp"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n        SELECT id, access_token, scope, user_id, expires_at FROM pats\n        WHERE access_token = $1 AND user_id = $2\n        "
   },
   "113bffbd003f0f32eef61468148a51dd9437be841c5b79fdb52dd6c12ebaba61": {
     "describe": {
@@ -1735,49 +1683,22 @@
     },
     "query": "\n            SELECT id FROM side_types\n            WHERE name = $1\n            "
   },
-  "1e899a1f0f6064461bdf2d94b07e4286de501fb68bde57304c24a9131b43e227": {
+  "1ee84c22602345af913657875dfde3208d71101de75955cbb6f18214d16c3d2f": {
     "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "access_token",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "scope",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "expires_at",
-          "ordinal": 4,
-          "type_info": "Timestamp"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
+      "columns": [],
+      "nullable": [],
       "parameters": {
         "Left": [
-          "Int8"
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Int8",
+          "Int8",
+          "Timestamp"
         ]
       }
     },
-    "query": "\n            SELECT id, access_token, user_id, scope, expires_at\n            FROM pats\n            WHERE user_id = $1\n            "
+    "query": "\n            INSERT INTO pats (id, name, access_token, user_id, scope, expires_at)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            "
   },
   "1ffce9b2d5c9fa6c8b9abce4bad9f9419c44ad6367b7463b979c91b9b5b4fea1": {
     "describe": {
@@ -3084,22 +3005,6 @@
     },
     "query": "\n                    SELECT id FROM mods\n                    WHERE status = $1 AND queued < NOW() - INTERVAL '40 hours'\n                    ORDER BY updated ASC\n                    "
   },
-  "55b57dcb376d6d3253010cdacf3bb66db69c4868a304e7cab5a40b52e3c84fe3": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Varchar",
-          "Varchar",
-          "Int8",
-          "Timestamp",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n        UPDATE pats SET\n            access_token = $1,\n            scope = $2,\n            user_id = $3,\n            expires_at = $4\n        WHERE id = $5\n        "
-  },
   "57743e20646dab2bcc02fe555d6b8ddb999697b7e95ec732d1a1a9e2bfdb8181": {
     "describe": {
       "columns": [
@@ -3346,6 +3251,27 @@
       }
     },
     "query": "\n            INSERT INTO dependencies (dependent_id, dependency_type, dependency_id, mod_dependency_id, dependency_file_name)\n            VALUES ($1, $2, $3, $4, $5)\n            "
+  },
+  "603ce7394c4b3e0790bf6a590199c72c50a54304112dc0b7cd91654f6aebf37c": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        SELECT id FROM pats\n        WHERE id = $1 AND user_id = $2\n        "
   },
   "61a7f29e024bf2f1368370e3f6e8ef70317c7e8545b5b6d4235f21164948ba27": {
     "describe": {
@@ -4762,22 +4688,6 @@
     },
     "query": "\n            DELETE FROM mods_categories\n            WHERE joining_mod_id = $1\n            "
   },
-  "a7040bf94bd5d5a2314b3b47356ff50db02da4fc813bd52097c7fae2da6bfa14": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Varchar",
-          "Int8",
-          "Varchar",
-          "Timestamp"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO pats (id, access_token, user_id, scope, expires_at)\n            VALUES ($1, $2, $3, $4, $5)\n            "
-  },
   "a90bb6904e1b790c0e29e060dac5ba4c2a6087e07c1197dc1f59f0aff31944c9": {
     "describe": {
       "columns": [],
@@ -5665,6 +5575,50 @@
       }
     },
     "query": "\n            DELETE FROM reports\n            WHERE mod_id = $1\n            "
+  },
+  "cc58fd2c0aca4576a0fda37e7b2f183a6cda482f24e3cca7b2c6e31cb8d0d728": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "scope",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "expires_at",
+          "ordinal": 4,
+          "type_info": "Timestamp"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT id, name, user_id, scope, expires_at\n            FROM pats\n            WHERE user_id = $1\n            "
   },
   "ccd913bb2f3006ffe881ce2fc4ef1e721d18fe2eed6ac62627046c955129610c": {
     "describe": {
@@ -6712,6 +6666,51 @@
       }
     },
     "query": "\n                        SELECT tm.user_id id\n                        FROM team_members tm\n                        WHERE tm.team_id = $1 AND tm.accepted\n                        "
+  },
+  "ebbd2105c456a9b462a4e5ace356345ff18ad6cbcdfc053afe86948f8f3ae092": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "scope",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "expires_at",
+          "ordinal": 4,
+          "type_info": "Timestamp"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        SELECT id, name, scope, user_id, expires_at FROM pats\n        WHERE id = $1 AND user_id = $2\n        "
   },
   "ebef881a0dae70e990814e567ed3de9565bb29b772782bc974c953af195fd6d7": {
     "describe": {

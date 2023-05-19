@@ -5,6 +5,10 @@ It uses a self-hosted Ory Kratos instance on the backend, powered by our Minos b
  Applications interacting with the authenticated API (a very small portion - notifications, private projects, editing/creating projects
 and versions) should include the Ory authentication cookie in their requests. This cookie is set by the Ory Kratos instance and Minos provides function to access these.
 
+In addition, you can use a logged-in-account to generate a PAT.
+This token can be passed in as a Bearer token in the Authorization header, as an alternative to a cookie.
+This is useful for applications that don't have a frontend, or for applications that need to access the authenticated API on behalf of a user.
+
 Just as a summary: Don't implement this flow in your application!
 */
 
@@ -39,8 +43,8 @@ pub enum AuthorizationError {
     Database(#[from] crate::database::models::DatabaseError),
     #[error("Error while parsing JSON: {0}")]
     SerDe(#[from] serde_json::Error),
-    #[error("Error with intra-network communcation")]
-    Network(#[from] reqwest::Error),
+    #[error("Error with communicating to Minos")]
+    Minos(#[from] reqwest::Error),
     #[error("Invalid Authentication credentials")]
     InvalidCredentials,
     #[error("Authentication Error: {0}")]
@@ -61,7 +65,7 @@ impl actix_web::ResponseError for AuthorizationError {
             AuthorizationError::SqlxDatabase(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthorizationError::Database(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthorizationError::SerDe(..) => StatusCode::BAD_REQUEST,
-            AuthorizationError::Network(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthorizationError::Minos(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthorizationError::InvalidCredentials => StatusCode::UNAUTHORIZED,
             AuthorizationError::Decoding(..) => StatusCode::BAD_REQUEST,
             AuthorizationError::Authentication(..) => StatusCode::UNAUTHORIZED,
@@ -78,7 +82,7 @@ impl actix_web::ResponseError for AuthorizationError {
                 AuthorizationError::SqlxDatabase(..) => "database_error",
                 AuthorizationError::Database(..) => "database_error",
                 AuthorizationError::SerDe(..) => "invalid_input",
-                AuthorizationError::Network(..) => "network_error",
+                AuthorizationError::Minos(..) => "network_error",
                 AuthorizationError::InvalidCredentials => "invalid_credentials",
                 AuthorizationError::Decoding(..) => "decoding_error",
                 AuthorizationError::Authentication(..) => "authentication_error",
