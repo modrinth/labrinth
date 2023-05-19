@@ -28,16 +28,24 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(delete_pat);
 }
 
+
 #[derive(Deserialize)]
 pub struct CreatePersonalAccessToken {
-    pub scope: String,
+    pub scope: i64, // todo: should be a vec of enum
+    pub name: Option<String>,
     pub expire_in_days: i64, // resets expiry to expire_in_days days from now
 }
+
 
 #[derive(Deserialize)]
 pub struct ModifyPersonalAccessToken {
     pub access_token: String,
-    pub scope: Option<String>,
+    #[serde(
+        default,
+        with = "::serde_with::rust::double_option"
+    )]
+    pub name: Option<Option<String>>,
+    pub scope: Option<i64>, // todo: should be a vec of enum
     pub expire_in_days: Option<i64>, // resets expiry to expire_in_days days from now
 }
 
@@ -50,7 +58,7 @@ pub async fn get_pats(req: HttpRequest, pool: Data<PgPool>) -> Result<HttpRespon
 
     let pats = sqlx::query!(
         "
-            SELECT id, access_token, user_id, scope, expires_at
+            SELECT id, name, access_token, user_id, scope, expires_at
             FROM pats
             WHERE user_id = $1
             ",
@@ -64,6 +72,7 @@ pub async fn get_pats(req: HttpRequest, pool: Data<PgPool>) -> Result<HttpRespon
         .map(|pat| PersonalAccessToken {
             id: to_base62(pat.id as u64),
             scope: pat.scope,
+            name: pat.name,
             expires_at: pat.expires_at,
             access_token: pat.access_token,
             user_id: UserId(pat.user_id as u64),
@@ -93,10 +102,11 @@ pub async fn create_pat(
 
     sqlx::query!(
         "
-            INSERT INTO pats (id, access_token, user_id, scope, expires_at)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO pats (id, name, access_token, user_id, scope, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ",
         pat.0,
+        info.name,
         access_token,
         db_user_id.0,
         info.scope,
@@ -110,6 +120,7 @@ pub async fn create_pat(
     Ok(HttpResponse::Ok().json(PersonalAccessToken {
         id: to_base62(pat.0 as u64),
         access_token,
+        name: info.name,
         scope: info.scope,
         user_id: user.id,
         expires_at: expiry,
@@ -132,7 +143,7 @@ pub async fn edit_pat(
     let mut transaction = pool.begin().await?;
     let row = sqlx::query!(
         "
-        SELECT id, access_token, scope, user_id, expires_at FROM pats
+        SELECT id, name, access_token, scope, user_id, expires_at FROM pats
         WHERE access_token = $1 AND user_id = $2
         ",
         access_token,
@@ -145,7 +156,7 @@ pub async fn edit_pat(
         id: to_base62(row.id as u64),
         access_token: row.access_token,
         user_id: UserId::from(db_user_id),
-
+        name: info.name.unwrap_or(row.name),
         scope: info.scope.unwrap_or(row.scope),
         expires_at: info
             .expire_in_days

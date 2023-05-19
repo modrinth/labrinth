@@ -17,8 +17,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub struct PersonalAccessToken {
     pub id: String,
+    pub name: Option<String>,
     pub access_token: String,
-    pub scope: String,
+    pub scope: i64,
     pub user_id: users::UserId,
     pub expires_at: NaiveDateTime,
 }
