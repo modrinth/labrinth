@@ -6,7 +6,7 @@ Just as a summary: Don't implement this flow in your application!
 */
 
 use crate::database;
-use crate::database::models::{generate_pat_id};
+use crate::database::models::generate_pat_id;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 
 use crate::models::users::UserId;

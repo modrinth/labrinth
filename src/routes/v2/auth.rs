@@ -55,8 +55,6 @@ pub enum AuthorizationError {
     Url,
     #[error("User exists in Minos but not in Labrinth")]
     DatabaseMismatch,
-    #[error("User is not allowed to access Modrinth services")]
-    Banned,
 }
 impl actix_web::ResponseError for AuthorizationError {
     fn status_code(&self) -> StatusCode {
@@ -71,7 +69,6 @@ impl actix_web::ResponseError for AuthorizationError {
             AuthorizationError::Authentication(..) => StatusCode::UNAUTHORIZED,
             AuthorizationError::Url => StatusCode::BAD_REQUEST,
             AuthorizationError::DatabaseMismatch => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthorizationError::Banned => StatusCode::FORBIDDEN,
         }
     }
 
@@ -88,7 +85,6 @@ impl actix_web::ResponseError for AuthorizationError {
                 AuthorizationError::Authentication(..) => "authentication_error",
                 AuthorizationError::Url => "url_error",
                 AuthorizationError::DatabaseMismatch => "database_mismatch",
-                AuthorizationError::Banned => "user_banned",
             },
             description: &self.to_string(),
         })
@@ -197,23 +193,9 @@ pub async fn auth_callback(
                 models::User::get_from_minos_kratos_id(minos_user.id.clone(), &mut transaction)
                     .await?;
 
-            // Cookies exist, but user does not exist in database, meaning they are invalid, or have been banned
+            // Cookies exist, but user does not exist in database, meaning they are invalid
             if user_result.is_none() {
-                // Check if user is banned
-                let banned_user = sqlx::query!(
-                    "SELECT user FROM banned_users bu LEFT OUTER JOIN users u ON bu.user_id = u.id WHERE u.kratos_id = $1",
-                    minos_user.id.clone() as String
-                )
-                .fetch_optional(&mut *transaction)
-                .await?;
-
-                if banned_user.is_some() {
-                    return Err(AuthorizationError::Banned);
-                } else {
-                    // Banned user doesn't exist and does not exist in database, but does in Minos.
-                    // Shouldn't happen without manual database modification
                     return Err(AuthorizationError::DatabaseMismatch);
-                }
             }
             transaction.commit().await?;
 

@@ -2035,18 +2035,6 @@
     },
     "query": "\n        SELECT COUNT(v.id)\n        FROM versions v\n        INNER JOIN mods m on v.mod_id = m.id AND m.status = ANY($1)\n        WHERE v.status = ANY($2)\n        "
   },
-  "3167c36a3dafabf6089dba3d32feeb7f0de00678a2cbe0a3ebd5c9a946243dd8": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "INSERT INTO banned_users (user_id) SELECT id FROM users WHERE username = $1;"
-  },
   "320d73cd900a6e00f0e74b7a8c34a7658d16034b01a35558cb42fa9c16185eb5": {
     "describe": {
       "columns": [
@@ -3824,26 +3812,6 @@
       }
     },
     "query": "\n            UPDATE mods\n            SET icon_url = $1, color = $2\n            WHERE (id = $3)\n            "
-  },
-  "73e1749a38925e899a6c4746a864c5886d953526159070702e2ae3de6a68265e": {
-    "describe": {
-      "columns": [
-        {
-          "name": "user",
-          "ordinal": 0,
-          "type_info": "Name"
-        }
-      ],
-      "nullable": [
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "SELECT user FROM banned_users bu LEFT OUTER JOIN users u ON bu.user_id = u.id WHERE u.kratos_id = $1"
   },
   "742f20f422361971c21b72c629c57a6c3870d8d6c41577496907290db5994f12": {
     "describe": {
@@ -7172,18 +7140,6 @@
       }
     },
     "query": "\n            SELECT n.id, n.user_id, n.title, n.text, n.link, n.created, n.read, n.type notification_type, n.body,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', na.id, 'notification_id', na.notification_id, 'title', na.title, 'action_route_method', na.action_route_method, 'action_route', na.action_route)) filter (where na.id is not null) actions\n            FROM notifications n\n            LEFT OUTER JOIN notifications_actions na on n.id = na.notification_id\n            WHERE n.id = ANY($1)\n            GROUP BY n.id, n.user_id\n            ORDER BY n.created DESC;\n            "
-  },
-  "fd3e23e8ee57b018e30fb4f5329c34bac5ff0fa1b080b4163761368c5c3a5797": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "DELETE FROM banned_users WHERE user_id = (SELECT id FROM users WHERE username = $1);"
   },
   "fdfe36dcb85347a3a8228b5d5fc2d017b9baa307b5ae0ae9deaafab9dcdcb74a": {
     "describe": {

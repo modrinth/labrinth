@@ -1,7 +1,5 @@
--- Change banned_users to use username instead of github_id
-ALTER TABLE banned_users ADD COLUMN user_id BIGINT UNIQUE;
-UPDATE banned_users SET user_id = users.id FROM users WHERE banned_users.github_id = users.github_id;
-ALTER TABLE banned_users DROP COLUMN github_id;
+-- No longer have banned users in Labrinth
+DROP TABLE banned_users;
 
 -- Initialize kratos_id 
 ALTER TABLE users ADD COLUMN kratos_id varchar(40) UNIQUE;
