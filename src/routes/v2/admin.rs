@@ -1,10 +1,12 @@
+use crate::database::models::user_item;
 use crate::models::ids::ProjectId;
 use crate::models::projects::MonetizationStatus;
+use crate::models::users::User;
 use crate::routes::ApiError;
 use crate::util::auth::{link_or_insert_new_user, MinosNewUser};
 use crate::util::guards::admin_key_guard;
-use crate::DownloadQueue;
-use actix_web::{patch, post, web, HttpResponse};
+use crate::{models, DownloadQueue};
+use actix_web::{get, patch, post, web, HttpResponse};
 use chrono::{DateTime, SecondsFormat, Utc};
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -18,13 +20,14 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("admin")
             .service(count_download)
             .service(add_minos_user)
+            .service(get_legacy_account)
             .service(process_payout),
     );
 }
 
 // Adds a Minos user to the database
 // This is an internal endpoint, and should not be used by applications, only by the Minos backend
-#[post("minos-user-callback", guard = "admin_key_guard")]
+#[post("_minos-user-callback", guard = "admin_key_guard")]
 pub async fn add_minos_user(
     minos_user: web::Json<MinosNewUser>, // getting directly from Kratos rather than Minos, so unparse
     client: web::Data<PgPool>,
@@ -34,6 +37,23 @@ pub async fn add_minos_user(
     link_or_insert_new_user(&mut transaction, minos_new_user).await?;
     transaction.commit().await?;
     Ok(HttpResponse::Ok().finish())
+}
+
+#[get("_legacy_account/{github_id}", guard = "admin_key_guard")]
+
+pub async fn get_legacy_account(
+    client: web::Data<PgPool>,
+    github_id: web::Path<i32>,
+) -> Result<HttpResponse, ApiError> {
+    println!("Here :)");
+    let github_id = github_id.into_inner();
+    println!("Github id: {}", github_id);
+    let mut transaction = client.begin().await?;
+    let user = user_item::User::get_from_github_id(github_id as u64, &mut *transaction).await?;
+    let user: Option<User> = user.map(|u| u.into());
+    println!("User found");
+    transaction.commit().await?;
+    Ok(HttpResponse::Ok().json(user))
 }
 
 #[derive(Deserialize)]

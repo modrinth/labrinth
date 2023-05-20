@@ -195,7 +195,7 @@ pub async fn auth_callback(
 
             // Cookies exist, but user does not exist in database, meaning they are invalid
             if user_result.is_none() {
-                    return Err(AuthorizationError::DatabaseMismatch);
+                return Err(AuthorizationError::DatabaseMismatch);
             }
             transaction.commit().await?;
 
