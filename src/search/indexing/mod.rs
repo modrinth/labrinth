@@ -204,6 +204,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "featured_gallery",
     "color",
     "dependencies",
+    "loader_game_combos",
 ];
 
 const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["title", "description", "author", "slug"];
@@ -225,6 +226,7 @@ const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "open_source",
     "color",
     "dependencies",
+    "loader_game_combos",
 ];
 
 const DEFAULT_SORTABLE_ATTRIBUTES: &[&str] =

@@ -101,6 +101,8 @@ pub struct UploadSearchProject {
     pub color: Option<u32>,
     /// format: {project_id}-{dep_type}
     pub dependencies: Vec<String>,
+    /// format: {loader_name}-{game_version}
+    pub loader_game_combos: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -138,6 +140,8 @@ pub struct ResultSearchProject {
     pub color: Option<u32>,
     /// format: {project_id}-{dep_type}
     pub dependencies: Vec<String>,
+    /// format: {loader_name}-{game_version}
+    pub loader_game_combos: Vec<String>,
 }
 
 pub async fn search_for_project(
