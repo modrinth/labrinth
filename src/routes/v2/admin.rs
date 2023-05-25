@@ -5,7 +5,7 @@ use crate::models::users::User;
 use crate::routes::ApiError;
 use crate::util::auth::{link_or_insert_new_user, MinosNewUser};
 use crate::util::guards::admin_key_guard;
-use crate::{models, DownloadQueue};
+use crate::DownloadQueue;
 use actix_web::{get, patch, post, web, HttpResponse};
 use chrono::{DateTime, SecondsFormat, Utc};
 use rust_decimal::Decimal;
@@ -42,17 +42,12 @@ pub async fn add_minos_user(
 #[get("_legacy_account/{github_id}", guard = "admin_key_guard")]
 
 pub async fn get_legacy_account(
-    client: web::Data<PgPool>,
+    pool: web::Data<PgPool>,
     github_id: web::Path<i32>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("Here :)");
     let github_id = github_id.into_inner();
-    println!("Github id: {}", github_id);
-    let mut transaction = client.begin().await?;
-    let user = user_item::User::get_from_github_id(github_id as u64, &mut *transaction).await?;
+    let user = user_item::User::get_from_github_id(github_id as u64, &**pool).await?;
     let user: Option<User> = user.map(|u| u.into());
-    println!("User found");
-    transaction.commit().await?;
     Ok(HttpResponse::Ok().json(user))
 }
 
