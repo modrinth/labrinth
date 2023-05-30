@@ -319,6 +319,7 @@ pub async fn get_update_from_hash(
             None,
             None,
             None,
+            None,
             &**pool,
         )
         .await?;

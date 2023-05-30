@@ -395,6 +395,7 @@ impl Version {
         version_type: Option<VersionType>,
         limit: Option<u32>,
         offset: Option<u32>,
+        version_number: Option<String>,
         exec: E,
     ) -> Result<Vec<VersionId>, sqlx::Error>
     where
@@ -409,7 +410,7 @@ impl Version {
             INNER JOIN game_versions gv on gvv.game_version_id = gv.id AND (cardinality($2::varchar[]) = 0 OR gv.version = ANY($2::varchar[]))
             INNER JOIN loaders_versions lv ON lv.version_id = v.id
             INNER JOIN loaders l on lv.loader_id = l.id AND (cardinality($3::varchar[]) = 0 OR l.loader = ANY($3::varchar[]))
-            WHERE v.mod_id = $1 AND ($4::varchar IS NULL OR v.version_type = $4)
+            WHERE v.mod_id = $1 AND ($4::varchar IS NULL OR v.version_type = $4) AND ($7::varchar IS NULL OR v.version_number = $7)
             ORDER BY v.date_published DESC, v.id
             LIMIT $5 OFFSET $6
             ",
@@ -419,6 +420,7 @@ impl Version {
             version_type.map(|x| x.as_str()),
             limit.map(|x| x as i64),
             offset.map(|x| x as i64),
+            version_number,
         )
         .fetch_many(exec)
         .try_filter_map(|e| async { Ok(e.right().map(|v| VersionId(v.version_id))) })

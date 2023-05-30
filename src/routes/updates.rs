@@ -41,6 +41,7 @@ pub async fn forge_updates(
         None,
         None,
         None,
+        None,
         &**pool,
     )
     .await?;
