@@ -27,6 +27,7 @@ pub struct CategoryData {
     name: String,
     project_type: String,
     header: String,
+    description: Option<String>,
 }
 
 // TODO: searching / filtering? Could be used to implement a live
@@ -41,6 +42,7 @@ pub async fn category_list(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiE
             name: x.category,
             project_type: x.project_type,
             header: x.header,
+            description: x.description,
         })
         .collect::<Vec<_>>();
 

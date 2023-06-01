@@ -38,6 +38,7 @@ pub struct Category {
     pub project_type: String,
     pub icon: String,
     pub header: String,
+    pub description: Option<String>,
 }
 
 pub struct ReportType {
@@ -97,7 +98,7 @@ impl Category {
     {
         let result = sqlx::query!(
             "
-            SELECT c.id id, c.category category, c.icon icon, c.header category_header, pt.name project_type
+            SELECT c.id id, c.category category, c.icon icon, c.header category_header, c.description description, pt.name project_type
             FROM categories c
             INNER JOIN project_types pt ON c.project_type = pt.id
             ORDER BY c.ordering, c.category
@@ -110,7 +111,8 @@ impl Category {
                 category: c.category,
                 project_type: c.project_type,
                 icon: c.icon,
-                header: c.category_header
+                header: c.category_header,
+                description: c.description,
             }))
         })
         .try_collect::<Vec<Category>>()
