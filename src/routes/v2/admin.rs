@@ -63,8 +63,6 @@ pub async fn edit_github_id(
         .map_err(|_| ApiError::InvalidInput("Github id must be a number".to_string()))?;
 
     let mut transaction = pool.begin().await?;
-    println!("edit github id");
-    println!("kratos id: {:?}", kratos_id);
     sqlx::query!(
         "
         UPDATE users
@@ -76,7 +74,6 @@ pub async fn edit_github_id(
     )
     .execute(&mut transaction)
     .await?;
-    println!("executed");
     transaction.commit().await?;
     Ok(HttpResponse::Ok().finish())
 }
@@ -90,7 +87,6 @@ pub async fn get_legacy_account(
     let github_id = github_id.into_inner();
     let user = user_item::User::get_from_github_id(github_id as u64, &**pool).await?;
     let user: Option<User> = user.map(|u| u.into());
-    println!("user: {:?}", serde_json::to_string(&user)?);
     Ok(HttpResponse::Ok().json(user))
 }
 
