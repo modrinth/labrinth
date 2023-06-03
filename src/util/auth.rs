@@ -314,9 +314,9 @@ where
 
         // Tokens beginning with Ory are considered to be Kratos tokens (in reality, extracted cookies) and can be forwarded to Minos
         let possible_user = match token.split_once('_') {
-            Some(("mod", _)) => get_user_from_pat(token, executor).await?,
+            Some(("modrinth", _)) => get_user_from_pat(token, executor).await?,
             Some(("ory", _)) => get_user_from_minos_session_token(token, executor).await?,
-            Some(("github", _)) | Some(("gh", _)) => {
+            Some(("github", _)) | Some(("gho", _)) | Some(("ghp", _)) => {
                 get_user_from_github_token(token, executor).await?
             }
             _ => return Err(AuthenticationError::InvalidAuthMethod),
