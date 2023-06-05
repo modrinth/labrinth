@@ -1,3 +1,4 @@
+use crate::database::models::categories::Loader;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::{QueryFile, QueryVersion};
 use crate::models::projects::{ProjectId, VersionId};
@@ -155,39 +156,53 @@ async fn find_version(
     .await?;
 
     if exact_matches.len() == 1 {
-        return Ok(
-            database::models::Version::get_full(
-                database::models::ids::VersionId(exact_matches[0].id),
-                &*pool,
-            )
-            .await?);
-    };
+        return Ok(database::models::Version::get_full(
+            database::models::ids::VersionId(exact_matches[0].id),
+            &*pool,
+        )
+        .await?);
+    }
 
     // Try to parse version filters from version coords.
     let Some((vnumber, filter)) = vcoords.rsplit_once('-') else {
-        return Ok(None);
+        return if exact_matches.len() > 1 {
+            Err(ApiError::InvalidInput("Ambiguous version coordinates".to_string()))
+        } else {
+            Ok(None)
+        };
     };
 
-    // TODO: implement gv filters.
+    let db_loaders: HashSet<String> = Loader::list(&*pool)
+        .await?
+        .into_iter()
+        .map(|x| x.loader)
+        .collect();
+
+    let (loaders, game_versions) = filter
+        .split(",")
+        .map(String::from)
+        .partition(|el| db_loaders.contains(el));
+
     let matched = database::models::Version::get_project_versions(
         project.inner.id.into(),
-        None,
-        Some(vec![filter.to_string()]),
+        Some(game_versions),
+        Some(loaders),
         None,
         Some(2),
         None,
         Some(vnumber.to_string()),
         &*pool,
-    ).await?;
+    )
+    .await?;
 
-    if matched.len() != 1 {
+    if matched.len() == 1 {
+        Ok(database::models::Version::get_full(matched[0].into(), &*pool).await?)
+    } else if matched.len() == 0 {
         Ok(None)
     } else {
-        Ok(database::models::Version::get_full(
-            matched[0].into(),
-            &*pool,
-        )
-        .await?)
+        Err(ApiError::InvalidInput(
+            "Ambiguous version coordinates".to_string(),
+        ))
     }
 }
 
@@ -208,8 +223,7 @@ fn find_file<'a>(
         _ => return None,
     };
 
-    if file == format!("{}-{}.{}", &project_id, &vcoords, fileext)
-    {
+    if file == format!("{}-{}.{}", &project_id, &vcoords, fileext) {
         version
             .files
             .iter()
