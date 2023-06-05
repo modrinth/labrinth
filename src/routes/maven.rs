@@ -142,7 +142,7 @@ async fn find_version(
     vcoords: &String,
     pool: &PgPool,
 ) -> Result<Option<QueryVersion>, ApiError> {
-    let id_option = crate::models::ids::base62_impl::parse_base62(&vcoords)
+    let id_option = crate::models::ids::base62_impl::parse_base62(vcoords)
         .ok()
         .map(|x| x as i64);
 
@@ -152,13 +152,13 @@ async fn find_version(
         vcoords,
         id_option
     )
-    .fetch_all(&*pool)
+    .fetch_all(pool)
     .await?;
 
     if exact_matches.len() == 1 {
         return Ok(database::models::Version::get_full(
             database::models::ids::VersionId(exact_matches[0].id),
-            &*pool,
+            pool,
         )
         .await?);
     }
@@ -172,37 +172,35 @@ async fn find_version(
         };
     };
 
-    let db_loaders: HashSet<String> = Loader::list(&*pool)
+    let db_loaders: HashSet<String> = Loader::list(pool)
         .await?
         .into_iter()
         .map(|x| x.loader)
         .collect();
 
     let (loaders, game_versions) = filter
-        .split(",")
+        .split(',')
         .map(String::from)
         .partition(|el| db_loaders.contains(el));
 
     let matched = database::models::Version::get_project_versions(
-        project.inner.id.into(),
+        project.inner.id,
         Some(game_versions),
         Some(loaders),
         None,
         Some(2),
         None,
         Some(vnumber.to_string()),
-        &*pool,
+        pool,
     )
     .await?;
 
-    if matched.len() == 1 {
-        Ok(database::models::Version::get_full(matched[0].into(), &*pool).await?)
-    } else if matched.len() == 0 {
-        Ok(None)
-    } else {
-        Err(ApiError::InvalidInput(
+    match matched.len() {
+        1 => Ok(database::models::Version::get_full(matched[0].into(), &*pool).await?),
+        0 => Ok(None),
+        _ => Err(ApiError::InvalidInput(
             "Ambiguous version coordinates".to_string(),
-        ))
+        )),
     }
 }
 
@@ -255,7 +253,7 @@ pub async fn version_file(
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    let Some(version) = find_version(&project, &vnum, &**pool).await? else {
+    let Some(version) = find_version(&project, &vnum, &pool).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
@@ -305,7 +303,7 @@ pub async fn version_file_sha1(
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    let Some(version) = find_version(&project, &vnum, &**pool).await? else {
+    let Some(version) = find_version(&project, &vnum, &pool).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
@@ -336,7 +334,7 @@ pub async fn version_file_sha512(
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    let Some(version) = find_version(&project, &vnum, &**pool).await? else {
+    let Some(version) = find_version(&project, &vnum, &pool).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
