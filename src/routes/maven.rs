@@ -6,6 +6,7 @@ use crate::routes::ApiError;
 use crate::util::auth::{get_user_from_headers, is_authorized_version};
 use crate::{database, util::auth::is_authorized};
 use actix_web::{get, route, web, HttpRequest, HttpResponse};
+use itertools::Itertools;
 use sqlx::PgPool;
 use std::collections::HashSet;
 use yaserde_derive::YaSerialize;
@@ -95,24 +96,44 @@ pub async fn maven_metadata(
     .fetch_all(&**pool)
     .await?;
 
-    let mut new_versions = Vec::new();
-    let mut vals = HashSet::new();
-    let mut latest_release = None;
+    let last_release_id = version_names
+        .iter()
+        .filter(|x| x.version_type == "release")
+        .map(|x| x.id)
+        .last();
 
-    for row in version_names {
-        let value = if vals.contains(&row.version_number) {
-            format!("{}", VersionId(row.id as u64))
-        } else {
-            row.version_number
-        };
+    let mut last_release: Option<String> = None;
 
-        vals.insert(value.clone());
-        if row.version_type == "release" {
-            latest_release = Some(value.clone())
-        }
+    let new_versions: Vec<String> = version_names
+        .into_iter()
+        .group_by(|x| x.version_number.clone())
+        .into_iter()
+        .flat_map(|(vnum, group)| {
+            let versions: Vec<_> = group.collect();
 
-        new_versions.push(value);
-    }
+            if versions.len() == 1 {
+                if last_release_id == Some(versions[0].id) {
+                    last_release = Some(vnum.clone());
+                }
+
+                vec![vnum]
+            } else {
+                let vids: Vec<(i64, String)> = versions
+                    .into_iter()
+                    .map(|v| (v.id, VersionId(v.id as u64).to_string()))
+                    .collect();
+
+                for (vid, vid_string) in vids.iter() {
+                    if last_release_id == Some(*vid) {
+                        last_release = Some(vid_string.clone());
+                        break;
+                    }
+                }
+
+                vids.into_iter().map(|x| x.1).collect()
+            }
+        })
+        .collect();
 
     let project_id: ProjectId = project.id.into();
 
@@ -124,7 +145,7 @@ pub async fn maven_metadata(
                 .last()
                 .unwrap_or(&"release".to_string())
                 .to_string(),
-            release: latest_release.unwrap_or_default(),
+            release: last_release.unwrap_or_default(),
             versions: Versions {
                 versions: new_versions,
             },
