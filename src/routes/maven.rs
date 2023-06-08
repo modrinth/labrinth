@@ -217,7 +217,7 @@ async fn find_version(
     .await?;
 
     match matched.len() {
-        1 => Ok(database::models::Version::get_full(matched[0].into(), &*pool).await?),
+        1 => Ok(database::models::Version::get_full(matched[0], pool).await?),
         0 => Ok(None),
         _ => Err(ApiError::InvalidInput(
             "Ambiguous version coordinates".to_string(),
