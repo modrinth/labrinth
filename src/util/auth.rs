@@ -35,6 +35,8 @@ pub enum AuthenticationError {
     InvalidCredentials,
     #[error("Authentication method was not valid")]
     InvalidAuthMethod,
+    #[error("GitHub Token from incorrect Client ID")]
+    InvalidClientId,
 }
 
 // A user as stored in the Minos database
@@ -316,9 +318,10 @@ where
         let possible_user = match token.split_once('_') {
             Some(("modrinth", _)) => get_user_from_pat(token, executor).await?,
             Some(("ory", _)) => get_user_from_minos_session_token(token, executor).await?,
-            Some(("github", _)) | Some(("gho", _)) | Some(("ghp", _)) => {
-                get_user_from_github_token(token, executor).await?
+            Some(("github", _)) | Some(("ghp", _)) => {
+                get_user_from_github_token(token, executor, false).await?
             }
+            Some(("gho", _)) => get_user_from_github_token(token, executor, true).await?,
             _ => return Err(AuthenticationError::InvalidAuthMethod),
         };
         Ok(possible_user)
@@ -356,21 +359,31 @@ pub struct GitHubUser {
 pub async fn get_user_from_github_token<'a, E>(
     access_token: &str,
     executor: E,
+    check_client_id: bool,
 ) -> Result<Option<user_item::User>, AuthenticationError>
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
-    let github_user: GitHubUser = reqwest::Client::new()
+    let response = reqwest::Client::new()
         .get("https://api.github.com/user")
         .header(reqwest::header::USER_AGENT, "Modrinth")
-        .header(
-            reqwest::header::AUTHORIZATION,
-            format!("token {access_token}"),
-        )
+        .header(AUTHORIZATION, format!("token {access_token}"))
         .send()
-        .await?
-        .json()
         .await?;
+
+    if check_client_id {
+        let client_id = response
+            .headers()
+            .get("x-oauth-client-id")
+            .and_then(|x| x.to_str().ok());
+
+        if client_id != Some(&*dotenvy::var("GITHUB_CLIENT_ID").unwrap()) {
+            return Err(AuthenticationError::InvalidClientId);
+        }
+    }
+
+    let github_user: GitHubUser = response.json().await?;
+
     Ok(user_item::User::get_from_github_id(github_user.id, executor).await?)
 }
 
