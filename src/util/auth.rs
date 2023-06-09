@@ -318,10 +318,9 @@ where
         let possible_user = match token.split_once('_') {
             Some(("modrinth", _)) => get_user_from_pat(token, executor).await?,
             Some(("ory", _)) => get_user_from_minos_session_token(token, executor).await?,
-            Some(("github", _)) | Some(("ghp", _)) => {
-                get_user_from_github_token(token, executor, false).await?
+            Some(("github", _)) | Some(("gho", _)) | Some(("ghp", _)) => {
+                get_user_from_github_token(token, executor).await?
             }
-            Some(("gho", _)) => get_user_from_github_token(token, executor, true).await?,
             _ => return Err(AuthenticationError::InvalidAuthMethod),
         };
         Ok(possible_user)
@@ -359,7 +358,6 @@ pub struct GitHubUser {
 pub async fn get_user_from_github_token<'a, E>(
     access_token: &str,
     executor: E,
-    check_client_id: bool,
 ) -> Result<Option<user_item::User>, AuthenticationError>
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -371,7 +369,7 @@ where
         .send()
         .await?;
 
-    if check_client_id {
+    if access_token.starts_with("gho_") {
         let client_id = response
             .headers()
             .get("x-oauth-client-id")
