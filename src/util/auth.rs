@@ -22,6 +22,8 @@ pub enum AuthenticationError {
     Github(#[from] reqwest::Error),
     #[error("Invalid Authentication Credentials")]
     InvalidCredentials,
+    #[error("GitHub Token from incorrect Client ID")]
+    InvalidClientId,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -37,7 +39,7 @@ pub struct GitHubUser {
 pub async fn get_github_user_from_token(
     access_token: &str,
 ) -> Result<GitHubUser, AuthenticationError> {
-    Ok(reqwest::Client::new()
+    let response = reqwest::Client::new()
         .get("https://api.github.com/user")
         .header(reqwest::header::USER_AGENT, "Modrinth")
         .header(
@@ -45,9 +47,22 @@ pub async fn get_github_user_from_token(
             format!("token {access_token}"),
         )
         .send()
-        .await?
-        .json()
-        .await?)
+        .await?;
+
+    if access_token.starts_with("gho_") {
+        let client_id = response
+            .headers()
+            .get("x-oauth-client-id")
+            .and_then(|x| x.to_str().ok());
+
+        if client_id != Some(&*dotenvy::var("GITHUB_CLIENT_ID").unwrap()) {
+            return Err(AuthenticationError::InvalidClientId);
+        }
+    }
+
+    let github_user: GitHubUser = response.json().await?;
+
+    Ok(github_user)
 }
 
 pub async fn get_user_from_token<'a, 'b, E>(
