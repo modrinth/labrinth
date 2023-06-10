@@ -526,7 +526,7 @@ impl Project {
                             format!(
                                 "{}:{}",
                                 PROJECTS_SLUGS_NAMESPACE,
-                                x.to_string()
+                                x.to_string().to_lowercase()
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -698,7 +698,11 @@ impl Project {
 
                 if let Some(slug) = &project.inner.slug {
                     cmd("SET")
-                        .arg(format!("{}:{}", PROJECTS_SLUGS_NAMESPACE, slug))
+                        .arg(format!(
+                            "{}:{}",
+                            PROJECTS_SLUGS_NAMESPACE,
+                            slug.to_lowercase()
+                        ))
                         .arg(project.inner.id.0)
                         .arg("EX")
                         .arg(DEFAULT_EXPIRY)
@@ -789,7 +793,11 @@ impl Project {
 
         cmd.arg(format!("{}:{}", PROJECTS_NAMESPACE, id.0));
         if let Some(slug) = slug {
-            cmd.arg(format!("{}:{}", PROJECTS_SLUGS_NAMESPACE, slug));
+            cmd.arg(format!(
+                "{}:{}",
+                PROJECTS_SLUGS_NAMESPACE,
+                slug.to_lowercase()
+            ));
         }
         if clear_dependencies.unwrap_or(false) {
             cmd.arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0));
