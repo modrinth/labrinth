@@ -221,6 +221,7 @@ const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "title",
     "date_created",
     "date_modified",
+    "created_timestamp",
     "project_id",
     "open_source",
     "color",
