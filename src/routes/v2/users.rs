@@ -106,6 +106,7 @@ pub async fn projects_list(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -121,13 +122,16 @@ pub async fn projects_list(
 
         let project_data = User::get_projects(id, &**pool).await?;
 
-        let response: Vec<_> =
-            crate::database::Project::get_many_full(&project_data, &**pool)
-                .await?
-                .into_iter()
-                .filter(|x| can_view_private || x.inner.status.is_searchable())
-                .map(Project::from)
-                .collect();
+        let response: Vec<_> = crate::database::Project::get_many_ids(
+            &project_data,
+            &**pool,
+            &redis,
+        )
+        .await?
+        .into_iter()
+        .filter(|x| can_view_private || x.inner.status.is_searchable())
+        .map(Project::from)
+        .collect();
 
         Ok(HttpResponse::Ok().json(response))
     } else {
@@ -584,6 +588,7 @@ pub async fn user_follows(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
     let id_option = crate::database::models::User::get_id_from_username_or_id(
@@ -616,12 +621,15 @@ pub async fn user_follows(
         .try_collect::<Vec<crate::database::models::ProjectId>>()
         .await?;
 
-        let projects: Vec<_> =
-            crate::database::Project::get_many_full(&project_ids, &**pool)
-                .await?
-                .into_iter()
-                .map(Project::from)
-                .collect();
+        let projects: Vec<_> = crate::database::Project::get_many_ids(
+            &project_ids,
+            &**pool,
+            &redis,
+        )
+        .await?
+        .into_iter()
+        .map(Project::from)
+        .collect();
 
         Ok(HttpResponse::Ok().json(projects))
     } else {

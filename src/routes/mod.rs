@@ -60,8 +60,6 @@ pub enum ApiError {
     Indexing(#[from] crate::search::indexing::IndexingError),
     #[error("Ariadne Error: {0}")]
     Analytics(String),
-    #[error("Crypto Error: {0}")]
-    Crypto(String),
     #[error("Payments Error: {0}")]
     Payments(String),
     #[error("Discord Error: {0}")]
@@ -88,7 +86,6 @@ impl actix_web::ResponseError for ApiError {
             ApiError::InvalidInput(..) => StatusCode::BAD_REQUEST,
             ApiError::Validation(..) => StatusCode::BAD_REQUEST,
             ApiError::Analytics(..) => StatusCode::FAILED_DEPENDENCY,
-            ApiError::Crypto(..) => StatusCode::FORBIDDEN,
             ApiError::Payments(..) => StatusCode::FAILED_DEPENDENCY,
             ApiError::DiscordError(..) => StatusCode::FAILED_DEPENDENCY,
             ApiError::Decoding(..) => StatusCode::BAD_REQUEST,
@@ -113,7 +110,6 @@ impl actix_web::ResponseError for ApiError {
                     ApiError::InvalidInput(..) => "invalid_input",
                     ApiError::Validation(..) => "invalid_input",
                     ApiError::Analytics(..) => "analytics_error",
-                    ApiError::Crypto(..) => "crypto_error",
                     ApiError::Payments(..) => "payments_error",
                     ApiError::DiscordError(..) => "discord_error",
                     ApiError::Decoding(..) => "decoding_error",

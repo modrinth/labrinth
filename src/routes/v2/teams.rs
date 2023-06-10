@@ -31,24 +31,23 @@ pub async fn team_members_get_project(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
     let project_data =
-        crate::database::models::Project::get_from_slug_or_project_id(
-            &string, &**pool,
-        )
-        .await?;
+        crate::database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project) = project_data {
         let members_data =
-            TeamMember::get_from_team_full(project.team_id, &**pool).await?;
+            TeamMember::get_from_team_full(project.inner.team_id, &**pool)
+                .await?;
 
         let current_user =
             get_user_from_headers(req.headers(), &**pool).await.ok();
 
         if let Some(user) = current_user {
             let team_member = TeamMember::get_from_user_id(
-                project.team_id,
+                project.inner.team_id,
                 user.id.into(),
                 &**pool,
             )
