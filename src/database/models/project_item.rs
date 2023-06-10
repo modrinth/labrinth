@@ -564,9 +564,9 @@ impl Project {
         }
 
         if !remaining_strings.is_empty() {
-            let project_ids_parsed: Vec<i64> = project_strings
+            let project_ids_parsed: Vec<i64> = remaining_strings
                 .iter()
-                .flat_map(|x| parse_base62(&x.to_string()).ok())
+                .flat_map(|x| parse_base62(x).ok())
                 .map(|x| x as i64)
                 .collect();
             let db_projects: Vec<QueryProject> = sqlx::query!(
@@ -597,7 +597,7 @@ impl Project {
                 GROUP BY pt.id, cs.id, ss.id, m.id;
                 ",
                 &project_ids_parsed,
-                &project_strings.into_iter().map(|x| x.to_string().to_lowercase()).collect::<Vec<_>>(),
+                &remaining_strings.into_iter().map(|x| x.to_lowercase()).collect::<Vec<_>>(),
                 &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_listed()).map(|x| x.to_string()).collect::<Vec<String>>()
             )
                 .fetch_many(exec)
