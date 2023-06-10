@@ -877,122 +877,6 @@
     },
     "query": "\n            SELECT m.id id, m.title title, m.description description, m.color color,\n            m.icon_url icon_url, m.slug slug, cs.name client_side_type, ss.name server_side_type,\n            pt.name project_type, u.username username, u.avatar_url avatar_url,\n            ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories,\n            ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', gv.id, 'version', gv.version, 'type', gv.type, 'created', gv.created, 'major', gv.major)) filter (where gv.version is not null) versions,\n            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is false) gallery,\n            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery\n            FROM mods m\n            LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id AND mc.is_additional = FALSE\n            LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id\n            LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ANY($2)\n            LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id\n            LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id\n            LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id\n            LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id\n            LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id\n            INNER JOIN project_types pt ON pt.id = m.project_type\n            INNER JOIN side_types cs ON m.client_side = cs.id\n            INNER JOIN side_types ss ON m.server_side = ss.id\n            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE\n            INNER JOIN users u ON tm.user_id = u.id\n            WHERE m.id = $1\n            GROUP BY m.id, cs.id, ss.id, pt.id, u.id;\n            "
   },
-  "19bcfcd376172d2b293e86e9dd69ee778f7447ae708fd0c3c70239d2c8b6a419": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "mod_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "author_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "version_name",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "version_number",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "changelog",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "date_published",
-          "ordinal": 6,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "downloads",
-          "ordinal": 7,
-          "type_info": "Int4"
-        },
-        {
-          "name": "version_type",
-          "ordinal": 8,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "featured",
-          "ordinal": 9,
-          "type_info": "Bool"
-        },
-        {
-          "name": "status",
-          "ordinal": 10,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "requested_status",
-          "ordinal": 11,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "game_versions",
-          "ordinal": 12,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "loaders",
-          "ordinal": 13,
-          "type_info": "VarcharArray"
-        },
-        {
-          "name": "files",
-          "ordinal": 14,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "hashes",
-          "ordinal": 15,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "dependencies",
-          "ordinal": 16,
-          "type_info": "Jsonb"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        null,
-        null,
-        null,
-        null,
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      }
-    },
-    "query": "\n            SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,\n            v.changelog changelog, v.date_published date_published, v.downloads downloads,\n            v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,\n            JSONB_AGG(DISTINCT jsonb_build_object('version', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,\n            ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,\n            JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,\n            JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies\n            FROM versions v\n            LEFT OUTER JOIN game_versions_versions gvv on v.id = gvv.joining_version_id\n            LEFT OUTER JOIN game_versions gv on gvv.game_version_id = gv.id\n            LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id\n            LEFT OUTER JOIN loaders l on lv.loader_id = l.id\n            LEFT OUTER JOIN files f on v.id = f.version_id\n            LEFT OUTER JOIN hashes h on f.id = h.file_id\n            LEFT OUTER JOIN dependencies d on v.id = d.dependent_id\n            WHERE v.id = ANY($1)\n            GROUP BY v.id\n            ORDER BY v.date_published ASC;\n            "
-  },
   "19dc22c4d6d14222f8e8bace74c2961761c53b7375460ade15af921754d5d7da": {
     "describe": {
       "columns": [],
@@ -1422,6 +1306,262 @@
       }
     },
     "query": "\n                INSERT INTO loaders_versions (loader_id, version_id)\n                VALUES ($1, $2)\n                "
+  },
+  "29ed222444c301e9cc9e95b43948c08d3f78ad64ca09cde085775b8dd13f39ea": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "project_type",
+          "ordinal": 1,
+          "type_info": "Int4"
+        },
+        {
+          "name": "title",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "description",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "downloads",
+          "ordinal": 4,
+          "type_info": "Int4"
+        },
+        {
+          "name": "follows",
+          "ordinal": 5,
+          "type_info": "Int4"
+        },
+        {
+          "name": "icon_url",
+          "ordinal": 6,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "body",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "published",
+          "ordinal": 8,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "updated",
+          "ordinal": 9,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "approved",
+          "ordinal": 10,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "queued",
+          "ordinal": 11,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "status",
+          "ordinal": 12,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "requested_status",
+          "ordinal": 13,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "issues_url",
+          "ordinal": 14,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "source_url",
+          "ordinal": 15,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "wiki_url",
+          "ordinal": 16,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "discord_url",
+          "ordinal": 17,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "license_url",
+          "ordinal": 18,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "team_id",
+          "ordinal": 19,
+          "type_info": "Int8"
+        },
+        {
+          "name": "client_side",
+          "ordinal": 20,
+          "type_info": "Int4"
+        },
+        {
+          "name": "server_side",
+          "ordinal": 21,
+          "type_info": "Int4"
+        },
+        {
+          "name": "license",
+          "ordinal": 22,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "slug",
+          "ordinal": 23,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "moderation_message",
+          "ordinal": 24,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "moderation_message_body",
+          "ordinal": 25,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "client_side_type",
+          "ordinal": 26,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "server_side_type",
+          "ordinal": 27,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "project_type_name",
+          "ordinal": 28,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "flame_anvil_project",
+          "ordinal": 29,
+          "type_info": "Int4"
+        },
+        {
+          "name": "flame_anvil_user",
+          "ordinal": 30,
+          "type_info": "Int8"
+        },
+        {
+          "name": "webhook_sent",
+          "ordinal": 31,
+          "type_info": "Bool"
+        },
+        {
+          "name": "color",
+          "ordinal": 32,
+          "type_info": "Int4"
+        },
+        {
+          "name": "loaders",
+          "ordinal": 33,
+          "type_info": "VarcharArray"
+        },
+        {
+          "name": "game_versions",
+          "ordinal": 34,
+          "type_info": "VarcharArray"
+        },
+        {
+          "name": "categories",
+          "ordinal": 35,
+          "type_info": "VarcharArray"
+        },
+        {
+          "name": "additional_categories",
+          "ordinal": 36,
+          "type_info": "VarcharArray"
+        },
+        {
+          "name": "versions",
+          "ordinal": 37,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "gallery",
+          "ordinal": 38,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "donations",
+          "ordinal": 39,
+          "type_info": "Jsonb"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array",
+          "TextArray",
+          "TextArray"
+        ]
+      }
+    },
+    "query": "\n                SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,\n                m.icon_url icon_url, m.body body, m.published published,\n                m.updated updated, m.approved approved, m.queued, m.status status, m.requested_status requested_status,\n                m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,\n                m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,\n                cs.name client_side_type, ss.name server_side_type, pt.name project_type_name, m.flame_anvil_project flame_anvil_project, m.flame_anvil_user flame_anvil_user, m.webhook_sent, m.color,\n                m.loaders loaders, m.game_versions game_versions,\n                ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,\n                ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,\n                JSONB_AGG(DISTINCT jsonb_build_object('id', v.id, 'date_published', v.date_published)) filter (where v.id is not null) versions,\n                JSONB_AGG(DISTINCT jsonb_build_object('image_url', mg.image_url, 'featured', mg.featured, 'title', mg.title, 'description', mg.description, 'created', mg.created, 'ordering', mg.ordering)) filter (where mg.image_url is not null) gallery,\n                JSONB_AGG(DISTINCT jsonb_build_object('platform_id', md.joining_platform_id, 'platform_short', dp.short, 'platform_name', dp.name,'url', md.url)) filter (where md.joining_platform_id is not null) donations\n                FROM mods m\n                INNER JOIN project_types pt ON pt.id = m.project_type\n                INNER JOIN side_types cs ON m.client_side = cs.id\n                INNER JOIN side_types ss ON m.server_side = ss.id\n                LEFT JOIN mods_donations md ON md.joining_mod_id = m.id\n                LEFT JOIN donation_platforms dp ON md.joining_platform_id = dp.id\n                LEFT JOIN mods_categories mc ON mc.joining_mod_id = m.id\n                LEFT JOIN categories c ON mc.joining_category_id = c.id\n                LEFT JOIN versions v ON v.mod_id = m.id AND v.status = ANY($3)\n                LEFT JOIN mods_gallery mg ON mg.mod_id = m.id\n                WHERE m.id = ANY($1) OR m.slug = ANY($2)\n                GROUP BY pt.id, cs.id, ss.id, m.id;\n                "
   },
   "29fcff0f1d36bd1a9e0c8c4005209308f0c5f383e4e52ed8c6b989994ead32df": {
     "describe": {
@@ -2357,26 +2497,6 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)"
-  },
-  "4cfafb61d38608152743c38cb8fb9a9c35e788fcbefe6f7f81476a3f144af3f8": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT id FROM mods\n            WHERE id = $1\n            "
   },
   "4d54032b02c860f4facec39eacb4548a0701d4505e7a80b4834650696df69c2b": {
     "describe": {
@@ -3567,26 +3687,6 @@
     },
     "query": "\n        SELECT m.title title, m.id id, pt.name project_type\n        FROM mods m\n        INNER JOIN project_types pt ON pt.id = m.project_type\n        WHERE m.team_id = $1\n        "
   },
-  "9381c483b29d364f14c46d5e73bc14b1ec5d0525e27b9e9b099cb0786934fe78": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            SELECT id FROM mods\n            WHERE slug = LOWER($1)\n            "
-  },
   "96b2f4e0e619e7ed312d191dc90d64113235d72254fbda8f528ce866d1795cb5": {
     "describe": {
       "columns": [
@@ -3909,6 +4009,122 @@
     },
     "query": "\n            UPDATE mods\n            SET status = $1, approved = $2\n            WHERE (id = $3)\n            "
   },
+  "a62767e812783e8836a11b22878a4248123f3fe212a876e192f549acd6edcb39": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "mod_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "author_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "version_name",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "version_number",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "changelog",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "date_published",
+          "ordinal": 6,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "downloads",
+          "ordinal": 7,
+          "type_info": "Int4"
+        },
+        {
+          "name": "version_type",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "featured",
+          "ordinal": 9,
+          "type_info": "Bool"
+        },
+        {
+          "name": "status",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "requested_status",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "game_versions",
+          "ordinal": 12,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "loaders",
+          "ordinal": 13,
+          "type_info": "VarcharArray"
+        },
+        {
+          "name": "files",
+          "ordinal": 14,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "hashes",
+          "ordinal": 15,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "dependencies",
+          "ordinal": 16,
+          "type_info": "Jsonb"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n                SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,\n                v.changelog changelog, v.date_published date_published, v.downloads downloads,\n                v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,\n                JSONB_AGG(DISTINCT jsonb_build_object('version', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,\n                ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,\n                JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,\n                JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,\n                JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies\n                FROM versions v\n                LEFT OUTER JOIN game_versions_versions gvv on v.id = gvv.joining_version_id\n                LEFT OUTER JOIN game_versions gv on gvv.game_version_id = gv.id\n                LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id\n                LEFT OUTER JOIN loaders l on lv.loader_id = l.id\n                LEFT OUTER JOIN files f on v.id = f.version_id\n                LEFT OUTER JOIN hashes h on f.id = h.file_id\n                LEFT OUTER JOIN dependencies d on v.id = d.dependent_id\n                WHERE v.id = ANY($1)\n                GROUP BY v.id\n                ORDER BY v.date_published ASC;\n                "
+  },
   "a647c282a276b63f36d2d8a253c32d0f627cea9cab8eb1b32b39875536bdfcbb": {
     "describe": {
       "columns": [],
@@ -4228,62 +4444,6 @@
     },
     "query": "\n            DELETE FROM report_types\n            WHERE name = $1\n            "
   },
-  "bc43bbc55ed517c62f2caefea173ea87547061159c8e37282f1ae340dd1d84c5": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "role",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "permissions",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "accepted",
-          "ordinal": 4,
-          "type_info": "Bool"
-        },
-        {
-          "name": "payouts_split",
-          "ordinal": 5,
-          "type_info": "Numeric"
-        },
-        {
-          "name": "ordering",
-          "ordinal": 6,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT id, team_id, role, permissions, accepted, payouts_split, ordering\n            FROM team_members\n            WHERE user_id = $1\n            ORDER BY ordering\n            "
-  },
   "bc605f80a615c7d0ca9c8207f8b0c5dc1b8f2ad0f9b3346a00078d59e5e3e253": {
     "describe": {
       "columns": [
@@ -4514,318 +4674,6 @@
       }
     },
     "query": "\n                    UPDATE versions\n                    SET version_type = $1\n                    WHERE (id = $2)\n                    "
-  },
-  "c276ad563ad7c8abcd4e42b4cb51be76e849fee352311a1b1fdb9fd6f2ccaed0": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "role",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "permissions",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "accepted",
-          "ordinal": 4,
-          "type_info": "Bool"
-        },
-        {
-          "name": "payouts_split",
-          "ordinal": 5,
-          "type_info": "Numeric"
-        },
-        {
-          "name": "ordering",
-          "ordinal": 6,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT id, team_id, role, permissions, accepted, payouts_split, ordering\n            FROM team_members\n            WHERE (user_id = $1 AND accepted = TRUE)\n            ORDER BY ordering\n            "
-  },
-  "c35a28e8648e69fb5c0359b57db1170849726ebfb6aef6e3e0d3e29a3e0d888b": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "project_type",
-          "ordinal": 1,
-          "type_info": "Int4"
-        },
-        {
-          "name": "title",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "description",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "downloads",
-          "ordinal": 4,
-          "type_info": "Int4"
-        },
-        {
-          "name": "follows",
-          "ordinal": 5,
-          "type_info": "Int4"
-        },
-        {
-          "name": "icon_url",
-          "ordinal": 6,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "body",
-          "ordinal": 7,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "published",
-          "ordinal": 8,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "updated",
-          "ordinal": 9,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "approved",
-          "ordinal": 10,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "queued",
-          "ordinal": 11,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "status",
-          "ordinal": 12,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "requested_status",
-          "ordinal": 13,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "issues_url",
-          "ordinal": 14,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "source_url",
-          "ordinal": 15,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "wiki_url",
-          "ordinal": 16,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "discord_url",
-          "ordinal": 17,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "license_url",
-          "ordinal": 18,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 19,
-          "type_info": "Int8"
-        },
-        {
-          "name": "client_side",
-          "ordinal": 20,
-          "type_info": "Int4"
-        },
-        {
-          "name": "server_side",
-          "ordinal": 21,
-          "type_info": "Int4"
-        },
-        {
-          "name": "license",
-          "ordinal": 22,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "slug",
-          "ordinal": 23,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "moderation_message",
-          "ordinal": 24,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "moderation_message_body",
-          "ordinal": 25,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "client_side_type",
-          "ordinal": 26,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "server_side_type",
-          "ordinal": 27,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "project_type_name",
-          "ordinal": 28,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "flame_anvil_project",
-          "ordinal": 29,
-          "type_info": "Int4"
-        },
-        {
-          "name": "flame_anvil_user",
-          "ordinal": 30,
-          "type_info": "Int8"
-        },
-        {
-          "name": "webhook_sent",
-          "ordinal": 31,
-          "type_info": "Bool"
-        },
-        {
-          "name": "color",
-          "ordinal": 32,
-          "type_info": "Int4"
-        },
-        {
-          "name": "loaders",
-          "ordinal": 33,
-          "type_info": "VarcharArray"
-        },
-        {
-          "name": "game_versions",
-          "ordinal": 34,
-          "type_info": "VarcharArray"
-        },
-        {
-          "name": "categories",
-          "ordinal": 35,
-          "type_info": "VarcharArray"
-        },
-        {
-          "name": "additional_categories",
-          "ordinal": 36,
-          "type_info": "VarcharArray"
-        },
-        {
-          "name": "versions",
-          "ordinal": 37,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "gallery",
-          "ordinal": 38,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "donations",
-          "ordinal": 39,
-          "type_info": "Jsonb"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-        false,
-        false,
-        true,
-        true,
-        false,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        true,
-        false,
-        false,
-        false,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        null,
-        null,
-        null,
-        null,
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array",
-          "TextArray",
-          "TextArray"
-        ]
-      }
-    },
-    "query": "\n            SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,\n            m.icon_url icon_url, m.body body, m.published published,\n            m.updated updated, m.approved approved, m.queued, m.status status, m.requested_status requested_status,\n            m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,\n            m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,\n            cs.name client_side_type, ss.name server_side_type, pt.name project_type_name, m.flame_anvil_project flame_anvil_project, m.flame_anvil_user flame_anvil_user, m.webhook_sent, m.color,\n            m.loaders loaders, m.game_versions game_versions,\n            ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,\n            ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', v.id, 'date_published', v.date_published)) filter (where v.id is not null) versions,\n            JSONB_AGG(DISTINCT jsonb_build_object('image_url', mg.image_url, 'featured', mg.featured, 'title', mg.title, 'description', mg.description, 'created', mg.created, 'ordering', mg.ordering)) filter (where mg.image_url is not null) gallery,\n            JSONB_AGG(DISTINCT jsonb_build_object('platform_id', md.joining_platform_id, 'platform_short', dp.short, 'platform_name', dp.name,'url', md.url)) filter (where md.joining_platform_id is not null) donations\n            FROM mods m\n            INNER JOIN project_types pt ON pt.id = m.project_type\n            INNER JOIN side_types cs ON m.client_side = cs.id\n            INNER JOIN side_types ss ON m.server_side = ss.id\n            LEFT JOIN mods_donations md ON md.joining_mod_id = m.id\n            LEFT JOIN donation_platforms dp ON md.joining_platform_id = dp.id\n            LEFT JOIN mods_categories mc ON mc.joining_mod_id = m.id\n            LEFT JOIN categories c ON mc.joining_category_id = c.id\n            LEFT JOIN versions v ON v.mod_id = m.id AND v.status = ANY($3)\n            LEFT JOIN mods_gallery mg ON mg.mod_id = m.id\n            WHERE m.id = ANY($1) OR m.slug = ANY($2)\n            GROUP BY pt.id, cs.id, ss.id, m.id;\n            "
   },
   "c3f594d8d0ffcf5df1b36759cf3088bfaec496c5dfdbf496d3b05f0b122a5d0c": {
     "describe": {
@@ -5766,26 +5614,6 @@
     },
     "query": "\n            INSERT INTO versions (\n                id, mod_id, author_id, name, version_number,\n                changelog, date_published, downloads,\n                version_type, featured, status\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8,\n                $9, $10, $11\n            )\n            "
   },
-  "e04e0d7add07dc7ae16496badcadd3789be22c80a04a01fbeda3f8dfca01f4b2": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n                SELECT id FROM mods\n                WHERE slug = LOWER($1)\n                "
-  },
   "e29da865af4a0a110275b9756394546a3bb88bff40e18c66029651f515caed98": {
     "describe": {
       "columns": [
@@ -5926,62 +5754,6 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM team_members WHERE id=$1)"
-  },
-  "e845ace468e484025d7b052008f703dee66ce7fcc33862df7e9ccfe7553eef96": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "role",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "permissions",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "accepted",
-          "ordinal": 4,
-          "type_info": "Bool"
-        },
-        {
-          "name": "payouts_split",
-          "ordinal": 5,
-          "type_info": "Numeric"
-        },
-        {
-          "name": "ordering",
-          "ordinal": 6,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT id, user_id, role, permissions, accepted, payouts_split, ordering\n            FROM team_members\n            WHERE team_id = $1\n            ORDER BY ordering\n            "
   },
   "e8ad94314ec2972c3102041b1bf06872c8e4c8a55156a17334a0e317fe41b784": {
     "describe": {
