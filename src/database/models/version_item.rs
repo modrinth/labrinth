@@ -11,7 +11,7 @@ use std::collections::HashMap;
 const VERSIONS_NAMESPACE: &str = "versions";
 // TODO: Cache version slugs call
 // const VERSIONS_SLUGS_NAMESPACE: &str = "versions_slugs";
-const DEFAULT_EXPIRY: i64 = 86400; // 1 day
+const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 pub struct VersionBuilder {
     pub version_id: VersionId,
@@ -306,8 +306,9 @@ impl Version {
 
     pub async fn remove_full(
         id: VersionId,
+        redis: &deadpool_redis::Pool,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<Option<()>, sqlx::Error> {
+    ) -> Result<Option<()>, DatabaseError> {
         let result = sqlx::query!(
             "
             SELECT EXISTS(SELECT 1 FROM versions WHERE id = $1)
@@ -320,6 +321,8 @@ impl Version {
         if !result.exists.unwrap_or(false) {
             return Ok(None);
         }
+
+        Version::clear_cache(id, redis).await?;
 
         sqlx::query!(
             "
@@ -597,33 +600,40 @@ impl Version {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
+        if version_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
         use futures::stream::TryStreamExt;
 
-        let version_ids_parsed: Vec<i64> =
+        let mut version_ids_parsed: Vec<i64> =
             version_ids.iter().map(|x| x.0).collect();
 
         let mut redis = redis.get().await?;
 
         let mut found_versions = Vec::new();
-        let mut remaining_version_ids = Vec::new();
 
-        for id in version_ids_parsed {
-            let version = cmd("GET")
-                .arg(format!("{}:{}", VERSIONS_NAMESPACE, id))
-                .query_async::<_, Option<String>>(&mut redis)
-                .await?;
+        let versions = cmd("MGET")
+            .arg(
+                version_ids_parsed
+                    .iter()
+                    .map(|x| format!("{}:{}", VERSIONS_NAMESPACE, x))
+                    .collect::<Vec<_>>(),
+            )
+            .query_async::<_, Vec<Option<String>>>(&mut redis)
+            .await?;
 
+        for version in versions {
             if let Some(version) = version
                 .and_then(|x| serde_json::from_str::<QueryVersion>(&x).ok())
             {
+                version_ids_parsed.retain(|x| &version.inner.id.0 != x);
                 found_versions.push(version);
                 continue;
             }
-
-            remaining_version_ids.push(id);
         }
 
-        if !remaining_version_ids.is_empty() {
+        if !version_ids_parsed.is_empty() {
             let db_versions: Vec<QueryVersion> = sqlx::query!(
                 "
                 SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
@@ -646,7 +656,7 @@ impl Version {
                 GROUP BY v.id
                 ORDER BY v.date_published ASC;
                 ",
-                &remaining_version_ids
+                &version_ids_parsed
             )
                 .fetch_many(exec)
                 .try_filter_map(|e| async {
@@ -763,15 +773,13 @@ impl Version {
                 .await?;
 
             for version in db_versions {
-                let version_key =
-                    format!("{}:{}", VERSIONS_NAMESPACE, version.inner.id.0);
                 cmd("SET")
-                    .arg(&version_key)
+                    .arg(format!(
+                        "{}:{}",
+                        VERSIONS_NAMESPACE, version.inner.id.0
+                    ))
                     .arg(serde_json::to_string(&version)?)
-                    .query_async::<_, ()>(&mut redis)
-                    .await?;
-                cmd("EXPIRE")
-                    .arg(version_key)
+                    .arg("EX")
                     .arg(DEFAULT_EXPIRY)
                     .query_async::<_, ()>(&mut redis)
                     .await?;
@@ -788,7 +796,7 @@ impl Version {
         redis: &deadpool_redis::Pool,
     ) -> Result<(), DatabaseError> {
         let mut redis = redis.get().await?;
-        cmd("DELETE")
+        cmd("DEL")
             .arg(format!("{}:{}", VERSIONS_NAMESPACE, id.0))
             .query_async::<_, ()>(&mut redis)
             .await?;

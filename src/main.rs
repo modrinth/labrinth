@@ -166,6 +166,7 @@ async fn main() -> std::io::Result<()> {
 
     // Changes statuses of scheduled projects/versions
     let pool_ref = pool.clone();
+    // TODO: Clear cache when these are run
     scheduler.run(std::time::Duration::from_secs(60), move || {
         let pool_ref = pool_ref.clone();
         info!("Releasing scheduled versions/projects!");

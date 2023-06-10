@@ -659,6 +659,13 @@ pub async fn version_edit(
                 &redis,
             )
             .await?;
+            database::models::Project::clear_cache(
+                version_item.inner.project_id,
+                None,
+                Some(true),
+                &redis,
+            )
+            .await?;
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
@@ -794,14 +801,15 @@ pub async fn version_delete(
 
     let result = database::models::Version::remove_full(
         version.inner.id,
+        &redis,
         &mut transaction,
     )
     .await?;
 
-    database::models::Version::clear_cache(version.inner.id, &redis).await?;
     database::models::Project::clear_cache(
         version.inner.project_id,
         None,
+        Some(true),
         &redis,
     )
     .await?;

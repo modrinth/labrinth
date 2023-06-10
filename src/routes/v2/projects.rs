@@ -195,38 +195,11 @@ pub async fn dependency_list(
             return Ok(HttpResponse::NotFound().body(""));
         }
 
-        let id = project.inner.id;
-
-        use futures::stream::TryStreamExt;
-
-        let dependencies = sqlx::query!(
-            "
-            SELECT d.dependency_id, COALESCE(vd.mod_id, 0) mod_id, d.mod_dependency_id
-            FROM versions v
-            INNER JOIN dependencies d ON d.dependent_id = v.id
-            LEFT JOIN versions vd ON d.dependency_id = vd.id
-            WHERE v.mod_id = $1
-            ",
-            id as database::models::ProjectId
+        let dependencies = database::Project::get_dependencies(
+            project.inner.id,
+            &**pool,
+            &redis,
         )
-        .fetch_many(&**pool)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|x| {
-                (
-                    x.dependency_id
-                        .map(database::models::VersionId),
-                    if x.mod_id == Some(0) { None } else { x.mod_id
-                        .map(database::models::ProjectId) },
-                    x.mod_dependency_id
-                        .map(database::models::ProjectId),
-                )
-            }))
-        })
-        .try_collect::<Vec<(
-            Option<database::models::VersionId>,
-            Option<database::models::ProjectId>,
-            Option<database::models::ProjectId>,
-        )>>()
         .await?;
 
         let project_ids = dependencies
@@ -1118,6 +1091,7 @@ pub async fn project_edit(
             database::models::Project::clear_cache(
                 project_item.inner.id,
                 project_item.inner.slug,
+                None,
                 &redis,
             )
             .await?;
@@ -1236,7 +1210,7 @@ pub async fn projects_edit(
         .map(|x| x.inner.team_id)
         .collect::<Vec<database::models::TeamId>>();
     let team_members = database::models::TeamMember::get_from_team_full_many(
-        &team_ids, &**pool,
+        &team_ids, &**pool, &redis,
     )
     .await?;
 
@@ -1528,6 +1502,7 @@ pub async fn projects_edit(
         database::models::Project::clear_cache(
             project.inner.id,
             project.inner.slug,
+            None,
             &redis,
         )
         .await?;
@@ -1605,6 +1580,7 @@ pub async fn project_schedule(
         database::models::Project::clear_cache(
             project_item.inner.id,
             project_item.inner.slug,
+            None,
             &redis,
         )
         .await?;
@@ -1713,6 +1689,7 @@ pub async fn project_icon_edit(
         database::models::Project::clear_cache(
             project_item.inner.id,
             project_item.inner.slug,
+            None,
             &redis,
         )
         .await?;
@@ -1794,6 +1771,7 @@ pub async fn delete_project_icon(
     database::models::Project::clear_cache(
         project_item.inner.id,
         project_item.inner.slug,
+        None,
         &redis,
     )
     .await?;
@@ -1930,6 +1908,7 @@ pub async fn add_gallery_item(
         database::models::Project::clear_cache(
             project_item.inner.id,
             project_item.inner.slug,
+            None,
             &redis,
         )
         .await?;
@@ -2102,6 +2081,7 @@ pub async fn edit_gallery_item(
     database::models::Project::clear_cache(
         project_item.inner.id,
         project_item.inner.slug,
+        None,
         &redis,
     )
     .await?;
@@ -2198,6 +2178,7 @@ pub async fn delete_gallery_item(
     database::models::Project::clear_cache(
         project_item.inner.id,
         project_item.inner.slug,
+        None,
         &redis,
     )
     .await?;
@@ -2256,11 +2237,6 @@ pub async fn project_delete(
     let result = database::models::Project::remove_full(
         project.inner.id,
         &mut transaction,
-    )
-    .await?;
-    database::models::Project::clear_cache(
-        project.inner.id,
-        project.inner.slug,
         &redis,
     )
     .await?;

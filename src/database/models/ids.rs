@@ -113,7 +113,7 @@ pub struct UserId(pub i64);
 #[derive(Copy, Clone, Debug, Type, Eq, PartialEq, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct TeamId(pub i64);
-#[derive(Copy, Clone, Debug, Type)]
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct TeamMemberId(pub i64);
 

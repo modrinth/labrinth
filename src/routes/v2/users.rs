@@ -550,6 +550,7 @@ pub async fn user_delete(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     removal_type: web::Query<RemovalType>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
@@ -566,7 +567,7 @@ pub async fn user_delete(
         let mut transaction = pool.begin().await?;
 
         let result = if &*removal_type.removal_type == "full" {
-            User::remove_full(id, &mut transaction).await?
+            User::remove_full(id, &mut transaction, &redis).await?
         } else {
             User::remove(id, &mut transaction).await?
         };

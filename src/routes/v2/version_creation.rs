@@ -478,7 +478,7 @@ async fn version_create_inner(
     models::Project::update_game_versions(project_id, &mut *transaction)
         .await?;
     models::Project::update_loaders(project_id, &mut *transaction).await?;
-    models::Project::clear_cache(project_id, None, redis).await?;
+    models::Project::clear_cache(project_id, None, Some(true), redis).await?;
 
     Ok(HttpResponse::Ok().json(response))
 }
