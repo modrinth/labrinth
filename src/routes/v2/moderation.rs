@@ -29,6 +29,7 @@ fn default_count() -> i16 {
 pub async fn get_projects(
     req: HttpRequest,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     count: web::Query<ResultCount>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(req.headers(), &**pool).await?;
@@ -53,7 +54,7 @@ pub async fn get_projects(
     .await?;
 
     let projects: Vec<_> =
-        database::Project::get_many_full(&project_ids, &**pool)
+        database::Project::get_many_ids(&project_ids, &**pool, &redis)
             .await?
             .into_iter()
             .map(crate::models::projects::Project::from)

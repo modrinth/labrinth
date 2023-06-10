@@ -8,6 +8,7 @@ use crate::util::env::{parse_strings_from_var, parse_var};
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use chrono::{DateTime, Utc};
+use deadpool_redis::{Config, Runtime};
 use env_logger::Env;
 use log::{error, info, warn};
 use search::indexing::index_projects;
@@ -74,6 +75,14 @@ async fn main() -> std::io::Result<()> {
     let pool = database::connect()
         .await
         .expect("Database connection failed");
+
+    // Redis connector
+
+    let redis_cfg =
+        Config::from_url(dotenvy::var("REDIS_URL").expect("Redis URL not set"));
+    let redis_pool = redis_cfg
+        .create_pool(Some(Runtime::Tokio1))
+        .expect("Redis connection failed");
 
     let storage_backend =
         dotenvy::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
@@ -157,6 +166,7 @@ async fn main() -> std::io::Result<()> {
 
     // Changes statuses of scheduled projects/versions
     let pool_ref = pool.clone();
+    // TODO: Clear cache when these are run
     scheduler.run(std::time::Duration::from_secs(60), move || {
         let pool_ref = pool_ref.clone();
         info!("Releasing scheduled versions/projects!");
@@ -256,7 +266,7 @@ async fn main() -> std::io::Result<()> {
                     }
                 }
 
-                Ok::<(), crate::routes::ApiError>(())
+                Ok::<(), routes::ApiError>(())
             };
 
             if let Err(e) = do_steps.await {
@@ -359,6 +369,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::JsonConfig::default().error_handler(|err, _req| {
                 routes::ApiError::Validation(err.to_string()).into()
             }))
+            .app_data(web::Data::new(redis_pool.clone()))
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(file_host.clone()))
             .app_data(web::Data::new(search_config.clone()))
@@ -411,6 +422,8 @@ fn check_env_vars() -> bool {
     failed |= check_var::<String>("MEILISEARCH_KEY");
     failed |= check_var::<String>("BIND_ADDR");
 
+    failed |= check_var::<String>("REDIS_URL");
+
     failed |= check_var::<String>("STORAGE_BACKEND");
 
     let storage_backend = dotenvy::var("STORAGE_BACKEND").ok();
@@ -448,9 +461,6 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("ARIADNE_ADMIN_KEY");
     failed |= check_var::<String>("ARIADNE_URL");
-
-    failed |= check_var::<String>("STRIPE_TOKEN");
-    failed |= check_var::<String>("STRIPE_WEBHOOK_SECRET");
 
     failed |= check_var::<String>("PAYPAL_API_URL");
     failed |= check_var::<String>("PAYPAL_CLIENT_ID");
