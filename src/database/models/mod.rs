@@ -9,6 +9,7 @@ pub mod ids;
 pub mod notification_item;
 pub mod project_item;
 pub mod report_item;
+pub mod signing_key_item;
 pub mod team_item;
 pub mod user_item;
 pub mod version_item;
@@ -32,6 +33,8 @@ pub enum DatabaseError {
     RedisPool(#[from] deadpool_redis::PoolError),
     #[error("Error while serializing with the cache: {0}")]
     SerdeCacheError(#[from] serde_json::Error),
+    #[error("Error while reading signing key")]
+    KeyBodyError(#[from] crate::util::keys::KeyError),
     #[error("A database request failed")]
     Other(String),
 }

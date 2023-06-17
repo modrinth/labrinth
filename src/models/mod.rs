@@ -4,5 +4,6 @@ pub mod notifications;
 pub mod pack;
 pub mod projects;
 pub mod reports;
+pub mod signing_keys;
 pub mod teams;
 pub mod users;

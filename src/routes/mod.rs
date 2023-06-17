@@ -68,6 +68,8 @@ pub enum ApiError {
     Decoding(#[from] crate::models::ids::DecodingError),
     #[error("Image Parsing Error: {0}")]
     ImageError(#[from] image::ImageError),
+    #[error("Key Error: {0}")]
+    KeysError(#[from] crate::util::keys::KeyError),
 }
 
 impl actix_web::ResponseError for ApiError {
@@ -90,6 +92,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::DiscordError(..) => StatusCode::FAILED_DEPENDENCY,
             ApiError::Decoding(..) => StatusCode::BAD_REQUEST,
             ApiError::ImageError(..) => StatusCode::BAD_REQUEST,
+            ApiError::KeysError(..) => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -114,6 +117,7 @@ impl actix_web::ResponseError for ApiError {
                     ApiError::DiscordError(..) => "discord_error",
                     ApiError::Decoding(..) => "decoding_error",
                     ApiError::ImageError(..) => "invalid_image",
+                    ApiError::KeysError(..) => "keys_error",
                 },
                 description: &self.to_string(),
             },

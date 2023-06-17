@@ -74,3 +74,5 @@ sentry-actix = "0.30.0"
 
 image = "0.24.5"
 color-thief = "0.2.2"
+pgp = "0.10.1"
+ssh-key = "0.5.1"

@@ -106,6 +106,14 @@ generate_ids!(
     NotificationId
 );
 
+generate_ids!(
+    pub generate_signing_key_id,
+    SigningKeyId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM signing_keys WHERE id=$1)",
+    SigningKeyId
+);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct UserId(pub i64);
@@ -175,6 +183,10 @@ pub struct NotificationId(pub i64);
 #[sqlx(transparent)]
 pub struct NotificationActionId(pub i32);
 
+#[derive(Copy, Clone, Debug, Type, Deserialize)]
+#[sqlx(transparent)]
+pub struct SigningKeyId(pub i64);
+
 use crate::models::ids;
 
 impl From<ids::ProjectId> for ProjectId {
@@ -235,5 +247,10 @@ impl From<ids::NotificationId> for NotificationId {
 impl From<NotificationId> for ids::NotificationId {
     fn from(id: NotificationId) -> Self {
         ids::NotificationId(id.0 as u64)
+    }
+}
+impl From<SigningKeyId> for ids::SigningKeyId {
+    fn from(id: SigningKeyId) -> Self {
+        ids::SigningKeyId(id.0 as u64)
     }
 }
