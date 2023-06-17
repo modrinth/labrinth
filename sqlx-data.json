@@ -2741,18 +2741,6 @@
     },
     "query": "\n            INSERT INTO dependencies (dependent_id, dependency_type, dependency_id, mod_dependency_id, dependency_file_name)\n            VALUES ($1, $2, $3, $4, $5)\n            "
   },
-  "602f3113c933780c672862bc27d1bcd5398bde58cb1b769ee21da7088fce8a83": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            DELETE FROM signing_keys WHERE id = $1\n            "
-  },
   "61a7f29e024bf2f1368370e3f6e8ef70317c7e8545b5b6d4235f21164948ba27": {
     "describe": {
       "columns": [],
@@ -4088,26 +4076,6 @@
     },
     "query": "\n            DELETE FROM mods_categories\n            WHERE joining_mod_id = $1\n            "
   },
-  "a72657376764f8d478b828c32093df6da30c8551f39cd9b9eba446353d44d370": {
-    "describe": {
-      "columns": [
-        {
-          "name": "exists",
-          "ordinal": 0,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT EXISTS(SELECT 1 FROM signing_keys WHERE id = $1)\n            "
-  },
   "a90bb6904e1b790c0e29e060dac5ba4c2a6087e07c1197dc1f59f0aff31944c9": {
     "describe": {
       "columns": [],
@@ -5320,6 +5288,18 @@
       }
     },
     "query": "\n                    UPDATE team_members\n                    SET accepted = TRUE\n                    WHERE (team_id = $1 AND user_id = $2)\n                    "
+  },
+  "d44a9ef55fa7988c53b6062e31da52c88845fc772f5d726a3e32db0b55f748b6": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM signing_keys\n            WHERE id = ANY($1)\n            "
   },
   "d4e545d7fdcaee6f621058d827bc199634cc3f71561ae5596d9cfa973d9b1129": {
     "describe": {

@@ -118,33 +118,27 @@ impl SigningKey {
         .await
     }
 
-    pub async fn remove_full<'a, E>(
+    pub async fn remove(
         id: SigningKeyId,
-        exec: E,
-    ) -> Result<Option<()>, sqlx::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
-    {
-        let result = sqlx::query!(
-            "
-            SELECT EXISTS(SELECT 1 FROM signing_keys WHERE id = $1)
-            ",
-            id as SigningKeyId
-        )
-        .fetch_one(exec)
-        .await?;
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Option<()>, sqlx::error::Error> {
+        Self::remove_many(&[id], transaction).await
+    }
 
-        if !result.exists.unwrap_or(false) {
-            return Ok(None);
-        }
+    pub async fn remove_many(
+        key_ids: &[SigningKeyId],
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Option<()>, sqlx::error::Error> {
+        let key_ids_parsed: Vec<i64> = key_ids.iter().map(|x| x.0).collect();
 
         sqlx::query!(
             "
-            DELETE FROM signing_keys WHERE id = $1
+            DELETE FROM signing_keys
+            WHERE id = ANY($1)
             ",
-            id as SigningKeyId,
+            &key_ids_parsed
         )
-        .execute(exec)
+        .execute(&mut *transaction)
         .await?;
 
         Ok(Some(()))

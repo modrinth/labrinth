@@ -249,6 +249,11 @@ impl From<NotificationId> for ids::NotificationId {
         ids::NotificationId(id.0 as u64)
     }
 }
+impl From<ids::SigningKeyId> for SigningKeyId {
+    fn from(id: ids::SigningKeyId) -> Self {
+        SigningKeyId(id.0 as i64)
+    }
+}
 impl From<SigningKeyId> for ids::SigningKeyId {
     fn from(id: SigningKeyId) -> Self {
         ids::SigningKeyId(id.0 as u64)
