@@ -1,13 +1,16 @@
+use crate::database;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::projects::Project;
+use crate::models::signing_keys::SigningKey;
 use crate::models::users::{
     Badges, RecipientType, RecipientWallet, Role, UserId,
 };
 use crate::queue::payouts::{PayoutAmount, PayoutItem, PayoutsQueue};
 use crate::routes::ApiError;
 use crate::util::auth::get_user_from_headers;
+use crate::util::keys::SigningKeyBody;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
@@ -22,6 +25,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use validator::Validate;
 
+use crate::database::models::signing_key_item::SigningKey as DBSigningKey;
+
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(user_auth_get);
     cfg.service(users_get);
@@ -34,6 +39,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(user_edit)
             .service(user_icon_edit)
             .service(user_notifications)
+            .service(user_keys)
+            .service(user_add_key)
             .service(user_follows)
             .service(user_payouts)
             .service(user_payouts_request),
@@ -645,32 +652,122 @@ pub async fn user_notifications(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
-    let id_option = crate::database::models::User::get_id_from_username_or_id(
+    let Some(id) = crate::database::models::User::get_id_from_username_or_id(
         &info.into_inner().0,
         &**pool,
     )
-    .await?;
+    .await? else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
 
-    if let Some(id) = id_option {
-        if !user.role.is_admin() && user.id != id.into() {
-            return Err(ApiError::CustomAuthentication(
-                "You do not have permission to see the notifications of this user!".to_string(),
-            ));
-        }
-
-        let mut notifications: Vec<Notification> =
-            crate::database::models::notification_item::Notification::get_many_user(id, &**pool)
-                .await?
-                .into_iter()
-                .map(Into::into)
-                .collect();
-
-        notifications.sort_by(|a, b| b.created.cmp(&a.created));
-
-        Ok(HttpResponse::Ok().json(notifications))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
+    if !user.role.is_admin() && user.id != id.into() {
+        return Err(ApiError::CustomAuthentication(
+            "You do not have permission to see the notifications of this user!"
+                .to_string(),
+        ));
     }
+
+    let mut notifications: Vec<Notification> =
+        crate::database::models::notification_item::Notification::get_many_user(id, &**pool)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+    notifications.sort_by(|a, b| b.created.cmp(&a.created));
+
+    Ok(HttpResponse::Ok().json(notifications))
+}
+
+#[get("{id}/keys")]
+pub async fn user_keys(
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let Some(id) = crate::database::models::User::get_id_from_username_or_id(
+        &info.into_inner().0,
+        &**pool,
+    )
+    .await? else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+
+    let keys: Vec<SigningKey> =
+        crate::database::models::signing_key_item::SigningKey::get_many_user(
+            id, &**pool,
+        )
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    Ok(HttpResponse::Ok().json(keys))
+}
+
+#[derive(Deserialize)]
+pub struct CreateKey {
+    pub key_type: String,
+    pub body: String,
+}
+
+#[post("{id}/keys")]
+pub async fn user_add_key(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    req_body: web::Json<CreateKey>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let Some(id) = crate::database::models::User::get_id_from_username_or_id(
+        &info.into_inner().0,
+        &**pool,
+    )
+    .await? else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+
+    if user.id != id.into() {
+        return Err(ApiError::CustomAuthentication(
+            "You do not have permission to add keys for this user.".to_string(),
+        ));
+    }
+
+    let mut key_body =
+        SigningKeyBody::parse(&req_body.key_type, &req_body.body)?;
+
+    key_body.scrub();
+
+    let mut transaction = pool.begin().await?;
+
+    let result = do_add_key(key_body, id, &mut transaction).await;
+
+    if result.is_err() {
+        if let Err(e) = transaction.rollback().await {
+            return Err(e.into());
+        }
+    } else {
+        transaction.commit().await?;
+    }
+
+    result
+}
+
+pub async fn do_add_key(
+    body: SigningKeyBody,
+    owner: database::models::UserId,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<HttpResponse, ApiError> {
+    let key_id = database::models::generate_signing_key_id(transaction).await?;
+    let key = DBSigningKey {
+        id: key_id,
+        owner_id: owner,
+        body: body,
+        created: Utc::now(),
+    };
+
+    key.insert(transaction).await?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[derive(Serialize)]

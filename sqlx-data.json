@@ -604,6 +604,21 @@
     },
     "query": "\n            INSERT INTO categories (category, project_type, icon, header)\n            VALUES ($1, $2, $3, $4)\n            RETURNING id\n            "
   },
+  "194bf81152eaf4af65d3ec8f735f0472cf19be9234f9da2ad82bad0ea434e8d4": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Varchar",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO signing_keys (\n                id, owner_id, body_type, body\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            "
+  },
   "196c8ac2228e199f23eaf980f7ea15b37f76e66bb81da1115a754aad0be756e4": {
     "describe": {
       "columns": [],
@@ -2792,6 +2807,50 @@
       }
     },
     "query": "\n            SELECT id FROM report_types\n            WHERE name = $1\n            "
+  },
+  "68ca661100d6110141bd4c1b98e18831f26ae5b899786f42b71e03396bac5ab3": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "owner_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "body_type",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "body",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            SELECT k.id, k.owner_id, k.body_type, k.body, k.created\n            FROM signing_keys k\n            WHERE k.id = ANY($1)\n            ORDER BY k.created DESC\n            "
   },
   "69bb839ea7fd5687538656e1907599d75e2c4948a54d58446bec8a90170ee618": {
     "describe": {
@@ -5230,6 +5289,62 @@
     },
     "query": "\n                    UPDATE team_members\n                    SET accepted = TRUE\n                    WHERE (team_id = $1 AND user_id = $2)\n                    "
   },
+  "d44a9ef55fa7988c53b6062e31da52c88845fc772f5d726a3e32db0b55f748b6": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM signing_keys\n            WHERE id = ANY($1)\n            "
+  },
+  "d4e545d7fdcaee6f621058d827bc199634cc3f71561ae5596d9cfa973d9b1129": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "owner_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "body_type",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "body",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT k.id, k.owner_id, k.body_type, k.body, k.created\n            FROM signing_keys k\n            WHERE k.owner_id = $1\n            "
+  },
   "d59a0ca4725d40232eae8bf5735787e1b76282c390d2a8d07fb34e237a0b2132": {
     "describe": {
       "columns": [],
@@ -5679,6 +5794,26 @@
       }
     },
     "query": "\n            UPDATE mods\n            SET flame_anvil_user = NULL\n            WHERE (team_id = $1 AND flame_anvil_user = $2 )\n            "
+  },
+  "e4886e676d69fb325060618f6e9c48996da69d148422a6121dd9e4b10e2ab80b": {
+    "describe": {
+      "columns": [
+        {
+          "name": "exists",
+          "ordinal": 0,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT EXISTS(SELECT 1 FROM signing_keys WHERE id=$1)"
   },
   "e48c85a2b2e11691afae3799aa126bdd8b7338a973308bbab2760c18bb9cb0b7": {
     "describe": {

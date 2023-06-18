@@ -3,6 +3,7 @@ use thiserror::Error;
 pub use super::notifications::NotificationId;
 pub use super::projects::{ProjectId, VersionId};
 pub use super::reports::ReportId;
+pub use super::signing_keys::SigningKeyId;
 pub use super::teams::TeamId;
 pub use super::users::UserId;
 
@@ -109,6 +110,7 @@ base62_id_impl!(VersionId, VersionId);
 base62_id_impl!(TeamId, TeamId);
 base62_id_impl!(ReportId, ReportId);
 base62_id_impl!(NotificationId, NotificationId);
+base62_id_impl!(SigningKeyId, SigningKeyId);
 
 pub mod base62_impl {
     use serde::de::{self, Deserializer, Visitor};

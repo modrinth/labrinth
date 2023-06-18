@@ -5,6 +5,7 @@ mod notifications;
 pub(crate) mod project_creation;
 mod projects;
 mod reports;
+mod signing_keys;
 mod statistics;
 mod tags;
 mod teams;
@@ -23,6 +24,7 @@ pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
             .configure(moderation::config)
             .configure(notifications::config)
             .configure(project_creation::config)
+            .configure(signing_keys::config)
             // SHOULD CACHE
             .configure(projects::config)
             .configure(reports::config)
