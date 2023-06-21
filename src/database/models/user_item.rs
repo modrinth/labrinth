@@ -1,8 +1,11 @@
 use super::ids::{ProjectId, UserId};
+use crate::database::models::DatabaseError;
 use crate::models::users::{Badges, RecipientType, RecipientWallet};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 
+#[derive(Deserialize, Serialize)]
 pub struct User {
     pub id: UserId,
     pub kratos_id: Option<String>, // None if legacy user unconnected to Minos/Kratos
@@ -403,7 +406,8 @@ impl User {
     pub async fn remove_full(
         id: UserId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<Option<()>, sqlx::error::Error> {
+        redis: &deadpool_redis::Pool,
+    ) -> Result<Option<()>, DatabaseError> {
         use futures::TryStreamExt;
         let projects: Vec<ProjectId> = sqlx::query!(
             "
@@ -420,8 +424,12 @@ impl User {
         .await?;
 
         for project_id in projects {
-            let _result =
-                super::project_item::Project::remove_full(project_id, transaction).await?;
+            let _result = super::project_item::Project::remove_full(
+                project_id,
+                transaction,
+                redis,
+            )
+            .await?;
         }
 
         let notifications: Vec<i64> = sqlx::query!(

@@ -52,6 +52,7 @@ fn default_multiple() -> bool {
 pub async fn get_version_from_hash(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     hash_query: web::Query<HashQuery>,
 ) -> Result<HttpResponse, ApiError> {
     let hash = info.into_inner().0.to_lowercase();
@@ -84,7 +85,9 @@ pub async fn get_version_from_hash(
         .iter()
         .map(|x| database::models::VersionId(x.version_id))
         .collect::<Vec<_>>();
-    let versions_data = database::models::Version::get_many_full(&version_ids, &**pool).await?;
+    let versions_data =
+        database::models::Version::get_many(&version_ids, &**pool, &redis)
+            .await?;
 
     if let Some(first) = versions_data.first() {
         if hash_query.multiple {
@@ -157,6 +160,7 @@ pub async fn delete_file(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     hash_query: web::Query<HashQuery>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
@@ -247,6 +251,12 @@ pub async fn delete_file(
         .execute(&mut *transaction)
         .await?;
 
+        database::models::Version::clear_cache(
+            database::models::ids::VersionId(row.version_id),
+            &redis,
+        )
+        .await?;
+
         transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
@@ -265,6 +275,7 @@ pub struct UpdateData {
 pub async fn get_update_from_hash(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     hash_query: web::Query<HashQuery>,
     update_data: web::Json<UpdateData>,
 ) -> Result<HttpResponse, ApiError> {
@@ -324,7 +335,9 @@ pub async fn get_update_from_hash(
         .await?;
 
         if let Some(version_id) = version_ids.first() {
-            let version_data = database::models::Version::get_full(*version_id, &**pool).await?;
+            let version_data =
+                database::models::Version::get(*version_id, &**pool, &redis)
+                    .await?;
 
             ok_or_not_found::<QueryVersion, Version>(version_data)
         } else {
@@ -346,6 +359,7 @@ pub struct FileHashes {
 #[post("")]
 pub async fn get_versions_from_hashes(
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     file_data: web::Json<FileHashes>,
 ) -> Result<HttpResponse, ApiError> {
     let hashes_parsed: Vec<Vec<u8>> = file_data
@@ -380,7 +394,9 @@ pub async fn get_versions_from_hashes(
         .iter()
         .map(|x| database::models::VersionId(x.version_id))
         .collect::<Vec<_>>();
-    let versions_data = database::models::Version::get_many_full(&version_ids, &**pool).await?;
+    let versions_data =
+        database::models::Version::get_many(&version_ids, &**pool, &redis)
+            .await?;
 
     let response: Result<HashMap<String, Version>, ApiError> = result
         .into_iter()
@@ -407,6 +423,7 @@ pub async fn get_versions_from_hashes(
 #[post("project")]
 pub async fn get_projects_from_hashes(
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     file_data: web::Json<FileHashes>,
 ) -> Result<HttpResponse, ApiError> {
     let hashes_parsed: Vec<Vec<u8>> = file_data
@@ -441,7 +458,7 @@ pub async fn get_projects_from_hashes(
         .iter()
         .map(|x| database::models::ProjectId(x.project_id))
         .collect::<Vec<_>>();
-    let versions_data = database::models::Project::get_many_full(&project_ids, &**pool).await?;
+    let versions_data = database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
 
     let response: Result<HashMap<String, Project>, ApiError> = result
         .into_iter()
@@ -522,6 +539,7 @@ pub struct ManyUpdateData {
 #[post("update")]
 pub async fn update_files(
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     update_data: web::Json<ManyUpdateData>,
 ) -> Result<HttpResponse, ApiError> {
     let hashes_parsed: Vec<Vec<u8>> = update_data
@@ -597,7 +615,12 @@ pub async fn update_files(
     }
 
     let query_version_ids = version_ids.keys().copied().collect::<Vec<_>>();
-    let versions = database::models::Version::get_many_full(&query_version_ids, &**pool).await?;
+    let versions = database::models::Version::get_many(
+        &query_version_ids,
+        &**pool,
+        &redis,
+    )
+    .await?;
 
     let mut response = HashMap::new();
 

@@ -30,25 +30,30 @@ pub async fn team_members_get_project(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
     let project_data =
-        crate::database::models::Project::get_from_slug_or_project_id(&string, &**pool).await?;
+        crate::database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project) = project_data {
         let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-        if !is_authorized(&project, &current_user, &pool).await? {
+        let members_data = TeamMember::get_from_team_full(
+            project.inner.team_id,
+            &**pool,
+            &redis,
+        )
+        .await?;
+
+        if !is_authorized(&project.inner, &current_user, &pool).await? {
             return Ok(HttpResponse::NotFound().body(""));
         }
 
-        let members_data = TeamMember::get_from_team_full(project.team_id, &**pool).await?;
-
         if let Some(user) = &current_user {
-            let team_member =
-                TeamMember::get_from_user_id(project.team_id, user.id.into(), &**pool)
-                    .await
-                    .map_err(ApiError::Database)?;
+            let team_member = members_data
+                .iter()
+                .find(|x| x.user.id == user.id.into() && x.accepted);
 
             if team_member.is_some() {
                 let team_members: Vec<_> = members_data
@@ -83,16 +88,18 @@ pub async fn team_members_get(
     req: HttpRequest,
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let members_data = TeamMember::get_from_team_full(id.into(), &**pool).await?;
+    let members_data =
+        TeamMember::get_from_team_full(id.into(), &**pool, &redis).await?;
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
     if let Some(user) = &current_user {
-        let team_member = TeamMember::get_from_user_id(id.into(), user.id.into(), &**pool)
-            .await
-            .map_err(ApiError::Database)?;
+        let team_member = members_data
+            .iter()
+            .find(|x| x.user.id == user.id.into() && x.accepted);
 
         if team_member.is_some() {
             let team_members: Vec<_> = members_data
@@ -129,6 +136,7 @@ pub async fn teams_get(
     req: HttpRequest,
     web::Query(ids): web::Query<TeamIds>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     use itertools::Itertools;
 
@@ -137,34 +145,38 @@ pub async fn teams_get(
         .map(|x| x.into())
         .collect::<Vec<crate::database::models::ids::TeamId>>();
 
-    let teams_data = TeamMember::get_from_team_full_many(&team_ids, &**pool).await?;
+    let teams_data =
+        TeamMember::get_from_team_full_many(&team_ids, &**pool, &redis).await?;
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
-    let accepted = if let Some(user) = current_user {
-        TeamMember::get_from_user_id_many(&team_ids, user.id.into(), &**pool)
-            .await?
-            .into_iter()
-            .map(|m| m.team_id.0)
-            .collect()
-    } else {
-        std::collections::HashSet::new()
-    };
 
     let teams_groups = teams_data.into_iter().group_by(|data| data.team_id.0);
 
     let mut teams: Vec<Vec<crate::models::teams::TeamMember>> = vec![];
 
-    for (id, member_data) in &teams_groups {
-        if accepted.contains(&id) {
-            let team_members =
-                member_data.map(|data| crate::models::teams::TeamMember::from(data, false));
+    for (_, member_data) in &teams_groups {
+        let members = member_data.collect::<Vec<_>>();
+
+        let team_member = if let Some(user) = &current_user {
+            members
+                .iter()
+                .find(|x| x.user.id == user.id.into() && x.accepted)
+        } else {
+            None
+        };
+
+        if team_member.is_some() {
+            let team_members = members.into_iter().map(|data| {
+                crate::models::teams::TeamMember::from(data, false)
+            });
 
             teams.push(team_members.collect());
 
             continue;
         }
 
-        let team_members = member_data
+        let team_members = members
+            .into_iter()
             .filter(|x| x.accepted)
             .map(|data| crate::models::teams::TeamMember::from(data, true));
 
@@ -179,6 +191,7 @@ pub async fn join_team(
     req: HttpRequest,
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
     let current_user = get_user_from_headers(req.headers(), &**pool).await?;
@@ -206,6 +219,8 @@ pub async fn join_team(
             &mut transaction,
         )
         .await?;
+
+        TeamMember::clear_cache(team_id, &redis).await?;
 
         transaction.commit().await?;
     } else {
@@ -244,6 +259,7 @@ pub async fn add_team_member(
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
     new_member: web::Json<NewTeamMember>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
 
@@ -340,6 +356,8 @@ pub async fn add_team_member(
     .insert(new_member.user_id.into(), &mut transaction)
     .await?;
 
+    TeamMember::clear_cache(team_id, &redis).await?;
+
     transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
@@ -359,6 +377,7 @@ pub async fn edit_team_member(
     info: web::Path<(TeamId, UserId)>,
     pool: web::Data<PgPool>,
     edit_member: web::Json<EditTeamMember>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = info.into_inner();
     let id = ids.0.into();
@@ -430,6 +449,8 @@ pub async fn edit_team_member(
     )
     .await?;
 
+    TeamMember::clear_cache(id, &redis).await?;
+
     transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
@@ -446,6 +467,7 @@ pub async fn transfer_ownership(
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
     new_owner: web::Json<TransferOwnership>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
 
@@ -505,6 +527,8 @@ pub async fn transfer_ownership(
     )
     .await?;
 
+    TeamMember::clear_cache(id.into(), &redis).await?;
+
     transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
@@ -515,6 +539,7 @@ pub async fn remove_team_member(
     req: HttpRequest,
     info: web::Path<(TeamId, UserId)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = info.into_inner();
     let id = ids.0.into();
@@ -565,6 +590,8 @@ pub async fn remove_team_member(
                 "You do not have permission to cancel a team invite".to_string(),
             ));
         }
+
+        TeamMember::clear_cache(id, &redis).await?;
 
         transaction.commit().await?;
         Ok(HttpResponse::NoContent().body(""))

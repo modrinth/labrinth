@@ -316,6 +316,7 @@ pub async fn thread_send_message(
     info: web::Path<(ThreadId,)>,
     pool: web::Data<PgPool>,
     new_message: web::Json<NewThreadMessage>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(req.headers(), &**pool).await?;
 
@@ -392,6 +393,7 @@ pub async fn thread_send_message(
                 let members = database::models::TeamMember::get_from_team_full(
                     database::models::TeamId(record.team_id),
                     &**pool,
+                    &redis,
                 )
                 .await?;
 
