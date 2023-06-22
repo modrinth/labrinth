@@ -69,8 +69,7 @@ pub async fn maven_metadata(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let project_id = params.into_inner().0;
-    let project_data =
-        database::models::Project::get(&project_id, &**pool, &redis).await?;
+    let project_data = database::models::Project::get(&project_id, &**pool, &redis).await?;
 
     let data = if let Some(data) = project_data {
         data
@@ -189,8 +188,7 @@ pub async fn version_file(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
-    let project_data =
-        database::models::Project::get(&project_id, &**pool, &redis).await?;
+    let project_data = database::models::Project::get(&project_id, &**pool, &redis).await?;
 
     let project = if let Some(data) = project_data {
         data
@@ -222,12 +220,9 @@ pub async fn version_file(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let version = if let Some(version) = database::models::Version::get(
-        database::models::ids::VersionId(vid.id),
-        &**pool,
-        &redis,
-    )
-    .await?
+    let version = if let Some(version) =
+        database::models::Version::get(database::models::ids::VersionId(vid.id), &**pool, &redis)
+            .await?
     {
         version
     } else {
@@ -274,8 +269,7 @@ pub async fn version_file_sha1(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
-    let project_data =
-        database::models::Project::get(&project_id, &**pool, &redis).await?;
+    let project_data = database::models::Project::get(&project_id, &**pool, &redis).await?;
 
     let project = if let Some(data) = project_data {
         data
@@ -307,12 +301,9 @@ pub async fn version_file_sha1(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let version = if let Some(version) = database::models::Version::get(
-        database::models::ids::VersionId(vid.id),
-        &**pool,
-        &redis,
-    )
-    .await?
+    let version = if let Some(version) =
+        database::models::Version::get(database::models::ids::VersionId(vid.id), &**pool, &redis)
+            .await?
     {
         version
     } else {
@@ -333,8 +324,7 @@ pub async fn version_file_sha512(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
-    let project_data =
-        database::models::Project::get(&project_id, &**pool, &redis).await?;
+    let project_data = database::models::Project::get(&project_id, &**pool, &redis).await?;
 
     let project = if let Some(data) = project_data {
         data
@@ -366,12 +356,9 @@ pub async fn version_file_sha512(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let version = if let Some(version) = database::models::Version::get(
-        database::models::ids::VersionId(vid.id),
-        &**pool,
-        &redis,
-    )
-    .await?
+    let version = if let Some(version) =
+        database::models::Version::get(database::models::ids::VersionId(vid.id), &**pool, &redis)
+            .await?
     {
         version
     } else {

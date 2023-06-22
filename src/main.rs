@@ -75,16 +75,13 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Database connection failed");
 
-
     // Redis connector
-    let redis_cfg =
-        Config::from_url(dotenvy::var("REDIS_URL").expect("Redis URL not set"));
+    let redis_cfg = Config::from_url(dotenvy::var("REDIS_URL").expect("Redis URL not set"));
     let redis_pool = redis_cfg
         .create_pool(Some(Runtime::Tokio1))
         .expect("Redis connection failed");
 
-    let storage_backend =
-        dotenvy::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
+    let storage_backend = dotenvy::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
 
     let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> = match storage_backend.as_str() {
         "backblaze" => Arc::new(

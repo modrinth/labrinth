@@ -46,12 +46,11 @@ pub async fn get_projects(
     .try_collect::<Vec<database::models::ProjectId>>()
     .await?;
 
-    let projects: Vec<_> =
-        database::Project::get_many_ids(&project_ids, &**pool, &redis)
-            .await?
-            .into_iter()
-            .map(crate::models::projects::Project::from)
-            .collect();
+    let projects: Vec<_> = database::Project::get_many_ids(&project_ids, &**pool, &redis)
+        .await?
+        .into_iter()
+        .map(crate::models::projects::Project::from)
+        .collect();
 
     Ok(HttpResponse::Ok().json(projects))
 }

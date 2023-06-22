@@ -1,8 +1,8 @@
 use super::ids::*;
-use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use crate::database::models;
 use crate::database::models::DatabaseError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
+use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use serde::{Deserialize, Serialize};
@@ -484,13 +484,9 @@ impl Project {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        Project::get_many(
-            &[crate::models::ids::ProjectId::from(id)],
-            executor,
-            redis,
-        )
-        .await
-        .map(|x| x.into_iter().next())
+        Project::get_many(&[crate::models::ids::ProjectId::from(id)], executor, redis)
+            .await
+            .map(|x| x.into_iter().next())
     }
 
     pub async fn get_many_ids<'a, E>(
@@ -568,8 +564,8 @@ impl Project {
                 .await?;
 
             for project in projects {
-                if let Some(project) = project
-                    .and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
+                if let Some(project) =
+                    project.and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
                 {
                     remaining_strings.retain(|x| {
                         &to_base62(project.inner.id.0 as u64) != x
@@ -706,10 +702,7 @@ impl Project {
 
             for project in db_projects {
                 cmd("SET")
-                    .arg(format!(
-                        "{}:{}",
-                        PROJECTS_NAMESPACE, project.inner.id.0
-                    ))
+                    .arg(format!("{}:{}", PROJECTS_NAMESPACE, project.inner.id.0))
                     .arg(serde_json::to_string(&project)?)
                     .arg("EX")
                     .arg(DEFAULT_EXPIRY)
@@ -740,15 +733,11 @@ impl Project {
         id: ProjectId,
         exec: E,
         redis: &deadpool_redis::Pool,
-    ) -> Result<
-        Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>,
-        DatabaseError,
-    >
+    ) -> Result<Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        type Dependencies =
-            Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>;
+        type Dependencies = Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>;
 
         use futures::stream::TryStreamExt;
 
@@ -759,8 +748,8 @@ impl Project {
             .query_async::<_, Option<String>>(&mut redis)
             .await?;
 
-        if let Some(dependencies) = dependencies
-            .and_then(|x| serde_json::from_str::<Dependencies>(&x).ok())
+        if let Some(dependencies) =
+            dependencies.and_then(|x| serde_json::from_str::<Dependencies>(&x).ok())
         {
             return Ok(dependencies);
         }
@@ -775,21 +764,22 @@ impl Project {
             ",
             id as ProjectId
         )
-            .fetch_many(exec)
-            .try_filter_map(|e| async {
-                Ok(e.right().map(|x| {
-                    (
-                        x.dependency_id
-                            .map(VersionId),
-                        if x.mod_id == Some(0) { None } else { x.mod_id
-                            .map(ProjectId) },
-                        x.mod_dependency_id
-                            .map(ProjectId),
-                    )
-                }))
-            })
-            .try_collect::<Dependencies>()
-            .await?;
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|x| {
+                (
+                    x.dependency_id.map(VersionId),
+                    if x.mod_id == Some(0) {
+                        None
+                    } else {
+                        x.mod_id.map(ProjectId)
+                    },
+                    x.mod_dependency_id.map(ProjectId),
+                )
+            }))
+        })
+        .try_collect::<Dependencies>()
+        .await?;
 
         cmd("SET")
             .arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0))

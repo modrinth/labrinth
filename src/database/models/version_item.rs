@@ -516,8 +516,7 @@ impl Version {
 
         use futures::stream::TryStreamExt;
 
-        let mut version_ids_parsed: Vec<i64> =
-            version_ids.iter().map(|x| x.0).collect();
+        let mut version_ids_parsed: Vec<i64> = version_ids.iter().map(|x| x.0).collect();
 
         let mut redis = redis.get().await?;
 
@@ -534,8 +533,8 @@ impl Version {
             .await?;
 
         for version in versions {
-            if let Some(version) = version
-                .and_then(|x| serde_json::from_str::<QueryVersion>(&x).ok())
+            if let Some(version) =
+                version.and_then(|x| serde_json::from_str::<QueryVersion>(&x).ok())
             {
                 version_ids_parsed.retain(|x| &version.inner.id.0 != x);
                 found_versions.push(version);
@@ -684,10 +683,7 @@ impl Version {
 
             for version in db_versions {
                 cmd("SET")
-                    .arg(format!(
-                        "{}:{}",
-                        VERSIONS_NAMESPACE, version.inner.id.0
-                    ))
+                    .arg(format!("{}:{}", VERSIONS_NAMESPACE, version.inner.id.0))
                     .arg(serde_json::to_string(&version)?)
                     .arg("EX")
                     .arg(DEFAULT_EXPIRY)

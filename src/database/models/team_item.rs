@@ -136,8 +136,7 @@ impl TeamMember {
 
         use futures::stream::TryStreamExt;
 
-        let mut team_ids_parsed: Vec<i64> =
-            team_ids.iter().map(|x| x.0).collect();
+        let mut team_ids_parsed: Vec<i64> = team_ids.iter().map(|x| x.0).collect();
 
         let mut redis = redis.get().await?;
 
@@ -154,9 +153,10 @@ impl TeamMember {
             .await?;
 
         for team_raw in teams {
-            if let Some(mut team) = team_raw.clone().and_then(|x| {
-                serde_json::from_str::<Vec<QueryTeamMember>>(&x).ok()
-            }) {
+            if let Some(mut team) = team_raw
+                .clone()
+                .and_then(|x| serde_json::from_str::<Vec<QueryTeamMember>>(&x).ok())
+            {
                 if let Some(team_id) = team.first().map(|x| x.team_id) {
                     team_ids_parsed.retain(|x| &team_id.0 != x);
                 }

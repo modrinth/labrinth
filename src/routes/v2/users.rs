@@ -154,16 +154,13 @@ pub async fn projects_list(
 
         let project_data = User::get_projects(id, &**pool).await?;
 
-        let response: Vec<_> = crate::database::Project::get_many_ids(
-            &project_data,
-            &**pool,
-            &redis,
-        )
-        .await?
-        .into_iter()
-        .filter(|x| can_view_private || x.inner.status.is_searchable())
-        .map(Project::from)
-        .collect();
+        let response: Vec<_> =
+            crate::database::Project::get_many_ids(&project_data, &**pool, &redis)
+                .await?
+                .into_iter()
+                .filter(|x| can_view_private || x.inner.status.is_searchable())
+                .map(Project::from)
+                .collect();
 
         Ok(HttpResponse::Ok().json(response))
     } else {
@@ -576,15 +573,12 @@ pub async fn user_follows(
         .try_collect::<Vec<crate::database::models::ProjectId>>()
         .await?;
 
-        let projects: Vec<_> = crate::database::Project::get_many_ids(
-            &project_ids,
-            &**pool,
-            &redis,
-        )
-        .await?
-        .into_iter()
-        .map(Project::from)
-        .collect();
+        let projects: Vec<_> =
+            crate::database::Project::get_many_ids(&project_ids, &**pool, &redis)
+                .await?
+                .into_iter()
+                .map(Project::from)
+                .collect();
 
         Ok(HttpResponse::Ok().json(projects))
     } else {

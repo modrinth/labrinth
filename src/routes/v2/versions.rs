@@ -47,8 +47,7 @@ pub async fn version_list(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
-    let result =
-        database::models::Project::get(&string, &**pool, &redis).await?;
+    let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -57,38 +56,35 @@ pub async fn version_list(
             return Ok(HttpResponse::NotFound().body(""));
         }
 
-        let version_filters = filters.game_versions.as_ref().map(|x| {
-            serde_json::from_str::<Vec<String>>(x).unwrap_or_default()
-        });
-        let loader_filters = filters.loaders.as_ref().map(|x| {
-            serde_json::from_str::<Vec<String>>(x).unwrap_or_default()
-        });
-        let mut versions = database::models::Version::get_many(
-            &project.versions,
-            &**pool,
-            &redis,
-        )
-        .await?
-        .into_iter()
-        .skip(filters.offset.unwrap_or(0))
-        .take(filters.limit.unwrap_or(usize::MAX))
-        .filter(|x| {
-            let mut bool = true;
+        let version_filters = filters
+            .game_versions
+            .as_ref()
+            .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
+        let loader_filters = filters
+            .loaders
+            .as_ref()
+            .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
+        let mut versions = database::models::Version::get_many(&project.versions, &**pool, &redis)
+            .await?
+            .into_iter()
+            .skip(filters.offset.unwrap_or(0))
+            .take(filters.limit.unwrap_or(usize::MAX))
+            .filter(|x| {
+                let mut bool = true;
 
-            if let Some(version_type) = filters.version_type {
-                bool &= &*x.inner.version_type == version_type.as_str();
-            }
-            if let Some(loaders) = &loader_filters {
-                bool &= x.loaders.iter().any(|y| loaders.contains(y));
-            }
-            if let Some(game_versions) = &version_filters {
-                bool &=
-                    x.game_versions.iter().any(|y| game_versions.contains(y));
-            }
+                if let Some(version_type) = filters.version_type {
+                    bool &= &*x.inner.version_type == version_type.as_str();
+                }
+                if let Some(loaders) = &loader_filters {
+                    bool &= x.loaders.iter().any(|y| loaders.contains(y));
+                }
+                if let Some(game_versions) = &version_filters {
+                    bool &= x.game_versions.iter().any(|y| game_versions.contains(y));
+                }
 
-            bool
-        })
-        .collect::<Vec<_>>();
+                bool
+            })
+            .collect::<Vec<_>>();
 
         let mut response = versions
             .iter()
@@ -156,10 +152,8 @@ pub async fn version_project_get(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner();
-    let version_data = database::models::Version::get_full_from_id_slug(
-        &id.0, &id.1, &**pool, &redis,
-    )
-    .await?;
+    let version_data =
+        database::models::Version::get_full_from_id_slug(&id.0, &id.1, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -184,14 +178,11 @@ pub async fn versions_get(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
-    let version_ids =
-        serde_json::from_str::<Vec<models::ids::VersionId>>(&ids.ids)?
-            .into_iter()
-            .map(|x| x.into())
-            .collect::<Vec<database::models::VersionId>>();
-    let versions_data =
-        database::models::Version::get_many(&version_ids, &**pool, &redis)
-            .await?;
+    let version_ids = serde_json::from_str::<Vec<models::ids::VersionId>>(&ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect::<Vec<database::models::VersionId>>();
+    let versions_data = database::models::Version::get_many(&version_ids, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -208,8 +199,7 @@ pub async fn version_get(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let version_data =
-        database::models::Version::get(id.into(), &**pool, &redis).await?;
+    let version_data = database::models::Version::get(id.into(), &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -278,20 +268,16 @@ pub async fn version_edit(
     let result = database::models::Version::get(id, &**pool, &redis).await?;
 
     if let Some(version_item) = result {
-        let project_item = database::models::Project::get_id(
+        let project_item =
+            database::models::Project::get_id(version_item.inner.project_id, &**pool, &redis)
+                .await?;
+
+        let team_member = database::models::TeamMember::get_from_user_id_project(
             version_item.inner.project_id,
+            user.id.into(),
             &**pool,
-            &redis,
         )
         .await?;
-
-        let team_member =
-            database::models::TeamMember::get_from_user_id_project(
-                version_item.inner.project_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await?;
         let permissions;
 
         if user.role.is_admin() {
@@ -624,11 +610,7 @@ pub async fn version_edit(
                 }
             }
 
-            database::models::Version::clear_cache(
-                version_item.inner.id,
-                &redis,
-            )
-            .await?;
+            database::models::Version::clear_cache(version_item.inner.id, &redis).await?;
             database::models::Project::clear_cache(
                 version_item.inner.project_id,
                 None,
@@ -677,17 +659,15 @@ pub async fn version_schedule(
     }
 
     let string = info.into_inner().0;
-    let result =
-        database::models::Version::get(string.into(), &**pool, &redis).await?;
+    let result = database::models::Version::get(string.into(), &**pool, &redis).await?;
 
     if let Some(version_item) = result {
-        let team_member =
-            database::models::TeamMember::get_from_user_id_project(
-                version_item.inner.project_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await?;
+        let team_member = database::models::TeamMember::get_from_user_id_project(
+            version_item.inner.project_id,
+            user.id.into(),
+            &**pool,
+        )
+        .await?;
 
         if !user.role.is_mod()
             && !team_member
@@ -713,8 +693,7 @@ pub async fn version_schedule(
         .execute(&mut *transaction)
         .await?;
 
-        database::models::Version::clear_cache(version_item.inner.id, &redis)
-            .await?;
+        database::models::Version::clear_cache(version_item.inner.id, &redis).await?;
         transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
@@ -736,9 +715,7 @@ pub async fn version_delete(
     let version = database::models::Version::get(id.into(), &**pool, &redis)
         .await?
         .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "The specified version does not exist!".to_string(),
-            )
+            ApiError::InvalidInput("The specified version does not exist!".to_string())
         })?;
 
     if !user.role.is_admin() {
@@ -767,20 +744,11 @@ pub async fn version_delete(
 
     let mut transaction = pool.begin().await?;
 
-    let result = database::models::Version::remove_full(
-        version.inner.id,
-        &redis,
-        &mut transaction,
-    )
-    .await?;
+    let result =
+        database::models::Version::remove_full(version.inner.id, &redis, &mut transaction).await?;
 
-    database::models::Project::clear_cache(
-        version.inner.project_id,
-        None,
-        Some(true),
-        &redis,
-    )
-    .await?;
+    database::models::Project::clear_cache(version.inner.project_id, None, Some(true), &redis)
+        .await?;
 
     transaction.commit().await?;
 

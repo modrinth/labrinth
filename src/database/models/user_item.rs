@@ -424,12 +424,8 @@ impl User {
         .await?;
 
         for project_id in projects {
-            let _result = super::project_item::Project::remove_full(
-                project_id,
-                transaction,
-                redis,
-            )
-            .await?;
+            let _result =
+                super::project_item::Project::remove_full(project_id, transaction, redis).await?;
         }
 
         let notifications: Vec<i64> = sqlx::query!(

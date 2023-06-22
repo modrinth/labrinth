@@ -85,9 +85,7 @@ pub async fn get_version_from_hash(
         .iter()
         .map(|x| database::models::VersionId(x.version_id))
         .collect::<Vec<_>>();
-    let versions_data =
-        database::models::Version::get_many(&version_ids, &**pool, &redis)
-            .await?;
+    let versions_data = database::models::Version::get_many(&version_ids, &**pool, &redis).await?;
 
     if let Some(first) = versions_data.first() {
         if hash_query.multiple {
@@ -335,9 +333,7 @@ pub async fn get_update_from_hash(
         .await?;
 
         if let Some(version_id) = version_ids.first() {
-            let version_data =
-                database::models::Version::get(*version_id, &**pool, &redis)
-                    .await?;
+            let version_data = database::models::Version::get(*version_id, &**pool, &redis).await?;
 
             ok_or_not_found::<QueryVersion, Version>(version_data)
         } else {
@@ -394,9 +390,7 @@ pub async fn get_versions_from_hashes(
         .iter()
         .map(|x| database::models::VersionId(x.version_id))
         .collect::<Vec<_>>();
-    let versions_data =
-        database::models::Version::get_many(&version_ids, &**pool, &redis)
-            .await?;
+    let versions_data = database::models::Version::get_many(&version_ids, &**pool, &redis).await?;
 
     let response: Result<HashMap<String, Version>, ApiError> = result
         .into_iter()
@@ -458,7 +452,8 @@ pub async fn get_projects_from_hashes(
         .iter()
         .map(|x| database::models::ProjectId(x.project_id))
         .collect::<Vec<_>>();
-    let versions_data = database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
+    let versions_data =
+        database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
 
     let response: Result<HashMap<String, Project>, ApiError> = result
         .into_iter()
@@ -615,12 +610,7 @@ pub async fn update_files(
     }
 
     let query_version_ids = version_ids.keys().copied().collect::<Vec<_>>();
-    let versions = database::models::Version::get_many(
-        &query_version_ids,
-        &**pool,
-        &redis,
-    )
-    .await?;
+    let versions = database::models::Version::get_many(&query_version_ids, &**pool, &redis).await?;
 
     let mut response = HashMap::new();
 

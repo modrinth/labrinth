@@ -95,12 +95,11 @@ pub async fn random_projects_get(
     .try_collect::<Vec<_>>()
     .await?;
 
-    let projects_data =
-        database::models::Project::get_many_ids(&project_ids, &**pool, &redis)
-            .await?
-            .into_iter()
-            .map(Project::from)
-            .collect::<Vec<_>>();
+    let projects_data = database::models::Project::get_many_ids(&project_ids, &**pool, &redis)
+        .await?
+        .into_iter()
+        .map(Project::from)
+        .collect::<Vec<_>>();
 
     Ok(HttpResponse::Ok().json(projects_data))
 }
@@ -118,8 +117,7 @@ pub async fn projects_get(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
-    let projects_data =
-        database::models::Project::get_many(&ids, &**pool, &redis).await?;
+    let projects_data = database::models::Project::get_many(&ids, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -137,8 +135,7 @@ pub async fn project_get(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
-    let project_data =
-        database::models::Project::get(&string, &**pool, &redis).await?;
+    let project_data = database::models::Project::get(&string, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -159,8 +156,7 @@ pub async fn project_get_check(
 ) -> Result<HttpResponse, ApiError> {
     let slug = info.into_inner().0;
 
-    let project_data =
-        database::models::Project::get(&slug, &**pool, &redis).await?;
+    let project_data = database::models::Project::get(&slug, &**pool, &redis).await?;
 
     if let Some(project) = project_data {
         Ok(HttpResponse::Ok().json(json! ({
@@ -186,8 +182,7 @@ pub async fn dependency_list(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
-    let result =
-        database::models::Project::get(&string, &**pool, &redis).await?;
+    let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -196,12 +191,8 @@ pub async fn dependency_list(
             return Ok(HttpResponse::NotFound().body(""));
         }
 
-        let dependencies = database::Project::get_dependencies(
-            project.inner.id,
-            &**pool,
-            &redis,
-        )
-        .await?;
+        let dependencies =
+            database::Project::get_dependencies(project.inner.id, &**pool, &redis).await?;
 
         let project_ids = dependencies
             .iter()
@@ -827,12 +818,7 @@ pub async fn project_edit(
 
                 // Make sure the new slug is different from the old one
                 // We are able to unwrap here because the slug is always set
-                if !slug.eq(&project_item
-                    .inner
-                    .slug
-                    .clone()
-                    .unwrap_or_default())
-                {
+                if !slug.eq(&project_item.inner.slug.clone().unwrap_or_default()) {
                     let results = sqlx::query!(
                         "
                       SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
@@ -996,8 +982,7 @@ pub async fn project_edit(
 
             if let Some(moderation_message) = &new_project.moderation_message {
                 if !user.role.is_mod()
-                    && (!project_item.inner.status.is_approved()
-                        || moderation_message.is_some())
+                    && (!project_item.inner.status.is_approved() || moderation_message.is_some())
                 {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the moderation message of this project!"
@@ -1199,8 +1184,7 @@ pub async fn projects_edit(
             .collect();
 
     let projects_data =
-        database::models::Project::get_many_ids(&project_ids, &**pool, &redis)
-            .await?;
+        database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
 
     if let Some(id) = project_ids
         .iter()
@@ -1216,10 +1200,8 @@ pub async fn projects_edit(
         .iter()
         .map(|x| x.inner.team_id)
         .collect::<Vec<database::models::TeamId>>();
-    let team_members = database::models::TeamMember::get_from_team_full_many(
-        &team_ids, &**pool, &redis,
-    )
-    .await?;
+    let team_members =
+        database::models::TeamMember::get_from_team_full_many(&team_ids, &**pool, &redis).await?;
 
     let categories = database::models::categories::Category::list(&**pool).await?;
     let donation_platforms = database::models::categories::DonationPlatform::list(&**pool).await?;
@@ -1496,13 +1478,8 @@ pub async fn projects_edit(
             .await?;
         }
 
-        database::models::Project::clear_cache(
-            project.inner.id,
-            project.inner.slug,
-            None,
-            &redis,
-        )
-        .await?;
+        database::models::Project::clear_cache(project.inner.id, project.inner.slug, None, &redis)
+            .await?;
     }
 
     transaction.commit().await?;
@@ -1539,8 +1516,7 @@ pub async fn project_schedule(
     }
 
     let string = info.into_inner().0;
-    let result =
-        database::models::Project::get(&string, &**pool, &redis).await?;
+    let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project_item) = result {
         let team_member = database::models::TeamMember::get_from_user_id(
@@ -1607,14 +1583,11 @@ pub async fn project_icon_edit(
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let string = info.into_inner().0;
 
-        let project_item =
-            database::models::Project::get(&string, &**pool, &redis)
-                .await?
-                .ok_or_else(|| {
-                    ApiError::InvalidInput(
-                        "The specified project does not exist!".to_string(),
-                    )
-                })?;
+        let project_item = database::models::Project::get(&string, &**pool, &redis)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput("The specified project does not exist!".to_string())
+            })?;
 
         if !user.role.is_mod() {
             let team_member = database::models::TeamMember::get_from_user_id(
@@ -1706,9 +1679,7 @@ pub async fn delete_project_icon(
     let project_item = database::models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "The specified project does not exist!".to_string(),
-            )
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
     if !user.role.is_mod() {
@@ -1795,14 +1766,11 @@ pub async fn add_gallery_item(
         let user = get_user_from_headers(req.headers(), &**pool).await?;
         let string = info.into_inner().0;
 
-        let project_item =
-            database::models::Project::get(&string, &**pool, &redis)
-                .await?
-                .ok_or_else(|| {
-                    ApiError::InvalidInput(
-                        "The specified project does not exist!".to_string(),
-                    )
-                })?;
+        let project_item = database::models::Project::get(&string, &**pool, &redis)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput("The specified project does not exist!".to_string())
+            })?;
 
         if project_item.gallery_items.len() > 64 {
             return Err(ApiError::CustomAuthentication(
@@ -1940,9 +1908,7 @@ pub async fn edit_gallery_item(
     let project_item = database::models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "The specified project does not exist!".to_string(),
-            )
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
     if !user.role.is_mod() {
@@ -2084,9 +2050,7 @@ pub async fn delete_gallery_item(
     let project_item = database::models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "The specified project does not exist!".to_string(),
-            )
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
     if !user.role.is_mod() {
@@ -2172,25 +2136,20 @@ pub async fn project_delete(
     let project = database::models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "The specified project does not exist!".to_string(),
-            )
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
     if !user.role.is_admin() {
-        let team_member =
-            database::models::TeamMember::get_from_user_id_project(
-                project.inner.id,
-                user.id.into(),
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::InvalidInput(
-                    "The specified project does not exist!".to_string(),
-                )
-            })?;
+        let team_member = database::models::TeamMember::get_from_user_id_project(
+            project.inner.id,
+            user.id.into(),
+            &**pool,
+        )
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
+        })?;
 
         if !team_member
             .permissions
@@ -2204,12 +2163,8 @@ pub async fn project_delete(
 
     let mut transaction = pool.begin().await?;
 
-    let result = database::models::Project::remove_full(
-        project.inner.id,
-        &mut transaction,
-        &redis,
-    )
-    .await?;
+    let result =
+        database::models::Project::remove_full(project.inner.id, &mut transaction, &redis).await?;
 
     transaction.commit().await?;
 
@@ -2235,9 +2190,7 @@ pub async fn project_follow(
     let result = database::models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "The specified project does not exist!".to_string(),
-            )
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
     let user_id: database::models::ids::UserId = user.id.into();
@@ -2307,9 +2260,7 @@ pub async fn project_unfollow(
     let result = database::models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "The specified project does not exist!".to_string(),
-            )
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
     let user_id: database::models::ids::UserId = user.id.into();

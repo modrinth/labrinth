@@ -33,18 +33,13 @@ pub async fn team_members_get_project(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
-    let project_data =
-        crate::database::models::Project::get(&string, &**pool, &redis).await?;
+    let project_data = crate::database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project) = project_data {
         let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
-        let members_data = TeamMember::get_from_team_full(
-            project.inner.team_id,
-            &**pool,
-            &redis,
-        )
-        .await?;
+        let members_data =
+            TeamMember::get_from_team_full(project.inner.team_id, &**pool, &redis).await?;
 
         if !is_authorized(&project.inner, &current_user, &pool).await? {
             return Ok(HttpResponse::NotFound().body(""));
@@ -91,8 +86,7 @@ pub async fn team_members_get(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let members_data =
-        TeamMember::get_from_team_full(id.into(), &**pool, &redis).await?;
+    let members_data = TeamMember::get_from_team_full(id.into(), &**pool, &redis).await?;
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -145,8 +139,7 @@ pub async fn teams_get(
         .map(|x| x.into())
         .collect::<Vec<crate::database::models::ids::TeamId>>();
 
-    let teams_data =
-        TeamMember::get_from_team_full_many(&team_ids, &**pool, &redis).await?;
+    let teams_data = TeamMember::get_from_team_full_many(&team_ids, &**pool, &redis).await?;
 
     let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
 
@@ -166,9 +159,9 @@ pub async fn teams_get(
         };
 
         if team_member.is_some() {
-            let team_members = members.into_iter().map(|data| {
-                crate::models::teams::TeamMember::from(data, false)
-            });
+            let team_members = members
+                .into_iter()
+                .map(|data| crate::models::teams::TeamMember::from(data, false));
 
             teams.push(team_members.collect());
 
