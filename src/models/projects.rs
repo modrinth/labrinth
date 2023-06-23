@@ -8,26 +8,30 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-/// The ID of a specific project, encoded as base62 for usage in the API
+/// The ID of a specific project.
+///
+/// This is encoded as base62 in the API.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct ProjectId(pub u64);
 
-/// The ID of a specific version of a project
+/// The ID of a specific version of a project.
+///
+/// This is encoded as base62 in the API.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct VersionId(pub u64);
 
-/// A project returned from the API
+/// A project returned from the API.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Project {
     /// The ID of the project, encoded as a base62 string.
     pub id: ProjectId,
-    /// The slug of a project, used for vanity URLs
+    /// The slug of a project, used for vanity URLs.
     pub slug: Option<String>,
-    /// The project type of the project
+    /// The type of the project (e.g. mod, plugin, resource pack).
     pub project_type: String,
     /// The team of people that has ownership of this project.
     pub team: TeamId,
@@ -37,41 +41,43 @@ pub struct Project {
     pub description: String,
     /// A long form description of the project.
     pub body: String,
-    /// The link to the long description of the project. Deprecated, always None
+    /// The link to the long description of the project.
+    ///
+    /// Deprecated; always [`None`].
     pub body_url: Option<String>,
 
     /// The date at which the project was first published.
     pub published: DateTime<Utc>,
 
-    /// The date at which the project was first published.
+    /// The date at which the project was last updated.
     pub updated: DateTime<Utc>,
 
     /// The date at which the project was first approved.
-    //pub approved: Option<DateTime<Utc>>,
     pub approved: Option<DateTime<Utc>>,
-    /// The date at which the project entered the moderation queue
+    /// The date at which the project entered the moderation queue.
     pub queued: Option<DateTime<Utc>>,
 
-    /// The status of the project
+    /// The status of the project.
     pub status: ProjectStatus,
-    /// The requested status of this projct
+    /// The requested status of this projct.
     pub requested_status: Option<ProjectStatus>,
 
-    /// DEPRECATED: moved to threads system
-    /// The rejection data of the project
+    /// The rejection data of the project.
+    ///
+    /// Deprecated; moved to threads system.
     pub moderator_message: Option<ModeratorMessage>,
 
-    /// The license of this project
+    /// The license of this project.
     pub license: License,
 
-    /// The support range for the client project*
+    /// The support range for the client project.
     pub client_side: SideType,
-    /// The support range for the server project
+    /// The support range for the server project.
     pub server_side: SideType,
 
     /// The total number of downloads the project has had.
     pub downloads: u32,
-    /// The total number of followers this project has accumulated
+    /// The total number of followers this project has accumulated.
     pub followers: u32,
 
     /// A list of the categories that the project is in.
@@ -79,14 +85,14 @@ pub struct Project {
 
     /// A list of the categories that the project is in.
     pub additional_categories: Vec<String>,
-    /// A list of game versions this project supports
+    /// A list of game versions this project supports.
     pub game_versions: Vec<String>,
-    /// A list of loaders this project supports
+    /// A list of loaders this project supports.
     pub loaders: Vec<String>,
 
-    /// A list of ids for versions of the project.
+    /// A list of IDs for the versions of this project.
     pub versions: Vec<VersionId>,
-    /// The URL of the icon of the project
+    /// The URL of the project's icon.
     pub icon_url: Option<String>,
     /// An optional link to where to submit bugs or issues with the project.
     pub issues_url: Option<String>,
@@ -94,21 +100,21 @@ pub struct Project {
     pub source_url: Option<String>,
     /// An optional link to the project's wiki page or other relevant information.
     pub wiki_url: Option<String>,
-    /// An optional link to the project's discord
+    /// An optional link to the project's Discord server.
     pub discord_url: Option<String>,
-    /// An optional list of all donation links the project has
+    /// An optional list of all donation links the project has.
     pub donation_urls: Option<Vec<DonationLink>>,
 
-    /// A string of URLs to visual content featuring the project
+    /// The list of items in this project's gallery.
     pub gallery: Vec<GalleryItem>,
 
-    /// The color of the project (picked from icon)
+    /// The color of the project (picked from the icon).
     pub color: Option<u32>,
 
-    /// The thread of the moderation messages of the project
+    /// The thread containing moderation messages for the project.
     pub thread_id: Option<ThreadId>,
 
-    /// The monetization status of this project
+    /// The monetization status of this project.
     pub monetization_status: MonetizationStatus,
 }
 
@@ -202,13 +208,20 @@ impl From<QueryProject> for Project {
     }
 }
 
+/// An item in the gallery of a project.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GalleryItem {
+    /// The URL to the image.
     pub url: String,
+    /// Whether this item is featured.
     pub featured: bool,
+    /// The title of this item.
     pub title: Option<String>,
+    /// The description for this item.
     pub description: Option<String>,
+    /// The date at which this item was created.
     pub created: DateTime<Utc>,
+    /// The order in which this item appears.
     pub ordering: i64,
 }
 
@@ -274,26 +287,26 @@ pub struct DonationLink {
     pub url: String,
 }
 
-/// A status decides the visibility of a project in search, URLs, and the whole site itself.
-/// Approved - Project is displayed on search, and accessible by URL
-/// Rejected - Project is not displayed on search, and not accessible by URL (Temporary state, project can reapply)
-/// Draft - Project is not displayed on search, and not accessible by URL
-/// Unlisted - Project is not displayed on search, but accessible by URL
-/// Withheld - Same as unlisted, but set by a moderator. Cannot be switched to another type without moderator approval
-/// Processing - Project is not displayed on search, and not accessible by URL (Temporary state, project under review)
-/// Scheduled - Project is scheduled to be released in the future
-/// Private - Project is approved, but is not viewable to the public
+/// The status of a project, which determines its visibility in search, URLs, and the whole site itself.
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
+    /// Project is displayed on search and accessible by URL.
     Approved,
     Archived,
+    /// Project is neither displayed on search nor accessible by URL. (Temporary state, project can reapply)
     Rejected,
+    /// Project is neither displayed on search nor accessible by URL.
     Draft,
+    /// Project is not displayed on search but accessible by URL.
     Unlisted,
+    /// Project is neither displayed on search nor accessible by URL. (Temporary state, project under review)
     Processing,
+    /// Same as unlisted, but set by a moderator. Cannot be switched to another type without moderator approval.
     Withheld,
+    /// Project is scheduled to be released in the future.
     Scheduled,
+    /// Project is approved but is not viewable to the public.
     Private,
     Unknown,
 }
@@ -448,25 +461,29 @@ impl MonetizationStatus {
     }
 }
 
-/// A specific version of a project
+/// A specific version of a project.
 #[derive(Serialize, Deserialize)]
 pub struct Version {
     /// The ID of the version, encoded as a base62 string.
     pub id: VersionId,
     /// The ID of the project this version is for.
     pub project_id: ProjectId,
-    /// The ID of the author who published this version
+    /// The ID of the author who published this version.
     pub author_id: UserId,
-    /// Whether the version is featured or not
+    /// Whether the version is featured or not.
     pub featured: bool,
 
-    /// The name of this version
+    /// The name of this version.
     pub name: String,
-    /// The version number. Ideally will follow semantic versioning
+    /// The version number.
+    ///
+    /// Ideally, this follows semantic versioning.
     pub version_number: String,
     /// The changelog for this version of the project.
     pub changelog: String,
-    /// A link to the changelog for this version of the project. Deprecated, always None
+    /// A link to the changelog for this version of the project.
+    ///
+    /// Deprecated; always [`None`].
     pub changelog_url: Option<String>,
 
     /// The date that this version was published.
@@ -475,9 +492,9 @@ pub struct Version {
     pub downloads: u32,
     /// The type of the release - `Alpha`, `Beta`, or `Release`.
     pub version_type: VersionType,
-    /// The status of tne version
+    /// The status of the version.
     pub status: VersionStatus,
-    /// The requested status of the version (used for scheduling)
+    /// The requested status of the version (used for scheduling).
     pub requested_status: Option<VersionStatus>,
 
     /// A list of files available for download for this version.
@@ -486,7 +503,7 @@ pub struct Version {
     pub dependencies: Vec<Dependency>,
     /// A list of versions of Minecraft that this version of the project supports.
     pub game_versions: Vec<GameVersion>,
-    /// The loaders that this version works on
+    /// The loaders that this version works on.
     pub loaders: Vec<Loader>,
 }
 
@@ -543,19 +560,19 @@ impl From<QueryVersion> for Version {
     }
 }
 
-/// A status decides the visibility of a project in search, URLs, and the whole site itself.
-/// Listed - Version is displayed on project, and accessible by URL
-/// Archived - Identical to listed but has a message displayed stating version is unsupported
-/// Draft - Version is not displayed on project, and not accessible by URL
-/// Unlisted - Version is not displayed on project, and accessible by URL
-/// Scheduled - Version is scheduled to be released in the future
+/// The status of a version, which determines its visibility in search, URLs, and the whole site itself.
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum VersionStatus {
+    /// Version is displayed on project and accessible by URL.
     Listed,
+    /// Identical to listed but has a message displaying that the version is unsupported.
     Archived,
+    /// Version is neither displayed on project nor accessible by URL.
     Draft,
+    /// Version is not displayed on project but accessible by URL.
     Unlisted,
+    /// Version is scheduled to be released in the future.
     Scheduled,
     Unknown,
 }
@@ -632,7 +649,7 @@ impl VersionStatus {
     }
 }
 
-/// A single project file, with a url for the file and the file's hash
+/// A single project file, with a url for the file and the file's hash.
 #[derive(Serialize, Deserialize)]
 pub struct VersionFile {
     /// A map of hashes of the file.  The key is the hashing algorithm
@@ -642,25 +659,25 @@ pub struct VersionFile {
     pub url: String,
     /// The filename of the file.
     pub filename: String,
-    /// Whether the file is the primary file of a version
+    /// Whether the file is the primary file of a version.
     pub primary: bool,
-    /// The size in bytes of the file
+    /// The size of the file in bytes.
     pub size: u32,
-    /// The type of the file
+    /// The type of the file.
     pub file_type: Option<FileType>,
 }
 
 /// A dendency which describes what versions are required, break support, or are optional to the
-/// version's functionality
+/// version's functionality.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Dependency {
-    /// The specific version id that the dependency uses
+    /// The specific version ID of the dependency.
     pub version_id: Option<VersionId>,
-    /// The project ID that the dependency is synced with and auto-updated
+    /// The project ID that the dependency is synced and auto-updated with.
     pub project_id: Option<ProjectId>,
-    /// The filename of the dependency. Used exclusively for external mods on modpacks
+    /// The filename of the dependency. Used exclusively for external mods on modpacks.
     pub file_name: Option<String>,
-    /// The type of the dependency
+    /// The type of the dependency.
     pub dependency_type: DependencyType,
 }
 
@@ -751,12 +768,12 @@ impl FileType {
     }
 }
 
-/// A specific version of Minecraft
+/// A specific version of Minecraft.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct GameVersion(pub String);
 
-/// A project loader
+/// The name of a project loader, such as `forge` or `fabric`.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(transparent)]
 pub struct Loader(pub String);
