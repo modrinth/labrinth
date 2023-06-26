@@ -12,17 +12,17 @@ This is useful for applications that don't have a frontend, or for applications 
 Just as a summary: Don't implement this flow in your application!
 */
 
-use crate::database::models::{self, generate_state_id};
+use crate::database::models::generate_state_id;
 use crate::models::error::ApiError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::DecodingError;
 
 use crate::parse_strings_from_var;
-use crate::util::auth::{get_minos_user_from_cookies, AuthenticationError};
+use crate::util::auth::get_user_from_github_token;
 
 use actix_web::http::StatusCode;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
-use actix_web::{get, HttpRequest, HttpResponse};
+use actix_web::{get, HttpResponse};
 use chrono::Utc;
 
 use serde::{Deserialize, Serialize};
@@ -53,7 +53,7 @@ pub enum AuthorizationError {
     Decoding(#[from] DecodingError),
     #[error("Invalid callback URL specified")]
     Url,
-    #[error("User exists in Minos but not in Labrinth")]
+    #[error("User does not exist! Please use the ory login.")]
     DatabaseMismatch,
 }
 impl actix_web::ResponseError for AuthorizationError {
@@ -96,8 +96,16 @@ pub struct AuthorizationInit {
     pub url: String,
 }
 #[derive(Serialize, Deserialize)]
-pub struct StateResponse {
+pub struct Authorization {
+    pub code: String,
     pub state: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AccessToken {
+    pub access_token: String,
+    pub scope: String,
+    pub token_type: String,
 }
 
 // Init link takes us to Minos API and calls back to callback endpoint with a code and state
@@ -121,9 +129,9 @@ pub async fn init(
 
     sqlx::query!(
         "
-            INSERT INTO states (id, url)
-            VALUES ($1, $2)
-            ",
+        INSERT INTO states (id, url)
+        VALUES ($1, $2)
+        ",
         state.0,
         info.url
     )
@@ -132,12 +140,12 @@ pub async fn init(
 
     transaction.commit().await?;
 
-    let kratos_url = dotenvy::var("KRATOS_URL")?;
-    let labrinth_url = dotenvy::var("SELF_ADDR")?;
+    let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
     let url = format!(
-        // Callback URL of initialization is /callback below.
-        "{kratos_url}/self-service/login/browser?return_to={labrinth_url}/v2/auth/callback?state={}",
-            to_base62(state.0 as u64)
+        "https://github.com/login/oauth/authorize?client_id={}&state={}&scope={}",
+        client_id,
+        to_base62(state.0 as u64),
+        "read%3Auser"
     );
     Ok(HttpResponse::TemporaryRedirect()
         .append_header(("Location", &*url))
@@ -146,8 +154,7 @@ pub async fn init(
 
 #[get("callback")]
 pub async fn auth_callback(
-    req: HttpRequest,
-    Query(state): Query<StateResponse>,
+    Query(state): Query<Authorization>,
     client: Data<PgPool>,
 ) -> Result<HttpResponse, AuthorizationError> {
     let mut transaction = client.begin().await?;
@@ -155,59 +162,65 @@ pub async fn auth_callback(
 
     let result_option = sqlx::query!(
         "
-            SELECT url, expires FROM states
-            WHERE id = $1
-            ",
+        SELECT url, expires FROM states
+        WHERE id = $1
+        ",
         state_id as i64
     )
     .fetch_optional(&mut *transaction)
     .await?;
 
     // Extract cookie header from request
-    let cookie_header = req.headers().get("Cookie");
     if let Some(result) = result_option {
-        if let Some(cookie_header) = cookie_header {
-            // Extract cookie header to get authenticated user from Minos
-            let duration: chrono::Duration = result.expires - Utc::now();
-            if duration.num_seconds() < 0 {
-                return Err(AuthorizationError::InvalidCredentials);
-            }
-            sqlx::query!(
-                "
+        // Extract cookie header to get authenticated user from Minos
+        let duration: chrono::Duration = result.expires - Utc::now();
+        if duration.num_seconds() < 0 {
+            return Err(AuthorizationError::InvalidCredentials);
+        }
+        sqlx::query!(
+            "
                 DELETE FROM states
                 WHERE id = $1
                 ",
-                state_id as i64
-            )
-            .execute(&mut *transaction)
+            state_id as i64
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
+        let client_secret = dotenvy::var("GITHUB_CLIENT_SECRET")?;
+
+        let url = format!(
+            "https://github.com/login/oauth/access_token?client_id={}&client_secret={}&code={}",
+            client_id, client_secret, state.code
+        );
+
+        let token: AccessToken = reqwest::Client::new()
+            .post(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await?
+            .json()
             .await?;
 
-            // Attempt to create a minos user from the cookie header- if this fails, the user is invalid
-            let minos_user = get_minos_user_from_cookies(
-                cookie_header
-                    .to_str()
-                    .map_err(|_| AuthenticationError::InvalidCredentials)?,
-            )
-            .await?;
-            let user_result =
-                models::User::get_from_minos_kratos_id(minos_user.id.clone(), &mut transaction)
-                    .await?;
+        let user_result =
+            get_user_from_github_token(&token.access_token, &mut *transaction).await?;
 
-            // Cookies exist, but user does not exist in database, meaning they are invalid
-            if user_result.is_none() {
-                return Err(AuthorizationError::DatabaseMismatch);
-            }
-            transaction.commit().await?;
-
-            // Cookie is attached now, so redirect to the original URL
-            // Do not re-append cookie header, as it is not needed,
-            // because all redirects are to various modrinth.com subdomains
-            Ok(HttpResponse::TemporaryRedirect()
-                .append_header(("Location", &*result.url))
-                .json(AuthorizationInit { url: result.url }))
-        } else {
-            Err(AuthorizationError::InvalidCredentials)
+        // Cookies exist, but user does not exist in database, meaning they are invalid
+        if user_result.is_none() {
+            return Err(AuthorizationError::DatabaseMismatch);
         }
+        transaction.commit().await?;
+
+        let redirect_url = if result.url.contains('?') {
+            format!("{}&code={}", result.url, token.access_token)
+        } else {
+            format!("{}?code={}", result.url, token.access_token)
+        };
+
+        Ok(HttpResponse::TemporaryRedirect()
+            .append_header(("Location", &*redirect_url))
+            .json(AuthorizationInit { url: redirect_url }))
     } else {
         Err(AuthorizationError::InvalidCredentials)
     }
