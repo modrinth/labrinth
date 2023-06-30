@@ -1,7 +1,7 @@
 use super::ids::*;
 use super::DatabaseError;
 use crate::models::ids::base62_impl::parse_base62;
-use crate::models::projects::{FileType, VersionStatus, VersionType};
+use crate::models::projects::{FileType, VersionStatus};
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use serde::{Deserialize, Serialize};
@@ -397,98 +397,6 @@ impl Version {
         Ok(Some(()))
     }
 
-    // TODO: remove in future- replace with rust side filtering
-    pub async fn get_project_versions<'a, E>(
-        project_id: ProjectId,
-        game_versions: Option<Vec<String>>,
-        loaders: Option<Vec<String>>,
-        version_type: Option<VersionType>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        exec: E,
-    ) -> Result<Vec<VersionId>, sqlx::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        use futures::stream::TryStreamExt;
-
-        let vec = sqlx::query!(
-            "
-            SELECT DISTINCT ON(v.date_published, v.id) version_id, v.date_published FROM versions v
-            INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
-            INNER JOIN game_versions gv on gvv.game_version_id = gv.id AND (cardinality($2::varchar[]) = 0 OR gv.version = ANY($2::varchar[]))
-            INNER JOIN loaders_versions lv ON lv.version_id = v.id
-            INNER JOIN loaders l on lv.loader_id = l.id AND (cardinality($3::varchar[]) = 0 OR l.loader = ANY($3::varchar[]))
-            WHERE v.mod_id = $1 AND ($4::varchar IS NULL OR v.version_type = $4)
-            ORDER BY v.date_published DESC, v.id
-            LIMIT $5 OFFSET $6
-            ",
-            project_id as ProjectId,
-            &game_versions.unwrap_or_default(),
-            &loaders.unwrap_or_default(),
-            version_type.map(|x| x.as_str()),
-            limit.map(|x| x as i64),
-            offset.map(|x| x as i64),
-        )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|v| VersionId(v.version_id))) })
-        .try_collect::<Vec<VersionId>>()
-        .await?;
-
-        Ok(vec)
-    }
-
-    // TODO: remove in future- replace with rust side filtering
-    pub async fn get_projects_versions<'a, E>(
-        project_ids: Vec<ProjectId>,
-        game_versions: Option<Vec<String>>,
-        loaders: Option<Vec<String>>,
-        version_type: Option<VersionType>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        exec: E,
-    ) -> Result<HashMap<ProjectId, Vec<VersionId>>, sqlx::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        use futures::stream::TryStreamExt;
-
-        let vec = sqlx::query!(
-            "
-            SELECT DISTINCT ON(v.date_published, v.id) version_id, v.mod_id, v.date_published FROM versions v
-            INNER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
-            INNER JOIN game_versions gv on gvv.game_version_id = gv.id AND (cardinality($2::varchar[]) = 0 OR gv.version = ANY($2::varchar[]))
-            INNER JOIN loaders_versions lv ON lv.version_id = v.id
-            INNER JOIN loaders l on lv.loader_id = l.id AND (cardinality($3::varchar[]) = 0 OR l.loader = ANY($3::varchar[]))
-            WHERE v.mod_id = ANY($1) AND ($4::varchar IS NULL OR v.version_type = $4)
-            ORDER BY v.date_published, v.id ASC
-            LIMIT $5 OFFSET $6
-            ",
-            &project_ids.into_iter().map(|x| x.0).collect::<Vec<i64>>(),
-            &game_versions.unwrap_or_default(),
-            &loaders.unwrap_or_default(),
-            version_type.map(|x| x.as_str()),
-            limit.map(|x| x as i64),
-            offset.map(|x| x as i64),
-        )
-            .fetch_many(exec)
-            .try_filter_map(|e| async { Ok(e.right().map(|v| (ProjectId(v.mod_id), VersionId(v.version_id)))) })
-            .try_collect::<Vec<(ProjectId, VersionId)>>()
-            .await?;
-
-        let mut map: HashMap<ProjectId, Vec<VersionId>> = HashMap::new();
-
-        for (project_id, version_id) in vec {
-            if let Some(value) = map.get_mut(&project_id) {
-                value.push(version_id);
-            } else {
-                map.insert(project_id, vec![version_id]);
-            }
-        }
-
-        Ok(map)
-    }
-
     pub async fn get<'a, 'b, E>(
         id: VersionId,
         executor: E,
@@ -697,6 +605,33 @@ impl Version {
         Ok(found_versions)
     }
 
+    pub async fn get_file_from_hash<'a, 'b, E>(
+        algo: String,
+        hash: String,
+        executor: E,
+        redis: &deadpool_redis::Pool,
+    ) -> Result<Option<SingleFile>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        Self::get_files_from_hash(&[(algo, hash)], executor, redis)
+            .await
+            .map(|x| x.into_iter().next())
+    }
+
+    pub async fn get_files_from_hash<'a, 'b, E>(
+        hashes: &[(String, String)],
+        executor: E,
+        redis: &deadpool_redis::Pool,
+    ) -> Result<Vec<SingleFile>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        // TODO: make this work
+        // TODO: impl cache clear on file deletion/version deletion/project deletion
+        Ok(vec![])
+    }
+
     pub async fn clear_cache(
         id: VersionId,
         redis: &deadpool_redis::Pool,
@@ -710,6 +645,7 @@ impl Version {
         Ok(())
     }
 
+    // TODO: Needs to be cached
     pub async fn get_full_from_id_slug<'a, 'b, E>(
         project_id_or_slug: &str,
         slug: &str,
@@ -765,6 +701,19 @@ pub struct QueryDependency {
 #[derive(Clone, Deserialize, Serialize)]
 pub struct QueryFile {
     pub id: FileId,
+    pub url: String,
+    pub filename: String,
+    pub hashes: HashMap<String, String>,
+    pub primary: bool,
+    pub size: u32,
+    pub file_type: Option<FileType>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct SingleFile {
+    pub id: FileId,
+    pub version_id: VersionId,
+    pub project_id: ProjectId,
     pub url: String,
     pub filename: String,
     pub hashes: HashMap<String, String>,

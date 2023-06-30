@@ -170,7 +170,7 @@ impl TeamMember {
             let teams: Vec<QueryTeamMember> = sqlx::query!(
                 "
                 SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split, tm.ordering,
-                u.id user_id, u.github_id github_id, u.kratos_id kratos_id, u.name user_name,
+                u.id user_id, u.name user_name,
                 u.avatar_url avatar_url, u.username username, u.bio bio,
                 u.created created, u.role user_role, u.badges badges
                 FROM team_members tm
@@ -191,8 +191,11 @@ impl TeamMember {
                             accepted: m.accepted,
                             user: User {
                                 id: UserId(m.user_id),
-                                kratos_id: m.kratos_id,
-                                github_id: m.github_id,
+                                github_id: None,
+                                discord_id: None,
+                                gitlab_id: None,
+                                google_id: None,
+                                apple_id: None,
                                 name: m.user_name,
                                 email: None,
                                 avatar_url: m.avatar_url,
@@ -205,6 +208,7 @@ impl TeamMember {
                                 payout_wallet: None,
                                 payout_wallet_type: None,
                                 payout_address: None,
+                                microsoft_id: None,
                             },
                             payouts_split: m.payouts_split,
                             ordering: m.ordering,

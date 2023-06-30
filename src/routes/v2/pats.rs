@@ -11,8 +11,8 @@ use crate::models::ids::base62_impl::{parse_base62, to_base62};
 
 use crate::models::users::UserId;
 use crate::routes::ApiError;
-use crate::util::auth::get_user_from_headers;
-use crate::util::pat::{generate_pat, PersonalAccessToken};
+use crate::auth::get_user_from_headers;
+use crate::auth::{generate_pat, PersonalAccessToken};
 
 use actix_web::web::{self, Data, Query};
 use actix_web::{delete, get, patch, post, HttpRequest, HttpResponse};

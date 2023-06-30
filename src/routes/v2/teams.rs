@@ -5,7 +5,7 @@ use crate::models::notifications::NotificationBody;
 use crate::models::teams::{Permissions, TeamId};
 use crate::models::users::UserId;
 use crate::routes::ApiError;
-use crate::util::auth::{get_user_from_headers, is_authorized};
+use crate::auth::{get_user_from_headers, is_authorized};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -290,12 +290,8 @@ pub async fn add_team_member(
         ));
     }
 
-    let request = crate::database::models::team_item::TeamMember::get_from_user_id_pending(
-        team_id,
-        new_member.user_id.into(),
-        &**pool,
-    )
-    .await?;
+    let request =
+        TeamMember::get_from_user_id_pending(team_id, new_member.user_id.into(), &**pool).await?;
 
     if let Some(req) = request {
         if req.accepted {

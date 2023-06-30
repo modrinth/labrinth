@@ -1,0 +1,73 @@
+pub mod validate;
+pub mod flows;
+pub mod checks;
+pub mod pat;
+
+pub use validate::{check_is_moderator_from_headers, get_user_from_headers};
+pub use checks::{filter_authorized_projects, filter_authorized_versions, is_authorized, is_authorized_version};
+pub use pat::{get_user_from_pat, generate_pat, PersonalAccessToken};
+pub use flows::config;
+
+use thiserror::Error;
+use crate::models::error::ApiError;
+use actix_web::http::StatusCode;
+use actix_web::HttpResponse;
+
+#[derive(Error, Debug)]
+pub enum AuthenticationError {
+    #[error("Environment Error")]
+    Env(#[from] dotenvy::Error),
+    #[error("An unknown database error occurred")]
+    Sqlx(#[from] sqlx::Error),
+    #[error("Database Error: {0}")]
+    Database(#[from] crate::database::models::DatabaseError),
+    #[error("Error while parsing JSON: {0}")]
+    SerDe(#[from] serde_json::Error),
+    #[error("Error while communicating to external oauth provider")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("Error while decoding PAT: {0}")]
+    Decoding(#[from] crate::models::ids::DecodingError),
+    #[error("Invalid Authentication Credentials")]
+    InvalidCredentials,
+    #[error("Authentication method was not valid")]
+    InvalidAuthMethod,
+    #[error("GitHub Token from incorrect Client ID")]
+    InvalidClientId,
+    #[error("Invalid callback URL specified")]
+    Url,
+}
+
+impl actix_web::ResponseError for AuthenticationError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            AuthenticationError::Env(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthenticationError::Sqlx(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthenticationError::Database(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthenticationError::SerDe(..) => StatusCode::BAD_REQUEST,
+            AuthenticationError::Reqwest(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthenticationError::InvalidCredentials => StatusCode::UNAUTHORIZED,
+            AuthenticationError::Decoding(..) => StatusCode::BAD_REQUEST,
+            AuthenticationError::InvalidAuthMethod => StatusCode::UNAUTHORIZED,
+            AuthenticationError::InvalidClientId => StatusCode::UNAUTHORIZED,
+            AuthenticationError::Url => StatusCode::BAD_REQUEST,
+        }
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::build(self.status_code()).json(ApiError {
+            error: match self {
+                AuthenticationError::Env(..) => "environment_error",
+                AuthenticationError::Sqlx(..) => "database_error",
+                AuthenticationError::Database(..) => "database_error",
+                AuthenticationError::SerDe(..) => "invalid_input",
+                AuthenticationError::Reqwest(..) => "network_error",
+                AuthenticationError::InvalidCredentials => "invalid_credentials",
+                AuthenticationError::Decoding(..) => "decoding_error",
+                AuthenticationError::InvalidAuthMethod => "invalid_auth_method",
+                AuthenticationError::InvalidClientId => "invalid_client_id",
+                AuthenticationError::Url => "url_error",
+            },
+            description: &self.to_string(),
+        })
+    }
+}

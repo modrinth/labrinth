@@ -6,7 +6,6 @@ use futures::FutureExt;
 pub mod v2;
 pub mod v3;
 
-mod health;
 mod index;
 mod maven;
 mod not_found;
@@ -16,7 +15,6 @@ pub use self::not_found::not_found;
 
 pub fn root_config(cfg: &mut web::ServiceConfig) {
     cfg.service(index::index_get);
-    cfg.service(health::health_get);
     cfg.service(web::scope("maven").configure(maven::config));
     cfg.service(web::scope("updates").configure(updates::config));
     cfg.service(
@@ -47,7 +45,7 @@ pub enum ApiError {
     #[error("Deserialization error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("Authentication Error: {0}")]
-    Authentication(#[from] crate::util::auth::AuthenticationError),
+    Authentication(#[from] crate::auth::AuthenticationError),
     #[error("Authentication Error: {0}")]
     CustomAuthentication(String),
     #[error("Invalid Input: {0}")]

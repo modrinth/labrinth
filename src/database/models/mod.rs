@@ -30,6 +30,4 @@ pub enum DatabaseError {
     RedisPool(#[from] deadpool_redis::PoolError),
     #[error("Error while serializing with the cache: {0}")]
     SerdeCacheError(#[from] serde_json::Error),
-    #[error("A database request failed")]
-    Other(String),
 }

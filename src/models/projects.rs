@@ -449,7 +449,7 @@ impl MonetizationStatus {
 }
 
 /// A specific version of a project
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Version {
     /// The ID of the version, encoded as a base62 string.
     pub id: VersionId,
@@ -633,7 +633,7 @@ impl VersionStatus {
 }
 
 /// A single project file, with a url for the file and the file's hash
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct VersionFile {
     /// A map of hashes of the file.  The key is the hashing algorithm
     /// and the value is the string version of the hash.

@@ -18,7 +18,6 @@ use tokio::sync::Mutex;
 
 mod database;
 mod file_hosting;
-mod health;
 mod models;
 mod queue;
 mod ratelimit;
@@ -27,6 +26,7 @@ mod scheduler;
 mod search;
 mod util;
 mod validate;
+mod auth;
 
 #[derive(Clone)]
 pub struct Pepper {
@@ -361,6 +361,7 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::root_config)
             .configure(routes::v2::config)
             .configure(routes::v3::config)
+            .configure(auth::config)
             .default_service(web::get().to(routes::not_found))
     })
     .bind(dotenvy::var("BIND_ADDR").unwrap())?
@@ -396,16 +397,12 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("SITE_URL");
     failed |= check_var::<String>("CDN_URL");
-    failed |= check_var::<String>("MINOS_URL");
-    failed |= check_var::<String>("KRATOS_URL");
-    failed |= check_var::<String>("ORY_AUTH_BEARER");
     failed |= check_var::<String>("LABRINTH_ADMIN_KEY");
     failed |= check_var::<String>("RATE_LIMIT_IGNORE_KEY");
     failed |= check_var::<String>("DATABASE_URL");
     failed |= check_var::<String>("MEILISEARCH_ADDR");
     failed |= check_var::<String>("MEILISEARCH_KEY");
     failed |= check_var::<String>("BIND_ADDR");
-    failed |= check_var::<String>("SELF_ADDR");
 
     failed |= check_var::<String>("REDIS_URL");
 

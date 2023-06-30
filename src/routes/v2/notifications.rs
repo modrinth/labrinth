@@ -2,7 +2,7 @@ use crate::database;
 use crate::models::ids::NotificationId;
 use crate::models::notifications::Notification;
 use crate::routes::ApiError;
-use crate::util::auth::get_user_from_headers;
+use crate::auth::get_user_from_headers;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;

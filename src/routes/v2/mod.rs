@@ -21,7 +21,7 @@ pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
     cfg.service(
         actix_web::web::scope("v2")
             .configure(admin::config)
-            .configure(auth::config)
+            .configure(crate::auth::config)
             .configure(moderation::config)
             .configure(notifications::config)
             .configure(pats::config)

@@ -7,7 +7,7 @@ use crate::models::projects::ProjectStatus;
 use crate::models::threads::{MessageBody, Thread, ThreadId, ThreadMessage, ThreadType};
 use crate::models::users::User;
 use crate::routes::ApiError;
-use crate::util::auth::{check_is_moderator_from_headers, get_user_from_headers};
+use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use futures::TryStreamExt;
 use serde::Deserialize;

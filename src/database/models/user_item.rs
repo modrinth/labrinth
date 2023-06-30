@@ -4,12 +4,19 @@ use crate::models::users::{Badges, RecipientType, RecipientWallet};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Deserialize, Serialize)]
 pub struct User {
     pub id: UserId,
-    pub kratos_id: Option<String>, // None if legacy user unconnected to Minos/Kratos
+
     pub github_id: Option<i64>,
+    pub discord_id: Option<i64>,
+    pub gitlab_id: Option<i64>,
+    pub google_id: Option<Uuid>,
+    pub apple_id: Option<i64>,
+    pub microsoft_id: Option<String>,
+
     pub username: String,
     pub name: Option<String>,
     pub email: Option<String>,
@@ -32,22 +39,29 @@ impl User {
         sqlx::query!(
             "
             INSERT INTO users (
-                id, kratos_id, username, name, email,
-                avatar_url, bio, created
+                id, username, name, email,
+                avatar_url, bio, created,
+                github_id, discord_id, gitlab_id, google_id, apple_id, microsoft_id
             )
             VALUES (
                 $1, $2, $3, $4, $5,
-                $6, $7, $8
+                $6, $7,
+                $8, $9, $10, $11, $12, $13
             )
             ",
             self.id as UserId,
-            self.kratos_id,
             &self.username,
             self.name.as_ref(),
             self.email.as_ref(),
             self.avatar_url.as_ref(),
             self.bio.as_ref(),
             self.created,
+            self.github_id,
+            self.discord_id,
+            self.gitlab_id,
+            self.google_id,
+            self.apple_id,
+            self.microsoft_id,
         )
         .execute(&mut *transaction)
         .await?;
@@ -64,100 +78,6 @@ impl User {
             .map(|x| x.into_iter().next())
     }
 
-    pub async fn get_from_github_id<'a, 'b, E>(
-        github_id: u64,
-        executor: E,
-    ) -> Result<Option<Self>, sqlx::error::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        let result = sqlx::query!(
-            "
-            SELECT u.id, u.name, u.email, u.kratos_id,
-                u.avatar_url, u.username, u.bio,
-                u.created, u.role, u.badges,
-                u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address
-            FROM users u
-            WHERE u.github_id = $1
-            ",
-            github_id as i64,
-        )
-        .fetch_optional(executor)
-        .await?;
-
-        if let Some(row) = result {
-            Ok(Some(User {
-                id: UserId(row.id),
-                github_id: Some(github_id as i64),
-                name: row.name,
-                email: row.email,
-                kratos_id: row.kratos_id,
-                avatar_url: row.avatar_url,
-                username: row.username,
-                bio: row.bio,
-                created: row.created,
-                role: row.role,
-                badges: Badges::from_bits(row.badges as u64).unwrap_or_default(),
-                balance: row.balance,
-                payout_wallet: row.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
-                payout_wallet_type: row
-                    .payout_wallet_type
-                    .map(|x| RecipientType::from_string(&x)),
-                payout_address: row.payout_address,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub async fn get_from_minos_kratos_id<'a, 'b, E>(
-        kratos_id: String,
-        executor: E,
-    ) -> Result<Option<Self>, sqlx::error::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        let result = sqlx::query!(
-            "
-            SELECT u.id, u.name, u.kratos_id, u.email, u.github_id,
-                u.avatar_url, u.username, u.bio,
-                u.created, u.role, u.badges,
-                u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address
-            FROM users u
-            WHERE u.kratos_id = $1
-            ",
-            kratos_id as String,
-        )
-        .fetch_optional(executor)
-        .await?;
-
-        if let Some(row) = result {
-            Ok(Some(User {
-                id: UserId(row.id),
-                kratos_id: row.kratos_id,
-                github_id: row.github_id,
-                name: row.name,
-                email: row.email,
-                avatar_url: row.avatar_url,
-                username: row.username,
-                bio: row.bio,
-                created: row.created,
-                role: row.role,
-                badges: Badges::from_bits(row.badges as u64).unwrap_or_default(),
-                balance: row.balance,
-                payout_wallet: row.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
-                payout_wallet_type: row
-                    .payout_wallet_type
-                    .map(|x| RecipientType::from_string(&x)),
-                payout_address: row.payout_address,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-
     pub async fn get_from_username<'a, 'b, E>(
         username: String,
         executor: E,
@@ -167,13 +87,13 @@ impl User {
     {
         let result = sqlx::query!(
             "
-            SELECT u.id, u.kratos_id, u.name, u.email, u.github_id,
-                u.avatar_url, u.username, u.bio,
-                u.created, u.role, u.badges,
-                u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address
-            FROM users u
-            WHERE LOWER(u.username) = LOWER($1)
+            SELECT id, name, email,
+                avatar_url, username, bio,
+                created, role, badges,
+                balance, payout_wallet, payout_wallet_type, payout_address,
+                github_id, discord_id, gitlab_id, google_id, apple_id, microsoft_id
+            FROM users
+            WHERE LOWER(username) = LOWER($1)
             ",
             username
         )
@@ -183,8 +103,12 @@ impl User {
         if let Some(row) = result {
             Ok(Some(User {
                 id: UserId(row.id),
-                kratos_id: row.kratos_id,
                 github_id: row.github_id,
+                discord_id: row.discord_id,
+                gitlab_id: row.gitlab_id,
+                google_id: row.google_id,
+                apple_id: row.apple_id,
+                microsoft_id: row.microsoft_id,
                 name: row.name,
                 email: row.email,
                 avatar_url: row.avatar_url,
@@ -214,13 +138,13 @@ impl User {
         let user_ids_parsed: Vec<i64> = user_ids.iter().map(|x| x.0).collect();
         let users = sqlx::query!(
             "
-            SELECT u.id, u.kratos_id, u.name, u.email, u.github_id,
-                u.avatar_url, u.username, u.bio,
-                u.created, u.role, u.badges,
-                u.balance, u.payout_wallet, u.payout_wallet_type,
-                u.payout_address
-            FROM users u
-            WHERE u.id = ANY($1)
+            SELECT id, name, email,
+                avatar_url, username, bio,
+                created, role, badges,
+                balance, payout_wallet, payout_wallet_type, payout_address,
+                github_id, discord_id, gitlab_id, google_id, apple_id, microsoft_id
+            FROM users
+            WHERE id = ANY($1)
             ",
             &user_ids_parsed
         )
@@ -228,8 +152,12 @@ impl User {
         .try_filter_map(|e| async {
             Ok(e.right().map(|u| User {
                 id: UserId(u.id),
-                kratos_id: u.kratos_id,
                 github_id: u.github_id,
+                discord_id: u.discord_id,
+                gitlab_id: u.gitlab_id,
+                google_id: u.google_id,
+                apple_id: u.apple_id,
+                microsoft_id: u.microsoft_id,
                 name: u.name,
                 email: u.email,
                 avatar_url: u.avatar_url,
@@ -569,29 +497,5 @@ impl User {
 
             Ok(id.map(|x| UserId(x.id)))
         }
-    }
-
-    pub async fn merge_minos_user<'a, 'b, E>(
-        &self,
-        kratos_id: &str,
-        executor: E,
-    ) -> Result<(), sqlx::error::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        // If the user exists, link the Minos user into the existing user rather tham create a new one
-        sqlx::query!(
-            "
-            UPDATE users
-            SET kratos_id = $1
-            WHERE (id = $2)
-        ",
-            kratos_id,
-            self.id.0,
-        )
-        .execute(executor)
-        .await?;
-
-        Ok(())
     }
 }
