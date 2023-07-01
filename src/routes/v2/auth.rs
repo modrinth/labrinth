@@ -11,4 +11,3 @@ This is useful for applications that don't have a frontend, or for applications 
 
 Just as a summary: Don't implement this flow in your application!
 */
-

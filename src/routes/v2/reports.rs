@@ -1,9 +1,9 @@
+use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database::models::thread_item::{ThreadBuilder, ThreadMessageBuilder};
 use crate::models::ids::{base62_impl::parse_base62, ProjectId, UserId, VersionId};
 use crate::models::reports::{ItemType, Report};
 use crate::models::threads::{MessageBody, ThreadType};
 use crate::routes::ApiError;
-use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::StreamExt;

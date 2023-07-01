@@ -32,7 +32,7 @@ where
                     u.avatar_url, u.username, u.bio,
                     u.created, u.role, u.badges,
                     u.balance, u.payout_wallet, u.payout_wallet_type, u.payout_address,
-                    github_id, discord_id, gitlab_id, google_id, apple_id, microsoft_id
+                    github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id
                 FROM pats LEFT OUTER JOIN users u ON pats.user_id = u.id
                 WHERE access_token = $1
                 ",
@@ -52,7 +52,7 @@ where
             discord_id: row.discord_id,
             gitlab_id: row.gitlab_id,
             google_id: row.google_id,
-            apple_id: row.apple_id,
+            steam_id: row.steam_id,
             microsoft_id: row.microsoft_id,
             email: row.email,
             avatar_url: row.avatar_url,

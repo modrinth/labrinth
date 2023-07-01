@@ -1,3 +1,4 @@
+use crate::auth::{get_user_from_headers, is_authorized};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::TeamMember;
 use crate::models::ids::ProjectId;
@@ -5,7 +6,6 @@ use crate::models::notifications::NotificationBody;
 use crate::models::teams::{Permissions, TeamId};
 use crate::models::users::UserId;
 use crate::routes::ApiError;
-use crate::auth::{get_user_from_headers, is_authorized};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

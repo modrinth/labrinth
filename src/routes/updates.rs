@@ -4,9 +4,9 @@ use actix_web::{get, web, HttpRequest, HttpResponse};
 use serde::Serialize;
 use sqlx::PgPool;
 
+use crate::auth::{filter_authorized_versions, get_user_from_headers, is_authorized};
 use crate::database;
 use crate::models::projects::VersionType;
-use crate::auth::{filter_authorized_versions, get_user_from_headers, is_authorized};
 
 use super::ApiError;
 

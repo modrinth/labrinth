@@ -16,6 +16,7 @@ use search::indexing::IndexingSettings;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+mod auth;
 mod database;
 mod file_hosting;
 mod models;
@@ -26,7 +27,6 @@ mod scheduler;
 mod search;
 mod util;
 mod validate;
-mod auth;
 
 #[derive(Clone)]
 pub struct Pepper {
@@ -403,6 +403,7 @@ fn check_env_vars() -> bool {
     failed |= check_var::<String>("MEILISEARCH_ADDR");
     failed |= check_var::<String>("MEILISEARCH_KEY");
     failed |= check_var::<String>("BIND_ADDR");
+    failed |= check_var::<String>("SELF_ADDR");
 
     failed |= check_var::<String>("REDIS_URL");
 

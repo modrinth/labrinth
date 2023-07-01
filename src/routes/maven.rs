@@ -1,9 +1,9 @@
+use crate::auth::{get_user_from_headers, is_authorized_version};
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::{QueryFile, QueryVersion};
 use crate::models::projects::{ProjectId, VersionId};
 use crate::routes::ApiError;
-use crate::auth::{get_user_from_headers, is_authorized_version};
-use crate::{database, auth::is_authorized};
+use crate::{auth::is_authorized, database};
 use actix_web::{get, route, web, HttpRequest, HttpResponse};
 use sqlx::PgPool;
 use std::collections::HashSet;

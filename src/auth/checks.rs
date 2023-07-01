@@ -2,7 +2,7 @@ use crate::database;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::database::{models, Project, Version};
-use crate::models::users::{User};
+use crate::models::users::User;
 use crate::routes::ApiError;
 use actix_web::web;
 use sqlx::PgPool;
@@ -26,9 +26,9 @@ pub async fn is_authorized(
                     project_data.team_id as database::models::ids::TeamId,
                     user_id as database::models::ids::UserId,
                 )
-                    .fetch_one(&***pool)
-                    .await?
-                    .exists;
+                .fetch_one(&***pool)
+                .await?
+                .exists;
 
                 authorized = project_exists.unwrap_or(false);
             }
@@ -49,9 +49,9 @@ pub async fn filter_authorized_projects(
     for project in projects {
         if !project.inner.status.is_hidden()
             || user_option
-            .as_ref()
-            .map(|x| x.role.is_mod())
-            .unwrap_or(false)
+                .as_ref()
+                .map(|x| x.role.is_mod())
+                .unwrap_or(false)
         {
             return_projects.push(project.into());
         } else if user_option.is_some() {
@@ -77,23 +77,23 @@ pub async fn filter_authorized_projects(
                     .collect::<Vec<_>>(),
                 user_id as database::models::ids::UserId,
             )
-                .fetch_many(&***pool)
-                .try_for_each(|e| {
-                    if let Some(row) = e.right() {
-                        check_projects.retain(|x| {
-                            let bool = x.inner.id.0 == row.id && x.inner.team_id.0 == row.team_id;
+            .fetch_many(&***pool)
+            .try_for_each(|e| {
+                if let Some(row) = e.right() {
+                    check_projects.retain(|x| {
+                        let bool = x.inner.id.0 == row.id && x.inner.team_id.0 == row.team_id;
 
-                            if bool {
-                                return_projects.push(x.clone().into());
-                            }
+                        if bool {
+                            return_projects.push(x.clone().into());
+                        }
 
-                            !bool
-                        });
-                    }
+                        !bool
+                    });
+                }
 
-                    futures::future::ready(Ok(()))
-                })
-                .await?;
+                futures::future::ready(Ok(()))
+            })
+            .await?;
         }
     }
 
@@ -142,9 +142,9 @@ pub async fn filter_authorized_versions(
     for version in versions {
         if !version.inner.status.is_hidden()
             || user_option
-            .as_ref()
-            .map(|x| x.role.is_mod())
-            .unwrap_or(false)
+                .as_ref()
+                .map(|x| x.role.is_mod())
+                .unwrap_or(false)
         {
             return_versions.push(version.into());
         } else if user_option.is_some() {
@@ -170,23 +170,23 @@ pub async fn filter_authorized_versions(
                     .collect::<Vec<_>>(),
                 user_id as database::models::ids::UserId,
             )
-                .fetch_many(&***pool)
-                .try_for_each(|e| {
-                    if let Some(row) = e.right() {
-                        check_versions.retain(|x| {
-                            let bool = x.inner.project_id.0 == row.id;
+            .fetch_many(&***pool)
+            .try_for_each(|e| {
+                if let Some(row) = e.right() {
+                    check_versions.retain(|x| {
+                        let bool = x.inner.project_id.0 == row.id;
 
-                            if bool {
-                                return_versions.push(x.clone().into());
-                            }
+                        if bool {
+                            return_versions.push(x.clone().into());
+                        }
 
-                            !bool
-                        });
-                    }
+                        !bool
+                    });
+                }
 
-                    futures::future::ready(Ok(()))
-                })
-                .await?;
+                futures::future::ready(Ok(()))
+            })
+            .await?;
         }
     }
 

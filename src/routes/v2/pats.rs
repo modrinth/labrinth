@@ -9,10 +9,10 @@ use crate::database;
 use crate::database::models::generate_pat_id;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 
-use crate::models::users::UserId;
-use crate::routes::ApiError;
 use crate::auth::get_user_from_headers;
 use crate::auth::{generate_pat, PersonalAccessToken};
+use crate::models::users::UserId;
+use crate::routes::ApiError;
 
 use actix_web::web::{self, Data, Query};
 use actix_web::{delete, get, patch, post, HttpRequest, HttpResponse};

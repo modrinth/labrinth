@@ -1,3 +1,4 @@
+use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
 use crate::database;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
@@ -12,7 +13,6 @@ use crate::models::teams::Permissions;
 use crate::models::threads::MessageBody;
 use crate::routes::ApiError;
 use crate::search::{search_for_project, SearchConfig, SearchError};
-use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};

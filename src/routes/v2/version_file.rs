@@ -1,11 +1,11 @@
 use super::ApiError;
-use crate::models::ids::VersionId;
-use crate::models::projects::{Project, Version, VersionType};
-use crate::models::teams::Permissions;
 use crate::auth::{
     filter_authorized_projects, filter_authorized_versions, get_user_from_headers,
     is_authorized_version,
 };
+use crate::models::ids::VersionId;
+use crate::models::projects::{Project, Version, VersionType};
+use crate::models::teams::Permissions;
 use crate::{database, models};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use itertools::Itertools;

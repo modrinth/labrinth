@@ -1,10 +1,10 @@
+use crate::auth::flows::AuthProvider;
+use crate::auth::get_user_from_pat;
+use crate::auth::AuthenticationError;
 use crate::database::models::user_item;
 use crate::models::users::{Role, User, UserId, UserPayoutData};
 use actix_web::http::header::HeaderMap;
 use reqwest::header::{HeaderValue, AUTHORIZATION};
-use crate::auth::AuthenticationError;
-use crate::auth::flows::{AuthProvider};
-use crate::auth::get_user_from_pat;
 
 pub async fn get_user_from_headers<'a, E>(
     headers: &HeaderMap,
@@ -69,7 +69,11 @@ where
                 let user = AuthProvider::GitHub.get_user(token).await?;
                 let id = AuthProvider::GitHub.get_user_id(&user.id, executor).await?;
 
-                user_item::User::get(id.ok_or_else(|| AuthenticationError::InvalidCredentials)?, executor).await?
+                user_item::User::get(
+                    id.ok_or_else(|| AuthenticationError::InvalidCredentials)?,
+                    executor,
+                )
+                .await?
             }
             _ => return Err(AuthenticationError::InvalidAuthMethod),
         };

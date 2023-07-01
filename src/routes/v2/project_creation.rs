@@ -1,4 +1,5 @@
 use super::version_creation::InitialVersionData;
+use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::file_hosting::{FileHost, FileHostingError};
@@ -10,7 +11,6 @@ use crate::models::projects::{
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::search::indexing::IndexingError;
-use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use actix_multipart::{Field, Multipart};

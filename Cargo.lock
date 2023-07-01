@@ -2003,7 +2003,6 @@ dependencies = [
  "tokio-stream",
  "url",
  "urlencoding",
- "uuid 1.4.0",
  "validator",
  "xml-rs",
  "yaserde",
@@ -3743,7 +3742,6 @@ dependencies = [
  "thiserror",
  "tokio-stream",
  "url",
- "uuid 1.4.0",
  "webpki-roots",
  "whoami",
 ]

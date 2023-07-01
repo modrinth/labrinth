@@ -1,23 +1,26 @@
-pub mod validate;
-pub mod flows;
 pub mod checks;
+pub mod flows;
 pub mod pat;
+pub mod validate;
 
-pub use validate::{check_is_moderator_from_headers, get_user_from_headers};
-pub use checks::{filter_authorized_projects, filter_authorized_versions, is_authorized, is_authorized_version};
-pub use pat::{get_user_from_pat, generate_pat, PersonalAccessToken};
+pub use checks::{
+    filter_authorized_projects, filter_authorized_versions, is_authorized, is_authorized_version,
+};
 pub use flows::config;
+pub use pat::{generate_pat, get_user_from_pat, PersonalAccessToken};
+pub use validate::{check_is_moderator_from_headers, get_user_from_headers};
 
-use thiserror::Error;
+use crate::file_hosting::FileHostingError;
 use crate::models::error::ApiError;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AuthenticationError {
     #[error("Environment Error")]
     Env(#[from] dotenvy::Error),
-    #[error("An unknown database error occurred")]
+    #[error("An unknown database error occurred: {0}")]
     Sqlx(#[from] sqlx::Error),
     #[error("Database Error: {0}")]
     Database(#[from] crate::database::models::DatabaseError),
@@ -35,6 +38,8 @@ pub enum AuthenticationError {
     InvalidClientId,
     #[error("Invalid callback URL specified")]
     Url,
+    #[error("Error uploading user profile picture")]
+    FileHosting(#[from] FileHostingError),
 }
 
 impl actix_web::ResponseError for AuthenticationError {
@@ -50,6 +55,7 @@ impl actix_web::ResponseError for AuthenticationError {
             AuthenticationError::InvalidAuthMethod => StatusCode::UNAUTHORIZED,
             AuthenticationError::InvalidClientId => StatusCode::UNAUTHORIZED,
             AuthenticationError::Url => StatusCode::BAD_REQUEST,
+            AuthenticationError::FileHosting(..) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -66,6 +72,7 @@ impl actix_web::ResponseError for AuthenticationError {
                 AuthenticationError::InvalidAuthMethod => "invalid_auth_method",
                 AuthenticationError::InvalidClientId => "invalid_client_id",
                 AuthenticationError::Url => "url_error",
+                AuthenticationError::FileHosting(..) => "file_hosting",
             },
             description: &self.to_string(),
         })

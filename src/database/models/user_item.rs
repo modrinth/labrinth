@@ -4,7 +4,6 @@ use crate::models::users::{Badges, RecipientType, RecipientWallet};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Deserialize, Serialize)]
 pub struct User {
@@ -13,8 +12,8 @@ pub struct User {
     pub github_id: Option<i64>,
     pub discord_id: Option<i64>,
     pub gitlab_id: Option<i64>,
-    pub google_id: Option<Uuid>,
-    pub apple_id: Option<i64>,
+    pub google_id: Option<String>,
+    pub steam_id: Option<i64>,
     pub microsoft_id: Option<String>,
 
     pub username: String,
@@ -41,7 +40,7 @@ impl User {
             INSERT INTO users (
                 id, username, name, email,
                 avatar_url, bio, created,
-                github_id, discord_id, gitlab_id, google_id, apple_id, microsoft_id
+                github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id
             )
             VALUES (
                 $1, $2, $3, $4, $5,
@@ -60,7 +59,7 @@ impl User {
             self.discord_id,
             self.gitlab_id,
             self.google_id,
-            self.apple_id,
+            self.steam_id,
             self.microsoft_id,
         )
         .execute(&mut *transaction)
@@ -91,7 +90,7 @@ impl User {
                 avatar_url, username, bio,
                 created, role, badges,
                 balance, payout_wallet, payout_wallet_type, payout_address,
-                github_id, discord_id, gitlab_id, google_id, apple_id, microsoft_id
+                github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id
             FROM users
             WHERE LOWER(username) = LOWER($1)
             ",
@@ -107,7 +106,7 @@ impl User {
                 discord_id: row.discord_id,
                 gitlab_id: row.gitlab_id,
                 google_id: row.google_id,
-                apple_id: row.apple_id,
+                steam_id: row.steam_id,
                 microsoft_id: row.microsoft_id,
                 name: row.name,
                 email: row.email,
@@ -142,7 +141,7 @@ impl User {
                 avatar_url, username, bio,
                 created, role, badges,
                 balance, payout_wallet, payout_wallet_type, payout_address,
-                github_id, discord_id, gitlab_id, google_id, apple_id, microsoft_id
+                github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id
             FROM users
             WHERE id = ANY($1)
             ",
@@ -156,7 +155,7 @@ impl User {
                 discord_id: u.discord_id,
                 gitlab_id: u.gitlab_id,
                 google_id: u.google_id,
-                apple_id: u.apple_id,
+                steam_id: u.steam_id,
                 microsoft_id: u.microsoft_id,
                 name: u.name,
                 email: u.email,

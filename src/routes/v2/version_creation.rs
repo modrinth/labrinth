@@ -1,4 +1,5 @@
 use super::project_creation::{CreateError, UploadedFile};
+use crate::auth::get_user_from_headers;
 use crate::database::models;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
@@ -12,7 +13,6 @@ use crate::models::projects::{
     VersionId, VersionStatus, VersionType,
 };
 use crate::models::teams::Permissions;
-use crate::auth::get_user_from_headers;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use crate::validate::{validate_file, ValidationResult};

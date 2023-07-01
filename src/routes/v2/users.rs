@@ -1,3 +1,4 @@
+use crate::auth::get_user_from_headers;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
@@ -5,7 +6,6 @@ use crate::models::projects::Project;
 use crate::models::users::{Badges, RecipientType, RecipientWallet, Role, UserId};
 use crate::queue::payouts::{PayoutAmount, PayoutItem, PayoutsQueue};
 use crate::routes::ApiError;
-use crate::auth::get_user_from_headers;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};

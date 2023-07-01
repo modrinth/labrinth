@@ -195,7 +195,7 @@ impl TeamMember {
                                 discord_id: None,
                                 gitlab_id: None,
                                 google_id: None,
-                                apple_id: None,
+                                steam_id: None,
                                 name: m.user_name,
                                 email: None,
                                 avatar_url: m.avatar_url,

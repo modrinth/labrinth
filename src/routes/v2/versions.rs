@@ -1,11 +1,11 @@
 use super::ApiError;
+use crate::auth::{
+    filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
+};
 use crate::database;
 use crate::models;
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::teams::Permissions;
-use crate::auth::{
-    filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
-};
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
