@@ -4,7 +4,7 @@ use crate::auth::{
     is_authorized_version,
 };
 use crate::models::ids::VersionId;
-use crate::models::projects::{Project, Version, VersionType};
+use crate::models::projects::VersionType;
 use crate::models::teams::Permissions;
 use crate::{database, models};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
@@ -49,12 +49,15 @@ pub async fn get_version_from_hash(
     redis: web::Data<deadpool_redis::Pool>,
     hash_query: web::Query<HashQuery>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     let hash = info.into_inner().0.to_lowercase();
     let file = database::models::Version::get_file_from_hash(
         hash_query.algorithm.clone(),
         hash,
+        hash_query.version_id.map(|x| x.into()),
         &**pool,
         &redis,
     )
@@ -91,12 +94,15 @@ pub async fn download_version(
     redis: web::Data<deadpool_redis::Pool>,
     hash_query: web::Query<HashQuery>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     let hash = info.into_inner().0.to_lowercase();
     let file = database::models::Version::get_file_from_hash(
         hash_query.algorithm.clone(),
         hash,
+        hash_query.version_id.map(|x| x.into()),
         &**pool,
         &redis,
     )
@@ -130,32 +136,23 @@ pub async fn delete_file(
     redis: web::Data<deadpool_redis::Pool>,
     hash_query: web::Query<HashQuery>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
 
     let hash = info.into_inner().0.to_lowercase();
 
-    // TODO: find a way to fit this with the cache
-    let result = sqlx::query!(
-        "
-        SELECT f.id id, f.version_id version_id, f.filename filename, v.version_number version_number, v.mod_id project_id FROM hashes h
-        INNER JOIN files f ON h.file_id = f.id
-        INNER JOIN versions v ON v.id = f.version_id
-        WHERE h.algorithm = $2 AND h.hash = $1
-        ORDER BY v.date_published ASC
-        ",
-        hash.as_bytes(),
-        hash_query.algorithm
+    let file = database::models::Version::get_file_from_hash(
+        hash_query.algorithm.clone(),
+        hash,
+        hash_query.version_id.map(|x| x.into()),
+        &**pool,
+        &redis,
     )
-        .fetch_all(&**pool)
-        .await?;
+    .await?;
 
-    if let Some(row) = result.iter().find_or_first(|x| {
-        hash_query.version_id.is_none()
-            || Some(x.version_id) == hash_query.version_id.map(|x| x.0 as i64)
-    }) {
+    if let Some(row) = file {
         if !user.role.is_admin() {
             let team_member = database::models::TeamMember::get_from_user_id_version(
-                database::models::ids::VersionId(row.version_id),
+                row.version_id,
                 user.id.into(),
                 &**pool,
             )
@@ -177,24 +174,15 @@ pub async fn delete_file(
             }
         }
 
-        use futures::stream::TryStreamExt;
+        let version = database::models::Version::get(row.version_id, &**pool, &redis).await?;
+        if let Some(version) = version {
+            if version.files.len() < 2 {
+                return Err(ApiError::InvalidInput(
+                    "Versions must have at least one file uploaded to them".to_string(),
+                ));
+            }
 
-        let files = sqlx::query!(
-            "
-            SELECT f.id id FROM files f
-            WHERE f.version_id = $1
-            ",
-            row.version_id
-        )
-        .fetch_many(&**pool)
-        .try_filter_map(|e| async { Ok(e.right().map(|_| ())) })
-        .try_collect::<Vec<()>>()
-        .await?;
-
-        if files.len() < 2 {
-            return Err(ApiError::InvalidInput(
-                "Versions must have at least one file uploaded to them".to_string(),
-            ));
+            database::models::Version::clear_cache(&version, &redis).await?;
         }
 
         let mut transaction = pool.begin().await?;
@@ -204,7 +192,7 @@ pub async fn delete_file(
             DELETE FROM hashes
             WHERE file_id = $1
             ",
-            row.id
+            row.id.0
         )
         .execute(&mut *transaction)
         .await?;
@@ -214,15 +202,9 @@ pub async fn delete_file(
             DELETE FROM files
             WHERE files.id = $1
             ",
-            row.id,
+            row.id.0,
         )
         .execute(&mut *transaction)
-        .await?;
-
-        database::models::Version::clear_cache(
-            database::models::ids::VersionId(row.version_id),
-            &redis,
-        )
         .await?;
 
         transaction.commit().await?;
@@ -249,12 +231,15 @@ pub async fn get_update_from_hash(
     hash_query: web::Query<HashQuery>,
     update_data: web::Json<UpdateData>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
     let hash = info.into_inner().0.to_lowercase();
 
     if let Some(file) = database::models::Version::get_file_from_hash(
         hash_query.algorithm.clone(),
         hash,
+        hash_query.version_id.map(|x| x.into()),
         &**pool,
         &redis,
     )
@@ -315,15 +300,17 @@ pub async fn get_versions_from_hashes(
     redis: web::Data<deadpool_redis::Pool>,
     file_data: web::Json<FileHashes>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
-    let hashes_parsed: Vec<(String, String)> = file_data
-        .hashes
-        .iter()
-        .map(|x| (file_data.algorithm.clone(), x.to_lowercase()))
-        .collect();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
-    let files =
-        database::models::Version::get_files_from_hash(&hashes_parsed, &**pool, &redis).await?;
+    let files = database::models::Version::get_files_from_hash(
+        file_data.algorithm.clone(),
+        &file_data.hashes,
+        &**pool,
+        &redis,
+    )
+    .await?;
 
     let version_ids = files.iter().map(|x| x.version_id).collect::<Vec<_>>();
     let versions_data = filter_authorized_versions(
@@ -333,20 +320,16 @@ pub async fn get_versions_from_hashes(
     )
     .await?;
 
-    // TODO: switch to for loop like updates
-    let response: HashMap<String, Version> = files
-        .into_iter()
-        .filter_map(|row| {
-            versions_data
-                .iter()
-                .find(|x| database::models::VersionId::from(x.id) == row.version_id)
-                .and_then(|v| {
-                    row.hashes
-                        .get(&file_data.algorithm)
-                        .map(|hash| (hash.clone(), v.clone()))
-                })
-        })
-        .collect();
+    let mut response = HashMap::new();
+
+    for version in versions_data {
+        for file in files.iter().filter(|x| x.version_id == version.id.into()) {
+            if let Some(hash) = file.hashes.get(&file_data.algorithm) {
+                response.insert(hash.clone(), version.clone());
+            }
+        }
+    }
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -357,15 +340,17 @@ pub async fn get_projects_from_hashes(
     redis: web::Data<deadpool_redis::Pool>,
     file_data: web::Json<FileHashes>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
-    let hashes_parsed: Vec<(String, String)> = file_data
-        .hashes
-        .iter()
-        .map(|x| (file_data.algorithm.clone(), x.to_lowercase()))
-        .collect();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
-    let files =
-        database::models::Version::get_files_from_hash(&hashes_parsed, &**pool, &redis).await?;
+    let files = database::models::Version::get_files_from_hash(
+        file_data.algorithm.clone(),
+        &file_data.hashes,
+        &**pool,
+        &redis,
+    )
+    .await?;
 
     let project_ids = files.iter().map(|x| x.project_id).collect::<Vec<_>>();
 
@@ -376,20 +361,16 @@ pub async fn get_projects_from_hashes(
     )
     .await?;
 
-    // TODO: switch to for loop like updates
-    let response: HashMap<String, Project> = files
-        .into_iter()
-        .filter_map(|row| {
-            projects_data
-                .iter()
-                .find(|x| x.id == row.project_id.into())
-                .and_then(|p| {
-                    row.hashes
-                        .get(&file_data.algorithm)
-                        .map(|hash| (hash.clone(), p.clone()))
-                })
-        })
-        .collect();
+    let mut response = HashMap::new();
+
+    for project in projects_data {
+        for file in files.iter().filter(|x| x.project_id == project.id.into()) {
+            if let Some(hash) = file.hashes.get(&file_data.algorithm) {
+                response.insert(hash.clone(), project.clone());
+            }
+        }
+    }
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -409,15 +390,17 @@ pub async fn update_files(
     redis: web::Data<deadpool_redis::Pool>,
     update_data: web::Json<ManyUpdateData>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
-    let hashes_parsed: Vec<(String, String)> = update_data
-        .hashes
-        .iter()
-        .map(|x| (update_data.algorithm.clone(), x.to_lowercase()))
-        .collect();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
-    let files =
-        database::models::Version::get_files_from_hash(&hashes_parsed, &**pool, &redis).await?;
+    let files = database::models::Version::get_files_from_hash(
+        update_data.algorithm.clone(),
+        &update_data.hashes,
+        &**pool,
+        &redis,
+    )
+    .await?;
 
     let projects = database::models::Project::get_many_ids(
         &files.iter().map(|x| x.project_id).collect::<Vec<_>>(),
@@ -463,10 +446,12 @@ pub async fn update_files(
 
             if let Some(version) = version {
                 if is_authorized_version(&version.inner, &user_option, &pool).await? {
-                    response.insert(
-                        file.hashes.get(&update_data.algorithm),
-                        models::projects::Version::from(version.clone()),
-                    );
+                    if let Some(hash) = file.hashes.get(&update_data.algorithm) {
+                        response.insert(
+                            hash.clone(),
+                            models::projects::Version::from(version.clone()),
+                        );
+                    }
                 }
             }
         }

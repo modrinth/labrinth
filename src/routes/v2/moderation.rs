@@ -27,7 +27,7 @@ pub async fn get_projects(
     redis: web::Data<deadpool_redis::Pool>,
     count: web::Query<ResultCount>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(req.headers(), &**pool).await?;
+    check_is_moderator_from_headers(req.headers(), &**pool, &redis).await?;
 
     use futures::stream::TryStreamExt;
 

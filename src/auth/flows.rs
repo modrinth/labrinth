@@ -6,11 +6,12 @@ use std::sync::Arc;
 use crate::parse_strings_from_var;
 
 use actix_web::web::{scope, Data, Query, ServiceConfig};
-use actix_web::{get, HttpResponse};
+use actix_web::{get, HttpRequest, HttpResponse};
 use chrono::Utc;
 use reqwest::header::AUTHORIZATION;
 use rust_decimal::Decimal;
 
+use crate::auth::session::issue_session;
 use crate::auth::AuthenticationError;
 use crate::file_hosting::FileHost;
 use crate::models::users::{Badges, Role};
@@ -676,9 +677,11 @@ pub async fn init(
 
 #[get("callback")]
 pub async fn auth_callback(
+    req: HttpRequest,
     Query(query): Query<HashMap<String, String>>,
     client: Data<PgPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
+    redis: Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, AuthenticationError> {
     let mut transaction = client.begin().await?;
 
@@ -740,11 +743,8 @@ pub async fn auth_callback(
                     }
                 );
 
-                let new_id = crate::database::models::User::get_id_from_username_or_id(
-                    &test_username,
-                    &**client,
-                )
-                .await?;
+                let new_id =
+                    crate::database::models::User::get(&test_username, &**client, &redis).await?;
 
                 if new_id.is_none() {
                     username = Some(test_username);
@@ -879,13 +879,13 @@ pub async fn auth_callback(
             }
         };
 
+        let session = issue_session(req, user_id, &mut transaction, &redis).await?;
         transaction.commit().await?;
 
-        // TODO: Issue modrinth token here
         let redirect_url = if result.url.contains('?') {
-            format!("{}&code={}", result.url, token)
+            format!("{}&code={}", result.url, session.session)
         } else {
-            format!("{}?code={}", result.url, token)
+            format!("{}?code={}", result.url, session.session)
         };
 
         Ok(HttpResponse::TemporaryRedirect()

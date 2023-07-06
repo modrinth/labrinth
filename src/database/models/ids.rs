@@ -129,6 +129,14 @@ generate_ids!(
     ThreadMessageId
 );
 
+generate_ids!(
+    pub generate_session_id,
+    SessionId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM sessions WHERE id=$1)",
+    SessionId
+);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct UserId(pub i64);
@@ -202,6 +210,10 @@ pub struct ThreadId(pub i64);
 #[derive(Copy, Clone, Debug, Type, Deserialize)]
 #[sqlx(transparent)]
 pub struct ThreadMessageId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]
+#[sqlx(transparent)]
+pub struct SessionId(pub i64);
 
 use crate::models::ids;
 
@@ -283,5 +295,10 @@ impl From<ids::ThreadMessageId> for ThreadMessageId {
 impl From<ThreadMessageId> for ids::ThreadMessageId {
     fn from(id: ThreadMessageId) -> Self {
         ids::ThreadMessageId(id.0 as u64)
+    }
+}
+impl From<SessionId> for ids::SessionId {
+    fn from(id: SessionId) -> Self {
+        ids::SessionId(id.0 as u64)
     }
 }

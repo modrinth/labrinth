@@ -165,8 +165,8 @@ impl From<QueryProject> for Project {
             followers: m.follows as u32,
             categories: data.categories,
             additional_categories: data.additional_categories,
-            game_versions: m.game_versions,
-            loaders: m.loaders,
+            game_versions: data.game_versions,
+            loaders: data.loaders,
             versions: data.versions.into_iter().map(|v| v.into()).collect(),
             icon_url: m.icon_url,
             issues_url: m.issues_url,
@@ -747,6 +747,15 @@ impl FileType {
             FileType::RequiredResourcePack => "required-resource-pack",
             FileType::OptionalResourcePack => "optional-resource-pack",
             FileType::Unknown => "unknown",
+        }
+    }
+
+    pub fn from_str(string: &str) -> FileType {
+        match string {
+            "required-resource-pack" => FileType::RequiredResourcePack,
+            "optional-resource-pack" => FileType::OptionalResourcePack,
+            "unknown" => FileType::Unknown,
+            _ => FileType::Unknown,
         }
     }
 }

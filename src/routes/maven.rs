@@ -77,7 +77,9 @@ pub async fn maven_metadata(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if !is_authorized(&data.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
@@ -196,7 +198,9 @@ pub async fn version_file(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
@@ -277,7 +281,9 @@ pub async fn version_file_sha1(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
@@ -332,7 +338,9 @@ pub async fn version_file_sha512(
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));

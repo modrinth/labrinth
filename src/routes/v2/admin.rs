@@ -1,3 +1,4 @@
+use crate::database::models::{User, UserId};
 use crate::models::ids::ProjectId;
 use crate::models::projects::MonetizationStatus;
 use crate::routes::ApiError;
@@ -111,6 +112,7 @@ pub struct PayoutData {
 #[post("/_process_payout", guard = "admin_key_guard")]
 pub async fn process_payout(
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
     data: web::Json<PayoutData>,
 ) -> Result<HttpResponse, ApiError> {
     let start: DateTime<Utc> = DateTime::from_utc(
@@ -306,6 +308,8 @@ pub async fn process_payout(
             let sum_splits: Decimal = project.team_members.iter().map(|x| x.1).sum();
             let sum_tm_splits: Decimal = project.split_team_members.iter().map(|x| x.1).sum();
 
+            let mut clear_cache_users = Vec::new();
+
             if sum_splits > Decimal::ZERO {
                 for (user_id, split) in project.team_members {
                     let payout: Decimal = data.amount
@@ -342,6 +346,7 @@ pub async fn process_payout(
                         )
                         .execute(&mut *transaction)
                         .await?;
+                        clear_cache_users.push(user_id);
                     }
                 }
             }
@@ -378,9 +383,19 @@ pub async fn process_payout(
                         )
                         .execute(&mut *transaction)
                         .await?;
+                        clear_cache_users.push(user_id);
                     }
                 }
             }
+
+            User::clear_caches(
+                &clear_cache_users
+                    .into_iter()
+                    .map(|x| (UserId(x), None))
+                    .collect::<Vec<_>>(),
+                &redis,
+            )
+            .await?;
         }
     }
 

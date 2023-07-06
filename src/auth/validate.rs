@@ -9,6 +9,7 @@ use reqwest::header::{HeaderValue, AUTHORIZATION};
 pub async fn get_user_from_headers<'a, E>(
     headers: &HeaderMap,
     executor: E,
+    redis: &deadpool_redis::Pool,
 ) -> Result<User, AuthenticationError>
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
@@ -22,6 +23,7 @@ where
             .to_str()
             .map_err(|_| AuthenticationError::InvalidCredentials)?,
         executor,
+        &redis,
     )
     .await?
     .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
@@ -55,42 +57,48 @@ where
 pub async fn get_user_record_from_bearer_token<'a, 'b, E>(
     token: &str,
     executor: E,
+    redis: &deadpool_redis::Pool,
 ) -> Result<Option<user_item::User>, AuthenticationError>
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
 {
-    if token.starts_with("Bearer ") {
-        let token: &str = token.trim_start_matches("Bearer ");
+    let token: &str = token.trim_start_matches("Bearer ");
 
-        // Tokens beginning with Ory are considered to be Kratos tokens (in reality, extracted cookies) and can be forwarded to Minos
-        let possible_user = match token.split_once('_') {
-            Some(("modrinth", _)) => get_user_from_pat(token, executor).await?,
-            Some(("github", _)) | Some(("gho", _)) | Some(("ghp", _)) => {
-                let user = AuthProvider::GitHub.get_user(token).await?;
-                let id = AuthProvider::GitHub.get_user_id(&user.id, executor).await?;
+    let possible_user = match token.split_once('_') {
+        Some(("modrinth", _)) => get_user_from_pat(token, executor).await?,
+        Some(("mra", _)) => {
+            let session =
+                crate::database::models::session_item::Session::get(token, executor, redis)
+                    .await?
+                    .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
-                user_item::User::get(
-                    id.ok_or_else(|| AuthenticationError::InvalidCredentials)?,
-                    executor,
-                )
-                .await?
-            }
-            _ => return Err(AuthenticationError::InvalidAuthMethod),
-        };
-        Ok(possible_user)
-    } else {
-        Err(AuthenticationError::InvalidAuthMethod)
-    }
+            user_item::User::get_id(session.user_id, executor, &redis).await?
+        }
+        Some(("github", _)) | Some(("gho", _)) | Some(("ghp", _)) => {
+            let user = AuthProvider::GitHub.get_user(token).await?;
+            let id = AuthProvider::GitHub.get_user_id(&user.id, executor).await?;
+
+            user_item::User::get_id(
+                id.ok_or_else(|| AuthenticationError::InvalidCredentials)?,
+                executor,
+                &redis,
+            )
+            .await?
+        }
+        _ => return Err(AuthenticationError::InvalidAuthMethod),
+    };
+    Ok(possible_user)
 }
 
 pub async fn check_is_moderator_from_headers<'a, 'b, E>(
     headers: &HeaderMap,
     executor: E,
+    redis: &deadpool_redis::Pool,
 ) -> Result<User, AuthenticationError>
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
 {
-    let user = get_user_from_headers(headers, executor).await?;
+    let user = get_user_from_headers(headers, executor, &redis).await?;
 
     if user.role.is_mod() {
         Ok(user)

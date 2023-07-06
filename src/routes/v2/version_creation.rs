@@ -82,7 +82,7 @@ pub async fn version_create(
     req: HttpRequest,
     mut payload: Multipart,
     client: Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: Data<deadpool_redis::Pool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
@@ -132,7 +132,7 @@ async fn version_create_inner(
     let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
     let all_loaders = models::categories::Loader::list(&mut *transaction).await?;
 
-    let user = get_user_from_headers(req.headers(), &*pool).await?;
+    let user = get_user_from_headers(req.headers(), &*pool, &redis).await?;
 
     let mut error = None;
     while let Some(item) = payload.next().await {
@@ -422,8 +422,6 @@ async fn version_create_inner(
     let project_id = builder.project_id;
     builder.insert(transaction).await?;
 
-    models::Project::update_game_versions(project_id, &mut *transaction).await?;
-    models::Project::update_loaders(project_id, &mut *transaction).await?;
     models::Project::clear_cache(project_id, None, Some(true), redis).await?;
 
     Ok(HttpResponse::Ok().json(response))
@@ -488,7 +486,7 @@ async fn upload_file_to_version_inner(
     let mut initial_file_data: Option<InitialFileData> = None;
     let mut file_builders: Vec<VersionFileBuilder> = Vec::new();
 
-    let user = get_user_from_headers(req.headers(), &**client).await?;
+    let user = get_user_from_headers(req.headers(), &**client, &redis).await?;
 
     let result = models::Version::get(version_id, &**client, &redis).await?;
 

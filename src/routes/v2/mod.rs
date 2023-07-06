@@ -1,5 +1,4 @@
 mod admin;
-mod auth;
 mod moderation;
 mod notifications;
 mod pats;

@@ -29,7 +29,9 @@ pub async fn forge_updates(
         .await?
         .ok_or_else(|| ApiError::InvalidInput(ERROR.to_string()))?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Err(ApiError::InvalidInput(ERROR.to_string()));

@@ -36,7 +36,9 @@ pub async fn team_members_get_project(
     let project_data = crate::database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project) = project_data {
-        let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
+        let current_user = get_user_from_headers(req.headers(), &**pool, &redis)
+            .await
+            .ok();
 
         let members_data =
             TeamMember::get_from_team_full(project.inner.team_id, &**pool, &redis).await?;
@@ -88,7 +90,9 @@ pub async fn team_members_get(
     let id = info.into_inner().0;
     let members_data = TeamMember::get_from_team_full(id.into(), &**pool, &redis).await?;
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let current_user = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if let Some(user) = &current_user {
         let team_member = members_data
@@ -141,7 +145,9 @@ pub async fn teams_get(
 
     let teams_data = TeamMember::get_from_team_full_many(&team_ids, &**pool, &redis).await?;
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let current_user = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     let teams_groups = teams_data.into_iter().group_by(|data| data.team_id.0);
 
@@ -187,7 +193,7 @@ pub async fn join_team(
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
-    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
+    let current_user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
 
     let member =
         TeamMember::get_from_user_id_pending(team_id, current_user.id.into(), &**pool).await?;
@@ -258,7 +264,7 @@ pub async fn add_team_member(
 
     let mut transaction = pool.begin().await?;
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
+    let current_user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let member = TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool)
         .await?
         .ok_or_else(|| {
@@ -305,7 +311,7 @@ pub async fn add_team_member(
         }
     }
 
-    crate::database::models::User::get(member.user_id, &**pool)
+    crate::database::models::User::get_id(member.user_id, &**pool, &redis)
         .await?
         .ok_or_else(|| ApiError::InvalidInput("An invalid User ID specified".to_string()))?;
 
@@ -372,7 +378,7 @@ pub async fn edit_team_member(
     let id = ids.0.into();
     let user_id = ids.1.into();
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
+    let current_user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool)
         .await?
         .ok_or_else(|| {
@@ -460,7 +466,7 @@ pub async fn transfer_ownership(
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
+    let current_user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
 
     if !current_user.role.is_admin() {
         let member = TeamMember::get_from_user_id(id.into(), current_user.id.into(), &**pool)
@@ -534,7 +540,7 @@ pub async fn remove_team_member(
     let id = ids.0.into();
     let user_id = ids.1.into();
 
-    let current_user = get_user_from_headers(req.headers(), &**pool).await?;
+    let current_user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool)
         .await?
         .ok_or_else(|| {

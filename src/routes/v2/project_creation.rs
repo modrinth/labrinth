@@ -270,6 +270,7 @@ pub async fn project_create(
     req: HttpRequest,
     mut payload: Multipart,
     client: Data<PgPool>,
+    redis: Data<deadpool_redis::Pool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
@@ -282,6 +283,7 @@ pub async fn project_create(
         &***file_host,
         &mut uploaded_files,
         &client,
+        &redis,
     )
     .await;
 
@@ -336,12 +338,13 @@ async fn project_create_inner(
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     pool: &PgPool,
+    redis: &deadpool_redis::Pool,
 ) -> Result<HttpResponse, CreateError> {
     // The base URL for files uploaded to backblaze
     let cdn_url = dotenvy::var("CDN_URL")?;
 
     // The currently logged in user
-    let current_user = get_user_from_headers(req.headers(), &*pool).await?;
+    let current_user = get_user_from_headers(req.headers(), &*pool, &redis).await?;
 
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
 

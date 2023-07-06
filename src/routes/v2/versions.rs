@@ -49,7 +49,9 @@ pub async fn version_list(
 
     let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if let Some(project) = result {
         if !is_authorized(&project.inner, &user_option, &pool).await? {
@@ -155,7 +157,9 @@ pub async fn version_project_get(
     let version_data =
         database::models::Version::get_full_from_id_slug(&id.0, &id.1, &**pool, &redis).await?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if let Some(data) = version_data {
         if is_authorized_version(&data.inner, &user_option, &pool).await? {
@@ -184,7 +188,9 @@ pub async fn versions_get(
         .collect::<Vec<database::models::VersionId>>();
     let versions_data = database::models::Version::get_many(&version_ids, &**pool, &redis).await?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     let versions = filter_authorized_versions(versions_data, &user_option, &pool).await?;
 
@@ -201,7 +207,9 @@ pub async fn version_get(
     let id = info.into_inner().0;
     let version_data = database::models::Version::get(id.into(), &**pool, &redis).await?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if let Some(data) = version_data {
         if is_authorized_version(&data.inner, &user_option, &pool).await? {
@@ -256,7 +264,7 @@ pub async fn version_edit(
     redis: web::Data<deadpool_redis::Pool>,
     new_version: web::Json<EditVersion>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
 
     new_version
         .validate()
@@ -405,12 +413,6 @@ pub async fn version_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
-
-                database::models::Project::update_game_versions(
-                    version_item.inner.project_id,
-                    &mut transaction,
-                )
-                .await?;
             }
 
             if let Some(loaders) = &new_version.loaders {
@@ -444,12 +446,6 @@ pub async fn version_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
-
-                database::models::Project::update_loaders(
-                    version_item.inner.project_id,
-                    &mut transaction,
-                )
-                .await?;
             }
 
             if let Some(featured) = &new_version.featured {
@@ -610,7 +606,7 @@ pub async fn version_edit(
                 }
             }
 
-            database::models::Version::clear_cache(version_item.inner.id, &redis).await?;
+            database::models::Version::clear_cache(&version_item, &redis).await?;
             database::models::Project::clear_cache(
                 version_item.inner.project_id,
                 None,
@@ -644,7 +640,7 @@ pub async fn version_schedule(
     redis: web::Data<deadpool_redis::Pool>,
     scheduling_data: web::Json<SchedulingData>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
 
     if scheduling_data.time < Utc::now() {
         return Err(ApiError::InvalidInput(
@@ -693,7 +689,7 @@ pub async fn version_schedule(
         .execute(&mut *transaction)
         .await?;
 
-        database::models::Version::clear_cache(version_item.inner.id, &redis).await?;
+        database::models::Version::clear_cache(&version_item, &redis).await?;
         transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
@@ -709,7 +705,7 @@ pub async fn version_delete(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let id = info.into_inner().0;
 
     let version = database::models::Version::get(id.into(), &**pool, &redis)

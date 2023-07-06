@@ -119,7 +119,9 @@ pub async fn projects_get(
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
     let projects_data = database::models::Project::get_many(&ids, &**pool, &redis).await?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     let projects = filter_authorized_projects(projects_data, &user_option, &pool).await?;
 
@@ -137,7 +139,9 @@ pub async fn project_get(
 
     let project_data = database::models::Project::get(&string, &**pool, &redis).await?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if let Some(data) = project_data {
         if is_authorized(&data.inner, &user_option, &pool).await? {
@@ -184,7 +188,9 @@ pub async fn dependency_list(
 
     let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(req.headers(), &**pool, &redis)
+        .await
+        .ok();
 
     if let Some(project) = result {
         if !is_authorized(&project.inner, &user_option, &pool).await? {
@@ -348,7 +354,7 @@ pub async fn project_edit(
     new_project: web::Json<EditProject>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
 
     new_project
         .validate()
@@ -1171,7 +1177,7 @@ pub async fn projects_edit(
     bulk_edit_project: web::Json<BulkEditProject>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
 
     bulk_edit_project
         .validate()
@@ -1501,7 +1507,7 @@ pub async fn project_schedule(
     redis: web::Data<deadpool_redis::Pool>,
     scheduling_data: web::Json<SchedulingData>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
 
     if scheduling_data.time < Utc::now() {
         return Err(ApiError::InvalidInput(
@@ -1580,7 +1586,7 @@ pub async fn project_icon_edit(
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         let cdn_url = dotenvy::var("CDN_URL")?;
-        let user = get_user_from_headers(req.headers(), &**pool).await?;
+        let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
         let string = info.into_inner().0;
 
         let project_item = database::models::Project::get(&string, &**pool, &redis)
@@ -1673,7 +1679,7 @@ pub async fn delete_project_icon(
     redis: web::Data<deadpool_redis::Pool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let string = info.into_inner().0;
 
     let project_item = database::models::Project::get(&string, &**pool, &redis)
@@ -1763,7 +1769,7 @@ pub async fn add_gallery_item(
             .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
 
         let cdn_url = dotenvy::var("CDN_URL")?;
-        let user = get_user_from_headers(req.headers(), &**pool).await?;
+        let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
         let string = info.into_inner().0;
 
         let project_item = database::models::Project::get(&string, &**pool, &redis)
@@ -1899,7 +1905,7 @@ pub async fn edit_gallery_item(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let string = info.into_inner().0;
 
     item.validate()
@@ -2044,7 +2050,7 @@ pub async fn delete_gallery_item(
     redis: web::Data<deadpool_redis::Pool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let string = info.into_inner().0;
 
     let project_item = database::models::Project::get(&string, &**pool, &redis)
@@ -2130,7 +2136,7 @@ pub async fn project_delete(
     redis: web::Data<deadpool_redis::Pool>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let string = info.into_inner().0;
 
     let project = database::models::Project::get(&string, &**pool, &redis)
@@ -2164,7 +2170,7 @@ pub async fn project_delete(
     let mut transaction = pool.begin().await?;
 
     let result =
-        database::models::Project::remove_full(project.inner.id, &mut transaction, &redis).await?;
+        database::models::Project::remove(project.inner.id, &mut transaction, &redis).await?;
 
     transaction.commit().await?;
 
@@ -2184,7 +2190,7 @@ pub async fn project_follow(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let string = info.into_inner().0;
 
     let result = database::models::Project::get(&string, &**pool, &redis)
@@ -2254,7 +2260,7 @@ pub async fn project_unfollow(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool).await?;
+    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
     let string = info.into_inner().0;
 
     let result = database::models::Project::get(&string, &**pool, &redis)

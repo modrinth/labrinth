@@ -3,6 +3,7 @@ use super::DatabaseError;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::projects::{FileType, VersionStatus};
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use redis::cmd;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -11,6 +12,7 @@ use std::collections::HashMap;
 const VERSIONS_NAMESPACE: &str = "versions";
 // TODO: Cache version slugs call
 // const VERSIONS_SLUGS_NAMESPACE: &str = "versions_slugs";
+const VERSION_FILES_NAMESPACE: &str = "versions_files";
 const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 pub struct VersionBuilder {
@@ -263,20 +265,15 @@ impl Version {
         redis: &deadpool_redis::Pool,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Option<()>, DatabaseError> {
-        let result = sqlx::query!(
-            "
-            SELECT EXISTS(SELECT 1 FROM versions WHERE id = $1)
-            ",
-            id as VersionId,
-        )
-        .fetch_one(&mut *transaction)
-        .await?;
+        let result = Self::get(id, &mut *transaction, redis).await?;
 
-        if !result.exists.unwrap_or(false) {
+        let result = if let Some(result) = result {
+            result
+        } else {
             return Ok(None);
-        }
+        };
 
-        Version::clear_cache(id, redis).await?;
+        Version::clear_cache(&result, redis).await?;
 
         sqlx::query!(
             "
@@ -383,17 +380,6 @@ impl Version {
         .execute(&mut *transaction)
         .await?;
 
-        crate::database::models::Project::update_game_versions(
-            ProjectId(project_id.mod_id),
-            &mut *transaction,
-        )
-        .await?;
-        crate::database::models::Project::update_loaders(
-            ProjectId(project_id.mod_id),
-            &mut *transaction,
-        )
-        .await?;
-
         Ok(Some(()))
     }
 
@@ -403,7 +389,7 @@ impl Version {
         redis: &deadpool_redis::Pool,
     ) -> Result<Option<QueryVersion>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         Self::get_many(&[id], executor, redis)
             .await
@@ -416,7 +402,7 @@ impl Version {
         redis: &deadpool_redis::Pool,
     ) -> Result<Vec<QueryVersion>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         if version_ids.is_empty() {
             return Ok(Vec::new());
@@ -608,39 +594,158 @@ impl Version {
     pub async fn get_file_from_hash<'a, 'b, E>(
         algo: String,
         hash: String,
+        version_id: Option<VersionId>,
         executor: E,
         redis: &deadpool_redis::Pool,
     ) -> Result<Option<SingleFile>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        Self::get_files_from_hash(&[(algo, hash)], executor, redis)
+        Self::get_files_from_hash(algo, &[hash], executor, redis)
             .await
-            .map(|x| x.into_iter().next())
+            .map(|x| {
+                x.into_iter()
+                    .find_or_first(|x| Some(x.version_id) == version_id)
+            })
     }
 
     pub async fn get_files_from_hash<'a, 'b, E>(
-        hashes: &[(String, String)],
+        algorithm: String,
+        hashes: &[String],
         executor: E,
         redis: &deadpool_redis::Pool,
     ) -> Result<Vec<SingleFile>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        // TODO: make this work
-        // TODO: impl cache clear on file deletion/version deletion/project deletion
-        Ok(vec![])
+        if hashes.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        use futures::stream::TryStreamExt;
+
+        let mut file_ids_parsed = hashes.to_vec();
+
+        let mut redis = redis.get().await?;
+
+        let mut found_files = Vec::new();
+
+        let files = cmd("MGET")
+            .arg(
+                file_ids_parsed
+                    .iter()
+                    .map(|hash| format!("{}:{}_{}", VERSION_FILES_NAMESPACE, algorithm, hash))
+                    .collect::<Vec<_>>(),
+            )
+            .query_async::<_, Vec<Option<String>>>(&mut redis)
+            .await?;
+
+        for file in files {
+            if let Some(mut file) =
+                file.and_then(|x| serde_json::from_str::<Vec<SingleFile>>(&x).ok())
+            {
+                file_ids_parsed.retain(|x| {
+                    !file
+                        .iter()
+                        .any(|y| y.hashes.iter().any(|z| z.0 == &algorithm && z.1 == x))
+                });
+                found_files.append(&mut file);
+                continue;
+            }
+        }
+
+        if !file_ids_parsed.is_empty() {
+            let db_files: Vec<SingleFile> = sqlx::query!(
+                "
+                SELECT f.id, f.version_id, v.mod_id, f.url, f.filename, f.is_primary, f.size, f.file_type,
+                JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'))) filter (where h.hash is not null) hashes
+                FROM files f
+                INNER JOIN versions v on v.id = f.version_id
+                INNER JOIN hashes h on h.file_id = f.id
+                WHERE h.algorithm = $1 AND h.hash = ANY($2)
+                GROUP BY f.id, v.mod_id, v.date_published
+                ORDER BY v.date_published
+                ",
+                algorithm,
+                &file_ids_parsed.into_iter().map(|x| x.as_bytes().to_vec()).collect::<Vec<_>>(),
+            )
+                .fetch_many(executor)
+                .try_filter_map(|e| async {
+                    Ok(e.right().map(|f| {
+                        #[derive(Deserialize)]
+                        struct Hash {
+                            pub algorithm: String,
+                            pub hash: String,
+                        }
+
+                        SingleFile {
+                            id: FileId(f.id),
+                            version_id: VersionId(f.version_id),
+                            project_id: ProjectId(f.mod_id),
+                            url: f.url,
+                            filename: f.filename,
+                            hashes: serde_json::from_value::<Vec<Hash>>(
+                                f.hashes.unwrap_or_default(),
+                            )
+                                .ok()
+                                .unwrap_or_default().into_iter().map(|x| (x.algorithm, x.hash)).collect(),
+                            primary: f.is_primary,
+                            size: f.size as u32,
+                            file_type: f.file_type.map(|x| FileType::from_str(&x)),
+                        }
+                    }
+                    ))
+                })
+                .try_collect::<Vec<SingleFile>>()
+                .await?;
+
+            let mut save_files: HashMap<String, Vec<SingleFile>> = HashMap::new();
+
+            for file in db_files {
+                for (algo, hash) in &file.hashes {
+                    let key = format!("{}_{}", algo, hash);
+
+                    if let Some(files) = save_files.get_mut(&key) {
+                        files.push(file.clone());
+                    } else {
+                        save_files.insert(key, vec![file.clone()]);
+                    }
+                }
+            }
+
+            for (key, mut files) in save_files {
+                cmd("SET")
+                    .arg(format!("{}:{}", VERSIONS_NAMESPACE, key))
+                    .arg(serde_json::to_string(&files)?)
+                    .arg("EX")
+                    .arg(DEFAULT_EXPIRY)
+                    .query_async::<_, ()>(&mut redis)
+                    .await?;
+
+                found_files.append(&mut files);
+            }
+        }
+
+        Ok(found_files)
     }
 
     pub async fn clear_cache(
-        id: VersionId,
+        version: &QueryVersion,
         redis: &deadpool_redis::Pool,
     ) -> Result<(), DatabaseError> {
         let mut redis = redis.get().await?;
-        cmd("DEL")
-            .arg(format!("{}:{}", VERSIONS_NAMESPACE, id.0))
-            .query_async::<_, ()>(&mut redis)
-            .await?;
+
+        let mut cmd = cmd("DEL");
+
+        cmd.arg(format!("{}:{}", VERSIONS_NAMESPACE, version.inner.id.0));
+
+        for file in &version.files {
+            for (algo, hash) in &file.hashes {
+                cmd.arg(format!("{}:{}_{}", VERSION_FILES_NAMESPACE, algo, hash));
+            }
+        }
+
+        cmd.query_async::<_, ()>(&mut redis).await?;
 
         Ok(())
     }

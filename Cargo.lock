@@ -1984,6 +1984,7 @@ dependencies = [
  "log",
  "meilisearch-sdk",
  "rand",
+ "rand_chacha",
  "redis",
  "regex",
  "reqwest",
@@ -2004,6 +2005,7 @@ dependencies = [
  "url",
  "urlencoding",
  "validator",
+ "woothee",
  "xml-rs",
  "yaserde",
  "yaserde_derive",
@@ -4555,6 +4557,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "woothee"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "896174c6a4779d4d7d4523dd27aef7d46609eda2497e370f6c998325c6bf6971"
+dependencies = [
+ "lazy_static",
+ "regex",
 ]
 
 [[package]]
