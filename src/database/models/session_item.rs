@@ -10,6 +10,8 @@ const SESSIONS_IDS_NAMESPACE: &str = "sessions_ids";
 const SESSIONS_USERS_NAMESPACE: &str = "sessions_users";
 const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
+// TODO: Manage sessions cache + clear cache when needed
+
 pub struct SessionBuilder {
     pub session: String,
     pub user_id: UserId,
@@ -262,7 +264,7 @@ impl Session {
             .await?;
 
         if let Some(res) = res {
-            return Ok(res.into_iter().map(|x| SessionId(x)).collect());
+            return Ok(res.into_iter().map(SessionId).collect());
         }
 
         use futures::TryStreamExt;
@@ -294,7 +296,7 @@ impl Session {
     pub async fn remove(
         id: SessionId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        // redis: &deadpool_redis::Pool,
     ) -> Result<Option<()>, sqlx::error::Error> {
         sqlx::query!(
             "

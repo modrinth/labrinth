@@ -23,7 +23,7 @@ where
             .to_str()
             .map_err(|_| AuthenticationError::InvalidCredentials)?,
         executor,
-        &redis,
+        redis,
     )
     .await?
     .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
@@ -72,7 +72,7 @@ where
                     .await?
                     .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
-            user_item::User::get_id(session.user_id, executor, &redis).await?
+            user_item::User::get_id(session.user_id, executor, redis).await?
         }
         Some(("github", _)) | Some(("gho", _)) | Some(("ghp", _)) => {
             let user = AuthProvider::GitHub.get_user(token).await?;
@@ -81,7 +81,7 @@ where
             user_item::User::get_id(
                 id.ok_or_else(|| AuthenticationError::InvalidCredentials)?,
                 executor,
-                &redis,
+                redis,
             )
             .await?
         }
@@ -98,7 +98,7 @@ pub async fn check_is_moderator_from_headers<'a, 'b, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
 {
-    let user = get_user_from_headers(headers, executor, &redis).await?;
+    let user = get_user_from_headers(headers, executor, redis).await?;
 
     if user.role.is_mod() {
         Ok(user)

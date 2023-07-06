@@ -172,7 +172,7 @@ pub async fn filter_authorized_threads(
             .collect::<Vec<database::models::UserId>>(),
     );
 
-    let users: Vec<User> = database::models::User::get_many_ids(&user_ids, &***pool, &redis)
+    let users: Vec<User> = database::models::User::get_many_ids(&user_ids, &***pool, redis)
         .await?
         .into_iter()
         .map(From::from)

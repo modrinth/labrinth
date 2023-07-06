@@ -387,7 +387,7 @@ pub async fn user_edit(
                 }
             }
 
-            User::clear_caches(&vec![(id, Some(actual_user.username))], &redis).await?;
+            User::clear_caches(&[(id, Some(actual_user.username))], &redis).await?;
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
@@ -461,7 +461,7 @@ pub async fn user_icon_edit(
             )
             .execute(&**pool)
             .await?;
-            User::clear_caches(&vec![(actual_user.id.into(), None)], &redis).await?;
+            User::clear_caches(&[(actual_user.id, None)], &redis).await?;
 
             Ok(HttpResponse::NoContent().body(""))
         } else {
@@ -755,7 +755,7 @@ pub async fn user_payouts_request(
                             )
                             .execute(&mut *transaction)
                             .await?;
-                            User::clear_caches(&vec![(id, None)], &redis).await?;
+                            User::clear_caches(&[(id, None)], &redis).await?;
 
                             transaction.commit().await?;
 

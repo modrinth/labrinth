@@ -344,7 +344,7 @@ async fn project_create_inner(
     let cdn_url = dotenvy::var("CDN_URL")?;
 
     // The currently logged in user
-    let current_user = get_user_from_headers(req.headers(), &*pool, &redis).await?;
+    let current_user = get_user_from_headers(req.headers(), pool, redis).await?;
 
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
 

@@ -14,7 +14,7 @@ pub async fn issue_session(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &deadpool_redis::Pool,
 ) -> Result<Session, AuthenticationError> {
-    let conn_info = req.connection_info();
+    let conn_info = req.connection_info().clone();
     let ip_addr = if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
         if let Some(header) = req.headers().get("CF-Connecting-IP") {
             header.to_str().ok()
@@ -68,7 +68,7 @@ pub async fn issue_session(
     .insert(transaction)
     .await?;
 
-    let session = Session::get_id(id, &mut *transaction, &redis)
+    let session = Session::get_id(id, &mut *transaction, redis)
         .await?
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 

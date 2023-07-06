@@ -95,7 +95,7 @@ pub async fn version_create(
         &redis,
         &***file_host,
         &mut uploaded_files,
-        &*client,
+        &client,
     )
     .await;
 
@@ -132,7 +132,7 @@ async fn version_create_inner(
     let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
     let all_loaders = models::categories::Loader::list(&mut *transaction).await?;
 
-    let user = get_user_from_headers(req.headers(), &*pool, &redis).await?;
+    let user = get_user_from_headers(req.headers(), pool, redis).await?;
 
     let mut error = None;
     while let Some(item) = payload.next().await {

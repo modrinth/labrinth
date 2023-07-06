@@ -97,10 +97,10 @@ impl AuthProvider {
             }
             AuthProvider::Steam => {
                 format!(
-                    "https://steamcommunity.com/openid/login?openid.ns={}&openid.mode={}&openid.return_to={}&openid.realm={}&openid.identity={}&openid.claimed_id={}",
+                    "https://steamcommunity.com/openid/login?openid.ns={}&openid.mode={}&openid.return_to={}{}{}&openid.realm={}&openid.identity={}&openid.claimed_id={}",
                     urlencoding::encode("http://specs.openid.net/auth/2.0"),
                     "checkid_setup",
-                    format!("{}{}{}", redirect_uri, urlencoding::encode("?state="), state),
+                    redirect_uri, urlencoding::encode("?state="), state,
                     self_addr,
                     "http://specs.openid.net/auth/2.0/identifier_select",
                     "http://specs.openid.net/auth/2.0/identifier_select",
@@ -265,7 +265,7 @@ impl AuthProvider {
                 form.insert("openid.ns".to_string(), "http://specs.openid.net/auth/2.0");
                 form.insert("openid.mode".to_string(), "check_authentication");
 
-                for val in signed.split(",") {
+                for val in signed.split(',') {
                     if let Some(arr_val) = query.get(&format!("openid.{}", val)) {
                         form.insert(format!("openid.{}", val), &**arr_val);
                     }
@@ -286,7 +286,7 @@ impl AuthProvider {
                         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
                     identity
-                        .rsplit("/")
+                        .rsplit('/')
                         .next()
                         .ok_or_else(|| AuthenticationError::InvalidCredentials)?
                         .to_string()
@@ -393,7 +393,7 @@ impl AuthProvider {
                     id: microsoft_user.id,
                     username: microsoft_user
                         .user_principal_name
-                        .split("@")
+                        .split('@')
                         .next()
                         .unwrap_or_default()
                         .to_string(),
@@ -455,7 +455,7 @@ impl AuthProvider {
                     id: google_user.id,
                     username: google_user
                         .email
-                        .split("@")
+                        .split('@')
                         .next()
                         .unwrap_or_default()
                         .to_string(),
@@ -688,7 +688,7 @@ pub async fn auth_callback(
     let state = query
         .get("state")
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
-    let state_id: u64 = parse_base62(&state)?;
+    let state_id: u64 = parse_base62(state)?;
 
     let result_option = sqlx::query!(
         "
@@ -763,17 +763,9 @@ pub async fn auth_callback(
                     .get(reqwest::header::CONTENT_TYPE)
                     .and_then(|ct| ct.to_str().ok())
                 {
-                    if let Some(ext) = get_image_ext(content_type) {
-                        Some((ext, content_type))
-                    } else {
-                        None
-                    }
-                } else if let Some(ext) = avatar_url.rsplit(".").next() {
-                    if let Some(content_type) = get_image_content_type(ext) {
-                        Some((ext, content_type))
-                    } else {
-                        None
-                    }
+                    get_image_ext(content_type).map(|ext| (ext, content_type))
+                } else if let Some(ext) = avatar_url.rsplit('.').next() {
+                    get_image_content_type(ext).map(|content_type| (ext, content_type))
                 } else {
                     None
                 };

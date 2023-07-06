@@ -318,10 +318,10 @@ impl User {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &deadpool_redis::Pool,
     ) -> Result<Option<()>, DatabaseError> {
-        let user = Self::get_id(id, &mut *transaction, &redis).await?;
+        let user = Self::get_id(id, &mut *transaction, redis).await?;
 
         if let Some(delete_user) = user {
-            User::clear_caches(&vec![(id, Some(delete_user.username))], &redis).await?;
+            User::clear_caches(&[(id, Some(delete_user.username))], redis).await?;
 
             let deleted_user: UserId = crate::models::users::DELETED_USER.into();
 
