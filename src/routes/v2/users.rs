@@ -414,6 +414,7 @@ pub struct Extension {
 }
 
 #[patch("{id}/icon")]
+#[allow(clippy::too_many_arguments)]
 pub async fn user_icon_edit(
     web::Query(ext): web::Query<Extension>,
     req: HttpRequest,

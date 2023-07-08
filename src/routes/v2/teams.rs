@@ -75,15 +75,9 @@ pub async fn team_members_get_project(
                         .unwrap_or(false)
             })
             .flat_map(|data| {
-                if let Some(user) = users.iter().find(|x| x.id == data.user_id) {
-                    Some(crate::models::teams::TeamMember::from(
-                        data,
-                        user.clone(),
-                        !logged_in,
-                    ))
-                } else {
-                    None
-                }
+                users.iter().find(|x| x.id == data.user_id).map(|user| {
+                    crate::models::teams::TeamMember::from(data, user.clone(), !logged_in)
+                })
             })
             .collect();
 
@@ -133,15 +127,10 @@ pub async fn team_members_get(
                     .unwrap_or(false)
         })
         .flat_map(|data| {
-            if let Some(user) = users.iter().find(|x| x.id == data.user_id) {
-                Some(crate::models::teams::TeamMember::from(
-                    data,
-                    user.clone(),
-                    !logged_in,
-                ))
-            } else {
-                None
-            }
+            users
+                .iter()
+                .find(|x| x.id == data.user_id)
+                .map(|user| crate::models::teams::TeamMember::from(data, user.clone(), !logged_in))
         })
         .collect();
 
@@ -200,15 +189,9 @@ pub async fn teams_get(
             .into_iter()
             .filter(|x| logged_in || x.accepted)
             .flat_map(|data| {
-                if let Some(user) = users.iter().find(|x| x.id == data.user_id) {
-                    Some(crate::models::teams::TeamMember::from(
-                        data,
-                        user.clone(),
-                        !logged_in,
-                    ))
-                } else {
-                    None
-                }
+                users.iter().find(|x| x.id == data.user_id).map(|user| {
+                    crate::models::teams::TeamMember::from(data, user.clone(), !logged_in)
+                })
             });
 
         teams.push(team_members.collect());

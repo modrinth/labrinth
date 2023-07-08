@@ -118,6 +118,7 @@ pub async fn version_create(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn version_create_inner(
     req: HttpRequest,
     payload: &mut Multipart,
@@ -136,7 +137,7 @@ async fn version_create_inner(
     let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
     let all_loaders = models::categories::Loader::list(&mut *transaction).await?;
 
-    let user = get_user_from_headers(&req, pool, redis, &session_queue).await?;
+    let user = get_user_from_headers(&req, pool, redis, session_queue).await?;
 
     let mut error = None;
     while let Some(item) = payload.next().await {

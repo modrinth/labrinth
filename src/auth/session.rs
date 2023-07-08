@@ -124,7 +124,7 @@ pub async fn list(
     redis: Data<deadpool_redis::Pool>,
     session_queue: Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let current_user = get_user_from_headers(&req, &**pool, &redis, &**session_queue).await?;
+    let current_user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
 
     let session_ids = DBSession::get_user_sessions(current_user.id.into(), &**pool, &redis).await?;
     let sessions = DBSession::get_many_ids(&session_ids, &**pool, &redis)
@@ -145,7 +145,7 @@ pub async fn delete(
     redis: Data<deadpool_redis::Pool>,
     session_queue: Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let current_user = get_user_from_headers(&req, &**pool, &redis, &**session_queue).await?;
+    let current_user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
 
     let session = DBSession::get(info.into_inner().0, &**pool, &redis).await?;
 
@@ -176,7 +176,7 @@ pub async fn refresh(
     redis: Data<deadpool_redis::Pool>,
     session_queue: Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let current_user = get_user_from_headers(&req, &**pool, &redis, &**session_queue).await?;
+    let current_user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let session = req
         .headers()
         .get(AUTHORIZATION)

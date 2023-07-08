@@ -929,15 +929,18 @@ pub async fn create_account_with_password(
 
     let new_account = new_account.0;
 
-    let score = zxcvbn::zxcvbn(&new_account.password, &[&new_account.username, &new_account.email])?;
+    let score = zxcvbn::zxcvbn(
+        &new_account.password,
+        &[&new_account.username, &new_account.email],
+    )?;
 
     if score.score() < 3 {
         return Err(ApiError::InvalidInput(
             if let Some(feedback) = score.feedback().clone().and_then(|x| x.warning()) {
                 format!("Password too weak: {}", feedback)
             } else {
-                format!("Specified password is too weak! Please improve its strength.")
-            }
+                "Specified password is too weak! Please improve its strength.".to_string()
+            },
         ));
     }
 

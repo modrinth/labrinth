@@ -334,6 +334,7 @@ Get logged in user
     - Add project data to indexing queue
 */
 
+#[allow(clippy::too_many_arguments)]
 async fn project_create_inner(
     req: HttpRequest,
     payload: &mut Multipart,
