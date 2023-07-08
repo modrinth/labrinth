@@ -18,6 +18,7 @@ use actix_web::web::{self, Data, Query};
 use actix_web::{delete, get, patch, post, HttpRequest, HttpResponse};
 use chrono::{Duration, Utc};
 
+use crate::queue::session::SessionQueue;
 use serde::Deserialize;
 use sqlx::postgres::PgPool;
 
@@ -50,9 +51,10 @@ pub async fn get_pats(
     req: HttpRequest,
     pool: Data<PgPool>,
     redis: Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user: crate::models::users::User =
-        get_user_from_headers(req.headers(), &**pool, &redis).await?;
+        get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let db_user_id: database::models::UserId = database::models::UserId::from(user.id);
 
     let pats = sqlx::query!(
@@ -90,9 +92,10 @@ pub async fn create_pat(
     Query(info): Query<CreatePersonalAccessToken>, // callback url
     pool: Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user: crate::models::users::User =
-        get_user_from_headers(req.headers(), &**pool, &redis).await?;
+        get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let db_user_id: database::models::UserId = database::models::UserId::from(user.id);
 
     let mut transaction: sqlx::Transaction<sqlx::Postgres> = pool.begin().await?;
@@ -143,9 +146,10 @@ pub async fn edit_pat(
     Query(info): Query<ModifyPersonalAccessToken>, // callback url
     pool: Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user: crate::models::users::User =
-        get_user_from_headers(req.headers(), &**pool, &redis).await?;
+        get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let pat_id = database::models::PatId(parse_base62(&id)? as i64);
     let db_user_id: database::models::UserId = database::models::UserId::from(user.id);
 
@@ -208,9 +212,10 @@ pub async fn delete_pat(
     id: web::Path<String>,
     pool: Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user: crate::models::users::User =
-        get_user_from_headers(req.headers(), &**pool, &redis).await?;
+        get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let pat_id = database::models::PatId(parse_base62(&id)? as i64);
     let db_user_id: database::models::UserId = database::models::UserId::from(user.id);
 

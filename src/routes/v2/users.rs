@@ -5,6 +5,7 @@ use crate::models::notifications::Notification;
 use crate::models::projects::Project;
 use crate::models::users::{Badges, RecipientType, RecipientWallet, Role, UserId};
 use crate::queue::payouts::{PayoutAmount, PayoutItem, PayoutsQueue};
+use crate::queue::session::SessionQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
@@ -44,8 +45,12 @@ pub async fn user_auth_get(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().json(get_user_from_headers(req.headers(), &**pool, &redis).await?))
+    Ok(
+        HttpResponse::Ok()
+            .json(get_user_from_headers(&req, &**pool, &redis, &session_queue).await?),
+    )
 }
 
 #[derive(Serialize)]
@@ -59,8 +64,9 @@ pub async fn user_data_get(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
 
     let data = sqlx::query!(
         "
@@ -128,8 +134,9 @@ pub async fn projects_list(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool, &redis)
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue)
         .await
         .ok();
 
@@ -206,8 +213,9 @@ pub async fn user_edit(
     new_user: web::Json<EditUser>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
 
     new_user
         .validate()
@@ -414,10 +422,11 @@ pub async fn user_icon_edit(
     redis: web::Data<deadpool_redis::Pool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         let cdn_url = dotenvy::var("CDN_URL")?;
-        let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
+        let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
         let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
         if let Some(actual_user) = id_option {
@@ -492,8 +501,9 @@ pub async fn user_delete(
     pool: web::Data<PgPool>,
     removal_type: web::Query<RemovalType>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
     if let Some(id) = id_option.map(|x| x.id) {
@@ -531,8 +541,9 @@ pub async fn user_follows(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
     if let Some(id) = id_option.map(|x| x.id) {
@@ -578,8 +589,9 @@ pub async fn user_notifications(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
     if let Some(id) = id_option.map(|x| x.id) {
@@ -617,8 +629,9 @@ pub async fn user_payouts(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
     if let Some(id) = id_option.map(|x| x.id) {
@@ -691,12 +704,13 @@ pub async fn user_payouts_request(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     data: web::Json<PayoutData>,
-    payouts_queue: web::Data<Arc<Mutex<PayoutsQueue>>>,
+    payouts_queue: web::Data<Mutex<PayoutsQueue>>,
     redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<SessionQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let mut payouts_queue = payouts_queue.lock().await;
 
-    let user = get_user_from_headers(req.headers(), &**pool, &redis).await?;
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
     let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
     if let Some(id) = id_option.map(|x| x.id) {

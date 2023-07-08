@@ -261,7 +261,7 @@ pub async fn send_discord_webhook(
             .send()
             .await
             .map_err(|_| {
-                ApiError::DiscordError("Error while sending projects webhook".to_string())
+                ApiError::Discord("Error while sending projects webhook".to_string())
             })?;
     }
 
