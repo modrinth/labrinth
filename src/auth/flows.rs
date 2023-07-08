@@ -26,7 +26,8 @@ use validator::Validate;
 
 pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(scope("auth").service(auth_callback).service(init))
-        .service(create_account_with_password);
+        .service(create_account_with_password)
+        .service(login_password);
 }
 
 #[derive(Serialize, Deserialize, Default, Eq, PartialEq)]
