@@ -1,23 +1,23 @@
-use crate::auth::AuthenticationError;
-use crate::database;
-use crate::database::models::{DatabaseError, UserId};
-use crate::models::users::{self, Badges, RecipientType, RecipientWallet};
-use censor::Censor;
-use chrono::{NaiveDateTime, Utc};
-use rand::Rng;
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize)]
-pub struct PersonalAccessToken {
-    pub id: String,
-    pub name: Option<String>,
-    pub access_token: Option<String>,
-    pub scope: i64,
-    pub user_id: users::UserId,
-    pub expires_at: NaiveDateTime,
-}
-// Find database user from PAT token
-// Separate to user_items as it may yet include further behaviour.
+// use crate::auth::AuthenticationError;
+// use crate::database;
+// use crate::database::models::{DatabaseError, UserId};
+// use crate::models::users::{self, Badges, RecipientType, RecipientWallet};
+// use censor::Censor;
+// use chrono::{NaiveDateTime, Utc};
+// use rand::Rng;
+// use serde::{Deserialize, Serialize};
+//
+// #[derive(Serialize, Deserialize)]
+// pub struct PersonalAccessToken {
+//     pub id: String,
+//     pub name: Option<String>,
+//     pub access_token: Option<String>,
+//     pub scope: i64,
+//     pub user_id: users::UserId,
+//     pub expires_at: NaiveDateTime,
+// }
+// // Find database user from PAT token
+// // Separate to user_items as it may yet include further behaviour.
 // pub async fn get_user_from_pat<'a, E>(
 //     access_token: &str,
 //     executor: E,
@@ -71,45 +71,45 @@ pub struct PersonalAccessToken {
 //     }
 //     Ok(None)
 // }
-
-// Generate a new 128 char PAT token starting with 'modrinth_pat_'
-pub async fn generate_pat(
-    con: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-) -> Result<String, DatabaseError> {
-    let mut rng = rand::thread_rng();
-    let mut retry_count = 0;
-    let censor = Censor::Standard + Censor::Sex;
-
-    // First generate the PAT token as a random 128 char string. This may include uppercase and lowercase and numbers only.
-    loop {
-        let mut access_token = String::with_capacity(63);
-        access_token.push_str("modrinth_pat_");
-        for _ in 0..51 {
-            let c = rng.gen_range(0..62);
-            if c < 10 {
-                access_token.push(char::from_u32(c + 48).unwrap()); // 0-9
-            } else if c < 36 {
-                access_token.push(char::from_u32(c + 55).unwrap()); // A-Z
-            } else {
-                access_token.push(char::from_u32(c + 61).unwrap()); // a-z
-            }
-        }
-        let results = sqlx::query!(
-            "
-            SELECT EXISTS(SELECT 1 FROM pats WHERE access_token=$1)
-        ",
-            access_token
-        )
-        .fetch_one(&mut *con)
-        .await?;
-
-        if !results.exists.unwrap_or(true) && !censor.check(&access_token) {
-            break Ok(access_token);
-        }
-
-        retry_count += 1;
-        if retry_count > 15 {
-            return Err(DatabaseError::RandomId);
-        }
-    }
-}
+//
+// // Generate a new 128 char PAT token starting with 'modrinth_pat_'
+// pub async fn generate_pat(
+//     con: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+// ) -> Result<String, DatabaseError> {
+//     let mut rng = rand::thread_rng();
+//     let mut retry_count = 0;
+//     let censor = Censor::Standard + Censor::Sex;
+//
+//     // First generate the PAT token as a random 128 char string. This may include uppercase and lowercase and numbers only.
+//     loop {
+//         let mut access_token = String::with_capacity(63);
+//         access_token.push_str("modrinth_pat_");
+//         for _ in 0..51 {
+//             let c = rng.gen_range(0..62);
+//             if c < 10 {
+//                 access_token.push(char::from_u32(c + 48).unwrap()); // 0-9
+//             } else if c < 36 {
+//                 access_token.push(char::from_u32(c + 55).unwrap()); // A-Z
+//             } else {
+//                 access_token.push(char::from_u32(c + 61).unwrap()); // a-z
+//             }
+//         }
+//         let results = sqlx::query!(
+//             "
+//             SELECT EXISTS(SELECT 1 FROM pats WHERE access_token=$1)
+//         ",
+//             access_token
+//         )
+//         .fetch_one(&mut *con)
+//         .await?;
+//
+//         if !results.exists.unwrap_or(true) && !censor.check(&access_token) {
+//             break Ok(access_token);
+//         }
+//
+//         retry_count += 1;
+//         if retry_count > 15 {
+//             return Err(DatabaseError::RandomId);
+//         }
+//     }
+// }

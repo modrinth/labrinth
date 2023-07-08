@@ -397,20 +397,6 @@
     },
     "query": "\n            INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            "
   },
-  "0d737f82a07a1cd578c4c14c9f718d872068d17e4b122c60765cbb3328b2378a": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Varchar",
-          "Timestamp",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n        UPDATE pats SET\n            name = $1,\n            expires_at = $2\n        WHERE id = $3\n        "
-  },
   "0d91a3a73844f46ef00d8d45a0d028f1c4c1da016044f63f21d96707eafec858": {
     "describe": {
       "columns": [
@@ -981,23 +967,6 @@
     },
     "query": "\n            SELECT id FROM side_types\n            WHERE name = $1\n            "
   },
-  "1ee84c22602345af913657875dfde3208d71101de75955cbb6f18214d16c3d2f": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Varchar",
-          "Varchar",
-          "Int8",
-          "Int8",
-          "Timestamp"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO pats (id, name, access_token, user_id, scope, expires_at)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            "
-  },
   "1ffce9b2d5c9fa6c8b9abce4bad9f9419c44ad6367b7463b979c91b9b5b4fea1": {
     "describe": {
       "columns": [
@@ -1346,6 +1315,32 @@
       }
     },
     "query": "\n            INSERT INTO users (\n                id, username, name, email,\n                avatar_url, bio, created,\n                github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,\n                email_verified, password\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7,\n                $8, $9, $10, $11, $12, $13,\n                $14, $15\n            )\n            "
+  },
+  "2eeb8e6fe76c13bcab19ec983234d6fc10a57ea4452740c01504ea4443c18b83": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "password",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            SELECT id, password FROM users\n            WHERE email = $1\n            "
   },
   "2f4a620f954c7488e8bdb94a3d6968cec6d1332942b9e9f60925d14a8c2040f7": {
     "describe": {
@@ -2378,27 +2373,6 @@
     },
     "query": "\n            INSERT INTO dependencies (dependent_id, dependency_type, dependency_id, mod_dependency_id, dependency_file_name)\n            VALUES ($1, $2, $3, $4, $5)\n            "
   },
-  "603ce7394c4b3e0790bf6a590199c72c50a54304112dc0b7cd91654f6aebf37c": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n        SELECT id FROM pats\n        WHERE id = $1 AND user_id = $2\n        "
-  },
   "61a7f29e024bf2f1368370e3f6e8ef70317c7e8545b5b6d4235f21164948ba27": {
     "describe": {
       "columns": [],
@@ -3054,6 +3028,19 @@
     },
     "query": "\n                SELECT n.id FROM notifications n\n                WHERE n.user_id = $1\n                "
   },
+  "7b284f2c766ab64c57309f903d2c456ff74e06ea5f8454f0303215a5ad2cc93f": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE users\n                    SET password = $1\n                    WHERE (id = $2)\n                    "
+  },
   "7c0cdacf0898155c94008a96a0b918550df4475b9e3362a926d4d00e001880c1": {
     "describe": {
       "columns": [
@@ -3073,147 +3060,6 @@
       }
     },
     "query": "\n                SELECT SUM(pv.amount) amount\n                FROM payouts_values pv\n                WHERE pv.user_id = $1 AND created > NOW() - '1 month'::interval\n                "
-  },
-  "7c507c963b1b120181d7b2b3af71aafb0a1fb26052f03a6e029bae0ddc11fd88": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "avatar_url",
-          "ordinal": 3,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "username",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "bio",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "created",
-          "ordinal": 6,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "role",
-          "ordinal": 7,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "badges",
-          "ordinal": 8,
-          "type_info": "Int8"
-        },
-        {
-          "name": "balance",
-          "ordinal": 9,
-          "type_info": "Numeric"
-        },
-        {
-          "name": "payout_wallet",
-          "ordinal": 10,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "payout_wallet_type",
-          "ordinal": 11,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "payout_address",
-          "ordinal": 12,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "github_id",
-          "ordinal": 13,
-          "type_info": "Int8"
-        },
-        {
-          "name": "discord_id",
-          "ordinal": 14,
-          "type_info": "Int8"
-        },
-        {
-          "name": "gitlab_id",
-          "ordinal": 15,
-          "type_info": "Int8"
-        },
-        {
-          "name": "google_id",
-          "ordinal": 16,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "steam_id",
-          "ordinal": 17,
-          "type_info": "Int8"
-        },
-        {
-          "name": "microsoft_id",
-          "ordinal": 18,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "email_verified",
-          "ordinal": 19,
-          "type_info": "Bool"
-        },
-        {
-          "name": "password",
-          "ordinal": 20,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        false,
-        true
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array",
-          "TextArray"
-        ]
-      }
-    },
-    "query": "\n                SELECT id, name, email,\n                    avatar_url, username, bio,\n                    created, role, badges,\n                    balance, payout_wallet, payout_wallet_type, payout_address,\n                    github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,\n                    email_verified, password\n                FROM users\n                WHERE id = ANY($1) OR username = ANY($2)\n                "
   },
   "7c61fee015231f0a97c25d24f2c6be24821e39e330ab82344ad3b985d0d2aaea": {
     "describe": {
@@ -3743,6 +3589,147 @@
     },
     "query": "\n                DELETE FROM payouts_values\n                WHERE user_id = $1\n                "
   },
+  "95c131d3ea36d53f9dccc6ff8bb7efd3fb571e4175857178c24f5c841a1ec7ed": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "avatar_url",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "bio",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "created",
+          "ordinal": 6,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "role",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "badges",
+          "ordinal": 8,
+          "type_info": "Int8"
+        },
+        {
+          "name": "balance",
+          "ordinal": 9,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "payout_wallet",
+          "ordinal": 10,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_wallet_type",
+          "ordinal": 11,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "payout_address",
+          "ordinal": 12,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "github_id",
+          "ordinal": 13,
+          "type_info": "Int8"
+        },
+        {
+          "name": "discord_id",
+          "ordinal": 14,
+          "type_info": "Int8"
+        },
+        {
+          "name": "gitlab_id",
+          "ordinal": 15,
+          "type_info": "Int8"
+        },
+        {
+          "name": "google_id",
+          "ordinal": 16,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "steam_id",
+          "ordinal": 17,
+          "type_info": "Int8"
+        },
+        {
+          "name": "microsoft_id",
+          "ordinal": 18,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "email_verified",
+          "ordinal": 19,
+          "type_info": "Bool"
+        },
+        {
+          "name": "password",
+          "ordinal": 20,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array",
+          "TextArray"
+        ]
+      }
+    },
+    "query": "\n                SELECT id, name, email,\n                    avatar_url, username, bio,\n                    created, role, badges,\n                    balance, payout_wallet, payout_wallet_type, payout_address,\n                    github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,\n                    email_verified, password\n                FROM users\n                WHERE id = ANY($1) OR LOWER(username) = ANY($2)\n                "
+  },
   "97690dda7edea8c985891cae5ad405f628ed81e333bc88df5493c928a4324d43": {
     "describe": {
       "columns": [
@@ -3847,26 +3834,6 @@
       }
     },
     "query": "\n                INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering)\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n                "
-  },
-  "9d74e3d45e49dc2a7ac50b4ab233f96dbf39f6fa112df94e991b00444e9ab6ca": {
-    "describe": {
-      "columns": [
-        {
-          "name": "exists",
-          "ordinal": 0,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            SELECT EXISTS(SELECT 1 FROM pats WHERE access_token=$1)\n        "
   },
   "a0148ff25855202e7bb220b6a2bc9220a95e309fb0dae41d9a05afa86e6b33af": {
     "describe": {
@@ -4284,26 +4251,6 @@
       }
     },
     "query": "\n                    DELETE FROM mods_donations\n                    WHERE joining_mod_id = $1\n                    "
-  },
-  "ad27195af9964c34803343c22abcb9aa6b52f2d1a370550ed4fb68bce2297e71": {
-    "describe": {
-      "columns": [
-        {
-          "name": "exists",
-          "ordinal": 0,
-          "type_info": "Bool"
-        }
-      ],
-      "nullable": [
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT EXISTS(SELECT 1 FROM pats WHERE id=$1)"
   },
   "ae1686b8b566dd7ecc57c653c9313a4b324a2ec3a63aa6a44ed1d8ea7999b115": {
     "describe": {
@@ -4965,50 +4912,6 @@
     },
     "query": "\n                INSERT INTO hashes (file_id, algorithm, hash)\n                VALUES ($1, $2, $3)\n                "
   },
-  "cc58fd2c0aca4576a0fda37e7b2f183a6cda482f24e3cca7b2c6e31cb8d0d728": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "scope",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "expires_at",
-          "ordinal": 4,
-          "type_info": "Timestamp"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT id, name, user_id, scope, expires_at\n            FROM pats\n            WHERE user_id = $1\n            "
-  },
   "ccd913bb2f3006ffe881ce2fc4ef1e721d18fe2eed6ac62627046c955129610c": {
     "describe": {
       "columns": [
@@ -5669,51 +5572,6 @@
     },
     "query": "\n                        SELECT tm.user_id id\n                        FROM team_members tm\n                        WHERE tm.team_id = $1 AND tm.accepted\n                        "
   },
-  "ebbd2105c456a9b462a4e5ace356345ff18ad6cbcdfc053afe86948f8f3ae092": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "scope",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "expires_at",
-          "ordinal": 4,
-          "type_info": "Timestamp"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n        SELECT id, name, scope, user_id, expires_at FROM pats\n        WHERE id = $1 AND user_id = $2\n        "
-  },
   "ed1d5d9433bc7f4a360431ecfdd9430c5e58cd6d1c623c187d8661200400b1a4": {
     "describe": {
       "columns": [],
@@ -6189,17 +6047,5 @@
       }
     },
     "query": "\n        SELECT follower_id FROM mod_follows\n        WHERE mod_id = $1\n        "
-  },
-  "fe42090b9d81a660c36500eb3c017c1794839d206550239fd1322019c042b3d9": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n        DELETE FROM pats\n        WHERE id = $1\n        "
   }
 }

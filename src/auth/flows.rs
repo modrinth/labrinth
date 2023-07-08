@@ -8,13 +8,14 @@ use crate::parse_strings_from_var;
 use crate::routes::ApiError;
 use crate::util::captcha::check_turnstile_captcha;
 use crate::util::ext::{get_image_content_type, get_image_ext};
-use crate::util::validate::RE_URL_SAFE;
+use crate::util::validate::{validation_errors_to_string, RE_URL_SAFE};
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, post, web, HttpRequest, HttpResponse};
-use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
-use argon2::{Argon2, PasswordHasher};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use chrono::Utc;
+use rand_chacha::rand_core::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use reqwest::header::AUTHORIZATION;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -899,7 +900,7 @@ pub async fn auth_callback(
 pub struct NewAccount {
     #[validate(length(min = 1, max = 39), regex = "RE_URL_SAFE")]
     pub username: String,
-    #[validate(length(min = 8, max = 39))]
+    #[validate(length(min = 8, max = 256))]
     pub password: String,
     #[validate(email)]
     pub email: String,
@@ -913,6 +914,11 @@ pub async fn create_account_with_password(
     redis: Data<deadpool_redis::Pool>,
     new_account: web::Json<NewAccount>,
 ) -> Result<HttpResponse, ApiError> {
+    new_account
+        .0
+        .validate()
+        .map_err(|err| ApiError::InvalidInput(validation_errors_to_string(err, None)))?;
+
     if check_turnstile_captcha(&req, &new_account.challenge).await? {
         return Err(ApiError::Turnstile);
     }
@@ -945,7 +951,7 @@ pub async fn create_account_with_password(
     }
 
     let hasher = Argon2::default();
-    let salt = SaltString::generate(&mut OsRng);
+    let salt = SaltString::generate(&mut ChaCha20Rng::from_entropy());
     let password_hash = hasher
         .hash_password(new_account.password.as_bytes(), &salt)?
         .to_string();
@@ -978,6 +984,66 @@ pub async fn create_account_with_password(
 
     let session = issue_session(req, user_id, &mut transaction, &redis).await?;
     let res = crate::models::sessions::Session::from(session, true);
+    transaction.commit().await?;
+
+    Ok(HttpResponse::Ok().json(res))
+}
+
+#[derive(Deserialize, Validate)]
+pub struct Login {
+    pub username: String,
+    pub password: String,
+    pub challenge: String,
+}
+
+#[post("login")]
+pub async fn login_password(
+    req: HttpRequest,
+    pool: Data<PgPool>,
+    redis: Data<deadpool_redis::Pool>,
+    login: web::Json<Login>,
+) -> Result<HttpResponse, ApiError> {
+    if check_turnstile_captcha(&req, &login.challenge).await? {
+        return Err(ApiError::Turnstile);
+    }
+
+    let (user_id, password) = if let Some(user) =
+        crate::database::models::User::get(&login.username, &**pool, &redis).await?
+    {
+        (
+            user.id,
+            user.password
+                .ok_or_else(|| AuthenticationError::InvalidCredentials)?,
+        )
+    } else {
+        let user_pass = sqlx::query!(
+            "
+            SELECT id, password FROM users
+            WHERE email = $1
+            ",
+            login.username
+        )
+        .fetch_one(&**pool)
+        .await
+        .map_err(|_| AuthenticationError::InvalidCredentials)?;
+
+        (
+            crate::database::models::UserId(user_pass.id),
+            user_pass
+                .password
+                .ok_or_else(|| AuthenticationError::InvalidCredentials)?,
+        )
+    };
+
+    let hasher = Argon2::default();
+    hasher
+        .verify_password(login.password.as_bytes(), &PasswordHash::new(&password)?)
+        .map_err(|_| AuthenticationError::InvalidCredentials)?;
+
+    let mut transaction = pool.begin().await?;
+    let session = issue_session(req, user_id, &mut transaction, &redis).await?;
+    let res = crate::models::sessions::Session::from(session, true);
+    transaction.commit().await?;
 
     Ok(HttpResponse::Ok().json(res))
 }

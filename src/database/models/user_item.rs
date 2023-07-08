@@ -12,7 +12,7 @@ const USER_USERNAMES_NAMESPACE: &str = "users_usernames";
 // const USERS_PROJECTS_NAMESPACE: &str = "users_projects";
 const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct User {
     pub id: UserId,
 
@@ -206,7 +206,7 @@ impl User {
                     github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,
                     email_verified, password
                 FROM users
-                WHERE id = ANY($1) OR username = ANY($2)
+                WHERE id = ANY($1) OR LOWER(username) = ANY($2)
                 ",
                 &user_ids_parsed,
                 &remaining_strings

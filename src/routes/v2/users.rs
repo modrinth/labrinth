@@ -10,8 +10,12 @@ use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
+use rand_chacha::rand_core::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use regex::Regex;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -196,6 +200,7 @@ pub struct EditUser {
     )]
     #[validate]
     pub payout_data: Option<Option<EditPayoutData>>,
+    pub password: Option<(Option<String>, Option<String>)>,
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -393,6 +398,78 @@ pub async fn user_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
+            }
+
+            if let Some((old_password, new_password)) = &new_user.password {
+                if let Some(pass) = actual_user.password {
+                    let old_password = old_password.as_ref().ok_or_else(|| {
+                        ApiError::CustomAuthentication(
+                            "You must specify the old password to change your password!"
+                                .to_string(),
+                        )
+                    })?;
+
+                    let hasher = Argon2::default();
+                    hasher.verify_password(old_password.as_bytes(), &PasswordHash::new(&pass)?)?;
+                }
+
+                let update_password = if let Some(new_password) = new_password {
+                    let score = zxcvbn::zxcvbn(
+                        new_password,
+                        &[
+                            &actual_user.username,
+                            &actual_user.email.unwrap_or_default(),
+                            &actual_user.name.unwrap_or_default(),
+                        ],
+                    )?;
+
+                    if score.score() < 3 {
+                        return Err(ApiError::InvalidInput(
+                            if let Some(feedback) =
+                                score.feedback().clone().and_then(|x| x.warning())
+                            {
+                                format!("Password too weak: {}", feedback)
+                            } else {
+                                "Specified password is too weak! Please improve its strength."
+                                    .to_string()
+                            },
+                        ));
+                    }
+
+                    let hasher = Argon2::default();
+                    let salt = SaltString::generate(&mut ChaCha20Rng::from_entropy());
+                    let password_hash = hasher
+                        .hash_password(new_password.as_bytes(), &salt)?
+                        .to_string();
+
+                    Some(password_hash)
+                } else {
+                    if !(actual_user.github_id.is_some()
+                        || actual_user.gitlab_id.is_some()
+                        || actual_user.microsoft_id.is_some()
+                        || actual_user.google_id.is_some()
+                        || actual_user.steam_id.is_some()
+                        || actual_user.discord_id.is_some())
+                    {
+                        return Err(ApiError::InvalidInput(
+                            "You must have another authentication method added to remove password authentication!".to_string(),
+                        ));
+                    }
+
+                    None
+                };
+
+                sqlx::query!(
+                    "
+                    UPDATE users
+                    SET password = $1
+                    WHERE (id = $2)
+                    ",
+                    update_password,
+                    id as crate::database::models::ids::UserId,
+                )
+                .execute(&mut *transaction)
+                .await?;
             }
 
             User::clear_caches(&[(id, Some(actual_user.username))], &redis).await?;
