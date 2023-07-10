@@ -68,13 +68,6 @@ pub async fn report_create(
         ApiError::InvalidInput(format!("Invalid report type: {}", new_report.report_type))
     })?;
 
-    let thread_id = ThreadBuilder {
-        type_: ThreadType::Report,
-        members: vec![],
-    }
-    .insert(&mut transaction)
-    .await?;
-
     let mut report = crate::database::models::report_item::Report {
         id,
         report_type_id: report_type,
@@ -85,7 +78,6 @@ pub async fn report_create(
         reporter: current_user.id.into(),
         created: Utc::now(),
         closed: false,
-        thread_id,
     };
 
     match new_report.item_type {
@@ -155,6 +147,15 @@ pub async fn report_create(
     }
 
     report.insert(&mut transaction).await?;
+    let thread_id = ThreadBuilder {
+        type_: ThreadType::Report,
+        members: vec![],
+        project_id: None,
+        report_id: Some(report.id),
+    }
+        .insert(&mut transaction)
+        .await?;
+
     transaction.commit().await?;
 
     Ok(HttpResponse::Ok().json(Report {
@@ -166,7 +167,7 @@ pub async fn report_create(
         body: new_report.body.clone(),
         created: Utc::now(),
         closed: false,
-        thread_id: Some(report.thread_id.into()),
+        thread_id: thread_id.into(),
     }))
 }
 
@@ -385,19 +386,17 @@ pub async fn report_edit(
                 ));
             }
 
-            if let Some(thread) = report.thread_id {
-                ThreadMessageBuilder {
-                    author_id: Some(user.id.into()),
-                    body: if !edit_closed && report.closed {
-                        MessageBody::ThreadReopen
-                    } else {
-                        MessageBody::ThreadClosure
-                    },
-                    thread_id: thread,
-                }
+            ThreadMessageBuilder {
+                author_id: Some(user.id.into()),
+                body: if !edit_closed && report.closed {
+                    MessageBody::ThreadReopen
+                } else {
+                    MessageBody::ThreadClosure
+                },
+                thread_id: report.thread_id,
+            }
                 .insert(&mut transaction)
                 .await?;
-            }
 
             sqlx::query!(
                 "

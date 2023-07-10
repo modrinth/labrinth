@@ -735,14 +735,7 @@ async fn project_create_inner(
             }
         }
 
-        let thread_id = ThreadBuilder {
-            type_: ThreadType::Project,
-            members: vec![],
-        }
-        .insert(&mut *transaction)
-        .await?;
-
-        let project_builder = models::project_item::ProjectBuilder {
+        let project_builder_actual = models::project_item::ProjectBuilder {
             project_id: project_id.into(),
             project_type_id,
             team_id,
@@ -778,11 +771,22 @@ async fn project_create_inner(
                 })
                 .collect(),
             color: icon_data.and_then(|x| x.1),
-            thread_id,
             monetization_status: MonetizationStatus::Monetized,
         };
+        let project_builder = project_builder_actual.clone();
 
         let now = Utc::now();
+
+        let id = project_builder_actual.insert(&mut *transaction).await?;
+
+        let thread_id = ThreadBuilder {
+            type_: ThreadType::Project,
+            members: vec![],
+            project_id: Some(id),
+            report_id: None,
+        }
+            .insert(&mut *transaction)
+            .await?;
 
         let response = crate::models::projects::Project {
             id: project_id,
@@ -826,11 +830,9 @@ async fn project_create_inner(
             donation_urls: project_create_data.donation_urls.clone(),
             gallery: gallery_urls,
             color: project_builder.color,
-            thread_id: Some(project_builder.thread_id.into()),
-            monetization_status: project_builder.monetization_status,
+            thread_id: thread_id.into(),
+            monetization_status: MonetizationStatus::Monetized,
         };
-
-        let _project_id = project_builder.insert(&mut *transaction).await?;
 
         if status == ProjectStatus::Processing {
             if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK") {

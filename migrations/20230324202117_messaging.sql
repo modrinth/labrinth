@@ -19,9 +19,9 @@ CREATE TABLE threads_messages (
 );
 
 CREATE TABLE threads_members (
- thread_id bigint REFERENCES threads ON UPDATE CASCADE NOT NULL,
- user_id bigint REFERENCES users ON UPDATE CASCADE NOT NULL,
- PRIMARY KEY (thread_id, user_id)
+    thread_id bigint REFERENCES threads ON UPDATE CASCADE NOT NULL,
+    user_id bigint REFERENCES users ON UPDATE CASCADE NOT NULL,
+    PRIMARY KEY (thread_id, user_id)
 );
 
 ALTER TABLE reports

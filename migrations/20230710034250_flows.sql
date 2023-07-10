@@ -30,3 +30,15 @@ CREATE INDEX pats_user_id
 
 CREATE INDEX pats_access_token
     ON pats (access_token);
+
+ALTER TABLE mods DROP COLUMN thread_id;
+ALTER TABLE reports DROP COLUMN thread_id;
+
+DELETE FROM threads_members;
+DELETE FROM threads_messages;
+DELETE FROM threads;
+
+ALTER TABLE threads
+    ADD COLUMN report_id bigint references reports ON UPDATE CASCADE NULL;
+ALTER TABLE threads
+    ADD COLUMN mod_id bigint references mods ON UPDATE CASCADE NULL;

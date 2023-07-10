@@ -576,18 +576,16 @@ pub async fn project_edit(
                     .await?;
                 }
 
-                if let Some(thread) = project_item.inner.thread_id {
-                    ThreadMessageBuilder {
-                        author_id: Some(user.id.into()),
-                        body: MessageBody::StatusChange {
-                            new_status: *status,
-                            old_status: project_item.inner.status,
-                        },
-                        thread_id: thread,
-                    }
+                ThreadMessageBuilder {
+                    author_id: Some(user.id.into()),
+                    body: MessageBody::StatusChange {
+                        new_status: *status,
+                        old_status: project_item.inner.status,
+                    },
+                    thread_id: project_item.thread_id,
+                }
                     .insert(&mut transaction)
                     .await?;
-                }
 
                 sqlx::query!(
                     "
