@@ -4,10 +4,11 @@ use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::models::ids::ThreadMessageId;
 use crate::models::notifications::NotificationBody;
+use crate::models::pats::Scopes;
 use crate::models::projects::ProjectStatus;
 use crate::models::threads::{MessageBody, Thread, ThreadId, ThreadType};
 use crate::models::users::User;
-use crate::queue::session::SessionQueue;
+use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use futures::TryStreamExt;
@@ -212,13 +213,21 @@ pub async fn thread_get(
     info: web::Path<(ThreadId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0.into();
 
     let thread_data = database::models::Thread::get(string, &**pool).await?;
 
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::THREAD_READ]),
+    )
+    .await?
+    .1;
 
     if let Some(mut data) = thread_data {
         if is_authorized_thread(&data, &user, &pool).await? {
@@ -255,9 +264,17 @@ pub async fn threads_get(
     web::Query(ids): web::Query<ThreadIds>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::THREAD_READ]),
+    )
+    .await?
+    .1;
 
     let thread_ids: Vec<database::models::ids::ThreadId> =
         serde_json::from_str::<Vec<ThreadId>>(&ids.ids)?
@@ -284,9 +301,17 @@ pub async fn thread_send_message(
     pool: web::Data<PgPool>,
     new_message: web::Json<NewThreadMessage>,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::THREAD_WRITE]),
+    )
+    .await?
+    .1;
 
     let string: database::models::ThreadId = info.into_inner().0.into();
 
@@ -446,7 +471,7 @@ pub async fn moderation_inbox(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
 
@@ -474,7 +499,7 @@ pub async fn thread_read(
     info: web::Path<(ThreadId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
 
@@ -503,9 +528,17 @@ pub async fn message_delete(
     info: web::Path<(ThreadMessageId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::THREAD_WRITE]),
+    )
+    .await?
+    .1;
 
     let result = database::models::ThreadMessage::get(info.into_inner().0.into(), &**pool).await?;
 

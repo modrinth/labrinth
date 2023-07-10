@@ -1,9 +1,10 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database::models::thread_item::{ThreadBuilder, ThreadMessageBuilder};
 use crate::models::ids::{base62_impl::parse_base62, ProjectId, UserId, VersionId};
+use crate::models::pats::Scopes;
 use crate::models::reports::{ItemType, Report};
 use crate::models::threads::{MessageBody, ThreadType};
-use crate::queue::session::SessionQueue;
+use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
@@ -35,11 +36,19 @@ pub async fn report_create(
     pool: web::Data<PgPool>,
     mut body: web::Payload,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let mut transaction = pool.begin().await?;
 
-    let current_user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::REPORT_CREATE]),
+    )
+    .await?
+    .1;
 
     let mut bytes = web::BytesMut::new();
     while let Some(item) = body.next().await {
@@ -182,9 +191,17 @@ pub async fn reports(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
     count: web::Query<ReportsRequestOptions>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::REPORT_READ]),
+    )
+    .await?
+    .1;
 
     use futures::stream::TryStreamExt;
 
@@ -248,7 +265,7 @@ pub async fn reports_get(
     web::Query(ids): web::Query<ReportIds>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let report_ids: Vec<crate::database::models::ids::ReportId> =
         serde_json::from_str::<Vec<crate::models::ids::ReportId>>(&ids.ids)?
@@ -259,7 +276,15 @@ pub async fn reports_get(
     let reports_data =
         crate::database::models::report_item::Report::get_many(&report_ids, &**pool).await?;
 
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::REPORT_READ]),
+    )
+    .await?
+    .1;
 
     let all_reports = reports_data
         .into_iter()
@@ -276,9 +301,17 @@ pub async fn report_get(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::REPORT_READ]),
+    )
+    .await?
+    .1;
     let id = info.into_inner().0.into();
 
     let report = crate::database::models::report_item::Report::get(id, &**pool).await?;
@@ -308,10 +341,18 @@ pub async fn report_edit(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
     edit_report: web::Json<EditReport>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::REPORT_WRITE]),
+    )
+    .await?
+    .1;
     let id = info.into_inner().0.into();
 
     let report = crate::database::models::report_item::Report::get(id, &**pool).await?;
@@ -385,7 +426,7 @@ pub async fn report_delete(
     pool: web::Data<PgPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
     redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<SessionQueue>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
 

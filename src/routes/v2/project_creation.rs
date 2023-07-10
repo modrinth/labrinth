@@ -4,13 +4,14 @@ use crate::database::models;
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
+use crate::models::pats::Scopes;
 use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
     VersionStatus,
 };
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
-use crate::queue::session::SessionQueue;
+use crate::queue::session::AuthQueue;
 use crate::search::indexing::IndexingError;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
@@ -273,7 +274,7 @@ pub async fn project_create(
     client: Data<PgPool>,
     redis: Data<deadpool_redis::Pool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    session_queue: Data<SessionQueue>,
+    session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -343,13 +344,21 @@ async fn project_create_inner(
     uploaded_files: &mut Vec<UploadedFile>,
     pool: &PgPool,
     redis: &deadpool_redis::Pool,
-    session_queue: &SessionQueue,
+    session_queue: &AuthQueue,
 ) -> Result<HttpResponse, CreateError> {
     // The base URL for files uploaded to backblaze
     let cdn_url = dotenvy::var("CDN_URL")?;
 
     // The currently logged in user
-    let current_user = get_user_from_headers(&req, pool, redis, session_queue).await?;
+    let current_user = get_user_from_headers(
+        &req,
+        pool,
+        redis,
+        session_queue,
+        Some(&[Scopes::PROJECT_CREATE]),
+    )
+    .await?
+    .1;
 
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
 
