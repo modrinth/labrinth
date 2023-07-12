@@ -63,8 +63,7 @@ impl Flow {
     pub async fn get(
         id: &str,
         redis: &deadpool_redis::Pool,
-    ) -> Result<Option<Flow>, DatabaseError>
-where {
+    ) -> Result<Option<Flow>, DatabaseError> {
         let mut redis = redis.get().await?;
 
         let res = cmd("GET")
