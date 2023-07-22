@@ -1,6 +1,9 @@
 use crate::database::models::{User, UserId};
+use crate::models::analytics::Download;
 use crate::models::ids::ProjectId;
 use crate::models::projects::MonetizationStatus;
+use crate::queue::analytics::AnalyticsQueue;
+use crate::queue::maxmind::MaxMindIndexer;
 use crate::routes::ApiError;
 use crate::util::guards::admin_key_guard;
 use crate::DownloadQueue;
@@ -8,9 +11,11 @@ use actix_web::{patch, post, web, HttpResponse};
 use chrono::{DateTime, SecondsFormat, Utc};
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use serde_json::json;
 use sqlx::PgPool;
 use std::collections::HashMap;
+use std::net::Ipv4Addr;
+use std::sync::Arc;
+use uuid::Uuid;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -34,6 +39,8 @@ pub struct DownloadBody {
 #[patch("/_count-download", guard = "admin_key_guard")]
 pub async fn count_download(
     pool: web::Data<PgPool>,
+    maxmind: web::Data<Arc<MaxMindIndexer>>,
+    analytics_queue: web::Data<Arc<AnalyticsQueue>>,
     download_body: web::Json<DownloadBody>,
     download_queue: web::Data<DownloadQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -83,21 +90,37 @@ pub async fn count_download(
             .await;
     }
 
-    let client = reqwest::Client::new();
+    let url = url::Url::parse(&download_body.url)
+        .map_err(|_| ApiError::InvalidInput("invalid download URL specified!".to_string()))?;
 
-    client
-        .post(format!("{}download", dotenvy::var("ARIADNE_URL")?))
-        .header("Modrinth-Admin", dotenvy::var("ARIADNE_ADMIN_KEY")?)
-        .json(&json!({
-            "ip": download_body.ip,
-            "url": download_body.url,
-            "project_id": download_body.project_id,
-            "version_id": crate::models::projects::VersionId(version_id as u64).to_string(),
-            "headers": download_body.headers
-        }))
-        .send()
-        .await
-        .ok();
+    let ip = super::analytics::convert_to_ip_v6(&download_body.ip)
+        .unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped());
+
+    // TODO: get user from auth headers
+    analytics_queue
+        .add_download(Download {
+            id: Uuid::new_v4(),
+            recorded: Utc::now().timestamp_nanos() / 100_000,
+            domain: url.host_str().unwrap_or_default().to_string(),
+            site_path: url.path().to_string(),
+            user_id: 0,
+            project_id: project_id as u64,
+            version_id: version_id as u64,
+            ip,
+            country: maxmind.query(ip).await.unwrap_or_default(),
+            user_agent: download_body
+                .headers
+                .get("user-agent")
+                .cloned()
+                .unwrap_or_default(),
+            headers: download_body
+                .headers
+                .clone()
+                .into_iter()
+                .filter(|x| !super::analytics::FILTERED_HEADERS.contains(&&*x.0.to_lowercase()))
+                .collect(),
+        })
+        .await;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -114,6 +137,8 @@ pub async fn process_payout(
     redis: web::Data<deadpool_redis::Pool>,
     data: web::Json<PayoutData>,
 ) -> Result<HttpResponse, ApiError> {
+    // TODO: automate this in labrinth, remove request to ariadne
+    // TODO: update algo
     let start: DateTime<Utc> = DateTime::from_utc(
         data.date
             .date_naive()

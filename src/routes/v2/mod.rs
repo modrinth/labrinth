@@ -1,4 +1,5 @@
 mod admin;
+mod analytics;
 mod moderation;
 mod notifications;
 pub(crate) mod project_creation;

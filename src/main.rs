@@ -1,4 +1,5 @@
 use crate::file_hosting::S3Host;
+use crate::queue::analytics::AnalyticsQueue;
 use crate::queue::download::DownloadQueue;
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
@@ -18,6 +19,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 mod auth;
+mod clickhouse;
 mod database;
 mod file_hosting;
 mod models;
@@ -280,6 +282,49 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
+    info!("Initializing clickhouse connection");
+    let clickhouse = clickhouse::init_client().await.unwrap();
+
+    info!("Downloading MaxMind GeoLite2 country database");
+    let reader = Arc::new(queue::maxmind::MaxMindIndexer::new().await.unwrap());
+    {
+        let reader_ref = reader.clone();
+        scheduler.run(std::time::Duration::from_secs(60 * 60 * 24), move || {
+            let reader_ref = reader_ref.clone();
+
+            async move {
+                info!("Downloading MaxMind GeoLite2 country database");
+                let result = reader_ref.index().await;
+                if let Err(e) = result {
+                    warn!(
+                        "Downloading MaxMind GeoLite2 country database failed: {:?}",
+                        e
+                    );
+                }
+                info!("Done downloading MaxMind GeoLite2 country database");
+            }
+        });
+    }
+
+    let analytics_queue = Arc::new(AnalyticsQueue::new());
+    {
+        let client_ref = clickhouse.clone();
+        let analytics_queue_ref = analytics_queue.clone();
+        scheduler.run(std::time::Duration::from_secs(60 * 5), move || {
+            let client_ref = client_ref.clone();
+            let analytics_queue_ref = analytics_queue_ref.clone();
+
+            async move {
+                info!("Indexing analytics queue");
+                let result = analytics_queue_ref.index(client_ref).await;
+                if let Err(e) = result {
+                    warn!("Indexing analytics queue failed: {:?}", e);
+                }
+                info!("Done indexing analytics queue");
+            }
+        });
+    }
+
     let ip_salt = Pepper {
         pepper: models::ids::Base62Id(models::ids::random_base62(11)).to_string(),
     };
@@ -351,6 +396,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(session_queue.clone())
             .app_data(payouts_queue.clone())
             .app_data(web::Data::new(ip_salt.clone()))
+            .app_data(web::Data::new(analytics_queue.clone()))
+            .app_data(web::Data::new(clickhouse.clone()))
+            .app_data(web::Data::new(reader.clone()))
             .wrap(sentry_actix::Sentry::new())
             .configure(routes::root_config)
             .configure(routes::v2::config)
@@ -431,9 +479,6 @@ fn check_env_vars() -> bool {
         failed |= true;
     }
 
-    failed |= check_var::<String>("ARIADNE_ADMIN_KEY");
-    failed |= check_var::<String>("ARIADNE_URL");
-
     failed |= check_var::<String>("PAYPAL_API_URL");
     failed |= check_var::<String>("PAYPAL_CLIENT_ID");
     failed |= check_var::<String>("PAYPAL_CLIENT_SECRET");
@@ -461,6 +506,13 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("BEEHIIV_PUBLICATION_ID");
     failed |= check_var::<String>("BEEHIIV_API_KEY");
+
+    failed |= check_var::<String>("CLICKHOUSE_URL");
+    failed |= check_var::<String>("CLICKHOUSE_USER");
+    failed |= check_var::<String>("CLICKHOUSE_PASSWORD");
+    failed |= check_var::<String>("CLICKHOUSE_DATABASE");
+
+    failed |= check_var::<String>("MAXMIND_LICENSE_KEY");
 
     failed
 }
