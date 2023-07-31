@@ -1,6 +1,8 @@
 use crate::auth::get_user_from_headers;
 use crate::models::analytics::PageView;
+use crate::models::pats::Scopes;
 use crate::queue::maxmind::MaxMindIndexer;
+use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::env::parse_strings_from_var;
 use crate::AnalyticsQueue;
@@ -14,7 +16,6 @@ use std::net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
-use crate::queue::session::AuthQueue;
 
 // TODO: configure CORs with separate env variable for env funcs
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -159,3 +160,36 @@ pub async fn page_view_ingest(
 }
 
 // TODO: add playtime ingest route
+#[derive(Deserialize)]
+pub struct PlaytimeInput {
+    pub projects: HashMap<crate::models::ids::VersionId, u16>,
+}
+
+#[post("playtime")]
+pub async fn playtime_ingest(
+    req: HttpRequest,
+    maxmind: web::Data<Arc<MaxMindIndexer>>,
+    analytics_queue: web::Data<Arc<AnalyticsQueue>>,
+    session_queue: web::Data<AuthQueue>,
+    playtime_input: web::Json<PlaytimeInput>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+) -> Result<HttpResponse, ApiError> {
+    let (_, user) = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PERFORM_ANALYTICS]),
+    )
+    .await?;
+
+    // let versions = crate::database::models::Version::get_many(
+    //     &playtime_input.projects.iter().map(|x| x.0).collect(),
+    //     &**pool,
+    //     &redis,
+    // )
+    // .await?;
+
+    Ok(HttpResponse::NoContent().finish())
+}

@@ -46,7 +46,8 @@ pub fn config(cfg: &mut ServiceConfig) {
             .service(resend_verify_email)
             .service(set_email)
             .service(verify_email)
-            .service(subscribe_newsletter),
+            .service(subscribe_newsletter)
+            .configure(super::minecraft::config),
     );
 }
 

@@ -74,7 +74,6 @@ async fn create_index(
         .await?;
 
     match client.get_index(name).await {
-        // TODO: update index settings on startup (or delete old indices on startup)
         Ok(index) => {
             index
                 .set_settings(&default_settings())

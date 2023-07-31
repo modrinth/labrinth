@@ -1,10 +1,10 @@
-use crate::models::analytics::Download;
-use crate::models::analytics::PageView;
+use crate::models::analytics::{Download, PageView, Playtime};
 use dashmap::DashSet;
 
 pub struct AnalyticsQueue {
     views_queue: DashSet<PageView>,
     downloads_queue: DashSet<Download>,
+    playtime_queue: DashSet<Playtime>,
 }
 
 // Batches analytics data points + transactions every few minutes
@@ -13,6 +13,7 @@ impl AnalyticsQueue {
         AnalyticsQueue {
             views_queue: DashSet::with_capacity(1000),
             downloads_queue: DashSet::with_capacity(1000),
+            playtime_queue: DashSet::with_capacity(1000),
         }
     }
 
@@ -24,6 +25,10 @@ impl AnalyticsQueue {
         self.downloads_queue.insert(download);
     }
 
+    pub async fn add_playtime(&self, playtime: Playtime) {
+        self.playtime_queue.insert(playtime);
+    }
+
     pub async fn index(&self, client: clickhouse::Client) -> Result<(), clickhouse::error::Error> {
         let views_queue = self.views_queue.clone();
         self.views_queue.clear();
@@ -31,7 +36,10 @@ impl AnalyticsQueue {
         let downloads_queue = self.downloads_queue.clone();
         self.downloads_queue.clear();
 
-        if !views_queue.is_empty() || !downloads_queue.is_empty() {
+        let playtime_queue = self.playtime_queue.clone();
+        self.playtime_queue.clear();
+
+        if !views_queue.is_empty() || !downloads_queue.is_empty() || !playtime_queue.is_empty() {
             let mut views = client.insert("views")?;
 
             for view in views_queue {
@@ -47,6 +55,14 @@ impl AnalyticsQueue {
             }
 
             downloads.end().await?;
+
+            let mut playtimes = client.insert("playtime")?;
+
+            for playtime in playtime_queue {
+                playtimes.write(&playtime).await?;
+            }
+
+            playtimes.end().await?;
         }
 
         Ok(())

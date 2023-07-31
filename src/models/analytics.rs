@@ -49,7 +49,7 @@ pub struct PageView {
     pub domain: String,
     pub site_path: String,
 
-    // Modrinth User ID for logged in users (unused atm)
+    // Modrinth User ID for logged in users
     pub user_id: u64,
     // Modrinth Project ID (used for payouts)
     pub project_id: u64,
@@ -71,6 +71,42 @@ impl PartialEq<Self> for PageView {
 impl Eq for PageView {}
 
 impl Hash for PageView {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+#[derive(Row, Serialize, Clone)]
+pub struct Playtime {
+    #[serde(with = "uuid::serde::compact")]
+    pub id: Uuid,
+    pub recorded: i64,
+    pub seconds: u16,
+
+    // Modrinth User ID for logged in users (unused atm)
+    pub user_id: u64,
+    // Modrinth Project ID
+    pub project_id: u64,
+    // Modrinth Version ID
+    pub version_id: u64,
+
+    // The below information is used exclusively for data aggregation and fraud detection
+    // (ex: page view botting).
+    pub ip: Ipv6Addr,
+    pub country: String,
+    pub user_agent: String,
+    pub headers: Vec<(String, String)>,
+}
+
+impl PartialEq<Self> for Playtime {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Playtime {}
+
+impl Hash for Playtime {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }

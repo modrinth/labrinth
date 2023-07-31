@@ -7,12 +7,12 @@ use tar::Archive;
 use tokio::sync::RwLock;
 
 pub struct MaxMindIndexer {
-    pub reader: RwLock<maxminddb::Reader<Vec<u8>>>,
+    pub reader: RwLock<Option<maxminddb::Reader<Vec<u8>>>>,
 }
 
 impl MaxMindIndexer {
     pub async fn new() -> Result<Self, reqwest::Error> {
-        let reader = MaxMindIndexer::inner_index(true).await?.unwrap();
+        let reader = MaxMindIndexer::inner_index(false).await.ok().flatten();
 
         Ok(MaxMindIndexer {
             reader: RwLock::new(reader),
@@ -24,7 +24,7 @@ impl MaxMindIndexer {
 
         if let Some(reader) = reader {
             let mut reader_new = self.reader.write().await;
-            *reader_new = reader;
+            *reader_new = Some(reader);
         }
 
         Ok(())
@@ -68,11 +68,16 @@ impl MaxMindIndexer {
     }
 
     pub async fn query(&self, ip: Ipv6Addr) -> Option<String> {
+        // TODO: add cloudflare integration here
         let maxmind = self.reader.read().await;
 
-        maxmind
-            .lookup::<Country>(ip.into())
-            .ok()
-            .and_then(|x| x.country.and_then(|x| x.iso_code.map(|x| x.to_string())))
+        if let Some(ref maxmind) = *maxmind {
+            maxmind
+                .lookup::<Country>(ip.into())
+                .ok()
+                .and_then(|x| x.country.and_then(|x| x.iso_code.map(|x| x.to_string())))
+        } else {
+            None
+        }
     }
 }

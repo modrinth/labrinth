@@ -8,6 +8,7 @@ use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use crate::ratelimit::middleware::RateLimiter;
 use crate::util::env::{parse_strings_from_var, parse_var};
 use actix_cors::Cors;
+use actix_files::Files;
 use actix_web::{web, App, HttpServer};
 use chrono::{DateTime, Utc};
 use deadpool_redis::{Config, Runtime};
@@ -16,7 +17,8 @@ use log::{error, info, warn};
 use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
+use crate::queue::socket::ActiveSockets;
 
 mod auth;
 mod clickhouse;
@@ -285,7 +287,6 @@ async fn main() -> std::io::Result<()> {
     info!("Initializing clickhouse connection");
     let clickhouse = clickhouse::init_client().await.unwrap();
 
-    info!("Downloading MaxMind GeoLite2 country database");
     let reader = Arc::new(queue::maxmind::MaxMindIndexer::new().await.unwrap());
     {
         let reader_ref = reader.clone();
@@ -305,6 +306,7 @@ async fn main() -> std::io::Result<()> {
             }
         });
     }
+    info!("Downloading MaxMind GeoLite2 country database");
 
     let analytics_queue = Arc::new(AnalyticsQueue::new());
     {
@@ -330,6 +332,7 @@ async fn main() -> std::io::Result<()> {
     };
 
     let payouts_queue = web::Data::new(Mutex::new(PayoutsQueue::new()));
+    let active_sockets = web::Data::new(RwLock::new(ActiveSockets::default()));
 
     let store = MemoryStore::new();
 
@@ -399,10 +402,12 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(analytics_queue.clone()))
             .app_data(web::Data::new(clickhouse.clone()))
             .app_data(web::Data::new(reader.clone()))
+            .app_data(active_sockets.clone())
             .wrap(sentry_actix::Sentry::new())
             .configure(routes::root_config)
             .configure(routes::v2::config)
             .configure(routes::v3::config)
+            .service(Files::new("/", "assets/"))
             .default_service(web::get().to(routes::not_found))
     })
     .bind(dotenvy::var("BIND_ADDR").unwrap())?
