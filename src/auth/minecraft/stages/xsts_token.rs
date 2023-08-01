@@ -1,5 +1,5 @@
-use serde_json::json;
 use crate::auth::AuthenticationError;
+use serde_json::json;
 
 const XSTS_AUTH_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
 
@@ -32,9 +32,12 @@ pub async fn fetch_token(token: &str) -> Result<XSTSResponse, AuthenticationErro
 
     if status.is_success() {
         Ok(json
-            .get("Token").and_then(|x| x.as_str().map(String::from))
+            .get("Token")
+            .and_then(|x| x.as_str().map(String::from))
             .map(|it| XSTSResponse::Success { token: it })
-            .unwrap_or(XSTSResponse::Unauthorized("XSTS response didn't contain valid token!".to_string())))
+            .unwrap_or(XSTSResponse::Unauthorized(
+                "XSTS response didn't contain valid token!".to_string(),
+            )))
     } else {
         Ok(XSTSResponse::Unauthorized(
             #[allow(clippy::unreadable_literal)]

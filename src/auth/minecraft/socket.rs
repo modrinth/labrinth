@@ -1,10 +1,10 @@
+use crate::database::models::flow_item::Flow;
+use crate::queue::socket::ActiveSockets;
 use actix_web::web::Payload;
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use actix_ws::{Closed, Session};
 use chrono::Duration;
 use tokio::sync::RwLock;
-use crate::database::models::flow_item::Flow;
-use crate::queue::socket::ActiveSockets;
 
 #[get("ws")]
 pub async fn route(
@@ -26,14 +26,10 @@ async fn sock(
 ) -> Result<(), Closed> {
     if let Ok(state) = Flow::MinecraftAuth
         .insert(Duration::minutes(30), &redis)
-        .await {
+        .await
+    {
         ws_stream
-            .text(
-                serde_json::json!({
-                "login_code": state
-            })
-                    .to_string(),
-            )
+            .text(serde_json::json!({ "login_code": state }).to_string())
             .await?;
 
         let db = db.write().await;

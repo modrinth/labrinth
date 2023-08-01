@@ -1,9 +1,10 @@
+use crate::auth::AuthenticationError;
 use actix_web::http::StatusCode;
-use actix_web::HttpResponse;
+use actix_web::{HttpResponse, ResponseError};
 use std::fmt::{Debug, Display, Formatter};
 
 pub struct Success<'a> {
-    pub uuid: &'a str,
+    pub icon: &'a str,
     pub name: &'a str,
 }
 
@@ -14,19 +15,19 @@ impl<'a> Success<'a> {
         HttpResponse::Ok()
             .append_header(("Content-Type", "text/html; charset=utf-8"))
             .body(
-                html.replace("{{ uuid }}", self.uuid)
+                html.replace("{{ icon }}", self.icon)
                     .replace("{{ name }}", self.name),
             )
     }
 }
 
 #[derive(Debug)]
-pub struct Error {
+pub struct ErrorPage {
     pub code: StatusCode,
     pub message: String,
 }
 
-impl Display for Error {
+impl Display for ErrorPage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let html = include_str!("error.html")
             .replace("{{ code }}", &self.code.to_string())
@@ -37,7 +38,7 @@ impl Display for Error {
     }
 }
 
-impl Error {
+impl ErrorPage {
     pub fn render(&self) -> HttpResponse {
         HttpResponse::Ok()
             .append_header(("Content-Type", "text/html; charset=utf-8"))
@@ -45,12 +46,21 @@ impl Error {
     }
 }
 
-impl actix_web::ResponseError for Error {
+impl actix_web::ResponseError for ErrorPage {
     fn status_code(&self) -> StatusCode {
         self.code
     }
 
     fn error_response(&self) -> HttpResponse {
         self.render()
+    }
+}
+
+impl From<AuthenticationError> for ErrorPage {
+    fn from(item: AuthenticationError) -> Self {
+        ErrorPage {
+            code: item.status_code(),
+            message: item.to_string(),
+        }
     }
 }

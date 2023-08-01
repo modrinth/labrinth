@@ -1,7 +1,7 @@
 //! Signin for XBox Live
 
-use serde_json::json;
 use crate::auth::AuthenticationError;
+use serde_json::json;
 
 const XBL_AUTH_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 
@@ -35,7 +35,9 @@ pub async fn login_xbl(token: &str) -> Result<XBLLogin, AuthenticationError> {
     let json = serde_json::from_str::<serde_json::Value>(&body)?;
     let token = Some(&json)
         .and_then(|it| it.get("Token")?.as_str().map(String::from))
-        .ok_or(AuthenticationError::Custom("XBL response didn't contain valid token".to_string()))?;
+        .ok_or(AuthenticationError::Custom(
+            "XBL response didn't contain valid token".to_string(),
+        ))?;
     let uhs = Some(&json)
         .and_then(|it| {
             it.get("DisplayClaims")?
@@ -45,7 +47,9 @@ pub async fn login_xbl(token: &str) -> Result<XBLLogin, AuthenticationError> {
                 .as_str()
                 .map(String::from)
         })
-        .ok_or(AuthenticationError::Custom("XBL response didn't contain valid user hash".to_string()))?;
+        .ok_or(AuthenticationError::Custom(
+            "XBL response didn't contain valid user hash".to_string(),
+        ))?;
 
     Ok(XBLLogin { token, uhs })
 }

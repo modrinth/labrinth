@@ -3,6 +3,7 @@ use crate::queue::analytics::AnalyticsQueue;
 use crate::queue::download::DownloadQueue;
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
+use crate::queue::socket::ActiveSockets;
 use crate::ratelimit::errors::ARError;
 use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use crate::ratelimit::middleware::RateLimiter;
@@ -18,7 +19,6 @@ use search::indexing::index_projects;
 use search::indexing::IndexingSettings;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use crate::queue::socket::ActiveSockets;
 
 mod auth;
 mod clickhouse;

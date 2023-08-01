@@ -1,16 +1,13 @@
 //! Main authentication flow for Hydra
-use crate::{
-    parse_var, auth::minecraft::stages,
-    auth::templates,
-};
+use crate::{auth::minecraft::stages, auth::templates, parse_var};
 
 // use crate::db::RuntimeState;
+use crate::queue::socket::ActiveSockets;
 use actix_web::http::StatusCode;
 use actix_web::{get, web, HttpResponse};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::RwLock;
-use crate::queue::socket::ActiveSockets;
 
 macro_rules! ws_conn_try {
     ($ctx:literal $status:path, $res:expr => $ws_conn:expr) => {
@@ -21,7 +18,7 @@ macro_rules! ws_conn_try {
                 let render = super::Error::render_string(&error);
                 let _ = $ws_conn.text(render.clone()).await;
                 let _ = $ws_conn.close(None).await;
-                return Err(templates::Error {
+                return Err(templates::ErrorPage {
                     code: $status,
                     message: render,
                 });
@@ -40,7 +37,7 @@ pub struct Query {
 pub async fn route(
     db: web::Data<RwLock<ActiveSockets>>,
     info: web::Query<Query>,
-) -> Result<HttpResponse, templates::Error> {
+) -> Result<HttpResponse, templates::ErrorPage> {
     let public_url = parse_var::<String>("SELF_ADDR").unwrap_or(format!(
         "http://{}",
         parse_var::<String>("BIND_ADDR").unwrap()
@@ -53,8 +50,10 @@ pub async fn route(
     let mut ws_conn = {
         let db = db.read().await;
 
-        let mut x = db.auth_sockets.get_mut(&info.state)
-            .ok_or_else(|| templates::Error {
+        let mut x = db
+            .auth_sockets
+            .get_mut(&info.state)
+            .ok_or_else(|| templates::ErrorPage {
                 code: StatusCode::BAD_REQUEST,
                 message: "Invalid state sent, you probably need to get a new websocket".to_string(),
             })?;
@@ -97,7 +96,7 @@ pub async fn route(
                 .await;
             let _ = ws_conn.close(None).await;
 
-            Err(templates::Error {
+            Err(templates::ErrorPage {
                 code: StatusCode::FORBIDDEN,
                 message: err,
             })
@@ -125,7 +124,7 @@ pub async fn route(
                         "expires_after": 86400
                     }).to_string()
                 )
-                .await.map_err(|_| templates::Error {
+                .await.map_err(|_| templates::ErrorPage {
                 code: StatusCode::BAD_REQUEST,
                 message: "Failed to send login details to launcher. Try restarting the login process!".to_string(),
             })?;
@@ -133,7 +132,7 @@ pub async fn route(
 
             Ok(templates::Success {
                 name: &player_info.name,
-                uuid: &player_info.id,
+                icon: &format!("https://mc-heads.net/avatar/{}/128", &player_info.id),
             }
             .render())
         }

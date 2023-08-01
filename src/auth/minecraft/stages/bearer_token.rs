@@ -1,6 +1,6 @@
 //! Minecraft bearer token
-use serde_json::json;
 use crate::auth::AuthenticationError;
+use serde_json::json;
 
 const MCSERVICES_AUTH_URL: &str = "https://api.minecraftservices.com/launcher/login";
 
@@ -21,5 +21,7 @@ pub async fn fetch_bearer(token: &str, uhs: &str) -> Result<String, Authenticati
         .get("access_token")
         .and_then(serde_json::Value::as_str)
         .map(String::from)
-        .ok_or(AuthenticationError::Custom("Response didn't contain valid bearer token".to_string()))
+        .ok_or(AuthenticationError::Custom(
+            "Response didn't contain valid bearer token".to_string(),
+        ))
 }

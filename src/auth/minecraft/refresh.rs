@@ -1,6 +1,6 @@
 //! Refresh token route
-use crate::{parse_var};
 use super::stages;
+use crate::parse_var;
 use actix_web::http::StatusCode;
 use actix_web::{post, web, HttpResponse};
 use serde::Deserialize;

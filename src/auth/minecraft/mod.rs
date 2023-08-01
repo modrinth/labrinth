@@ -5,10 +5,10 @@ mod socket;
 mod stages;
 
 use actix_web::http::StatusCode;
+use actix_web::web::{scope, ServiceConfig};
 use actix_web::HttpResponse;
 use serde_json::json;
 use std::fmt::{Display, Formatter};
-use actix_web::web::{scope, ServiceConfig};
 
 /// Error message
 #[derive(Debug)]

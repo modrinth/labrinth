@@ -45,6 +45,8 @@ pub enum AuthenticationError {
     InvalidClientId,
     #[error("User email/account is already registered on Modrinth")]
     DuplicateUser,
+    #[error("Invalid state sent, you probably need to get a new websocket")]
+    SocketError,
     #[error("Invalid callback URL specified")]
     Url,
     #[error("{0}")]
@@ -68,6 +70,7 @@ impl actix_web::ResponseError for AuthenticationError {
             AuthenticationError::FileHosting(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::DuplicateUser => StatusCode::BAD_REQUEST,
             AuthenticationError::Custom(..) => StatusCode::BAD_REQUEST,
+            AuthenticationError::SocketError => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -88,6 +91,7 @@ impl actix_web::ResponseError for AuthenticationError {
                 AuthenticationError::FileHosting(..) => "file_hosting",
                 AuthenticationError::DuplicateUser => "duplicate_user",
                 AuthenticationError::Custom(..) => "custom",
+                AuthenticationError::SocketError => "socket",
             },
             description: &self.to_string(),
         })
