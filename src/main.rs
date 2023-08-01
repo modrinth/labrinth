@@ -16,7 +16,6 @@ use deadpool_redis::{Config, Runtime};
 use env_logger::Env;
 use log::{error, info, warn};
 use search::indexing::index_projects;
-use search::indexing::IndexingSettings;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
@@ -125,8 +124,7 @@ async fn main() -> std::io::Result<()> {
         let search_config_ref = search_config_ref.clone();
         async move {
             info!("Indexing local database");
-            let settings = IndexingSettings { index_local: true };
-            let result = index_projects(pool_ref, settings, &search_config_ref).await;
+            let result = index_projects(pool_ref, &search_config_ref).await;
             if let Err(e) = result {
                 warn!("Local project indexing failed: {:?}", e);
             }

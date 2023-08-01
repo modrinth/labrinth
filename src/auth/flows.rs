@@ -35,6 +35,7 @@ use validator::Validate;
 pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
         scope("auth")
+            .service(ws_init)
             .service(init)
             .service(auth_callback)
             .service(delete_auth_provider)
@@ -50,6 +51,7 @@ pub fn config(cfg: &mut ServiceConfig) {
             .service(set_email)
             .service(verify_email)
             .service(subscribe_newsletter)
+            .service(login_from_minecraft)
             .configure(super::minecraft::config),
     );
 }
@@ -75,6 +77,167 @@ pub struct TempUser {
     pub avatar_url: Option<String>,
     pub bio: Option<String>,
     pub name: Option<String>,
+}
+
+impl TempUser {
+    async fn create_account(
+        self,
+        provider: AuthProvider,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        client: &PgPool,
+        file_host: &Arc<dyn FileHost + Send + Sync>,
+        redis: &deadpool_redis::Pool,
+    ) -> Result<crate::database::models::UserId, AuthenticationError> {
+        if let Some(email) = &self.email {
+            if crate::database::models::User::get_email(email, client)
+                .await?
+                .is_some()
+            {
+                return Err(AuthenticationError::DuplicateUser);
+            }
+        }
+
+        let user_id = crate::database::models::generate_user_id(transaction).await?;
+
+        let mut username_increment: i32 = 0;
+        let mut username = None;
+
+        while username.is_none() {
+            let test_username = format!(
+                "{}{}",
+                self.username,
+                if username_increment > 0 {
+                    username_increment.to_string()
+                } else {
+                    "".to_string()
+                }
+            );
+
+            let new_id = crate::database::models::User::get(&test_username, client, redis).await?;
+
+            if new_id.is_none() {
+                username = Some(test_username);
+            } else {
+                username_increment += 1;
+            }
+        }
+
+        let avatar_url = if let Some(avatar_url) = self.avatar_url {
+            let cdn_url = dotenvy::var("CDN_URL")?;
+
+            let res = reqwest::get(&avatar_url).await?;
+            let headers = res.headers().clone();
+
+            let img_data = if let Some(content_type) = headers
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|ct| ct.to_str().ok())
+            {
+                get_image_ext(content_type).map(|ext| (ext, content_type))
+            } else if let Some(ext) = avatar_url.rsplit('.').next() {
+                get_image_content_type(ext).map(|content_type| (ext, content_type))
+            } else {
+                None
+            };
+
+            if let Some((ext, content_type)) = img_data {
+                let bytes = res.bytes().await?;
+                let hash = sha1::Sha1::from(&bytes).hexdigest();
+
+                let upload_data = file_host
+                    .upload_file(
+                        content_type,
+                        &format!(
+                            "user/{}/{}.{}",
+                            crate::models::users::UserId::from(user_id),
+                            hash,
+                            ext
+                        ),
+                        bytes,
+                    )
+                    .await?;
+
+                Some(format!("{}/{}", cdn_url, upload_data.file_name))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(username) = username {
+            crate::database::models::User {
+                id: user_id,
+                github_id: if provider == AuthProvider::GitHub {
+                    Some(
+                        self.id
+                            .clone()
+                            .parse()
+                            .map_err(|_| AuthenticationError::InvalidCredentials)?,
+                    )
+                } else {
+                    None
+                },
+                discord_id: if provider == AuthProvider::Discord {
+                    Some(
+                        self.id
+                            .parse()
+                            .map_err(|_| AuthenticationError::InvalidCredentials)?,
+                    )
+                } else {
+                    None
+                },
+                gitlab_id: if provider == AuthProvider::GitLab {
+                    Some(
+                        self.id
+                            .parse()
+                            .map_err(|_| AuthenticationError::InvalidCredentials)?,
+                    )
+                } else {
+                    None
+                },
+                google_id: if provider == AuthProvider::Google {
+                    Some(self.id.clone())
+                } else {
+                    None
+                },
+                steam_id: if provider == AuthProvider::Steam {
+                    Some(
+                        self.id
+                            .parse()
+                            .map_err(|_| AuthenticationError::InvalidCredentials)?,
+                    )
+                } else {
+                    None
+                },
+                microsoft_id: if provider == AuthProvider::Microsoft {
+                    Some(self.id)
+                } else {
+                    None
+                },
+                password: None,
+                totp_secret: None,
+                username,
+                name: self.name,
+                email: self.email,
+                email_verified: true,
+                avatar_url,
+                bio: self.bio,
+                created: Utc::now(),
+                role: Role::Developer.to_string(),
+                badges: Badges::default(),
+                balance: Decimal::ZERO,
+                payout_wallet: None,
+                payout_wallet_type: None,
+                payout_address: None,
+            }
+            .insert(transaction)
+            .await?;
+
+            Ok(user_id)
+        } else {
+            Err(AuthenticationError::InvalidCredentials)
+        }
+    }
 }
 
 impl AuthProvider {
@@ -950,161 +1113,7 @@ pub async fn auth_callback(
 
                     user_id
                 } else {
-                    if let Some(email) = &oauth_user.email {
-                        if crate::database::models::User::get_email(email, &**client)
-                            .await?
-                            .is_some()
-                        {
-                            return Err(AuthenticationError::DuplicateUser);
-                        }
-                    }
-
-                    let user_id = crate::database::models::generate_user_id(&mut transaction).await?;
-
-                    let mut username_increment: i32 = 0;
-                    let mut username = None;
-
-                    while username.is_none() {
-                        let test_username = format!(
-                            "{}{}",
-                            oauth_user.username,
-                            if username_increment > 0 {
-                                username_increment.to_string()
-                            } else {
-                                "".to_string()
-                            }
-                        );
-
-                        let new_id =
-                            crate::database::models::User::get(&test_username, &**client, &redis)
-                                .await?;
-
-                        if new_id.is_none() {
-                            username = Some(test_username);
-                        } else {
-                            username_increment += 1;
-                        }
-                    }
-
-                    let avatar_url = if let Some(avatar_url) = oauth_user.avatar_url {
-                        let cdn_url = dotenvy::var("CDN_URL")?;
-
-                        let res = reqwest::get(&avatar_url).await?;
-                        let headers = res.headers().clone();
-
-                        let img_data = if let Some(content_type) = headers
-                            .get(reqwest::header::CONTENT_TYPE)
-                            .and_then(|ct| ct.to_str().ok())
-                        {
-                            get_image_ext(content_type).map(|ext| (ext, content_type))
-                        } else if let Some(ext) = avatar_url.rsplit('.').next() {
-                            get_image_content_type(ext).map(|content_type| (ext, content_type))
-                        } else {
-                            None
-                        };
-
-                        if let Some((ext, content_type)) = img_data {
-                            let bytes = res.bytes().await?;
-                            let hash = sha1::Sha1::from(&bytes).hexdigest();
-
-                            let upload_data = file_host
-                                .upload_file(
-                                    content_type,
-                                    &format!(
-                                        "user/{}/{}.{}",
-                                        crate::models::users::UserId::from(user_id),
-                                        hash,
-                                        ext
-                                    ),
-                                    bytes,
-                                )
-                                .await?;
-
-                            Some(format!("{}/{}", cdn_url, upload_data.file_name))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-
-                    if let Some(username) = username {
-                        crate::database::models::User {
-                            id: user_id,
-                            github_id: if provider == AuthProvider::GitHub {
-                                Some(
-                                    oauth_user
-                                        .id
-                                        .clone()
-                                        .parse()
-                                        .map_err(|_| AuthenticationError::InvalidCredentials)?,
-                                )
-                            } else {
-                                None
-                            },
-                            discord_id: if provider == AuthProvider::Discord {
-                                Some(
-                                    oauth_user
-                                        .id
-                                        .parse()
-                                        .map_err(|_| AuthenticationError::InvalidCredentials)?,
-                                )
-                            } else {
-                                None
-                            },
-                            gitlab_id: if provider == AuthProvider::GitLab {
-                                Some(
-                                    oauth_user
-                                        .id
-                                        .parse()
-                                        .map_err(|_| AuthenticationError::InvalidCredentials)?,
-                                )
-                            } else {
-                                None
-                            },
-                            google_id: if provider == AuthProvider::Google {
-                                Some(oauth_user.id.clone())
-                            } else {
-                                None
-                            },
-                            steam_id: if provider == AuthProvider::Steam {
-                                Some(
-                                    oauth_user
-                                        .id
-                                        .parse()
-                                        .map_err(|_| AuthenticationError::InvalidCredentials)?,
-                                )
-                            } else {
-                                None
-                            },
-                            microsoft_id: if provider == AuthProvider::Microsoft {
-                                Some(oauth_user.id)
-                            } else {
-                                None
-                            },
-                            password: None,
-                            totp_secret: None,
-                            username,
-                            name: oauth_user.name,
-                            email: oauth_user.email,
-                            email_verified: true,
-                            avatar_url,
-                            bio: oauth_user.bio,
-                            created: Utc::now(),
-                            role: Role::Developer.to_string(),
-                            badges: Badges::default(),
-                            balance: Decimal::ZERO,
-                            payout_wallet: None,
-                            payout_wallet_type: None,
-                            payout_address: None,
-                        }
-                            .insert(&mut transaction)
-                            .await?;
-
-                        user_id
-                    } else {
-                        return Err(AuthenticationError::InvalidCredentials);
-                    }
+                    oauth_user.create_account(provider, &mut transaction, &client, &file_host, &redis).await?
                 };
 
                 let session = issue_session(req, user_id, &mut transaction, &redis).await?;
@@ -1166,6 +1175,64 @@ pub async fn auth_callback(
     }.await;
 
     Ok(res?)
+}
+
+#[derive(Deserialize)]
+pub struct MinecraftLogin {
+    pub flow: String,
+}
+
+#[post("login/minecraft")]
+pub async fn login_from_minecraft(
+    req: HttpRequest,
+    client: Data<PgPool>,
+    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
+    redis: Data<deadpool_redis::Pool>,
+    login: web::Json<MinecraftLogin>,
+) -> Result<HttpResponse, AuthenticationError> {
+    let flow = Flow::get(&login.flow, &redis).await?;
+
+    // Extract cookie header from request
+    if let Some(Flow::MicrosoftLogin {
+        access_token: token,
+    }) = flow
+    {
+        let provider = AuthProvider::Microsoft;
+        let oauth_user = provider.get_user(&token).await?;
+        let user_id_opt = provider.get_user_id(&oauth_user.id, &**client).await?;
+
+        let mut transaction = client.begin().await?;
+
+        let user_id = if let Some(user_id) = user_id_opt {
+            let user = crate::database::models::User::get_id(user_id, &**client, &redis)
+                .await?
+                .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
+
+            if user.totp_secret.is_some() {
+                let flow = Flow::Login2FA { user_id: user.id }
+                    .insert(Duration::minutes(30), &redis)
+                    .await?;
+
+                return Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "error": "2fa_required",
+                    "flow": flow
+                })));
+            }
+
+            user_id
+        } else {
+            oauth_user
+                .create_account(provider, &mut transaction, &client, &file_host, &redis)
+                .await?
+        };
+
+        let session = issue_session(req, user_id, &mut transaction, &redis).await?;
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "code": session.session
+        })))
+    } else {
+        Err(AuthenticationError::InvalidCredentials)
+    }
 }
 
 #[derive(Deserialize)]

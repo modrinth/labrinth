@@ -2,9 +2,11 @@
 use crate::{auth::minecraft::stages, auth::templates, parse_var};
 
 // use crate::db::RuntimeState;
+use crate::database::models::flow_item::Flow;
 use crate::queue::socket::ActiveSockets;
 use actix_web::http::StatusCode;
 use actix_web::{get, web, HttpResponse};
+use chrono::Duration;
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::RwLock;
@@ -37,6 +39,7 @@ pub struct Query {
 pub async fn route(
     db: web::Data<RwLock<ActiveSockets>>,
     info: web::Query<Query>,
+    redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, templates::ErrorPage> {
     let public_url = parse_var::<String>("SELF_ADDR").unwrap_or(format!(
         "http://{}",
@@ -116,12 +119,23 @@ pub async fn route(
                 => ws_conn
             );
 
+            let flow = &ws_conn_try!(
+                "Error creating microsoft login request flow." StatusCode::INTERNAL_SERVER_ERROR,
+                Flow::MicrosoftLogin {
+                    access_token: bearer_token.clone(),
+                }
+                .insert(Duration::hours(1), &redis)
+                .await
+                => ws_conn
+            );
+
             ws_conn
                 .text(
                     json!({
                         "token": bearer_token,
                         "refresh_token": &access_token.refresh_token,
-                        "expires_after": 86400
+                        "expires_after": 86400,
+                        "flow": flow,
                     }).to_string()
                 )
                 .await.map_err(|_| templates::ErrorPage {

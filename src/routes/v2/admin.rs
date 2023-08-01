@@ -40,6 +40,7 @@ pub struct DownloadBody {
 
 // This is an internal route, cannot be used without key
 #[patch("/_count-download", guard = "admin_key_guard")]
+#[allow(clippy::too_many_arguments)]
 pub async fn count_download(
     req: HttpRequest,
     pool: web::Data<PgPool>,

@@ -34,6 +34,9 @@ pub enum Flow {
         confirm_email: String,
     },
     MinecraftAuth,
+    MicrosoftLogin {
+        access_token: String,
+    },
 }
 
 impl Flow {
