@@ -81,16 +81,15 @@ pub async fn init_client() -> clickhouse::error::Result<clickhouse::Client> {
             (
                 id UUID,
                 recorded DateTime64(4),
-                time UInt64,
+                seconds UInt64,
 
                 user_id UInt64,
                 project_id UInt64,
                 version_id UInt64,
 
-                ip IPv6,
-                country String,
-                user_agent String,
-                headers Array(Tuple(String, String)),
+                loader String,
+                game_version String,
+                parent UInt64,
             )
             ENGINE = MergeTree()
             PRIMARY KEY (id, recorded)

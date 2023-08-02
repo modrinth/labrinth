@@ -90,12 +90,10 @@ pub struct Playtime {
     // Modrinth Version ID
     pub version_id: u64,
 
-    // The below information is used exclusively for data aggregation and fraud detection
-    // (ex: page view botting).
-    pub ip: Ipv6Addr,
-    pub country: String,
-    pub user_agent: String,
-    pub headers: Vec<(String, String)>,
+    pub loader: String,
+    pub game_version: String,
+    /// Parent modpack this playtime was recorded in
+    pub parent: u64,
 }
 
 impl PartialEq<Self> for Playtime {

@@ -1,14 +1,14 @@
 use crate::file_hosting::S3Host;
 use crate::queue::analytics::AnalyticsQueue;
 use crate::queue::download::DownloadQueue;
-use crate::queue::payouts::PayoutsQueue;
+use crate::queue::payouts::{process_payout, PayoutsQueue};
 use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
 use crate::ratelimit::errors::ARError;
 use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use crate::ratelimit::middleware::RateLimiter;
+use crate::util::cors::default_cors;
 use crate::util::env::{parse_strings_from_var, parse_var};
-use actix_cors::Cors;
 use actix_files::Files;
 use actix_web::{web, App, HttpServer};
 use chrono::{DateTime, Utc};
@@ -325,6 +325,26 @@ async fn main() -> std::io::Result<()> {
         });
     }
 
+    {
+        let pool_ref = pool.clone();
+        let redis_ref = redis_pool.clone();
+        let client_ref = clickhouse.clone();
+        scheduler.run(std::time::Duration::from_secs(60 * 60 * 6), move || {
+            let pool_ref = pool_ref.clone();
+            let redis_ref = redis_ref.clone();
+            let client_ref = client_ref.clone();
+
+            async move {
+                info!("Done running payouts");
+                let result = process_payout(&pool_ref, &redis_ref, &client_ref).await;
+                if let Err(e) = result {
+                    warn!("Payouts run failed: {:?}", e);
+                }
+                info!("Done running payouts");
+            }
+        });
+    }
+
     let ip_salt = Pepper {
         pepper: models::ids::Base62Id(models::ids::random_base62(11)).to_string(),
     };
@@ -340,14 +360,6 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(actix_web::middleware::Compress::default())
-            .wrap(
-                Cors::default()
-                    .allow_any_origin()
-                    .allow_any_header()
-                    .allow_any_method()
-                    .max_age(3600)
-                    .send_wildcard(),
-            )
             .wrap(
                 RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
                     .with_identifier(|req| {
@@ -369,6 +381,7 @@ async fn main() -> std::io::Result<()> {
                     .with_max_requests(300)
                     .with_ignore_key(dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok()),
             )
+            .wrap(sentry_actix::Sentry::new())
             .app_data(
                 web::FormConfig::default().error_handler(|err, _req| {
                     routes::ApiError::Validation(err.to_string()).into()
@@ -401,12 +414,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(clickhouse.clone()))
             .app_data(web::Data::new(reader.clone()))
             .app_data(active_sockets.clone())
-            .wrap(sentry_actix::Sentry::new())
             .configure(routes::root_config)
             .configure(routes::v2::config)
             .configure(routes::v3::config)
             .service(Files::new("/", "assets/"))
-            .default_service(web::get().to(routes::not_found))
+            .default_service(web::get().wrap(default_cors()).to(routes::not_found))
     })
     .bind(dotenvy::var("BIND_ADDR").unwrap())?
     .run()
@@ -510,12 +522,21 @@ fn check_env_vars() -> bool {
     failed |= check_var::<String>("BEEHIIV_PUBLICATION_ID");
     failed |= check_var::<String>("BEEHIIV_API_KEY");
 
+    if parse_strings_from_var("ANALYTICS_ALLOWED_ORIGINS").is_none() {
+        warn!(
+            "Variable `ANALYTICS_ALLOWED_ORIGINS` missing in dotenv or not a json array of strings"
+        );
+        failed |= true;
+    }
+
     failed |= check_var::<String>("CLICKHOUSE_URL");
     failed |= check_var::<String>("CLICKHOUSE_USER");
     failed |= check_var::<String>("CLICKHOUSE_PASSWORD");
     failed |= check_var::<String>("CLICKHOUSE_DATABASE");
 
     failed |= check_var::<String>("MAXMIND_LICENSE_KEY");
+
+    failed |= check_var::<u64>("PAYOUTS_BUDGET");
 
     failed
 }

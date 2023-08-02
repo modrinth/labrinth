@@ -1,11 +1,12 @@
 use crate::auth::get_user_from_headers;
-use crate::models::analytics::PageView;
+use crate::models::analytics::{PageView, Playtime};
 use crate::models::pats::Scopes;
 use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::env::parse_strings_from_var;
 use crate::AnalyticsQueue;
+use actix_cors::Cors;
 use actix_web::{post, web};
 use actix_web::{HttpRequest, HttpResponse};
 use chrono::Utc;
@@ -17,9 +18,30 @@ use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
 
-// TODO: configure CORs with separate env variable for env funcs
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("analytics").service(page_view_ingest));
+    cfg.service(
+        web::scope("v2/analytics")
+            .wrap(
+                Cors::default()
+                    .allowed_origin_fn(|origin, _req_head| {
+                        let allowed_origins =
+                            parse_strings_from_var("ANALYTICS_ALLOWED_ORIGINS").unwrap_or_default();
+
+                        allowed_origins.contains(&"*".to_string())
+                            || allowed_origins
+                                .contains(&origin.to_str().unwrap_or_default().to_string())
+                    })
+                    .allowed_methods(vec!["GET", "POST"])
+                    .allowed_headers(vec![
+                        actix_web::http::header::AUTHORIZATION,
+                        actix_web::http::header::ACCEPT,
+                        actix_web::http::header::CONTENT_TYPE,
+                    ])
+                    .max_age(3600),
+            )
+            .service(page_view_ingest)
+            .service(playtime_ingest),
+    );
 }
 
 pub const FILTERED_HEADERS: &[&str] = &[
@@ -159,19 +181,20 @@ pub async fn page_view_ingest(
     Ok(HttpResponse::NoContent().body(""))
 }
 
-// TODO: add playtime ingest route
 #[derive(Deserialize)]
 pub struct PlaytimeInput {
-    pub projects: HashMap<crate::models::ids::VersionId, u16>,
+    seconds: u16,
+    loader: String,
+    game_version: String,
+    parent: Option<crate::models::ids::VersionId>,
 }
 
 #[post("playtime")]
 pub async fn playtime_ingest(
     req: HttpRequest,
-    maxmind: web::Data<Arc<MaxMindIndexer>>,
     analytics_queue: web::Data<Arc<AnalyticsQueue>>,
     session_queue: web::Data<AuthQueue>,
-    playtime_input: web::Json<PlaytimeInput>,
+    playtime_input: web::Json<HashMap<crate::models::ids::VersionId, PlaytimeInput>>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -184,12 +207,42 @@ pub async fn playtime_ingest(
     )
     .await?;
 
-    // let versions = crate::database::models::Version::get_many(
-    //     &playtime_input.projects.iter().map(|x| x.0).collect(),
-    //     &**pool,
-    //     &redis,
-    // )
-    // .await?;
+    let playtimes = playtime_input.0;
+
+    if playtimes.len() > 2000 {
+        return Err(ApiError::InvalidInput(
+            "Too much playtime entered for version!".to_string(),
+        ));
+    }
+
+    let versions = crate::database::models::Version::get_many(
+        &playtimes.iter().map(|x| (*x.0).into()).collect::<Vec<_>>(),
+        &**pool,
+        &redis,
+    )
+    .await?;
+
+    for (id, playtime) in playtimes {
+        if playtime.seconds > 300 {
+            continue;
+        }
+
+        if let Some(version) = versions.iter().find(|x| id == x.inner.id.into()) {
+            analytics_queue
+                .add_playtime(Playtime {
+                    id: Default::default(),
+                    recorded: Utc::now().timestamp_nanos() / 100_000,
+                    seconds: playtime.seconds,
+                    user_id: user.id.0,
+                    project_id: version.inner.id.0 as u64,
+                    version_id: version.inner.project_id.0 as u64,
+                    loader: playtime.loader,
+                    game_version: playtime.game_version,
+                    parent: playtime.parent.map(|x| x.0).unwrap_or(0),
+                })
+                .await;
+        }
+    }
 
     Ok(HttpResponse::NoContent().finish())
 }

@@ -68,7 +68,6 @@ impl MaxMindIndexer {
     }
 
     pub async fn query(&self, ip: Ipv6Addr) -> Option<String> {
-        // TODO: add cloudflare integration here
         let maxmind = self.reader.read().await;
 
         if let Some(ref maxmind) = *maxmind {
