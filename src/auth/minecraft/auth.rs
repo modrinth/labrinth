@@ -50,6 +50,8 @@ pub async fn route(
 
     let code = &info.code;
 
+    Flow::remove(&code, &redis).await?;
+
     let mut ws_conn = {
         let db = db.read().await;
 
