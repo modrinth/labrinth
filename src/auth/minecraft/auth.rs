@@ -122,7 +122,7 @@ pub async fn route(
             let flow = &ws_conn_try!(
                 "Error creating microsoft login request flow." StatusCode::INTERNAL_SERVER_ERROR,
                 Flow::MicrosoftLogin {
-                    access_token: bearer_token.clone(),
+                    access_token: access_token.access_token.clone(),
                 }
                 .insert(Duration::hours(1), &redis)
                 .await
