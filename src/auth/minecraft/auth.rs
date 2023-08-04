@@ -50,8 +50,6 @@ pub async fn route(
 
     let code = &info.code;
 
-    Flow::remove(&code, &redis).await?;
-
     let mut ws_conn = {
         let db = db.read().await;
 
@@ -65,6 +63,12 @@ pub async fn route(
 
         x.value_mut().clone()
     };
+
+    ws_conn_try!(
+        "Removing login flow" StatusCode::INTERNAL_SERVER_ERROR,
+        Flow::remove(code, &redis).await
+        => ws_conn
+    );
 
     let access_token = ws_conn_try!(
         "OAuth token exchange" StatusCode::INTERNAL_SERVER_ERROR,
