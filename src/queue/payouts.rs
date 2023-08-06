@@ -402,7 +402,7 @@ pub async fn process_payout(
                 .collect::<Vec<_>>(),
             redis,
         )
-            .await?;
+        .await?;
     }
 
     transaction.commit().await?;
