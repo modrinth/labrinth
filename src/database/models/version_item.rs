@@ -385,12 +385,12 @@ impl Version {
             ProjectId(project_id.mod_id),
             &mut *transaction,
         )
-            .await?;
+        .await?;
         crate::database::models::Project::update_loaders(
             ProjectId(project_id.mod_id),
             &mut *transaction,
         )
-            .await?;
+        .await?;
 
         Ok(Some(()))
     }

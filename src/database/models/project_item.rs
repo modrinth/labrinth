@@ -198,8 +198,7 @@ impl ProjectBuilder {
             .await?;
         }
 
-        Project::update_game_versions(self.project_id, &mut *transaction)
-            .await?;
+        Project::update_game_versions(self.project_id, &mut *transaction).await?;
         Project::update_loaders(self.project_id, &mut *transaction).await?;
 
         Ok(self.project_id)

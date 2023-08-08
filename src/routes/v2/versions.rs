@@ -481,7 +481,7 @@ pub async fn version_edit(
                     version_item.inner.project_id,
                     &mut transaction,
                 )
-                    .await?;
+                .await?;
             }
 
             if let Some(loaders) = &new_version.loaders {
@@ -520,7 +520,7 @@ pub async fn version_edit(
                     version_item.inner.project_id,
                     &mut transaction,
                 )
-                    .await?;
+                .await?;
             }
 
             if let Some(featured) = &new_version.featured {
