@@ -16,7 +16,7 @@ use crate::util::captcha::check_turnstile_captcha;
 use crate::util::ext::{get_image_content_type, get_image_ext};
 use crate::util::validate::{validation_errors_to_string, RE_URL_SAFE};
 use actix_web::web::{scope, Data, Payload, Query, ServiceConfig};
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse, ResponseError};
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use actix_ws::Closed;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
@@ -912,7 +912,6 @@ pub async fn init(
     redis: Data<deadpool_redis::Pool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, AuthenticationError> {
-    println!("init");
     let url = url::Url::parse(&info.url).map_err(|_| AuthenticationError::Url)?;
 
     let allowed_callback_urls = parse_strings_from_var("ALLOWED_CALLBACK_URLS").unwrap_or_default();
@@ -964,8 +963,6 @@ pub async fn ws_init(
     db: Data<RwLock<ActiveSockets>>,
     redis: Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    println!("ws init");
-
     let (res, session, _msg_stream) = actix_ws::handle(&req, body)?;
 
     async fn sock(
@@ -995,7 +992,6 @@ pub async fn ws_init(
 
         Ok(())
     }
-    println!("done flow");
 
     let _ = sock(session, info, db, redis).await;
 
@@ -1182,26 +1178,29 @@ pub async fn auth_callback(
         }
     })().await;
 
-    // As a callback route, if we have an error, we need to ensure we close the original socket if it exists
-    if let Err(ref e) = res {
-        let db = active_sockets.read().await;
+    // Because this is callback route, if we have an error, we need to ensure we close the original socket if it exists
+    let db = active_sockets.read().await;
+    let mut x = db.auth_sockets.get_mut(&state_string);
 
-        let mut x = db.auth_sockets.get_mut(&state_string);
+    if let Some(x) = x.as_mut() {
+        let mut ws_conn = x.value_mut().clone();
 
-        if let Some(x) = x.as_mut() {
-            let mut ws_conn = x.value_mut().clone();
-            ws_conn
-                .text(
-                    serde_json::json!( {
-                        "error": &e.error_name(),
-                        "description": &e.to_string(),
-                    })
-                    .to_string(),
-                )
-                .await
-                .map_err(|_| AuthenticationError::SocketError)?;
-            let _ = ws_conn.close(None).await;
-        }
+        ws_conn
+            .text(
+                match res {
+                    Ok(_) => serde_json::json!({
+                        "success": true
+                    }),
+                    Err(ref e) => serde_json::json!({
+                            "error": &e.error_name(),
+                            "description": &e.to_string(),
+                        }        ),
+                }
+                .to_string(),
+            )
+            .await
+            .map_err(|_| AuthenticationError::SocketError)?;
+        let _ = ws_conn.close(None).await;
     }
 
     Ok(res?)
@@ -1220,7 +1219,6 @@ pub async fn login_from_minecraft(
     redis: Data<deadpool_redis::Pool>,
     login: web::Json<MinecraftLogin>,
 ) -> Result<HttpResponse, AuthenticationError> {
-    println!("login minecraft");
     let flow = Flow::get(&login.flow, &redis).await?;
 
     // Extract cookie header from request
@@ -1483,7 +1481,6 @@ pub async fn login_password(
     redis: Data<deadpool_redis::Pool>,
     login: web::Json<Login>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("login");
     if !check_turnstile_captcha(&req, &login.challenge).await? {
         return Err(ApiError::Turnstile);
     }
@@ -1600,7 +1597,6 @@ pub async fn login_2fa(
     redis: Data<deadpool_redis::Pool>,
     login: web::Json<Login2FA>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("login 2fa: ");
     let flow = Flow::get(&login.flow, &redis)
         .await?
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
@@ -1688,7 +1684,6 @@ pub async fn finish_2fa_flow(
     login: web::Json<Login2FA>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("fomosh 2fa");
     let flow = Flow::get(&login.flow, &redis)
         .await?
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
