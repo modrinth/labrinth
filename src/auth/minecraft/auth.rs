@@ -41,6 +41,7 @@ pub async fn route(
     info: web::Query<Query>,
     redis: web::Data<deadpool_redis::Pool>,
 ) -> Result<HttpResponse, templates::ErrorPage> {
+    println!("mc callback");
     let public_url = parse_var::<String>("SELF_ADDR").unwrap_or(format!(
         "http://{}",
         parse_var::<String>("BIND_ADDR").unwrap()
