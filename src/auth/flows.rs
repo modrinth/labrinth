@@ -1179,28 +1179,25 @@ pub async fn auth_callback(
     })().await;
 
     // Because this is callback route, if we have an error, we need to ensure we close the original socket if it exists
-    let db = active_sockets.read().await;
-    let mut x = db.auth_sockets.get_mut(&state_string);
+    if let Err(ref e) = res {
+        let db = active_sockets.read().await;
+        let mut x = db.auth_sockets.get_mut(&state_string);
 
-    if let Some(x) = x.as_mut() {
-        let mut ws_conn = x.value_mut().clone();
+        if let Some(x) = x.as_mut() {
+            let mut ws_conn = x.value_mut().clone();
 
-        ws_conn
-            .text(
-                match res {
-                    Ok(_) => serde_json::json!({
-                        "success": true
-                    }),
-                    Err(ref e) => serde_json::json!({
-                            "error": &e.error_name(),
-                            "description": &e.to_string(),
-                        }        ),
-                }
-                .to_string(),
-            )
-            .await
-            .map_err(|_| AuthenticationError::SocketError)?;
-        let _ = ws_conn.close(None).await;
+            ws_conn
+                .text(
+                    serde_json::json!({
+                                "error": &e.error_name(),
+                                "description": &e.to_string(),
+                            }        )
+                    .to_string(),
+                )
+                .await
+                .map_err(|_| AuthenticationError::SocketError)?;
+            let _ = ws_conn.close(None).await;
+        }
     }
 
     Ok(res?)
