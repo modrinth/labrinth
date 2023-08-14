@@ -152,6 +152,7 @@ pub async fn send_discord_webhook(
                     "liteloader" => 1049793351630733333,
                     "minecraft" => 1049793352964526100,
                     "modloader" => 1049793353962762382,
+                    "neoforge" => 1140437823783190679,
                     "optifine" => 1107352174415052901,
                     "paper" => 1049793355598540810,
                     "purpur" => 1140436034505674762,
