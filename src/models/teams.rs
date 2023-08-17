@@ -35,7 +35,11 @@ bitflags::bitflags! {
         const DELETE_PROJECT = 1 << 7;
         const VIEW_ANALYTICS = 1 << 8;
         const VIEW_PAYOUTS = 1 << 9;
-        const ALL = 0b1111111111;
+
+        const ADD_COLLECTION_ITEM = 1 << 10;
+        const REMOVE_COLLECTION_ITEM = 1 << 11;
+        const DELETE_COLLECTION = 1 << 12;
+        const ALL = 0b1111111111111;
     }
 }
 

@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod collections;
 pub mod error;
 pub mod ids;
 pub mod notifications;

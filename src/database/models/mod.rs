@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 pub mod categories;
+pub mod collection_item;
 pub mod flow_item;
 pub mod ids;
 pub mod notification_item;
@@ -14,6 +15,7 @@ pub mod user_item;
 pub mod version_item;
 
 pub use ids::*;
+pub use collection_item::Collection;    
 pub use project_item::Project;
 pub use team_item::Team;
 pub use team_item::TeamMember;

@@ -9,6 +9,7 @@ use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
     VersionStatus,
 };
+use crate::models::collections::CollectionId;
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
@@ -512,7 +513,7 @@ async fn project_create_inner(
                 icon_data = Some(
                     process_icon_upload(
                         uploaded_files,
-                        project_id,
+                        project_id.0,
                         file_extension,
                         file_host,
                         field,
@@ -935,7 +936,7 @@ async fn create_initial_version(
 
 async fn process_icon_upload(
     uploaded_files: &mut Vec<UploadedFile>,
-    project_id: ProjectId,
+    id: u64,
     file_extension: &str,
     file_host: &dyn FileHost,
     mut field: Field,
@@ -950,7 +951,7 @@ async fn process_icon_upload(
         let upload_data = file_host
             .upload_file(
                 content_type,
-                &format!("data/{project_id}/{hash}.{file_extension}"),
+                &format!("data/{id}/{hash}.{file_extension}"),
                 data.freeze(),
             )
             .await?;
@@ -965,3 +966,285 @@ async fn process_icon_upload(
         Err(CreateError::InvalidIconFormat(file_extension.to_string()))
     }
 }
+
+
+#[derive(Serialize, Deserialize, Validate, Clone)]
+struct CollectionCreateData {
+    #[validate(
+        length(min = 3, max = 64),
+        custom(function = "crate::util::validate::validate_name")
+    )]
+    #[serde(alias = "collection_name")]
+    /// The title or name of the project.
+    pub title: String,
+    #[validate(
+        length(min = 3, max = 64),
+        regex = "crate::util::validate::RE_URL_SAFE"
+    )]
+    #[serde(alias = "collection_slug")]
+    /// The slug of a collection, used for vanity URLs
+    pub slug: String,
+    #[validate(length(min = 3, max = 255))]
+    #[serde(alias = "collection_description")]
+    /// A short description of the collection.
+    pub description: String,
+    #[validate(length(max = 65536))]
+    #[serde(alias = "collection_body")]
+    /// A long description of the collection, in markdown.
+    pub body: String,
+
+    #[validate(length(max = 32))]
+    #[serde(default = "Vec::new")]
+    /// A list of initial projects to use with the created collection
+    pub initial_projects: Vec<ProjectId>,
+
+    /// If the collection should initialize to public
+    pub public: bool,
+}
+#[post("collection")]
+pub async fn collection_create(
+    req: HttpRequest,
+    mut payload: Multipart,
+    client: Data<PgPool>,
+    redis: Data<deadpool_redis::Pool>,
+    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
+    session_queue: Data<AuthQueue>,
+) -> Result<HttpResponse, CreateError> {
+    let mut transaction = client.begin().await?;
+    let mut uploaded_files = Vec::new();
+
+    let result = collection_create_inner(
+        req,
+        &mut payload,
+        &mut transaction,
+        &***file_host,
+        &mut uploaded_files,
+        &client,
+        &redis,
+        &session_queue,
+    )
+    .await;
+
+    if result.is_err() {
+        let undo_result = undo_uploads(&***file_host, &uploaded_files).await;
+        let rollback_result = transaction.rollback().await;
+
+        undo_result?;
+        if let Err(e) = rollback_result {
+            return Err(e.into());
+        }
+    } else {
+        transaction.commit().await?;
+    }
+
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn collection_create_inner(
+    req: HttpRequest,
+    payload: &mut Multipart,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    file_host: &dyn FileHost,
+    uploaded_files: &mut Vec<UploadedFile>,
+    pool: &PgPool,
+    redis: &deadpool_redis::Pool,
+    session_queue: &AuthQueue,
+)  -> Result<HttpResponse, CreateError> {
+    // The base URL for files uploaded to backblaze
+    let cdn_url = dotenvy::var("CDN_URL")?;
+
+    // The currently logged in user
+    let current_user = get_user_from_headers(
+        &req,
+        pool,
+        redis,
+        session_queue,
+        Some(&[Scopes::COLLECTION_CREATE]),
+    )
+    .await?
+    .1;
+
+    let collection_id: CollectionId = models::generate_collection_id(transaction).await?.into();
+
+    let collection_create_data;
+    {
+        // The first multipart field must be named "data" and contain a
+        // JSON `ProjectCreateData` object.
+
+        let mut field = payload
+            .next()
+            .await
+            .map(|m| m.map_err(CreateError::MultipartError))
+            .unwrap_or_else(|| {
+                Err(CreateError::MissingValueError(String::from(
+                    "No `data` field in multipart upload",
+                )))
+            })?;
+
+        let content_disposition = field.content_disposition();
+        let name = content_disposition
+            .get_name()
+            .ok_or_else(|| CreateError::MissingValueError(String::from("Missing content name")))?;
+
+        if name != "data" {
+            return Err(CreateError::InvalidInput(String::from(
+                "`data` field must come before file fields",
+            )));
+        }
+
+        let mut data = Vec::new();
+        while let Some(chunk) = field.next().await {
+            data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
+        }
+        let create_data: CollectionCreateData = serde_json::from_slice(&data)?;
+
+        create_data
+            .validate()
+            .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
+
+        let slug_collection_id_option: Option<CollectionId> =
+            serde_json::from_str(&format!("\"{}\"", create_data.slug)).ok();
+
+        if let Some(slug_collection_id) = slug_collection_id_option {
+            let slug_collection_id: models::ids::CollectionId = slug_collection_id.into();
+            let results = sqlx::query!(
+                "
+                SELECT EXISTS(SELECT 1 FROM collections WHERE id=$1)
+                ",
+                slug_collection_id as models::ids::CollectionId
+            )
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|e| CreateError::DatabaseError(e.into()))?;
+
+            if results.exists.unwrap_or(false) {
+                return Err(CreateError::SlugCollision);
+            }
+        }
+
+        {
+            let results = sqlx::query!(
+                "
+                SELECT EXISTS(SELECT 1 FROM collections WHERE slug = LOWER($1))
+                ",
+                create_data.slug
+            )
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|e| CreateError::DatabaseError(e.into()))?;
+
+            if results.exists.unwrap_or(false) {
+                return Err(CreateError::SlugCollision);
+            }
+        }
+        collection_create_data = create_data;
+    }
+
+    let mut icon_data = None;
+
+    let mut error = None;
+    while let Some(item) = payload.next().await {
+        let field: Field = item?;
+
+        if error.is_some() {
+            continue;
+        }
+
+        let result = async {
+            let content_disposition = field.content_disposition().clone();
+
+            let name = content_disposition.get_name().ok_or_else(|| {
+                CreateError::MissingValueError("Missing content name".to_string())
+            })?;
+
+            let (_, file_extension) =
+                super::version_creation::get_name_ext(&content_disposition)?;
+
+            if name == "icon" {
+                if icon_data.is_some() {
+                    return Err(CreateError::InvalidInput(String::from(
+                        "Projects can only have one icon",
+                    )));
+                }
+                // Upload the icon to the cdn
+                icon_data = Some(
+                    process_icon_upload(
+                        uploaded_files,
+                        collection_id.0,
+                        file_extension,
+                        file_host,
+                        field,
+                        &cdn_url,
+                    )
+                    .await?,
+                );
+                return Ok(());
+            }
+
+            Ok(())
+        }
+        .await;
+
+        if result.is_err() {
+            error = result.err();
+        }
+    }
+
+    if let Some(error) = error {
+        return Err(error);
+    }
+
+    {
+
+        let team = models::team_item::TeamBuilder {
+            members: vec![models::team_item::TeamMemberBuilder {
+                user_id: current_user.id.into(),
+                role: crate::models::teams::OWNER_ROLE.to_owned(),
+                permissions: crate::models::teams::Permissions::ALL,
+                accepted: true,
+                payouts_split: Decimal::ONE_HUNDRED,
+                ordering: 0,
+            }],
+        };
+
+        let team_id = team.insert(&mut *transaction).await?;
+
+        let collection_builder_actual = models::collection_item::CollectionBuilder {
+            collection_id: collection_id.into(),
+            team_id,
+            title: collection_create_data.title,
+            description: collection_create_data.description,
+            body: collection_create_data.body,
+            icon_url: icon_data.clone().map(|x| x.0),
+            color: icon_data.and_then(|x| x.1),
+            public: collection_create_data.public,
+            slug: Some(collection_create_data.slug),
+            projects: collection_create_data.initial_projects.iter().map(|x| models::ProjectId::from(*x)).collect(),
+        };
+        let collection_builder = collection_builder_actual.clone();
+
+        let now = Utc::now();
+
+        collection_builder_actual.insert(&mut *transaction).await?;
+
+        let response = crate::models::collections::Collection {
+            id: collection_id,
+            slug: collection_builder.slug.clone(),
+            team: team_id.into(),
+            title: collection_builder.title.clone(),
+            description: collection_builder.description.clone(),
+            body: collection_builder.body.clone(),
+            published: now,
+            updated: now,
+            icon_url: collection_builder.icon_url.clone(),
+            color: collection_builder.color,
+            public: collection_builder.public,
+            projects: collection_create_data.initial_projects
+        };
+
+        Ok(HttpResponse::Ok().json(response))
+    }
+
+}
+

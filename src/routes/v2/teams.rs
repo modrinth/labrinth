@@ -1,3 +1,4 @@
+use crate::auth::checks::is_authorized_collection;
 use crate::auth::{get_user_from_headers, is_authorized};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::TeamMember;
@@ -94,6 +95,76 @@ pub async fn team_members_get_project(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
+
+#[get("{id}/members")]
+pub async fn team_members_get_collection(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let string = info.into_inner().0;
+    let collection_data: Option<crate::database::models::collection_item::Collection> = crate::database::models::Collection::get(&string, &**pool, &redis).await?;
+
+    if let Some(collection) = collection_data {
+        let current_user = get_user_from_headers(
+            &req,
+            &**pool,
+            &redis,
+            &session_queue,
+            Some(&[Scopes::COLLECTION_READ]),
+        )
+        .await
+        .map(|x| x.1)
+        .ok();
+
+        if !is_authorized_collection(&collection, &current_user, &pool).await? {
+            return Ok(HttpResponse::NotFound().body(""));
+        }
+
+        let members_data =
+            TeamMember::get_from_team_full(collection.team_id, &**pool, &redis).await?;
+        let users = crate::database::models::User::get_many_ids(
+            &members_data.iter().map(|x| x.user_id).collect::<Vec<_>>(),
+            &**pool,
+            &redis,
+        )
+        .await?;
+
+        let user_id = current_user.as_ref().map(|x| x.id.into());
+
+        let logged_in = current_user
+            .and_then(|user| {
+                members_data
+                    .iter()
+                    .find(|x| x.user_id == user.id.into() && x.accepted)
+            })
+            .is_some();
+
+        let team_members: Vec<_> = members_data
+            .into_iter()
+            .filter(|x| {
+                logged_in
+                    || x.accepted
+                    || user_id
+                        .map(|y: crate::database::models::UserId| y == x.user_id)
+                        .unwrap_or(false)
+            })
+            .flat_map(|data| {
+                users.iter().find(|x| x.id == data.user_id).map(|user| {
+                    crate::models::teams::TeamMember::from(data, user.clone(), !logged_in)
+                })
+            })
+            .collect();
+
+        Ok(HttpResponse::Ok().json(team_members))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+
 
 #[get("{id}/members")]
 pub async fn team_members_get(

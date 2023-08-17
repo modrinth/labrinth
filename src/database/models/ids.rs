@@ -63,6 +63,13 @@ generate_ids!(
     TeamId
 );
 generate_ids!(
+    pub generate_collection_id,
+    CollectionId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM collections WHERE id=$1)",
+    CollectionId
+);
+generate_ids!(
     pub generate_file_id,
     FileId,
     8,
@@ -171,6 +178,10 @@ pub struct LoaderId(pub i32);
 #[sqlx(transparent)]
 pub struct CategoryId(pub i32);
 
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]
+#[sqlx(transparent)]
+pub struct CollectionId(pub i64);
+
 #[derive(Copy, Clone, Debug, Type)]
 #[sqlx(transparent)]
 pub struct ReportId(pub i64);
@@ -244,6 +255,16 @@ impl From<ids::VersionId> for VersionId {
 impl From<VersionId> for ids::VersionId {
     fn from(id: VersionId) -> Self {
         ids::VersionId(id.0 as u64)
+    }
+}
+impl From<ids::CollectionId> for CollectionId {
+    fn from(id: ids::CollectionId) -> Self {
+        CollectionId(id.0 as i64)
+    }
+}
+impl From<CollectionId> for ids::CollectionId {
+    fn from(id: CollectionId) -> Self {
+        ids::CollectionId(id.0 as u64)
     }
 }
 impl From<ids::ReportId> for ReportId {
