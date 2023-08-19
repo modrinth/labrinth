@@ -3,13 +3,14 @@ use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models;
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::file_hosting::{FileHost, FileHostingError};
+use crate::models::collections::CollectionId;
 use crate::models::error::ApiError;
+use crate::models::ids::ImageId;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
     VersionStatus,
 };
-use crate::models::collections::CollectionId;
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
@@ -234,6 +235,11 @@ struct ProjectCreateData {
     #[serde(default = "default_requested_status")]
     /// The status of the mod to be set once it is approved
     pub requested_status: ProjectStatus,
+
+    // Associations to uploaded images in body/description
+    #[validate(length(max = 10))]
+    #[serde(default)]
+    pub uploaded_images: Vec<ImageId>,
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -467,7 +473,7 @@ async fn project_create_inner(
                 .await?,
             );
         }
-
+        println!("Versions: {:?}", versions_map);
         project_create_data = create_data;
     }
 
@@ -569,6 +575,9 @@ async fn project_create_inner(
                     return Ok(());
                 }
             }
+
+            println!("Name: {}", name);
+            println!("Versions: {:?}", versions_map);
 
             let index = if let Some(i) = versions_map.get(name) {
                 *i
@@ -780,6 +789,20 @@ async fn project_create_inner(
 
         let id = project_builder_actual.insert(&mut *transaction).await?;
 
+        for image in project_create_data.uploaded_images {
+            sqlx::query!(
+                "
+                UPDATE uploaded_images
+                SET mod_id = $1
+                WHERE id = $2
+                ",
+                id as models::ids::ProjectId,
+                image.0 as i64
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
         let thread_id = ThreadBuilder {
             type_: ThreadType::Project,
             members: vec![],
@@ -967,7 +990,6 @@ async fn process_icon_upload(
     }
 }
 
-
 #[derive(Serialize, Deserialize, Validate, Clone)]
 struct CollectionCreateData {
     #[validate(
@@ -1050,7 +1072,7 @@ pub async fn collection_create_inner(
     pool: &PgPool,
     redis: &deadpool_redis::Pool,
     session_queue: &AuthQueue,
-)  -> Result<HttpResponse, CreateError> {
+) -> Result<HttpResponse, CreateError> {
     // The base URL for files uploaded to backblaze
     let cdn_url = dotenvy::var("CDN_URL")?;
 
@@ -1158,8 +1180,7 @@ pub async fn collection_create_inner(
                 CreateError::MissingValueError("Missing content name".to_string())
             })?;
 
-            let (_, file_extension) =
-                super::version_creation::get_name_ext(&content_disposition)?;
+            let (_, file_extension) = super::version_creation::get_name_ext(&content_disposition)?;
 
             if name == "icon" {
                 if icon_data.is_some() {
@@ -1196,7 +1217,6 @@ pub async fn collection_create_inner(
     }
 
     {
-
         let team = models::team_item::TeamBuilder {
             members: vec![models::team_item::TeamMemberBuilder {
                 user_id: current_user.id.into(),
@@ -1220,7 +1240,11 @@ pub async fn collection_create_inner(
             color: icon_data.and_then(|x| x.1),
             public: collection_create_data.public,
             slug: Some(collection_create_data.slug),
-            projects: collection_create_data.initial_projects.iter().map(|x| models::ProjectId::from(*x)).collect(),
+            projects: collection_create_data
+                .initial_projects
+                .iter()
+                .map(|x| models::ProjectId::from(*x))
+                .collect(),
         };
         let collection_builder = collection_builder_actual.clone();
 
@@ -1240,11 +1264,9 @@ pub async fn collection_create_inner(
             icon_url: collection_builder.icon_url.clone(),
             color: collection_builder.color,
             public: collection_builder.public,
-            projects: collection_create_data.initial_projects
+            projects: collection_create_data.initial_projects,
         };
 
         Ok(HttpResponse::Ok().json(response))
     }
-
 }
-

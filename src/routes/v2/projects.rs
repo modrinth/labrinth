@@ -1,5 +1,6 @@
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
 use crate::database;
+use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::file_hosting::FileHost;
@@ -1119,6 +1120,40 @@ pub async fn project_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+            }
+
+            // check new description and body for links to associated imaes
+            // if they no longer exist in the description or body, delete them
+            let uploaded_images =
+                database::models::Image::get_many_project(id, &mut transaction).await?;
+            for image in uploaded_images {
+                if let Some(description) = &new_project.description {
+                    if !description.contains(&image.url) {
+                        sqlx::query!(
+                            "
+                            DELETE FROM uploaded_images
+                            WHERE mod_id = $1
+                            ",
+                            image.id as database::models::ids::ImageId,
+                        )
+                        .execute(&mut *transaction)
+                        .await?;
+                    }
+                }
+
+                if let Some(body) = &new_project.body {
+                    if !body.contains(&image.url) {
+                        sqlx::query!(
+                            "
+                            DELETE FROM uploaded_images
+                            WHERE mod_id = $1
+                            ",
+                            image.id as database::models::ids::ImageId,
+                        )
+                        .execute(&mut *transaction)
+                        .await?;
+                    }
+                }
             }
 
             database::models::Project::clear_cache(
@@ -2277,6 +2312,11 @@ pub async fn project_delete(
     }
 
     let mut transaction = pool.begin().await?;
+    let uploaded_images =
+        database::models::Image::get_many_project(project.inner.id, &mut transaction).await?;
+    for image in uploaded_images {
+        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
+    }
 
     let result =
         database::models::Project::remove(project.inner.id, &mut transaction, &redis).await?;

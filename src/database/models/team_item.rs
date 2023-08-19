@@ -483,7 +483,6 @@ impl TeamMember {
             Ok(None)
         }
     }
-    
 
     pub async fn get_from_user_id_version<'a, 'b, E>(
         id: VersionId,
@@ -557,5 +556,4 @@ impl TeamMember {
             Ok(None)
         }
     }
-
 }

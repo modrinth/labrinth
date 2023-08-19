@@ -1,13 +1,11 @@
-use crate::auth::checks::{is_authorized_collection, filter_authorized_collections};
-use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
+use crate::auth::checks::{filter_authorized_collections, is_authorized_collection};
+use crate::auth::get_user_from_headers;
 use crate::database;
-use crate::database::models::notification_item::NotificationBuilder;
-use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::collections::Collection;
-use crate::models::ids::CollectionId;
 use crate::models::ids::base62_impl::parse_base62;
+use crate::models::ids::CollectionId;
 use crate::models::pats::Scopes;
 use crate::models::teams::Permissions;
 use crate::queue::session::AuthQueue;
@@ -23,6 +21,7 @@ use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(collections_get);
+    cfg.service(super::project_creation::collection_create);
     cfg.service(
         web::scope("collection")
             .service(collection_get)
@@ -31,7 +30,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(collection_edit)
             .service(collection_icon_edit)
             .service(delete_collection_icon)
-            .service(super::teams::team_members_get_collection)
+            .service(super::teams::team_members_get_collection),
     );
 }
 
@@ -77,7 +76,7 @@ pub async fn collection_get(
     let string = info.into_inner().0;
 
     let collection_data = database::models::Collection::get(&string, &**pool, &redis).await?;
-
+    println!("{:?}", collection_data);
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -133,6 +132,10 @@ pub struct EditCollection {
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
     pub slug: Option<String>,
+    #[validate(length(max = 64))]
+    pub add_projects: Option<Vec<String>>,
+    #[validate(length(max = 64))]
+    pub remove_projects: Option<Vec<String>>,
 }
 
 #[patch("{id}")]
@@ -227,7 +230,6 @@ pub async fn collection_edit(
                 .await?;
             }
 
-
             if let Some(slug) = &new_collection.slug {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
@@ -286,7 +288,6 @@ pub async fn collection_edit(
                 .await?;
             }
 
-
             if let Some(body) = &new_collection.body {
                 if !perms.contains(Permissions::EDIT_BODY) {
                     return Err(ApiError::CustomAuthentication(
@@ -308,6 +309,58 @@ pub async fn collection_edit(
                 .await?;
             }
 
+            if let Some(add_project_ids) = &new_collection.add_projects {
+                for project_id in add_project_ids {
+                    let project = database::models::Project::get(project_id, &**pool, &redis)
+                        .await?
+                        .ok_or_else(|| {
+                            ApiError::InvalidInput(format!(
+                                "The specified project {project_id} does not exist!"
+                            ))
+                        })?;
+
+                    // Insert- don't throw an error if it already exists
+                    sqlx::query!(
+                        "
+                                INSERT INTO collections_mods (collection_id, mod_id)
+                                VALUES ($1, $2)
+                                ON CONFLICT DO NOTHING
+                                ",
+                        collection_item.id as database::models::ids::CollectionId,
+                        project.inner.id as database::models::ids::ProjectId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+            }
+            if let Some(remove_project_ids) = &new_collection.remove_projects {
+                for project_id in remove_project_ids {
+                    let project = database::models::Project::get(project_id, &**pool, &redis)
+                        .await?
+                        .ok_or_else(|| {
+                            ApiError::InvalidInput(format!(
+                                "The specified project {project_id} does not exist!"
+                            ))
+                        })?;
+                    if collection_item.projects.contains(&project.inner.id) {
+                        sqlx::query!(
+                            "
+                            DELETE FROM collections_mods
+                            WHERE collection_id = $1 AND mod_id = $2
+                            ",
+                            collection_item.id as database::models::ids::CollectionId,
+                            project.inner.id as database::models::ids::ProjectId,
+                        )
+                        .execute(&mut *transaction)
+                        .await?;
+                    } else {
+                        return Err(ApiError::InvalidInput(format!(
+                            "The specified project {project_id} is not in this collection!"
+                        )));
+                    }
+                }
+            }
+
             database::models::Collection::clear_cache(
                 collection_item.id,
                 collection_item.slug,
@@ -326,7 +379,6 @@ pub async fn collection_edit(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 pub struct Extension {
@@ -421,12 +473,8 @@ pub async fn collection_icon_edit(
         .execute(&mut *transaction)
         .await?;
 
-        database::models::Collection::clear_cache(
-            collection_item.id,
-            collection_item.slug,
-            &redis,
-        )
-        .await?;
+        database::models::Collection::clear_cache(collection_item.id, collection_item.slug, &redis)
+            .await?;
 
         transaction.commit().await?;
 
@@ -506,18 +554,13 @@ pub async fn delete_collection_icon(
     .execute(&mut *transaction)
     .await?;
 
-    database::models::Collection::clear_cache(
-        collection_item.id,
-        collection_item.slug,
-        &redis,
-    )
-    .await?;
+    database::models::Collection::clear_cache(collection_item.id, collection_item.slug, &redis)
+        .await?;
 
     transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
-
 
 #[delete("{id}")]
 pub async fn collection_delete(

@@ -19,12 +19,13 @@ pub async fn get_user_from_headers<'a, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
 {
+    println!("get_user_from_headers");
     // Fetch DB user record and minos user from headers
     let (scopes, db_user) =
         get_user_record_from_bearer_token(req, None, executor, redis, session_queue)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
-
+    println!("get_user_from_headers 2");
     let mut auth_providers = Vec::new();
     if db_user.github_id.is_some() {
         auth_providers.push(AuthProvider::GitHub)
@@ -70,6 +71,9 @@ where
 
     if let Some(required_scopes) = required_scopes {
         for scope in required_scopes {
+            println!("{:?}", scopes);
+            println!("{:?}", scope);
+            println!("{:?}", serde_json::to_string_pretty(&scopes).unwrap());
             if !scopes.contains(*scope) {
                 return Err(AuthenticationError::InvalidCredentials);
             }

@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
+use crate::file_hosting::FileHost;
 use crate::models::ids::ThreadMessageId;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
@@ -327,6 +330,7 @@ pub async fn thread_send_message(
         body,
         replying_to,
         private,
+        ..
     } = &new_message.body
     {
         if body.len() > 65536 {
@@ -452,6 +456,25 @@ pub async fn thread_send_message(
         .execute(&mut *transaction)
         .await?;
 
+        if let MessageBody::Text {
+            associated_images, ..
+        } = &new_message.body
+        {
+            for image in associated_images {
+                sqlx::query!(
+                    "
+                    UPDATE uploaded_images
+                    SET thread_message_id = $1
+                    WHERE id = $2
+                    ",
+                    thread.id.0,
+                    image.0 as i64,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+        }
+
         transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
@@ -523,6 +546,7 @@ pub async fn message_delete(
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
     session_queue: web::Data<AuthQueue>,
+    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
         &req,
@@ -544,6 +568,17 @@ pub async fn message_delete(
         }
 
         let mut transaction = pool.begin().await?;
+
+        let images = database::Image::get_many_thread_message(thread.id, &mut transaction).await?;
+        let cdn_url = dotenvy::var("CDN_URL")?;
+        for image in images {
+            let name = image.url.split(&format!("{cdn_url}/")).nth(1);
+            if let Some(icon_path) = name {
+                file_host.delete_file_version("", icon_path).await?;
+            }
+            database::Image::remove(image.id, &mut transaction, &redis).await?;
+        }
+
         database::models::ThreadMessage::remove_full(thread.id, &mut transaction).await?;
         transaction.commit().await?;
 

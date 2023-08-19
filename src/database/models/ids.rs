@@ -137,6 +137,14 @@ generate_ids!(
     SessionId
 );
 
+generate_ids!(
+    pub generate_image_id,
+    ImageId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM uploaded_images WHERE id=$1)",
+    ImageId
+);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct UserId(pub i64);
@@ -207,13 +215,17 @@ pub struct NotificationActionId(pub i32);
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq)]
 #[sqlx(transparent)]
 pub struct ThreadId(pub i64);
-#[derive(Copy, Clone, Debug, Type, Deserialize)]
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[sqlx(transparent)]
 pub struct ThreadMessageId(pub i64);
 
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[sqlx(transparent)]
 pub struct SessionId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct ImageId(pub i64);
 
 use crate::models::ids;
 
@@ -275,6 +287,16 @@ impl From<ids::ReportId> for ReportId {
 impl From<ReportId> for ids::ReportId {
     fn from(id: ReportId) -> Self {
         ids::ReportId(id.0 as u64)
+    }
+}
+impl From<ImageId> for ids::ImageId {
+    fn from(id: ImageId) -> Self {
+        ids::ImageId(id.0 as u64)
+    }
+}
+impl From<ids::ImageId> for ImageId {
+    fn from(id: ids::ImageId) -> Self {
+        ImageId(id.0 as i64)
     }
 }
 impl From<ids::NotificationId> for NotificationId {

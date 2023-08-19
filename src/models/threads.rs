@@ -1,4 +1,4 @@
-use super::ids::Base62Id;
+use super::ids::{Base62Id, ImageId};
 use crate::models::ids::{ProjectId, ReportId};
 use crate::models::projects::ProjectStatus;
 use crate::models::users::{User, UserId};
@@ -42,6 +42,8 @@ pub enum MessageBody {
         #[serde(default)]
         private: bool,
         replying_to: Option<ThreadMessageId>,
+        #[serde(default)]
+        associated_images: Vec<ImageId>,
     },
     StatusChange {
         new_status: ProjectStatus,

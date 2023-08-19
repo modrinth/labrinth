@@ -105,7 +105,8 @@ pub async fn team_members_get_collection(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
-    let collection_data: Option<crate::database::models::collection_item::Collection> = crate::database::models::Collection::get(&string, &**pool, &redis).await?;
+    let collection_data: Option<crate::database::models::collection_item::Collection> =
+        crate::database::models::Collection::get(&string, &**pool, &redis).await?;
 
     if let Some(collection) = collection_data {
         let current_user = get_user_from_headers(
@@ -163,8 +164,6 @@ pub async fn team_members_get_collection(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
-
-
 
 #[get("{id}/members")]
 pub async fn team_members_get(

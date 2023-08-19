@@ -540,12 +540,15 @@ impl Project {
             }
         }
 
+        println!("remaining - {:?}", remaining_strings);
+
         if !remaining_strings.is_empty() {
             let project_ids_parsed: Vec<i64> = remaining_strings
                 .iter()
                 .flat_map(|x| parse_base62(&x.to_string()).ok())
                 .map(|x| x as i64)
                 .collect();
+
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
                 SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
@@ -580,6 +583,7 @@ impl Project {
             )
                 .fetch_many(exec)
                 .try_filter_map(|e| async {
+                    println!("e - {:?}", e);
                     Ok(e.right().map(|m| {
                         let id = m.id;
 
@@ -664,6 +668,8 @@ impl Project {
                 .try_collect::<Vec<QueryProject>>()
                 .await?;
 
+            println!("db - {:?}", db_projects);
+
             for project in db_projects {
                 cmd("SET")
                     .arg(format!("{}:{}", PROJECTS_NAMESPACE, project.inner.id.0))
@@ -689,6 +695,7 @@ impl Project {
                 found_projects.push(project);
             }
         }
+        println!("found - {:?}", found_projects);
 
         Ok(found_projects)
     }

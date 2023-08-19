@@ -2,7 +2,6 @@ use super::ids::*;
 use crate::database::models;
 use crate::database::models::DatabaseError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
-use crate::models::projects::ProjectStatus;
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use serde::{Deserialize, Serialize};
@@ -153,24 +152,13 @@ impl Collection {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        Collection::get_many(&[crate::models::ids::CollectionId::from(id)], executor, redis)
-            .await
-            .map(|x| x.into_iter().next())
-    }
-
-    pub async fn get_many_ids<'a, E>(
-        collection_ids: &[CollectionId],
-        exec: E,
-        redis: &deadpool_redis::Pool,
-    ) -> Result<Vec<Collection>, DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        let ids = collection_ids
-            .iter()
-            .map(|x| crate::models::ids::CollectionId::from(*x))
-            .collect::<Vec<_>>();
-        Collection::get_many(&ids, exec, redis).await
+        Collection::get_many(
+            &[crate::models::ids::CollectionId::from(id)],
+            executor,
+            redis,
+        )
+        .await
+        .map(|x| x.into_iter().next())
     }
 
     pub async fn get_many<'a, E, T: ToString>(
@@ -200,7 +188,7 @@ impl Collection {
             .flat_map(|x| parse_base62(&x.to_string()).map(|x| x as i64))
             .collect::<Vec<_>>();
 
-            collection_ids.append(
+        collection_ids.append(
             &mut cmd("MGET")
                 .arg(
                     collection_strings
@@ -234,7 +222,7 @@ impl Collection {
 
             for collection in collections {
                 if let Some(collection) =
-                collection.and_then(|x| serde_json::from_str::<Collection>(&x).ok())
+                    collection.and_then(|x| serde_json::from_str::<Collection>(&x).ok())
                 {
                     remaining_strings.retain(|x| {
                         &to_base62(collection.id.0 as u64) != x
@@ -258,7 +246,7 @@ impl Collection {
                 SELECT c.id id, c.title title, c.description description,
                 c.icon_url icon_url, c.color color, c.body body, c.published published,
                 c.updated updated, c.team_id team_id, c.slug slug, c.public public,
-                ARRAY_AGG(DISTINCT m.id) mods
+                ARRAY_AGG(DISTINCT m.id) filter (where m.id is not null) mods
                 FROM collections c
                 LEFT JOIN collections_mods cm ON cm.collection_id = c.id
                 LEFT JOIN mods m ON m.id = cm.mod_id
@@ -266,31 +254,39 @@ impl Collection {
                 GROUP BY c.id;
                 ",
                 &collection_ids_parsed,
-                &remaining_strings.into_iter().map(|x| x.to_string().to_lowercase()).collect::<Vec<_>>(),
+                &remaining_strings
+                    .into_iter()
+                    .map(|x| x.to_string().to_lowercase())
+                    .collect::<Vec<_>>(),
             )
-                .fetch_many(exec)
-                .try_filter_map(|e| async {
-                    Ok(e.right().map(|m| {
+            .fetch_many(exec)
+            .try_filter_map(|e| async {
+                Ok(e.right().map(|m| {
                     let id = m.id;
 
                     Collection {
-                            id: CollectionId(id),
-                            team_id: TeamId(m.team_id),
-                            title: m.title.clone(),
-                            description: m.description.clone(),
-                            icon_url: m.icon_url.clone(),
-                            color: m.color.map(|x| x as u32),
-                            published: m.published,
-                            updated: m.updated,
-                            slug: m.slug.clone(),
-                            body: m.body.clone(),
-                            public: m.public,
-                            projects: m.mods.unwrap_or_default().into_iter().map(|x| ProjectId(x)).collect(),
-                        }
-                    }))
-                })
-                .try_collect::<Vec<Collection>>()
-                .await?;
+                        id: CollectionId(id),
+                        team_id: TeamId(m.team_id),
+                        title: m.title.clone(),
+                        description: m.description.clone(),
+                        icon_url: m.icon_url.clone(),
+                        color: m.color.map(|x| x as u32),
+                        published: m.published,
+                        updated: m.updated,
+                        slug: m.slug.clone(),
+                        body: m.body.clone(),
+                        public: m.public,
+                        projects: m
+                            .mods
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(ProjectId)
+                            .collect(),
+                    }
+                }))
+            })
+            .try_collect::<Vec<Collection>>()
+            .await?;
 
             for collection in db_collections {
                 cmd("SET")
@@ -321,7 +317,6 @@ impl Collection {
         Ok(found_collections)
     }
 
-
     pub async fn clear_cache(
         id: CollectionId,
         slug: Option<String>,
@@ -344,4 +339,3 @@ impl Collection {
         Ok(())
     }
 }
-

@@ -8,11 +8,6 @@ CREATE TABLE collections (
     slug varchar(255) NULL UNIQUE,
     body varchar(65536) NOT NULL DEFAULT ''::varchar,
 
-    moderation_message varchar(2000),
-    moderation_message_body varchar(65536),
-    approved timestamp with time zone,
-    queued timestamp with time zone,
-
     public boolean NOT NULL DEFAULT false,
 
     icon_url varchar(2048) NULL,
@@ -31,4 +26,18 @@ CREATE TABLE collections_mods (
     collection_id bigint REFERENCES collections NOT NULL,
     mod_id bigint REFERENCES mods NOT NULL,
     PRIMARY KEY (collection_id, mod_id)
+);
+
+CREATE TABLE uploaded_images (
+    id bigint PRIMARY KEY,
+    url varchar(2048) NOT NULL,
+    size integer NOT NULL,
+    created timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    owner_id bigint REFERENCES users NOT NULL,
+
+    -- Image will be associated with a mod (in description) or a thread message (not both)
+    -- Icons are not a part of this table
+    mod_id bigint REFERENCES mods NULL,
+    thread_message_id bigint REFERENCES threads_messages NULL
+    
 );

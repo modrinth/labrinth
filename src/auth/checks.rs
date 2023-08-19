@@ -1,7 +1,7 @@
 use crate::database;
-use crate::database::models::Collection;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
+use crate::database::models::Collection;
 use crate::database::{models, Project, Version};
 use crate::models::users::User;
 use crate::routes::ApiError;
@@ -286,4 +286,3 @@ pub async fn filter_authorized_collections(
 
     Ok(return_collections)
 }
-
