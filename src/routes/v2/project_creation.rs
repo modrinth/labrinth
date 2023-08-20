@@ -1,7 +1,7 @@
 use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
-use crate::database::models;
 use crate::database::models::thread_item::ThreadBuilder;
+use crate::database::models::{self, image_item};
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::collections::CollectionId;
 use crate::models::error::ApiError;
@@ -801,6 +801,11 @@ async fn project_create_inner(
             )
             .execute(&mut *transaction)
             .await?;
+            if let Some(db_image) =
+                image_item::Image::get_id(image.into(), &mut *transaction, redis).await?
+            {
+                image_item::Image::clear_cache(db_image.id, db_image.url, redis).await?;
+            }
         }
 
         let thread_id = ThreadBuilder {

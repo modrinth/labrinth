@@ -12,14 +12,6 @@ CREATE TABLE collections (
 
     icon_url varchar(2048) NULL,
     color integer NULL
-
-    -- Loaders, gameversions, licenses can be added as the owner sees fit
-    -- loaders varchar(255)[] NOT NULL default array[]::varchar[],
-    -- game_versions varchar(255)[] NOT NULL default array[]::varchar[],
-
-
-    -- ADD PRIVACY
-    -- COLOR
 );
 
 CREATE TABLE collections_mods (

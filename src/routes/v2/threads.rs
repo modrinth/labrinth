@@ -4,6 +4,7 @@ use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
+use crate::database::models::{image_item};
 use crate::file_hosting::FileHost;
 use crate::models::ids::ThreadMessageId;
 use crate::models::notifications::NotificationBody;
@@ -472,6 +473,11 @@ pub async fn thread_send_message(
                 )
                 .execute(&mut *transaction)
                 .await?;
+                if let Some(db_image) =
+                    image_item::Image::get_id((*image).into(), &mut *transaction, &redis).await?
+                {
+                    image_item::Image::clear_cache(db_image.id, db_image.url, &redis).await?;
+                }
             }
         }
 

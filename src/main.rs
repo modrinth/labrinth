@@ -1,7 +1,7 @@
 use crate::file_hosting::S3Host;
 use crate::queue::analytics::AnalyticsQueue;
 use crate::queue::download::DownloadQueue;
-use crate::queue::payouts::{PayoutsQueue};
+use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
 use crate::ratelimit::errors::ARError;

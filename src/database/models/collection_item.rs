@@ -124,6 +124,7 @@ impl Collection {
             .await?;
 
             models::TeamMember::clear_cache(collection.team_id, redis).await?;
+            models::Collection::clear_cache(collection.id, collection.slug, redis).await?;
 
             Ok(Some(()))
         } else {

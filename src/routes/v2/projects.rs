@@ -1122,37 +1122,32 @@ pub async fn project_edit(
                 .await?;
             }
 
-            // check new description and body for links to associated imaes
+            // check new description and body for links to associated images
             // if they no longer exist in the description or body, delete them
             let uploaded_images =
                 database::models::Image::get_many_project(id, &mut transaction).await?;
             for image in uploaded_images {
-                if let Some(description) = &new_project.description {
-                    if !description.contains(&image.url) {
-                        sqlx::query!(
-                            "
+                let description_contains = if let Some(description) = &new_project.description {
+                    description.contains(&image.url)
+                } else {
+                    false
+                };
+                let body_contains = if let Some(body) = &new_project.body {
+                    body.contains(&image.url)
+                } else {
+                    false
+                };
+                if !description_contains && !body_contains {
+                    sqlx::query!(
+                        "
                             DELETE FROM uploaded_images
-                            WHERE mod_id = $1
+                            WHERE id = $1
                             ",
-                            image.id as database::models::ids::ImageId,
-                        )
-                        .execute(&mut *transaction)
-                        .await?;
-                    }
-                }
-
-                if let Some(body) = &new_project.body {
-                    if !body.contains(&image.url) {
-                        sqlx::query!(
-                            "
-                            DELETE FROM uploaded_images
-                            WHERE mod_id = $1
-                            ",
-                            image.id as database::models::ids::ImageId,
-                        )
-                        .execute(&mut *transaction)
-                        .await?;
-                    }
+                        image.id as database::models::ids::ImageId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                    image_item::Image::clear_cache(image.id, image.url, &redis).await?;
                 }
             }
 
