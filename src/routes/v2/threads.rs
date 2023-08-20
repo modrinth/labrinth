@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database;
+use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
-use crate::database::models::{image_item};
 use crate::file_hosting::FileHost;
 use crate::models::ids::ThreadMessageId;
 use crate::models::notifications::NotificationBody;

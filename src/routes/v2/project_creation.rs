@@ -473,7 +473,6 @@ async fn project_create_inner(
                 .await?,
             );
         }
-        println!("Versions: {:?}", versions_map);
         project_create_data = create_data;
     }
 
@@ -575,9 +574,6 @@ async fn project_create_inner(
                     return Ok(());
                 }
             }
-
-            println!("Name: {}", name);
-            println!("Versions: {:?}", versions_map);
 
             let index = if let Some(i) = versions_map.get(name) {
                 *i

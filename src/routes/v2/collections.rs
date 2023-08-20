@@ -76,7 +76,6 @@ pub async fn collection_get(
     let string = info.into_inner().0;
 
     let collection_data = database::models::Collection::get(&string, &**pool, &redis).await?;
-    println!("{:?}", collection_data);
     let user_option = get_user_from_headers(
         &req,
         &**pool,

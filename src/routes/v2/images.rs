@@ -117,7 +117,6 @@ pub async fn image_delete(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string: String = info.into_inner().0;
-    println!("111");
 
     let image_data = database::models::Image::get(&string, &**pool, &redis).await?;
     let user = get_user_from_headers(
