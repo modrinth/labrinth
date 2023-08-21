@@ -47,7 +47,7 @@ pub enum AuthenticationError {
     #[error("Invalid state sent, you probably need to get a new websocket")]
     SocketError,
     #[error("Invalid callback URL specified")]
-    Url
+    Url,
 }
 
 impl actix_web::ResponseError for AuthenticationError {
@@ -94,7 +94,6 @@ impl AuthenticationError {
             AuthenticationError::Url => "url_error",
             AuthenticationError::FileHosting(..) => "file_hosting",
             AuthenticationError::DuplicateUser => "duplicate_user",
-            AuthenticationError::Custom(..) => "custom",
             AuthenticationError::SocketError => "socket",
         }
     }
