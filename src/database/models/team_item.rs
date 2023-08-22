@@ -520,40 +520,4 @@ impl TeamMember {
             Ok(None)
         }
     }
-
-    pub async fn get_from_user_id_collection<'a, 'b, E>(
-        id: CollectionId,
-        user_id: UserId,
-        executor: E,
-    ) -> Result<Option<Self>, super::DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        let result = sqlx::query!(
-            "
-            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted, tm.payouts_split, tm.ordering FROM collections c
-            INNER JOIN team_members tm ON tm.team_id = c.team_id AND user_id = $2 AND accepted = TRUE
-            WHERE c.id = $1
-            ",
-            id as CollectionId,
-            user_id as UserId
-        )
-            .fetch_optional(executor)
-            .await?;
-
-        if let Some(m) = result {
-            Ok(Some(TeamMember {
-                id: TeamMemberId(m.id),
-                team_id: TeamId(m.team_id),
-                user_id,
-                role: m.role,
-                permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
-                accepted: m.accepted,
-                payouts_split: m.payouts_split,
-                ordering: m.ordering,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
 }

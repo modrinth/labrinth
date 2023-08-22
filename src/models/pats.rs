@@ -93,16 +93,14 @@ bitflags::bitflags! {
         const COLLECTION_WRITE = 1 << 33;
         // delete a collection
         const COLLECTION_DELETE = 1 << 34;
-        // read a collection's files
-        const COLLECTION_FILES_READ = 1 << 35;
 
         // post an image
-        const IMAGE_POST = 1 << 36;
+        const IMAGE_POST = 1 << 35;
         // delete an owned image
-        const IMAGE_DELETE = 1 << 37;
+        const IMAGE_DELETE = 1 << 36;
 
-        const ALL = 0b11111111111111111111111111111111111111;
-        const NOT_RESTRICTED = 0b111111100000011111111111111100111;
+        const ALL = 0b1111111111111111111111111111111111111;
+        const NOT_RESTRICTED = 0b11111100000011111111111111100111;
         const NONE = 0b0;
     }
 }

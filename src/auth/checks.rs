@@ -197,28 +197,12 @@ pub async fn filter_authorized_versions(
 pub async fn is_authorized_collection(
     collection_data: &Collection,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
 ) -> Result<bool, ApiError> {
-    let mut authorized = collection_data.public;
+    let mut authorized = !collection_data.status.is_hidden();
 
     if let Some(user) = &user_option {
-        if !authorized {
-            if user.role.is_mod() {
-                authorized = true;
-            } else {
-                let user_id: models::ids::UserId = user.id.into();
-
-                let collection_exists = sqlx::query!(
-                    "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)",
-                    collection_data.team_id as database::models::ids::TeamId,
-                    user_id as database::models::ids::UserId,
-                )
-                .fetch_one(&***pool)
-                .await?
-                .exists;
-
-                authorized = collection_exists.unwrap_or(false);
-            }
+        if !authorized && (user.role.is_mod() || user.id == collection_data.user_id.into()) {
+            authorized = true;
         }
     }
 
@@ -234,7 +218,7 @@ pub async fn filter_authorized_collections(
     let mut check_collections = Vec::new();
 
     for collection in collections {
-        if collection.public
+        if !collection.status.is_hidden()
             || user_option
                 .as_ref()
                 .map(|x| x.role.is_mod())
@@ -254,21 +238,17 @@ pub async fn filter_authorized_collections(
 
             sqlx::query!(
                 "
-                SELECT c.id id, c.team_id team_id FROM team_members tm
-                INNER JOIN collections c ON c.team_id = tm.team_id
-                WHERE tm.team_id = ANY($1) AND tm.user_id = $2
+                SELECT c.id id, c.user_id user_id FROM collections c
+                WHERE c.user_id = $2 AND c.id = ANY($1)
                 ",
-                &check_collections
-                    .iter()
-                    .map(|x| x.team_id.0)
-                    .collect::<Vec<_>>(),
+                &check_collections.iter().map(|x| x.id.0).collect::<Vec<_>>(),
                 user_id as database::models::ids::UserId,
             )
             .fetch_many(&***pool)
             .try_for_each(|e| {
                 if let Some(row) = e.right() {
                     check_collections.retain(|x| {
-                        let bool = x.id.0 == row.id && x.team_id.0 == row.team_id;
+                        let bool = x.id.0 == row.id && x.user_id.0 == row.user_id;
 
                         if bool {
                             return_collections.push(x.clone().into());

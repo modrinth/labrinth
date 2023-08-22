@@ -1,5 +1,7 @@
-use super::ids::{Base62Id, ProjectId};
-use super::teams::TeamId;
+use super::{
+    ids::{Base62Id, ProjectId},
+    users::UserId,
+};
 use crate::database;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -15,27 +17,23 @@ pub struct CollectionId(pub u64);
 pub struct Collection {
     /// The ID of the collection, encoded as a base62 string.
     pub id: CollectionId,
-    /// The slug of a collection, used for vanity URLs
-    pub slug: Option<String>,
-    /// The team of people that has ownership of this collection.
-    pub team: TeamId,
+    /// The person that has ownership of this collection.
+    pub user: UserId,
     /// The title or name of the collection.
     pub title: String,
     /// A short description of the collection.
     pub description: String,
-    /// A long form description of the collection.
-    pub body: String,
 
     /// An icon URL for the collection.
     pub icon_url: Option<String>,
     /// Color of the collection.
     pub color: Option<u32>,
 
-    /// Whether the collection is public or not
-    pub public: bool,
+    /// The status of the collectin (eg: whether collection is public or not)
+    pub status: CollectionStatus,
 
     /// The date at which the collection was first published.
-    pub published: DateTime<Utc>,
+    pub created: DateTime<Utc>,
 
     /// The date at which the collection was updated.
     pub updated: DateTime<Utc>,
@@ -48,17 +46,64 @@ impl From<database::models::Collection> for Collection {
     fn from(c: database::models::Collection) -> Self {
         Self {
             id: c.id.into(),
-            slug: c.slug,
-            team: c.team_id.into(),
+            user: c.user_id.into(),
+            created: c.created,
             title: c.title,
             description: c.description,
-            body: c.body,
-            published: c.published,
             updated: c.updated,
             projects: c.projects.into_iter().map(|x| x.into()).collect(),
             icon_url: c.icon_url,
             color: c.color,
-            public: c.public,
+            status: c.status,
+        }
+    }
+}
+
+/// A status decides the visibility of a collection in search, URLs, and the whole site itself.
+/// Listed - collection is displayed on search, and accessible by URL (for if/when search is implemented for collections)
+/// Unlisted - collection is not displayed on search, but accessible by URL
+/// Private - collection is approved, but is not viewable to the public
+#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum CollectionStatus {
+    Listed,
+    Unlisted,
+    Private,
+    Unknown,
+}
+
+impl std::fmt::Display for CollectionStatus {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}", self.as_str())
+    }
+}
+
+impl CollectionStatus {
+    pub fn from_str(string: &str) -> CollectionStatus {
+        match string {
+            "listed" => CollectionStatus::Listed,
+            "unlisted" => CollectionStatus::Unlisted,
+            "private" => CollectionStatus::Private,
+            _ => CollectionStatus::Unknown,
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CollectionStatus::Listed => "listed",
+            CollectionStatus::Unlisted => "unlisted",
+            CollectionStatus::Private => "private",
+            CollectionStatus::Unknown => "unknown",
+        }
+    }
+
+    // Project pages + info cannot be viewed
+    pub fn is_hidden(&self) -> bool {
+        match self {
+            CollectionStatus::Private => true,
+
+            CollectionStatus::Listed => false,
+            CollectionStatus::Unlisted => false,
+            CollectionStatus::Unknown => false,
         }
     }
 }

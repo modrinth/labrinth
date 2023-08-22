@@ -19,13 +19,11 @@ pub async fn get_user_from_headers<'a, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
 {
-    println!("get_user_from_headers");
     // Fetch DB user record and minos user from headers
     let (scopes, db_user) =
         get_user_record_from_bearer_token(req, None, executor, redis, session_queue)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
-    println!("get_user_from_headers 2");
     let mut auth_providers = Vec::new();
     if db_user.github_id.is_some() {
         auth_providers.push(AuthProvider::GitHub)
@@ -71,9 +69,6 @@ where
 
     if let Some(required_scopes) = required_scopes {
         for scope in required_scopes {
-            println!("{:?}", scopes);
-            println!("{:?}", scope);
-            println!("{:?}", serde_json::to_string_pretty(&scopes).unwrap());
             if !scopes.contains(*scope) {
                 return Err(AuthenticationError::InvalidCredentials);
             }
@@ -93,7 +88,6 @@ pub async fn get_user_record_from_bearer_token<'a, 'b, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
 {
-    println!("get_user_record_from_bearer_token");
     let token = if let Some(token) = token {
         token
     } else {
@@ -104,12 +98,9 @@ where
             .to_str()
             .map_err(|_| AuthenticationError::InvalidCredentials)?
     };
-    println!("get_user_record_from_bearer_token 2-{:#?}", token);
 
     let possible_user = match token.split_once('_') {
         Some(("mrp", _)) => {
-            println!("in hre");
-
             let pat =
                 crate::database::models::pat_item::PersonalAccessToken::get(token, executor, redis)
                     .await?
@@ -118,9 +109,6 @@ where
             if pat.expires < Utc::now() {
                 return Err(AuthenticationError::InvalidCredentials);
             }
-
-            println!("Your scopes: {:?}", pat.scopes);
-            println!("All scopes: {:?}", Scopes::ALL);
 
             let user = user_item::User::get_id(pat.user_id, executor, redis).await?;
 

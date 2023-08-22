@@ -1,37 +1,139 @@
 use crate::auth::checks::{filter_authorized_collections, is_authorized_collection};
 use crate::auth::get_user_from_headers;
 use crate::database;
+use crate::database::models::{collection_item, generate_collection_id};
 use crate::file_hosting::FileHost;
-use crate::models;
-use crate::models::collections::Collection;
+use crate::models::collections::{Collection, CollectionStatus};
 use crate::models::ids::base62_impl::parse_base62;
-use crate::models::ids::CollectionId;
+use crate::models::ids::{CollectionId, ProjectId};
 use crate::models::pats::Scopes;
-use crate::models::teams::Permissions;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use actix_web::web::Data;
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
 use validator::Validate;
 
+use super::project_creation::CreateError;
+
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(collections_get);
-    cfg.service(super::project_creation::collection_create);
+    cfg.service(collection_create);
     cfg.service(
         web::scope("collection")
             .service(collection_get)
-            .service(collection_get_check)
             .service(collection_delete)
             .service(collection_edit)
             .service(collection_icon_edit)
-            .service(delete_collection_icon)
-            .service(super::teams::team_members_get_collection),
+            .service(delete_collection_icon),
     );
+}
+
+#[derive(Serialize, Deserialize, Validate, Clone)]
+pub struct CollectionCreateData {
+    #[validate(
+        length(min = 3, max = 64),
+        custom(function = "crate::util::validate::validate_name")
+    )]
+    #[serde(alias = "collection_name")]
+    /// The title or name of the project.
+    pub title: String,
+    #[validate(
+        length(min = 3, max = 64),
+        regex = "crate::util::validate::RE_URL_SAFE"
+    )]
+    #[serde(alias = "collection_slug")]
+    /// The slug of a collection, used for vanity URLs
+    pub slug: String,
+    #[validate(length(min = 3, max = 255))]
+    #[serde(alias = "collection_description")]
+    /// A short description of the collection.
+    pub description: String,
+    #[validate(length(max = 65536))]
+    #[serde(alias = "collection_body")]
+    /// A long description of the collection, in markdown.
+    pub body: String,
+
+    #[validate(length(max = 32))]
+    #[serde(default = "Vec::new")]
+    /// A list of initial projects to use with the created collection
+    pub initial_projects: Vec<ProjectId>,
+
+    /// If the collection should initialize to public
+    #[serde(default = "default_requested_status")]
+    pub status: CollectionStatus,
+}
+
+fn default_requested_status() -> CollectionStatus {
+    CollectionStatus::Listed
+}
+
+#[post("collection")]
+pub async fn collection_create(
+    req: HttpRequest,
+    collection_create_data: web::Json<CollectionCreateData>,
+    client: Data<PgPool>,
+    redis: Data<deadpool_redis::Pool>,
+    session_queue: Data<AuthQueue>,
+) -> Result<HttpResponse, CreateError> {
+    let collection_create_data = collection_create_data.into_inner();
+
+    // The currently logged in user
+    let current_user = get_user_from_headers(
+        &req,
+        &**client,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::COLLECTION_CREATE]),
+    )
+    .await?
+    .1;
+
+    collection_create_data
+        .validate()
+        .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
+
+    let mut transaction = client.begin().await?;
+
+    let collection_id: CollectionId = generate_collection_id(&mut transaction).await?.into();
+
+    let collection_builder_actual = collection_item::CollectionBuilder {
+        collection_id: collection_id.into(),
+        user_id: current_user.id.into(),
+        title: collection_create_data.title,
+        description: collection_create_data.description,
+        status: collection_create_data.status,
+        projects: collection_create_data
+            .initial_projects
+            .iter()
+            .map(|x| database::models::ProjectId::from(*x))
+            .collect(),
+    };
+    let collection_builder = collection_builder_actual.clone();
+
+    let now = Utc::now();
+    collection_builder_actual.insert(&mut transaction).await?;
+
+    let response = crate::models::collections::Collection {
+        id: collection_id,
+        user: collection_builder.user_id.into(),
+        title: collection_builder.title.clone(),
+        description: collection_builder.description.clone(),
+        created: now,
+        updated: now,
+        icon_url: None,
+        color: None,
+        status: collection_builder.status,
+        projects: collection_create_data.initial_projects,
+    };
+    transaction.commit().await?;
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -47,6 +149,11 @@ pub async fn collections_get(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
+    let ids = ids
+        .into_iter()
+        .map(|x| parse_base62(x).map(|x| database::models::CollectionId(x as i64)))
+        .collect::<Result<Vec<_>, _>>()?;
+
     let collections_data = database::models::Collection::get_many(&ids, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
@@ -75,7 +182,8 @@ pub async fn collection_get(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
-    let collection_data = database::models::Collection::get(&string, &**pool, &redis).await?;
+    let id = database::models::CollectionId(parse_base62(&string)? as i64);
+    let collection_data = database::models::Collection::get(id, &**pool, &redis).await?;
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -88,31 +196,11 @@ pub async fn collection_get(
     .ok();
 
     if let Some(data) = collection_data {
-        if is_authorized_collection(&data, &user_option, &pool).await? {
+        if is_authorized_collection(&data, &user_option).await? {
             return Ok(HttpResponse::Ok().json(Collection::from(data)));
         }
     }
     Ok(HttpResponse::NotFound().body(""))
-}
-
-//checks the validity of a project id or slug
-#[get("{id}/check")]
-pub async fn collection_get_check(
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
-) -> Result<HttpResponse, ApiError> {
-    let slug = info.into_inner().0;
-
-    let collection_data = database::models::Collection::get(&slug, &**pool, &redis).await?;
-
-    if let Some(collection) = collection_data {
-        Ok(HttpResponse::Ok().json(json! ({
-            "id": models::ids::CollectionId::from(collection.id)
-        })))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
 }
 
 #[derive(Deserialize, Validate)]
@@ -124,17 +212,8 @@ pub struct EditCollection {
     pub title: Option<String>,
     #[validate(length(min = 3, max = 256))]
     pub description: Option<String>,
-    #[validate(length(max = 65536))]
-    pub body: Option<String>,
-    #[validate(
-        length(min = 3, max = 64),
-        regex = "crate::util::validate::RE_URL_SAFE"
-    )]
-    pub slug: Option<String>,
     #[validate(length(max = 64))]
-    pub add_projects: Option<Vec<String>>,
-    #[validate(length(max = 64))]
-    pub remove_projects: Option<Vec<String>>,
+    pub new_projects: Option<Vec<String>>,
 }
 
 #[patch("{id}")]
@@ -146,234 +225,102 @@ pub async fn collection_edit(
     redis: web::Data<deadpool_redis::Pool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(
+    let user_option = get_user_from_headers(
         &req,
         &**pool,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_WRITE]),
     )
-    .await?
-    .1;
+    .await
+    .map(|x| x.1)
+    .ok();
 
     new_collection
         .validate()
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
 
     let string = info.into_inner().0;
-    let result = database::models::Collection::get(&string, &**pool, &redis).await?;
+    let id = database::models::CollectionId(parse_base62(&string)? as i64);
+    let result = database::models::Collection::get(id, &**pool, &redis).await?;
 
     if let Some(collection_item) = result {
+        if !is_authorized_collection(&collection_item, &user_option).await? {
+            return Ok(HttpResponse::Unauthorized().body(""));
+        }
+
         let id = collection_item.id;
 
-        let team_member = database::models::TeamMember::get_from_user_id(
-            collection_item.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await?;
-        let permissions;
+        let mut transaction = pool.begin().await?;
 
-        if user.role.is_admin() {
-            permissions = Some(Permissions::ALL)
-        } else if let Some(ref member) = team_member {
-            permissions = Some(member.permissions)
-        } else if user.role.is_mod() {
-            permissions = Some(Permissions::EDIT_DETAILS | Permissions::EDIT_BODY)
-        } else {
-            permissions = None
+        if let Some(title) = &new_collection.title {
+            sqlx::query!(
+                "
+                UPDATE collections
+                SET title = $1
+                WHERE (id = $2)
+                ",
+                title.trim(),
+                id as database::models::ids::CollectionId,
+            )
+            .execute(&mut *transaction)
+            .await?;
         }
 
-        if let Some(perms) = permissions {
-            let mut transaction = pool.begin().await?;
-
-            if let Some(title) = &new_collection.title {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the title of this collection!"
-                            .to_string(),
-                    ));
-                }
-
-                sqlx::query!(
-                    "
-                    UPDATE collections
-                    SET title = $1
-                    WHERE (id = $2)
-                    ",
-                    title.trim(),
-                    id as database::models::ids::CollectionId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
-
-            if let Some(description) = &new_collection.description {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the description of this collection!"
-                            .to_string(),
-                    ));
-                }
-
-                sqlx::query!(
-                    "
-                    UPDATE collections
-                    SET description = $1
-                    WHERE (id = $2)
-                    ",
-                    description,
-                    id as database::models::ids::CollectionId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
-
-            if let Some(slug) = &new_collection.slug {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the slug of this collection!"
-                            .to_string(),
-                    ));
-                }
-
-                let slug_collection_id_option: Option<u64> = parse_base62(slug).ok();
-                if let Some(slug_collection_id) = slug_collection_id_option {
-                    let results = sqlx::query!(
-                        "
-                        SELECT EXISTS(SELECT 1 FROM collections WHERE id=$1)
-                        ",
-                        slug_collection_id as i64
-                    )
-                    .fetch_one(&mut *transaction)
-                    .await?;
-
-                    if results.exists.unwrap_or(true) {
-                        return Err(ApiError::InvalidInput(
-                            "Slug collides with other collections's id!".to_string(),
-                        ));
-                    }
-                }
-
-                // Make sure the new slug is different from the old one
-                // We are able to unwrap here because the slug is always set
-                if !slug.eq(&new_collection.slug.clone().unwrap_or_default()) {
-                    let results = sqlx::query!(
-                        "
-                      SELECT EXISTS(SELECT 1 FROM mods WHERE slug = LOWER($1))
-                      ",
-                        slug
-                    )
-                    .fetch_one(&mut *transaction)
-                    .await?;
-
-                    if results.exists.unwrap_or(true) {
-                        return Err(ApiError::InvalidInput(
-                            "Slug collides with other project's id!".to_string(),
-                        ));
-                    }
-                }
-
-                sqlx::query!(
-                    "
-                    UPDATE collections
-                    SET slug = LOWER($1)
-                    WHERE (id = $2)
-                    ",
-                    Some(slug),
-                    id as database::models::ids::CollectionId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
-
-            if let Some(body) = &new_collection.body {
-                if !perms.contains(Permissions::EDIT_BODY) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the body of this collection!"
-                            .to_string(),
-                    ));
-                }
-
-                sqlx::query!(
-                    "
-                    UPDATE collections
-                    SET body = $1
-                    WHERE (id = $2)
-                    ",
-                    body,
-                    id as database::models::ids::CollectionId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
-
-            if let Some(add_project_ids) = &new_collection.add_projects {
-                for project_id in add_project_ids {
-                    let project = database::models::Project::get(project_id, &**pool, &redis)
-                        .await?
-                        .ok_or_else(|| {
-                            ApiError::InvalidInput(format!(
-                                "The specified project {project_id} does not exist!"
-                            ))
-                        })?;
-
-                    // Insert- don't throw an error if it already exists
-                    sqlx::query!(
-                        "
-                                INSERT INTO collections_mods (collection_id, mod_id)
-                                VALUES ($1, $2)
-                                ON CONFLICT DO NOTHING
-                                ",
-                        collection_item.id as database::models::ids::CollectionId,
-                        project.inner.id as database::models::ids::ProjectId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-                }
-            }
-            if let Some(remove_project_ids) = &new_collection.remove_projects {
-                for project_id in remove_project_ids {
-                    let project = database::models::Project::get(project_id, &**pool, &redis)
-                        .await?
-                        .ok_or_else(|| {
-                            ApiError::InvalidInput(format!(
-                                "The specified project {project_id} does not exist!"
-                            ))
-                        })?;
-                    if collection_item.projects.contains(&project.inner.id) {
-                        sqlx::query!(
-                            "
-                            DELETE FROM collections_mods
-                            WHERE collection_id = $1 AND mod_id = $2
-                            ",
-                            collection_item.id as database::models::ids::CollectionId,
-                            project.inner.id as database::models::ids::ProjectId,
-                        )
-                        .execute(&mut *transaction)
-                        .await?;
-                    } else {
-                        return Err(ApiError::InvalidInput(format!(
-                            "The specified project {project_id} is not in this collection!"
-                        )));
-                    }
-                }
-            }
-
-            database::models::Collection::clear_cache(
-                collection_item.id,
-                collection_item.slug,
-                &redis,
+        if let Some(description) = &new_collection.description {
+            sqlx::query!(
+                "
+                UPDATE collections
+                SET description = $1
+                WHERE (id = $2)
+                ",
+                description,
+                id as database::models::ids::CollectionId,
             )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        if let Some(new_project_ids) = &new_collection.new_projects {
+            // Delete all existing projects
+            sqlx::query!(
+                "
+                DELETE FROM collections_mods
+                WHERE collection_id = $1
+                ",
+                collection_item.id as database::models::ids::CollectionId,
+            )
+            .execute(&mut *transaction)
             .await?;
 
-            transaction.commit().await?;
-            Ok(HttpResponse::NoContent().body(""))
-        } else {
-            Err(ApiError::CustomAuthentication(
-                "You do not have permission to edit this project!".to_string(),
-            ))
+            for project_id in new_project_ids {
+                let project = database::models::Project::get(project_id, &**pool, &redis)
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInput(format!(
+                            "The specified project {project_id} does not exist!"
+                        ))
+                    })?;
+
+                // Insert- don't throw an error if it already exists
+                sqlx::query!(
+                    "
+                            INSERT INTO collections_mods (collection_id, mod_id)
+                            VALUES ($1, $2)
+                            ON CONFLICT DO NOTHING
+                            ",
+                    collection_item.id as database::models::ids::CollectionId,
+                    project.inner.id as database::models::ids::ProjectId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
         }
+
+        database::models::Collection::clear_cache(collection_item.id, &redis).await?;
+
+        transaction.commit().await?;
+        Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
@@ -398,40 +345,27 @@ pub async fn collection_icon_edit(
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         let cdn_url = dotenvy::var("CDN_URL")?;
-        let user = get_user_from_headers(
+        let user_option = get_user_from_headers(
             &req,
             &**pool,
             &redis,
             &session_queue,
             Some(&[Scopes::COLLECTION_WRITE]),
         )
-        .await?
-        .1;
-        let string = info.into_inner().0;
+        .await
+        .map(|x| x.1)
+        .ok();
 
-        let collection_item = database::models::Collection::get(&string, &**pool, &redis)
+        let string = info.into_inner().0;
+        let id = database::models::CollectionId(parse_base62(&string)? as i64);
+        let collection_item = database::models::Collection::get(id, &**pool, &redis)
             .await?
             .ok_or_else(|| {
                 ApiError::InvalidInput("The specified collection does not exist!".to_string())
             })?;
 
-        if !user.role.is_mod() {
-            let team_member = database::models::TeamMember::get_from_user_id(
-                collection_item.team_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::InvalidInput("The specified collection does not exist!".to_string())
-            })?;
-
-            if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
-                return Err(ApiError::CustomAuthentication(
-                    "You don't have permission to edit this collection's icon.".to_string(),
-                ));
-            }
+        if !is_authorized_collection(&collection_item, &user_option).await? {
+            return Ok(HttpResponse::Unauthorized().body(""));
         }
 
         if let Some(icon) = collection_item.icon_url {
@@ -472,8 +406,7 @@ pub async fn collection_icon_edit(
         .execute(&mut *transaction)
         .await?;
 
-        database::models::Collection::clear_cache(collection_item.id, collection_item.slug, &redis)
-            .await?;
+        database::models::Collection::clear_cache(collection_item.id, &redis).await?;
 
         transaction.commit().await?;
 
@@ -495,40 +428,25 @@ pub async fn delete_collection_icon(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(
+    let user_option = get_user_from_headers(
         &req,
         &**pool,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_WRITE]),
     )
-    .await?
-    .1;
+    .await
+    .map(|x| x.1)
+    .ok();
     let string = info.into_inner().0;
-
-    let collection_item = database::models::Collection::get(&string, &**pool, &redis)
+    let id = database::models::CollectionId(parse_base62(&string)? as i64);
+    let collection_item = database::models::Collection::get(id, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified collection does not exist!".to_string())
         })?;
-
-    if !user.role.is_mod() {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            collection_item.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified collection does not exist!".to_string())
-        })?;
-
-        if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
-            return Err(ApiError::CustomAuthentication(
-                "You don't have permission to edit this collection's icon.".to_string(),
-            ));
-        }
+    if !is_authorized_collection(&collection_item, &user_option).await? {
+        return Ok(HttpResponse::Unauthorized().body(""));
     }
 
     let cdn_url = dotenvy::var("CDN_URL")?;
@@ -553,8 +471,7 @@ pub async fn delete_collection_icon(
     .execute(&mut *transaction)
     .await?;
 
-    database::models::Collection::clear_cache(collection_item.id, collection_item.slug, &redis)
-        .await?;
+    database::models::Collection::clear_cache(collection_item.id, &redis).await?;
 
     transaction.commit().await?;
 
@@ -569,45 +486,27 @@ pub async fn collection_delete(
     redis: web::Data<deadpool_redis::Pool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(
+    let user_option = get_user_from_headers(
         &req,
         &**pool,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_DELETE]),
     )
-    .await?
-    .1;
-    let string = info.into_inner().0;
+    .await
+    .map(|x| x.1)
+    .ok();
 
-    let collection = database::models::Collection::get(&string, &**pool, &redis)
+    let string = info.into_inner().0;
+    let id = database::models::CollectionId(parse_base62(&string)? as i64);
+    let collection = database::models::Collection::get(id, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified collection does not exist!".to_string())
         })?;
-
-    if !user.role.is_admin() {
-        let team_member = database::models::TeamMember::get_from_user_id_collection(
-            collection.id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified collection does not exist!".to_string())
-        })?;
-
-        if !team_member
-            .permissions
-            .contains(Permissions::DELETE_COLLECTION)
-        {
-            return Err(ApiError::CustomAuthentication(
-                "You don't have permission to delete this collection!".to_string(),
-            ));
-        }
+    if !is_authorized_collection(&collection, &user_option).await? {
+        return Ok(HttpResponse::Unauthorized().body(""));
     }
-
     let mut transaction = pool.begin().await?;
 
     let result =

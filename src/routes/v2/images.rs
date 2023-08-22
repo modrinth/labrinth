@@ -8,17 +8,13 @@ use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
-use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
+use actix_web::{delete, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(images_add);
-    cfg.service(
-        web::scope("image")
-            .service(images_get)
-            .service(image_delete),
-    );
+    cfg.service(web::scope("image").service(image_delete));
 }
 
 #[derive(Serialize, Deserialize)]
@@ -90,22 +86,6 @@ pub async fn images_add(
             "The specified file is not an image!".to_string(),
         ))
     }
-}
-
-#[get("{id}")]
-pub async fn images_get(
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
-) -> Result<HttpResponse, ApiError> {
-    let string = info.into_inner().0;
-
-    // Don't check headers for public images
-    let image_data = database::models::Image::get(&string, &**pool, &redis).await?;
-    if let Some(data) = image_data {
-        return Ok(HttpResponse::Ok().json(Image::from(data)));
-    }
-    Ok(HttpResponse::NotFound().body(""))
 }
 
 #[delete("{id}")]
