@@ -1,6 +1,6 @@
-use super::ids::{Base62Id, ThreadMessageId};
+use super::ids::Base62Id;
 use crate::database::models::image_item::Image as DBImage;
-use crate::models::ids::{ProjectId, UserId};
+use crate::models::ids::UserId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -16,9 +16,6 @@ pub struct Image {
     pub size: u64,
     pub created: DateTime<Utc>,
     pub owner_id: UserId,
-
-    pub mod_id: Option<ProjectId>,
-    pub thread_message_id: Option<ThreadMessageId>,
 }
 
 impl From<DBImage> for Image {
@@ -29,9 +26,29 @@ impl From<DBImage> for Image {
             size: x.size,
             created: x.created,
             owner_id: x.owner_id.into(),
+        }
+    }
+}
 
-            mod_id: x.mod_id.map(|x| x.into()),
-            thread_message_id: x.thread_message_id.map(|x| x.into()),
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ImageContext {
+    Project,
+    ThreadMessage,
+    Unknown,
+}
+
+impl std::fmt::Display for ImageContext {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}", self.as_str())
+    }
+}
+
+impl ImageContext {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ImageContext::Project => "project",
+            ImageContext::ThreadMessage => "thread_message",
+            ImageContext::Unknown => "unknown",
         }
     }
 }

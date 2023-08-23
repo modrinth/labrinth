@@ -1,7 +1,7 @@
 use crate::auth::checks::{filter_authorized_collections, is_authorized_collection};
 use crate::auth::get_user_from_headers;
 use crate::database;
-use crate::database::models::{collection_item, generate_collection_id};
+use crate::database::models::{collection_item, generate_collection_id, project_item};
 use crate::file_hosting::FileHost;
 use crate::models::collections::{Collection, CollectionStatus};
 use crate::models::ids::base62_impl::parse_base62;
@@ -43,26 +43,14 @@ pub struct CollectionCreateData {
     #[serde(alias = "collection_name")]
     /// The title or name of the project.
     pub title: String,
-    #[validate(
-        length(min = 3, max = 64),
-        regex = "crate::util::validate::RE_URL_SAFE"
-    )]
-    #[serde(alias = "collection_slug")]
-    /// The slug of a collection, used for vanity URLs
-    pub slug: String,
     #[validate(length(min = 3, max = 255))]
     #[serde(alias = "collection_description")]
     /// A short description of the collection.
     pub description: String,
-    #[validate(length(max = 65536))]
-    #[serde(alias = "collection_body")]
-    /// A long description of the collection, in markdown.
-    pub body: String,
-
     #[validate(length(max = 32))]
     #[serde(default = "Vec::new")]
     /// A list of initial projects to use with the created collection
-    pub initial_projects: Vec<ProjectId>,
+    pub initial_projects: Vec<String>,
 
     /// If the collection should initialize to public
     #[serde(default = "default_requested_status")]
@@ -102,16 +90,26 @@ pub async fn collection_create(
 
     let collection_id: CollectionId = generate_collection_id(&mut transaction).await?.into();
 
+    let initial_project_ids = project_item::Project::get_many(
+        &collection_create_data.initial_projects,
+        &mut transaction,
+        &redis,
+    )
+    .await?
+    .into_iter()
+    .map(|x| x.inner.id.into())
+    .collect::<Vec<ProjectId>>();
+
     let collection_builder_actual = collection_item::CollectionBuilder {
         collection_id: collection_id.into(),
         user_id: current_user.id.into(),
         title: collection_create_data.title,
         description: collection_create_data.description,
         status: collection_create_data.status,
-        projects: collection_create_data
-            .initial_projects
+        projects: initial_project_ids
             .iter()
-            .map(|x| database::models::ProjectId::from(*x))
+            .copied()
+            .map(|x| x.into())
             .collect(),
     };
     let collection_builder = collection_builder_actual.clone();
@@ -129,7 +127,7 @@ pub async fn collection_create(
         icon_url: None,
         color: None,
         status: collection_builder.status,
-        projects: collection_create_data.initial_projects,
+        projects: initial_project_ids,
     };
     transaction.commit().await?;
 
@@ -212,6 +210,7 @@ pub struct EditCollection {
     pub title: Option<String>,
     #[validate(length(min = 3, max = 256))]
     pub description: Option<String>,
+    pub status: Option<CollectionStatus>,
     #[validate(length(max = 64))]
     pub new_projects: Option<Vec<String>>,
 }
@@ -275,6 +274,20 @@ pub async fn collection_edit(
                 WHERE (id = $2)
                 ",
                 description,
+                id as database::models::ids::CollectionId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        if let Some(status) = &new_collection.status {
+            sqlx::query!(
+                "
+                UPDATE collections
+                SET status = $1
+                WHERE (id = $2)
+                ",
+                status.to_string(),
                 id as database::models::ids::CollectionId,
             )
             .execute(&mut *transaction)

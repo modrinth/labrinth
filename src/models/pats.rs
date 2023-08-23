@@ -98,9 +98,11 @@ bitflags::bitflags! {
         const IMAGE_POST = 1 << 35;
         // delete an owned image
         const IMAGE_DELETE = 1 << 36;
+        // edit an owned image
+        const IMAGE_WRITE = 1 << 37;
 
-        const ALL = 0b1111111111111111111111111111111111111;
-        const NOT_RESTRICTED = 0b11111100000011111111111111100111;
+        const ALL = 0b11111111111111111111111111111111111111;
+        const NOT_RESTRICTED = 0b111111100000011111111111111100111;
         const NONE = 0b0;
     }
 }

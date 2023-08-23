@@ -16,9 +16,6 @@ pub struct Image {
     pub size: u64,
     pub created: DateTime<Utc>,
     pub owner_id: UserId,
-
-    pub mod_id: Option<ProjectId>,
-    pub thread_message_id: Option<ThreadMessageId>,
 }
 
 impl Image {
@@ -29,10 +26,10 @@ impl Image {
         sqlx::query!(
             "
             INSERT INTO uploaded_images (
-                id, url, size, created, owner_id, mod_id, thread_message_id
+                id, url, size, created, owner_id
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7
+                $1, $2, $3, $4, $5
             );
             ",
             self.id as ImageId,
@@ -40,8 +37,6 @@ impl Image {
             self.size as i64,
             self.created,
             self.owner_id as UserId,
-            self.mod_id.map(|x| x.0),
-            self.thread_message_id.map(|x| x.0),
         )
         .execute(&mut *transaction)
         .await?;
@@ -67,6 +62,82 @@ impl Image {
             .execute(&mut *transaction)
             .await?;
 
+            sqlx::query!(
+                "
+                DELETE FROM images_mods
+                WHERE image_id = $1
+                ",
+                id as ImageId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            sqlx::query!(
+                "
+                DELETE FROM images_threads
+                WHERE image_id = $1
+                ",
+                id as ImageId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            Image::clear_cache(image.id, image.url, redis).await?;
+
+            Ok(Some(()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn remove_from_project(
+        id: ImageId,
+        project_id: ProjectId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        redis: &deadpool_redis::Pool,
+    ) -> Result<Option<()>, DatabaseError> {
+        let image = Self::get_id(id, &mut *transaction, redis).await?;
+
+        if let Some(image) = image {
+            sqlx::query!(
+                "
+                DELETE FROM images_mods
+                WHERE image_id = $1 AND mod_id = $2
+                ",
+                id as ImageId,
+                project_id as ProjectId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            Image::clear_cache(image.id, image.url, redis).await?;
+
+            Ok(Some(()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn remove_from_thread_message(
+        id: ImageId,
+        thread_message_id: ThreadMessageId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        redis: &deadpool_redis::Pool,
+    ) -> Result<Option<()>, DatabaseError> {
+        let image = Self::get_id(id, &mut *transaction, redis).await?;
+
+        if let Some(image) = image {
+            sqlx::query!(
+                "
+                DELETE FROM images_threads
+                WHERE image_id = $1 AND thread_message_id = $2
+                ",
+                id as ImageId,
+                thread_message_id as ThreadMessageId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+
             Image::clear_cache(image.id, image.url, redis).await?;
 
             Ok(Some(()))
@@ -87,11 +158,12 @@ impl Image {
         sqlx::query!(
             "
             SELECT i.id, i.url, i.size, i.created, i.owner_id,
-            i.mod_id, i.thread_message_id
+            im.mod_id
             FROM uploaded_images i
-            WHERE  i.mod_id = $1
-            GROUP BY i.id;
-        ",
+            LEFT JOIN images_mods im ON im.image_id = i.id
+            WHERE im.mod_id = $1
+            GROUP BY i.id, im.mod_id;
+            ",
             project_id as ProjectId
         )
         .fetch_many(exec)
@@ -105,8 +177,6 @@ impl Image {
                     size: row.size as u64,
                     created: row.created,
                     owner_id: UserId(row.owner_id),
-                    mod_id: row.mod_id.map(ProjectId),
-                    thread_message_id: row.thread_message_id.map(ThreadMessageId),
                 }
             }))
         })
@@ -126,11 +196,11 @@ impl Image {
         sqlx::query!(
             "
             SELECT i.id, i.url, i.size, i.created, i.owner_id,
-            i.mod_id, i.thread_message_id
+            it.thread_message_id
             FROM uploaded_images i
-            WHERE  i.thread_message_id = $1
-            GROUP BY i.id;
-        ",
+            LEFT JOIN images_threads it ON it.image_id = i.id
+            WHERE it.thread_message_id = $1
+            ",
             thread_message_id as ThreadMessageId
         )
         .fetch_many(exec)
@@ -144,8 +214,6 @@ impl Image {
                     size: row.size as u64,
                     created: row.created,
                     owner_id: UserId(row.owner_id),
-                    mod_id: row.mod_id.map(ProjectId),
-                    thread_message_id: row.thread_message_id.map(ThreadMessageId),
                 }
             }))
         })
@@ -252,8 +320,7 @@ impl Image {
                 .collect();
             let db_images: Vec<Image> = sqlx::query!(
                 "
-                SELECT i.id, i.url, i.size, i.created, i.owner_id,
-                    i.mod_id, i.thread_message_id
+                SELECT i.id, i.url, i.size, i.created, i.owner_id
                 FROM uploaded_images i
                 WHERE i.id = ANY($1) OR i.url = ANY($2)
                 GROUP BY i.id;
@@ -275,8 +342,6 @@ impl Image {
                         size: i.size as u64,
                         created: i.created,
                         owner_id: UserId(i.owner_id),
-                        mod_id: i.mod_id.map(ProjectId),
-                        thread_message_id: i.thread_message_id.map(ThreadMessageId),
                     }
                 }))
             })

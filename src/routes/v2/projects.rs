@@ -2310,7 +2310,13 @@ pub async fn project_delete(
     let uploaded_images =
         database::models::Image::get_many_project(project.inner.id, &mut transaction).await?;
     for image in uploaded_images {
-        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
+        image_item::Image::remove_from_project(
+            image.id,
+            project.inner.id,
+            &mut transaction,
+            &redis,
+        )
+        .await?;
     }
 
     let result =

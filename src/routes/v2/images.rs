@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::file_hosting::FileHost;
 use crate::models::images::Image;
@@ -8,7 +7,8 @@ use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
-use actix_web::{delete, post, web, HttpRequest, HttpResponse};
+use crate::{auth::get_user_from_headers, models::images::ImageContext};
+use actix_web::{delete, patch, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -69,8 +69,6 @@ pub async fn images_add(
             size: upload_data.content_length as u64,
             created: chrono::Utc::now(),
             owner_id: database::models::UserId::from(user.id),
-            mod_id: None,
-            thread_message_id: None,
         };
 
         // Insert
@@ -86,6 +84,106 @@ pub async fn images_add(
             "The specified file is not an image!".to_string(),
         ))
     }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ImageEdit {
+    pub contexts: Vec<(ImageContext, i32)>,
+}
+
+/// Associates an image with a project or thread message
+/// If an image has no contexts associated with it, it may be deleted
+#[patch("{id}")]
+pub async fn image_edit(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    web::Query(edit): web::Query<ImageEdit>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let string: String = info.into_inner().0;
+
+    let mut scopes = edit
+        .contexts
+        .iter()
+        .map(|(context, _)| match context {
+            ImageContext::Project => Scopes::PROJECT_WRITE,
+            ImageContext::ThreadMessage => Scopes::THREAD_WRITE,
+            ImageContext::Unknown => Scopes::NONE,
+        })
+        .collect::<Vec<Scopes>>();
+    scopes.push(Scopes::IMAGE_WRITE);
+
+    let image_data = database::models::Image::get(&string, &**pool, &redis).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::IMAGE_WRITE]),
+    )
+    .await?
+    .1;
+
+    let mut transaction = pool.begin().await?;
+    if let Some(data) = image_data {
+        if user.id == data.owner_id.into() {
+            sqlx::query!(
+                "
+                    DELETE FROM images_threads
+                    WHERE image_id = $1
+                ",
+                data.id.0 as i64
+            )
+            .execute(&mut transaction)
+            .await?;
+
+            sqlx::query!(
+                "
+                    DELETE FROM images_mods
+                    WHERE image_id = $1
+                ",
+                data.id.0 as i64
+            )
+            .execute(&mut transaction)
+            .await?;
+
+            for (context, id) in edit.contexts {
+                match context {
+                    ImageContext::Project => {
+                        sqlx::query!(
+                            "
+                                INSERT INTO images_mods (image_id, mod_id)
+                                VALUES ($1, $2)
+                            ",
+                            data.id.0 as i64,
+                            id as i64
+                        )
+                        .execute(&mut transaction)
+                        .await?;
+                    }
+                    ImageContext::ThreadMessage => {
+                        sqlx::query!(
+                            "
+                                INSERT INTO images_threads (image_id, thread_message_id)
+                                VALUES ($1, $2)
+                            ",
+                            data.id.0 as i64,
+                            id as i64
+                        )
+                        .execute(&mut transaction)
+                        .await?;
+                    }
+                    ImageContext::Unknown => {}
+                }
+            }
+
+            return Ok(HttpResponse::Ok().finish());
+        }
+    }
+    transaction.commit().await?;
+    Ok(HttpResponse::NotFound().body(""))
 }
 
 #[delete("{id}")]

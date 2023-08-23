@@ -787,9 +787,9 @@ async fn project_create_inner(
         for image in project_create_data.uploaded_images {
             sqlx::query!(
                 "
-                UPDATE uploaded_images
-                SET mod_id = $1
-                WHERE id = $2
+                INSERT INTO images_mods (mod_id, image_id)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
                 ",
                 id as models::ids::ProjectId,
                 image.0 as i64

@@ -464,9 +464,9 @@ pub async fn thread_send_message(
             for image in associated_images {
                 sqlx::query!(
                     "
-                    UPDATE uploaded_images
-                    SET thread_message_id = $1
-                    WHERE id = $2
+                    INSERT INTO images_threads (image_id, thread_message_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT DO NOTHING
                     ",
                     thread.id.0,
                     image.0 as i64,
@@ -582,7 +582,13 @@ pub async fn message_delete(
             if let Some(icon_path) = name {
                 file_host.delete_file_version("", icon_path).await?;
             }
-            database::Image::remove(image.id, &mut transaction, &redis).await?;
+            database::Image::remove_from_thread_message(
+                image.id,
+                thread.id,
+                &mut transaction,
+                &redis,
+            )
+            .await?;
         }
 
         database::models::ThreadMessage::remove_full(thread.id, &mut transaction).await?;

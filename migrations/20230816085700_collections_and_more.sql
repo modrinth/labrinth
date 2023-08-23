@@ -23,10 +23,20 @@ CREATE TABLE uploaded_images (
     url varchar(2048) NOT NULL,
     size integer NOT NULL,
     created timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    owner_id bigint REFERENCES users NOT NULL,
+    owner_id bigint REFERENCES users NOT NULL
+);
 
-    -- Image will be associated with a mod (in description) or a thread message (not both)
-    -- Icons are not a part of this table
-    mod_id bigint REFERENCES mods NULL,
-    thread_message_id bigint REFERENCES threads_messages NULL
+-- Currently, images will be associated with mod descriptions and thread messages
+-- In the future, we may want to allow images to be associated with other things like reports, comments, etc.
+
+CREATE TABLE images_mods (
+    mod_id bigint REFERENCES mods NOT NULL,
+    image_id bigint REFERENCES uploaded_images NOT NULL,
+    PRIMARY KEY (mod_id, image_id)
+);
+
+CREATE TABLE images_threads (
+    thread_message_id bigint REFERENCES threads_messages NOT NULL,
+    image_id bigint REFERENCES uploaded_images NOT NULL,
+    PRIMARY KEY (thread_message_id, image_id)
 );
