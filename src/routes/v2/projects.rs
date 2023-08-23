@@ -1124,8 +1124,13 @@ pub async fn project_edit(
 
             // check new description and body for links to associated images
             // if they no longer exist in the description or body, delete them
-            let uploaded_images =
-                database::models::Image::get_many_project(id, &mut transaction).await?;
+            let uploaded_images = database::models::Image::get_many_contexted(
+                models::images::ImageContext::Project {
+                    project_id: Some(id.into()),
+                },
+                &mut transaction,
+            )
+            .await?;
             for image in uploaded_images {
                 let description_contains = if let Some(description) = &new_project.description {
                     description.contains(&image.url)
@@ -1138,15 +1143,7 @@ pub async fn project_edit(
                     false
                 };
                 if !description_contains && !body_contains {
-                    sqlx::query!(
-                        "
-                            DELETE FROM uploaded_images
-                            WHERE id = $1
-                            ",
-                        image.id as database::models::ids::ImageId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
+                    image_item::Image::remove(image.id, &mut transaction, &redis).await?;
                     image_item::Image::clear_cache(image.id, image.url, &redis).await?;
                 }
             }
@@ -2307,17 +2304,24 @@ pub async fn project_delete(
     }
 
     let mut transaction = pool.begin().await?;
-    let uploaded_images =
-        database::models::Image::get_many_project(project.inner.id, &mut transaction).await?;
+    let uploaded_images = database::models::Image::get_many_contexted(
+        models::images::ImageContext::Project {
+            project_id: Some(project.inner.id.into()),
+        },
+        &mut transaction,
+    )
+    .await?;
     for image in uploaded_images {
-        image_item::Image::remove_from_project(
-            image.id,
-            project.inner.id,
-            &mut transaction,
-            &redis,
-        )
-        .await?;
+        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
     }
+
+    sqlx::query!(
+        "
+        DELETE FROM collections_mods
+        WHERE mod_id = $1
+        ",
+        project.inner.id as database::models::ids::ProjectId,
+    ).execute(&mut *transaction).await?;
 
     let result =
         database::models::Project::remove(project.inner.id, &mut transaction, &redis).await?;

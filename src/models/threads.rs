@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[serde(into = "Base62Id")]
 pub struct ThreadId(pub u64);
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct ThreadMessageId(pub u64);

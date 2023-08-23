@@ -5,6 +5,7 @@ use crate::database::models::{self, image_item};
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::ids::ImageId;
+use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
@@ -785,20 +786,28 @@ async fn project_create_inner(
         let id = project_builder_actual.insert(&mut *transaction).await?;
 
         for image in project_create_data.uploaded_images {
-            sqlx::query!(
-                "
-                INSERT INTO images_mods (mod_id, image_id)
-                VALUES ($1, $2)
-                ON CONFLICT DO NOTHING
-                ",
-                id as models::ids::ProjectId,
-                image.0 as i64
-            )
-            .execute(&mut *transaction)
-            .await?;
             if let Some(db_image) =
                 image_item::Image::get_id(image.into(), &mut *transaction, redis).await?
             {
+                if !matches!(db_image.context, ImageContext::Project { project_id: None }) {
+                    return Err(CreateError::InvalidInput(format!(
+                        "Image {} is not unused and in the 'project' context",
+                        image
+                    )));
+                }
+                sqlx::query!(
+                    "
+                    UPDATE uploaded_images
+                    SET context = $1, context_id = $2
+                    WHERE id = $3
+                    ",
+                    db_image.context.context_as_str(),
+                    id as models::ids::ProjectId,
+                    image.0 as i64
+                )
+                .execute(&mut *transaction)
+                .await?;
+
                 image_item::Image::clear_cache(db_image.id, db_image.url, redis).await?;
             }
         }

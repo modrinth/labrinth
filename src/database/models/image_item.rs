@@ -1,6 +1,7 @@
 use super::ids::*;
 use crate::database::models::DatabaseError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
+use crate::models::images::ImageContext;
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ pub struct Image {
     pub size: u64,
     pub created: DateTime<Utc>,
     pub owner_id: UserId,
+    pub context: ImageContext, // uses model Ids, not database Ids
 }
 
 impl Image {
@@ -26,10 +28,10 @@ impl Image {
         sqlx::query!(
             "
             INSERT INTO uploaded_images (
-                id, url, size, created, owner_id
+                id, url, size, created, owner_id, context, context_id
             )
             VALUES (
-                $1, $2, $3, $4, $5
+                $1, $2, $3, $4, $5, $6, $7
             );
             ",
             self.id as ImageId,
@@ -37,6 +39,8 @@ impl Image {
             self.size as i64,
             self.created,
             self.owner_id as UserId,
+            self.context.context_as_str(),
+            self.context.inner_id().map(|x| x as i64),
         )
         .execute(&mut *transaction)
         .await?;
@@ -62,26 +66,6 @@ impl Image {
             .execute(&mut *transaction)
             .await?;
 
-            sqlx::query!(
-                "
-                DELETE FROM images_mods
-                WHERE image_id = $1
-                ",
-                id as ImageId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            sqlx::query!(
-                "
-                DELETE FROM images_threads
-                WHERE image_id = $1
-                ",
-                id as ImageId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-
             Image::clear_cache(image.id, image.url, redis).await?;
 
             Ok(Some(()))
@@ -90,64 +74,8 @@ impl Image {
         }
     }
 
-    pub async fn remove_from_project(
-        id: ImageId,
-        project_id: ProjectId,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
-    ) -> Result<Option<()>, DatabaseError> {
-        let image = Self::get_id(id, &mut *transaction, redis).await?;
-
-        if let Some(image) = image {
-            sqlx::query!(
-                "
-                DELETE FROM images_mods
-                WHERE image_id = $1 AND mod_id = $2
-                ",
-                id as ImageId,
-                project_id as ProjectId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            Image::clear_cache(image.id, image.url, redis).await?;
-
-            Ok(Some(()))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub async fn remove_from_thread_message(
-        id: ImageId,
-        thread_message_id: ThreadMessageId,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
-    ) -> Result<Option<()>, DatabaseError> {
-        let image = Self::get_id(id, &mut *transaction, redis).await?;
-
-        if let Some(image) = image {
-            sqlx::query!(
-                "
-                DELETE FROM images_threads
-                WHERE image_id = $1 AND thread_message_id = $2
-                ",
-                id as ImageId,
-                thread_message_id as ThreadMessageId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            Image::clear_cache(image.id, image.url, redis).await?;
-
-            Ok(Some(()))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub async fn get_many_project<'a, E>(
-        project_id: ProjectId,
+    pub async fn get_many_contexted<'a, E>(
+        context: ImageContext,
         exec: E,
     ) -> Result<Vec<Image>, sqlx::Error>
     where
@@ -157,14 +85,14 @@ impl Image {
 
         sqlx::query!(
             "
-            SELECT i.id, i.url, i.size, i.created, i.owner_id,
-            im.mod_id
+            SELECT i.id, i.url, i.size, i.created, i.owner_id, i.context, i.context_id
             FROM uploaded_images i
-            LEFT JOIN images_mods im ON im.image_id = i.id
-            WHERE im.mod_id = $1
-            GROUP BY i.id, im.mod_id;
+            WHERE i.context = $1
+            AND i.context_id = $2
+            GROUP BY i.id
             ",
-            project_id as ProjectId
+            context.context_as_str(),
+            context.inner_id().map(|x| x as i64)
         )
         .fetch_many(exec)
         .try_filter_map(|e| async {
@@ -177,43 +105,7 @@ impl Image {
                     size: row.size as u64,
                     created: row.created,
                     owner_id: UserId(row.owner_id),
-                }
-            }))
-        })
-        .try_collect::<Vec<Image>>()
-        .await
-    }
-
-    pub async fn get_many_thread_message<'a, E>(
-        thread_message_id: ThreadMessageId,
-        exec: E,
-    ) -> Result<Vec<Image>, sqlx::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        use futures::stream::TryStreamExt;
-
-        sqlx::query!(
-            "
-            SELECT i.id, i.url, i.size, i.created, i.owner_id,
-            it.thread_message_id
-            FROM uploaded_images i
-            LEFT JOIN images_threads it ON it.image_id = i.id
-            WHERE it.thread_message_id = $1
-            ",
-            thread_message_id as ThreadMessageId
-        )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|row| {
-                let id = ImageId(row.id);
-
-                Image {
-                    id,
-                    url: row.url,
-                    size: row.size as u64,
-                    created: row.created,
-                    owner_id: UserId(row.owner_id),
+                    context: ImageContext::from_str(&row.context, row.context_id.map(|x| x as u64)),
                 }
             }))
         })
@@ -320,7 +212,7 @@ impl Image {
                 .collect();
             let db_images: Vec<Image> = sqlx::query!(
                 "
-                SELECT i.id, i.url, i.size, i.created, i.owner_id
+                SELECT i.id, i.url, i.size, i.created, i.owner_id, i.context, i.context_id
                 FROM uploaded_images i
                 WHERE i.id = ANY($1) OR i.url = ANY($2)
                 GROUP BY i.id;
@@ -342,6 +234,7 @@ impl Image {
                         size: i.size as u64,
                         created: i.created,
                         owner_id: UserId(i.owner_id),
+                        context: ImageContext::from_str(&i.context, i.context_id.map(|x| x as u64)),
                     }
                 }))
             })
