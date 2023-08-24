@@ -1,5 +1,6 @@
 use crate::auth::get_user_from_headers;
 use crate::models::analytics::{PageView, Playtime};
+
 use crate::models::pats::Scopes;
 use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
@@ -205,10 +206,10 @@ pub async fn playtime_ingest(
                 .add_playtime(Playtime {
                     id: Default::default(),
                     recorded: Utc::now().timestamp_nanos() / 100_000,
-                    seconds: playtime.seconds,
+                    seconds: playtime.seconds as u64,
                     user_id: user.id.0,
-                    project_id: version.inner.id.0 as u64,
-                    version_id: version.inner.project_id.0 as u64,
+                    project_id: version.inner.project_id.0 as u64,
+                    version_id: version.inner.id.0 as u64,
                     loader: playtime.loader,
                     game_version: playtime.game_version,
                     parent: playtime.parent.map(|x| x.0).unwrap_or(0),
