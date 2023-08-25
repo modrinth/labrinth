@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    models::
-        ids::{ProjectId, VersionId},
+    models::ids::{ProjectId, VersionId},
     routes::ApiError,
 };
 use chrono::NaiveDate;
@@ -33,7 +32,6 @@ pub struct ReturnViews {
     pub id: u64,
     pub total_views: u64,
 }
-
 
 // Only one of project_id or version_id should be used
 // Fetches playtimes as a Vec of ReturnPlaytimes
@@ -244,4 +242,3 @@ pub async fn fetch_countries(
 
     Ok(query.fetch_all().await?)
 }
-

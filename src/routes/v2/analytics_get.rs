@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use chrono::{Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
+use std::collections::HashMap;
 
 use crate::{
     auth::{filter_authorized_projects, filter_authorized_versions, get_user_from_headers},
@@ -15,7 +15,7 @@ use crate::{
         },
         pats::Scopes,
     },
-    queue:: session::AuthQueue,
+    queue::session::AuthQueue,
 };
 
 use super::ApiError;
@@ -119,14 +119,14 @@ pub async fn playtimes_get(
 
     // Get the views
     let playtimes = crate::clickhouse::fetch_playtimes(
-            project_ids,
-            version_ids,
-            start_date,
-            end_date,
-            resolution_minutes,
-            clickhouse.into_inner(),
-        )
-        .await?;
+        project_ids,
+        version_ids,
+        start_date,
+        end_date,
+        resolution_minutes,
+        clickhouse.into_inner(),
+    )
+    .await?;
 
     let mut hm = HashMap::new();
     for playtime in playtimes {
@@ -212,16 +212,15 @@ pub async fn views_get(
         filter_allowed_ids(project_ids, version_ids, user_option, &pool, &redis).await?;
 
     // Get the views
-    let views = crate::clickhouse
-        ::fetch_views(
-            project_ids,
-            version_ids,
-            start_date,
-            end_date,
-            resolution_minutes,
-            clickhouse.into_inner(),
-        )
-        .await?;
+    let views = crate::clickhouse::fetch_views(
+        project_ids,
+        version_ids,
+        start_date,
+        end_date,
+        resolution_minutes,
+        clickhouse.into_inner(),
+    )
+    .await?;
 
     let mut hm = HashMap::new();
     for views in views {
@@ -294,13 +293,13 @@ pub async fn countries_get(
 
     // Get the countries
     let countries = crate::clickhouse::fetch_countries(
-            project_ids,
-            version_ids,
-            start_date,
-            end_date,
-            clickhouse.into_inner(),
-        )
-        .await?;
+        project_ids,
+        version_ids,
+        start_date,
+        end_date,
+        clickhouse.into_inner(),
+    )
+    .await?;
 
     let mut hm = HashMap::new();
     for views in countries {
