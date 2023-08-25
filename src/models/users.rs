@@ -1,4 +1,5 @@
 use super::ids::Base62Id;
+use crate::auth::flows::AuthProvider;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -37,17 +38,23 @@ impl Default for Badges {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct User {
     pub id: UserId,
-    pub github_id: Option<u64>,
     pub username: String,
     pub name: Option<String>,
-    pub email: Option<String>,
     pub avatar_url: Option<String>,
     pub bio: Option<String>,
     pub created: DateTime<Utc>,
     pub role: Role,
     pub badges: Badges,
+
     pub payout_data: Option<UserPayoutData>,
-    pub has_flame_anvil_key: Option<bool>,
+    pub auth_providers: Option<Vec<AuthProvider>>,
+    pub email: Option<String>,
+    pub email_verified: Option<bool>,
+    pub has_password: Option<bool>,
+    pub has_totp: Option<bool>,
+
+    // DEPRECATED. Always returns None
+    pub github_id: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -58,7 +65,7 @@ pub struct UserPayoutData {
     pub payout_address: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum RecipientType {
     Email,
@@ -90,7 +97,7 @@ impl RecipientType {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum RecipientWallet {
     Venmo,
@@ -131,17 +138,20 @@ impl From<DBUser> for User {
     fn from(data: DBUser) -> Self {
         Self {
             id: data.id.into(),
-            github_id: data.github_id.map(|i| i as u64),
             username: data.username,
             name: data.name,
             email: None,
+            email_verified: None,
             avatar_url: data.avatar_url,
             bio: data.bio,
             created: data.created,
             role: Role::from_string(&data.role),
             badges: data.badges,
             payout_data: None,
-            has_flame_anvil_key: None,
+            auth_providers: None,
+            has_password: None,
+            has_totp: None,
+            github_id: None,
         }
     }
 }

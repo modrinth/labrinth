@@ -1,4 +1,5 @@
 use crate::file_hosting::FileHostingError;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -34,8 +35,11 @@ pub async fn authorize_account(
     key_id: &str,
     application_key: &str,
 ) -> Result<AuthorizationData, FileHostingError> {
-    let combined_key = format!("{}:{}", key_id, application_key);
-    let formatted_key = format!("Basic {}", base64::encode(combined_key));
+    let combined_key = format!("{key_id}:{application_key}");
+    let formatted_key = format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(combined_key)
+    );
 
     let response = reqwest::Client::new()
         .get("https://api.backblazeb2.com/b2api/v2/b2_authorize_account")
@@ -52,13 +56,7 @@ pub async fn get_upload_url(
     bucket_id: &str,
 ) -> Result<UploadUrlData, FileHostingError> {
     let response = reqwest::Client::new()
-        .post(
-            &format!(
-                "{}/b2api/v2/b2_get_upload_url",
-                authorization_data.api_url
-            )
-            .to_string(),
-        )
+        .post(&format!("{}/b2api/v2/b2_get_upload_url", authorization_data.api_url).to_string())
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(
             reqwest::header::AUTHORIZATION,

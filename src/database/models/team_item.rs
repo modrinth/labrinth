@@ -1,8 +1,12 @@
 use super::ids::*;
-use crate::database::models::User;
 use crate::models::teams::Permissions;
-use crate::models::users::{Badges, RecipientType, RecipientWallet};
+use itertools::Itertools;
+use redis::cmd;
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
+
+const TEAMS_NAMESPACE: &str = "teams";
+const DEFAULT_EXPIRY: i64 = 1800;
 
 pub struct TeamBuilder {
     pub members: Vec<TeamMemberBuilder>,
@@ -36,8 +40,7 @@ impl TeamBuilder {
         .await?;
 
         for member in self.members {
-            let team_member_id =
-                generate_team_member_id(&mut *transaction).await?;
+            let team_member_id = generate_team_member_id(&mut *transaction).await?;
             let team_member = TeamMember {
                 id: team_member_id,
                 team_id,
@@ -78,6 +81,7 @@ pub struct Team {
 }
 
 /// A member of a team
+#[derive(Deserialize, Serialize)]
 pub struct TeamMember {
     pub id: TeamMemberId,
     pub team_id: TeamId,
@@ -90,299 +94,121 @@ pub struct TeamMember {
     pub ordering: i64,
 }
 
-/// A member of a team
-pub struct QueryTeamMember {
-    pub id: TeamMemberId,
-    pub team_id: TeamId,
-    /// The user associated with the member
-    pub user: User,
-    pub role: String,
-    pub permissions: Permissions,
-    pub accepted: bool,
-    pub payouts_split: Decimal,
-    pub ordering: i64,
-}
-
 impl TeamMember {
-    /// Lists the members of a team
-    pub async fn get_from_team<'a, 'b, E>(
-        id: TeamId,
-        executor: E,
-    ) -> Result<Vec<TeamMember>, super::DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        use futures::stream::TryStreamExt;
-
-        let team_members = sqlx::query!(
-            "
-            SELECT id, user_id, role, permissions, accepted, payouts_split, ordering
-            FROM team_members
-            WHERE team_id = $1
-            ORDER BY ordering
-            ",
-            id as TeamId,
-        )
-        .fetch_many(executor)
-        .try_filter_map(|e| async {
-            if let Some(m) = e.right() {
-                Ok(Some(Ok(TeamMember {
-                    id: TeamMemberId(m.id),
-                    team_id: id,
-                    user_id: UserId(m.user_id),
-                    role: m.role,
-                    permissions: Permissions::from_bits(m.permissions as u64)
-                        .unwrap_or_default(),
-                    accepted: m.accepted,
-                    payouts_split: m.payouts_split,
-                    ordering: m.ordering,
-                })))
-            } else {
-                Ok(None)
-            }
-        })
-        .try_collect::<Vec<Result<TeamMember, super::DatabaseError>>>()
-        .await?;
-
-        let team_members = team_members
-            .into_iter()
-            .collect::<Result<Vec<TeamMember>, super::DatabaseError>>()?;
-
-        Ok(team_members)
-    }
-
     // Lists the full members of a team
     pub async fn get_from_team_full<'a, 'b, E>(
         id: TeamId,
         executor: E,
-    ) -> Result<Vec<QueryTeamMember>, super::DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        use futures::stream::TryStreamExt;
-
-        let team_members = sqlx::query!(
-            "
-            SELECT tm.id id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split, tm.ordering ordering,
-            u.id user_id, u.github_id github_id, u.name user_name, u.email email,
-            u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, u.badges badges, u.balance balance,
-            u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,
-            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key
-            FROM team_members tm
-            INNER JOIN users u ON u.id = tm.user_id
-            WHERE tm.team_id = $1
-            ORDER BY tm.ordering
-            ",
-            id as TeamId,
-        )
-        .fetch_many(executor)
-        .try_filter_map(|e| async {
-            if let Some(m) = e.right() {
-
-                    Ok(Some(Ok(QueryTeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: id,
-                        role: m.member_role,
-                        permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
-                        accepted: m.accepted,
-                        user: User {
-                            id: UserId(m.user_id),
-                            github_id: m.github_id,
-                            name: m.user_name,
-                            email: m.email,
-                            avatar_url: m.avatar_url,
-                            username: m.username,
-                            bio: m.bio,
-                            created: m.created,
-                            role: m.user_role,
-                            badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
-                            balance: m.balance,
-                            payout_wallet: m.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
-                            payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
-                            payout_address: m.payout_address,
-                            flame_anvil_key: m.flame_anvil_key,
-                        },
-                        payouts_split: m.payouts_split,
-                        ordering: m.ordering,
-                    })))
-            } else {
-                Ok(None)
-            }
-        })
-        .try_collect::<Vec<Result<QueryTeamMember, super::DatabaseError>>>()
-        .await?;
-
-        let team_members = team_members
-            .into_iter()
-            .collect::<Result<Vec<QueryTeamMember>, super::DatabaseError>>()?;
-
-        Ok(team_members)
-    }
-
-    pub async fn get_from_team_full_many<'a, E>(
-        team_ids: Vec<TeamId>,
-        exec: E,
-    ) -> Result<Vec<QueryTeamMember>, super::DatabaseError>
+        redis: &deadpool_redis::Pool,
+    ) -> Result<Vec<TeamMember>, super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        use futures::stream::TryStreamExt;
-
-        let team_ids_parsed: Vec<i64> =
-            team_ids.into_iter().map(|x| x.0).collect();
-
-        let teams = sqlx::query!(
-            "
-            SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split, tm.ordering,
-            u.id user_id, u.github_id github_id, u.name user_name, u.email email,
-            u.avatar_url avatar_url, u.username username, u.bio bio,
-            u.created created, u.role user_role, u.badges badges, u.balance balance,
-            u.payout_wallet payout_wallet, u.payout_wallet_type payout_wallet_type,
-            u.payout_address payout_address, u.flame_anvil_key flame_anvil_key
-            FROM team_members tm
-            INNER JOIN users u ON u.id = tm.user_id
-            WHERE tm.team_id = ANY($1)
-            ORDER BY tm.team_id, tm.ordering
-            ",
-            &team_ids_parsed
-        )
-          .fetch_many(exec)
-          .try_filter_map(|e| async {
-              if let Some(m) = e.right() {
-
-                      Ok(Some(Ok(QueryTeamMember {
-                          id: TeamMemberId(m.id),
-                          team_id: TeamId(m.team_id),
-                          role: m.member_role,
-                          permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
-                          accepted: m.accepted,
-                          user: User {
-                              id: UserId(m.user_id),
-                              github_id: m.github_id,
-                              name: m.user_name,
-                              email: m.email,
-                              avatar_url: m.avatar_url,
-                              username: m.username,
-                              bio: m.bio,
-                              created: m.created,
-                              role: m.user_role,
-                              badges: Badges::from_bits(m.badges as u64).unwrap_or_default(),
-                              balance: m.balance,
-                              payout_wallet: m.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
-                              payout_wallet_type: m.payout_wallet_type.map(|x| RecipientType::from_string(&x)),
-                              payout_address: m.payout_address,
-                              flame_anvil_key: m.flame_anvil_key,
-                          },
-                          payouts_split: m.payouts_split,
-                          ordering: m.ordering,
-                      })))
-              } else {
-                  Ok(None)
-              }
-          })
-          .try_collect::<Vec<Result<QueryTeamMember, super::DatabaseError>>>()
-          .await?;
-
-        let team_members = teams
-            .into_iter()
-            .collect::<Result<Vec<QueryTeamMember>, super::DatabaseError>>()?;
-
-        Ok(team_members)
+        Self::get_from_team_full_many(&[id], executor, redis).await
     }
 
-    /// Lists the team members for a user.  Does not list pending requests.
-    pub async fn get_from_user_public<'a, 'b, E>(
-        id: UserId,
-        executor: E,
+    pub async fn get_from_team_full_many<'a, E>(
+        team_ids: &[TeamId],
+        exec: E,
+        redis: &deadpool_redis::Pool,
     ) -> Result<Vec<TeamMember>, super::DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
+        if team_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
         use futures::stream::TryStreamExt;
 
-        let team_members = sqlx::query!(
-            "
-            SELECT id, team_id, role, permissions, accepted, payouts_split, ordering
-            FROM team_members
-            WHERE (user_id = $1 AND accepted = TRUE)
-            ORDER BY ordering
-            ",
-            id as UserId,
-        )
-        .fetch_many(executor)
-        .try_filter_map(|e| async {
-            if let Some(m) = e.right() {
-                Ok(Some(Ok(TeamMember {
-                    id: TeamMemberId(m.id),
-                    team_id: TeamId(m.team_id),
-                    user_id: id,
-                    role: m.role,
-                    permissions: Permissions::from_bits(m.permissions as u64)
-                        .unwrap_or_default(),
-                    accepted: m.accepted,
-                    payouts_split: m.payouts_split,
-                    ordering: m.ordering,
-                })))
-            } else {
-                Ok(None)
+        let mut team_ids_parsed: Vec<i64> = team_ids.iter().map(|x| x.0).collect();
+
+        let mut redis = redis.get().await?;
+
+        let mut found_teams = Vec::new();
+
+        let teams = cmd("MGET")
+            .arg(
+                team_ids_parsed
+                    .iter()
+                    .map(|x| format!("{}:{}", TEAMS_NAMESPACE, x))
+                    .collect::<Vec<_>>(),
+            )
+            .query_async::<_, Vec<Option<String>>>(&mut redis)
+            .await?;
+
+        for team_raw in teams {
+            if let Some(mut team) = team_raw
+                .clone()
+                .and_then(|x| serde_json::from_str::<Vec<TeamMember>>(&x).ok())
+            {
+                if let Some(team_id) = team.first().map(|x| x.team_id) {
+                    team_ids_parsed.retain(|x| &team_id.0 != x);
+                }
+
+                found_teams.append(&mut team);
+                continue;
             }
-        })
-        .try_collect::<Vec<Result<TeamMember, super::DatabaseError>>>()
-        .await?;
+        }
 
-        let team_members = team_members
-            .into_iter()
-            .collect::<Result<Vec<TeamMember>, super::DatabaseError>>()?;
+        if !team_ids_parsed.is_empty() {
+            let teams: Vec<TeamMember> = sqlx::query!(
+                "
+                SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split, tm.ordering,
+                tm.user_id user_id
+                FROM team_members tm
+                WHERE tm.team_id = ANY($1)
+                ORDER BY tm.team_id, tm.ordering
+                ",
+                &team_ids_parsed
+            )
+                .fetch_many(exec)
+                .try_filter_map(|e| async {
+                    Ok(e.right().map(|m|
+                        TeamMember {
+                            id: TeamMemberId(m.id),
+                            team_id: TeamId(m.team_id),
+                            role: m.member_role,
+                            permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
+                            accepted: m.accepted,
+                            user_id: UserId(m.user_id),
+                            payouts_split: m.payouts_split,
+                            ordering: m.ordering,
+                        }
+                    ))
+                })
+                .try_collect::<Vec<TeamMember>>()
+                .await?;
 
-        Ok(team_members)
+            for (id, members) in &teams.into_iter().group_by(|x| x.team_id) {
+                let mut members = members.collect::<Vec<_>>();
+
+                cmd("SET")
+                    .arg(format!("{}:{}", TEAMS_NAMESPACE, id.0))
+                    .arg(serde_json::to_string(&members)?)
+                    .arg("EX")
+                    .arg(DEFAULT_EXPIRY)
+                    .query_async::<_, ()>(&mut redis)
+                    .await?;
+
+                found_teams.append(&mut members);
+            }
+        }
+
+        Ok(found_teams)
     }
 
-    /// Lists the team members for a user. Includes pending requests.
-    pub async fn get_from_user_private<'a, 'b, E>(
-        id: UserId,
-        executor: E,
-    ) -> Result<Vec<TeamMember>, super::DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        use futures::stream::TryStreamExt;
+    pub async fn clear_cache(
+        id: TeamId,
+        redis: &deadpool_redis::Pool,
+    ) -> Result<(), super::DatabaseError> {
+        let mut redis = redis.get().await?;
+        cmd("DEL")
+            .arg(format!("{}:{}", TEAMS_NAMESPACE, id.0))
+            .query_async::<_, ()>(&mut redis)
+            .await?;
 
-        let team_members = sqlx::query!(
-            "
-            SELECT id, team_id, role, permissions, accepted, payouts_split, ordering
-            FROM team_members
-            WHERE user_id = $1
-            ORDER BY ordering
-            ",
-            id as UserId,
-        )
-        .fetch_many(executor)
-        .try_filter_map(|e| async {
-            if let Some(m) = e.right() {
-                Ok(Some(Ok(TeamMember {
-                    id: TeamMemberId(m.id),
-                    team_id: TeamId(m.team_id),
-                    user_id: id,
-                    role: m.role,
-                    permissions: Permissions::from_bits(m.permissions as u64)
-                        .unwrap_or_default(),
-                    accepted: m.accepted,
-                    payouts_split: m.payouts_split,
-                    ordering: m.ordering,
-                })))
-            } else {
-                Ok(None)
-            }
-        })
-        .try_collect::<Vec<Result<TeamMember, super::DatabaseError>>>()
-        .await?;
-
-        let team_members = team_members
-            .into_iter()
-            .collect::<Result<Vec<TeamMember>, super::DatabaseError>>()?;
-
-        Ok(team_members)
+        Ok(())
     }
 
     /// Gets a team member from a user id and team id.  Does not return pending members.
@@ -394,38 +220,14 @@ impl TeamMember {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let result = sqlx::query!(
-            "
-            SELECT id, user_id, role, permissions, accepted, payouts_split, ordering
-            FROM team_members
-            WHERE (team_id = $1 AND user_id = $2 AND accepted = TRUE)
-            ",
-            id as TeamId,
-            user_id as UserId
-        )
-        .fetch_optional(executor)
-        .await?;
-
-        if let Some(m) = result {
-            Ok(Some(TeamMember {
-                id: TeamMemberId(m.id),
-                team_id: id,
-                user_id,
-                role: m.role,
-                permissions: Permissions::from_bits(m.permissions as u64)
-                    .unwrap_or_default(),
-                accepted: m.accepted,
-                payouts_split: m.payouts_split,
-                ordering: m.ordering,
-            }))
-        } else {
-            Ok(None)
-        }
+        Self::get_from_user_id_many(&[id], user_id, executor)
+            .await
+            .map(|x| x.into_iter().next())
     }
 
     /// Gets team members from user ids and team ids.  Does not return pending members.
     pub async fn get_from_user_id_many<'a, 'b, E>(
-        team_ids: Vec<TeamId>,
+        team_ids: &[TeamId],
         user_id: UserId,
         executor: E,
     ) -> Result<Vec<Self>, super::DatabaseError>
@@ -434,8 +236,7 @@ impl TeamMember {
     {
         use futures::stream::TryStreamExt;
 
-        let team_ids_parsed: Vec<i64> =
-            team_ids.into_iter().map(|x| x.0).collect();
+        let team_ids_parsed: Vec<i64> = team_ids.iter().map(|x| x.0).collect();
 
         let team_members = sqlx::query!(
             "
@@ -450,16 +251,16 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                    Ok(Some(Ok(TeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: TeamId(m.team_id),
-                        user_id,
-                        role: m.role,
-                        permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
-                        accepted: m.accepted,
-                        payouts_split: m.payouts_split,
-                        ordering: m.ordering,
-                    })))
+                Ok(Some(Ok(TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: TeamId(m.team_id),
+                    user_id,
+                    role: m.role,
+                    permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
+                    accepted: m.accepted,
+                    payouts_split: m.payouts_split,
+                    ordering: m.ordering,
+                })))
             } else {
                 Ok(None)
             }
@@ -501,8 +302,7 @@ impl TeamMember {
                 team_id: id,
                 user_id,
                 role: m.role,
-                permissions: Permissions::from_bits(m.permissions as u64)
-                    .unwrap_or_default(),
+                permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
@@ -543,18 +343,6 @@ impl TeamMember {
         user_id: UserId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), super::DatabaseError> {
-        sqlx::query!(
-            "
-            UPDATE mods
-            SET flame_anvil_user = NULL
-            WHERE (team_id = $1 AND flame_anvil_user = $2 )
-            ",
-            id as TeamId,
-            user_id as UserId,
-        )
-        .execute(&mut *transaction)
-        .await?;
-
         sqlx::query!(
             "
             DELETE FROM team_members
@@ -686,8 +474,7 @@ impl TeamMember {
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                permissions: Permissions::from_bits(m.permissions as u64)
-                    .unwrap_or_default(),
+                permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
@@ -724,8 +511,7 @@ impl TeamMember {
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                permissions: Permissions::from_bits(m.permissions as u64)
-                    .unwrap_or_default(),
+                permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,

@@ -4,7 +4,6 @@ use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use chrono::{DateTime, Utc};
 use meilisearch_sdk::client::Client;
-use meilisearch_sdk::document::Document;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::min;
@@ -100,6 +99,8 @@ pub struct UploadSearchProject {
     pub modified_timestamp: i64,
     pub open_source: bool,
     pub color: Option<u32>,
+    /// format: {project_id}-{dep_type}
+    pub dependencies: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -135,22 +136,8 @@ pub struct ResultSearchProject {
     pub gallery: Vec<String>,
     pub featured_gallery: Option<String>,
     pub color: Option<u32>,
-}
-
-impl Document for UploadSearchProject {
-    type UIDType = String;
-
-    fn get_uid(&self) -> &Self::UIDType {
-        &self.project_id
-    }
-}
-
-impl Document for ResultSearchProject {
-    type UIDType = String;
-
-    fn get_uid(&self) -> &Self::UIDType {
-        &self.project_id
-    }
+    /// format: {project_id}-{dep_type}
+    pub dependencies: Vec<String>,
 }
 
 pub async fn search_for_project(
@@ -194,13 +181,12 @@ pub async fn search_for_project(
                 None
             };
 
-            let filters: Cow<_> =
-                match (info.filters.as_deref(), info.version.as_deref()) {
-                    (Some(f), Some(v)) => format!("({}) AND ({})", f, v).into(),
-                    (Some(f), None) => f.into(),
-                    (None, Some(v)) => v.into(),
-                    (None, None) => "".into(),
-                };
+            let filters: Cow<_> = match (info.filters.as_deref(), info.version.as_deref()) {
+                (Some(f), Some(v)) => format!("({f}) AND ({v})").into(),
+                (Some(f), None) => f.into(),
+                (None, Some(v)) => v.into(),
+                (None, None) => "".into(),
+            };
 
             if let Some(facets) = facets {
                 filter_string.push('(');
@@ -224,7 +210,7 @@ pub async fn search_for_project(
                 filter_string.push(')');
 
                 if !filters.is_empty() {
-                    write!(filter_string, " AND ({})", filters)?;
+                    write!(filter_string, " AND ({filters})")?;
                 }
             } else {
                 filter_string.push_str(&filters);
@@ -240,8 +226,8 @@ pub async fn search_for_project(
 
     Ok(SearchResults {
         hits: results.hits.into_iter().map(|r| r.result).collect(),
-        offset: results.offset,
-        limit: results.limit,
-        total_hits: results.nb_hits,
+        offset: results.offset.unwrap_or_default(),
+        limit: results.limit.unwrap_or_default(),
+        total_hits: results.estimated_total_hits.unwrap_or_default(),
     })
 }

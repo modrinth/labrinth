@@ -55,6 +55,7 @@ struct DiscordWebhook {
     pub avatar_url: Option<String>,
     pub username: Option<String>,
     pub embeds: Vec<DiscordEmbed>,
+    pub content: Option<String>,
 }
 
 const PLUGIN_LOADERS: &[&str] = &[
@@ -72,13 +73,14 @@ pub async fn send_discord_webhook(
     project_id: ProjectId,
     pool: &PgPool,
     webhook_url: String,
+    message: Option<String>,
 ) -> Result<(), ApiError> {
     let all_game_versions = GameVersion::list(pool).await?;
 
     let row =
         sqlx::query!(
             "
-            SELECT m.id id, m.title title, m.description description,
+            SELECT m.id id, m.title title, m.description description, m.color color,
             m.icon_url icon_url, m.slug slug, cs.name client_side_type, ss.name server_side_type,
             pt.name project_type, u.username username, u.avatar_url avatar_url,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories,
@@ -89,7 +91,7 @@ pub async fn send_discord_webhook(
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id AND mc.is_additional = FALSE
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
-            LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ANY($2)
+            LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ALL($2)
             LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
             LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
@@ -140,20 +142,25 @@ pub async fn send_discord_webhook(
                 let emoji_id: i64 = match &**loader {
                     "bukkit" => 1049793345481883689,
                     "bungeecord" => 1049793347067314220,
+                    "canvas" => 1107352170656968795,
+                    "datapack" => 1057895494652788866,
                     "fabric" => 1049793348719890532,
+                    "folia" => 1107348745571537018,
                     "forge" => 1049793350498275358,
+                    "iris" => 1107352171743281173,
                     "liteloader" => 1049793351630733333,
                     "minecraft" => 1049793352964526100,
                     "modloader" => 1049793353962762382,
+                    "optifine" => 1107352174415052901,
                     "paper" => 1049793355598540810,
                     "purpur" => 1049793357351751772,
                     "quilt" => 1049793857681887342,
                     "rift" => 1049793359373414502,
                     "spigot" => 1049793413886779413,
                     "sponge" => 1049793416969605231,
+                    "vanilla" => 1107350794178678855,
                     "velocity" => 1049793419108700170,
                     "waterfall" => 1049793420937412638,
-                    "datapack" => 1057895494652788866,
                     _ => 1049805243866681424,
                 };
 
@@ -178,8 +185,7 @@ pub async fn send_discord_webhook(
         }
 
         if !versions.is_empty() {
-            let formatted_game_versions: String =
-                get_gv_range(versions, all_game_versions);
+            let formatted_game_versions: String = get_gv_range(versions, all_game_versions);
 
             fields.push(DiscordEmbedField {
                 name: "Versions",
@@ -222,14 +228,12 @@ pub async fn send_discord_webhook(
             title: project.title,
             description: project.description,
             timestamp: Utc::now(),
-            color: 0x1bd96a,
+            color: project.color.unwrap_or(0x1bd96a) as u32,
             fields,
             thumbnail: DiscordEmbedThumbnail {
                 url: project.icon_url,
             },
-            image: if let Some(first) =
-                project.featured_gallery.unwrap_or_default().first()
-            {
+            image: if let Some(first) = project.featured_gallery.unwrap_or_default().first() {
                 Some(first.clone())
             } else {
                 project.gallery.unwrap_or_default().first().cloned()
@@ -240,9 +244,7 @@ pub async fn send_discord_webhook(
                     "{}{display_project_type} on Modrinth",
                     display_project_type.remove(0).to_uppercase()
                 ),
-                icon_url: Some(
-                    "https://cdn-raw.modrinth.com/modrinth-new.png".to_string(),
-                ),
+                icon_url: Some("https://cdn-raw.modrinth.com/modrinth-new.png".to_string()),
             }),
         };
 
@@ -251,20 +253,14 @@ pub async fn send_discord_webhook(
         client
             .post(&webhook_url)
             .json(&DiscordWebhook {
-                avatar_url: Some(
-                    "https://cdn.modrinth.com/Modrinth_Dark_Logo.png"
-                        .to_string(),
-                ),
+                avatar_url: Some("https://cdn.modrinth.com/Modrinth_Dark_Logo.png".to_string()),
                 username: Some("Modrinth Release".to_string()),
                 embeds: vec![embed],
+                content: message,
             })
             .send()
             .await
-            .map_err(|_| {
-                ApiError::DiscordError(
-                    "Error while sending projects webhook".to_string(),
-                )
-            })?;
+            .map_err(|_| ApiError::Discord("Error while sending projects webhook".to_string()))?;
     }
 
     Ok(())
@@ -307,21 +303,15 @@ fn get_gv_range(
         } else {
             let interval_base = &intervals[current_interval];
 
-            if ((index as i32)
-                - (interval_base[interval_base.len() - 1][1] as i32)
-                == 1
-                || (release_index as i32)
-                    - (interval_base[interval_base.len() - 1][2] as i32)
-                    == 1)
+            if ((index as i32) - (interval_base[interval_base.len() - 1][1] as i32) == 1
+                || (release_index as i32) - (interval_base[interval_base.len() - 1][2] as i32) == 1)
                 && (all_game_versions[interval_base[0][1]].type_ == "release"
                     || all_game_versions[index].type_ != "release")
             {
                 if intervals[current_interval].get(1).is_some() {
-                    intervals[current_interval][1] =
-                        vec![i, index, release_index];
+                    intervals[current_interval][1] = vec![i, index, release_index];
                 } else {
-                    intervals[current_interval]
-                        .insert(1, vec![i, index, release_index]);
+                    intervals[current_interval].insert(1, vec![i, index, release_index]);
                 }
             } else {
                 current_interval += 1;
@@ -333,10 +323,7 @@ fn get_gv_range(
     let mut new_intervals = Vec::new();
 
     for interval in intervals {
-        if interval.len() == 2
-            && interval[0][2] != MAX_VALUE
-            && interval[1][2] == MAX_VALUE
-        {
+        if interval.len() == 2 && interval[0][2] != MAX_VALUE && interval[1][2] == MAX_VALUE {
             let mut last_snapshot: Option<usize> = None;
 
             for j in ((interval[0][1] + 1)..=interval[1][1]).rev() {
@@ -346,16 +333,12 @@ fn get_gv_range(
                         vec![
                             game_versions
                                 .iter()
-                                .position(|x| {
-                                    x.version == all_game_versions[j].version
-                                })
+                                .position(|x| x.version == all_game_versions[j].version)
                                 .unwrap_or(MAX_VALUE),
                             j,
                             all_releases
                                 .iter()
-                                .position(|x| {
-                                    x.version == all_game_versions[j].version
-                                })
+                                .position(|x| x.version == all_game_versions[j].version)
                                 .unwrap_or(MAX_VALUE),
                         ],
                     ]);
@@ -367,10 +350,7 @@ fn get_gv_range(
                                     game_versions
                                         .iter()
                                         .position(|x| {
-                                            x.version
-                                                == all_game_versions
-                                                    [last_snapshot]
-                                                    .version
+                                            x.version == all_game_versions[last_snapshot].version
                                         })
                                         .unwrap_or(MAX_VALUE),
                                     last_snapshot,
@@ -399,8 +379,7 @@ fn get_gv_range(
         if interval.len() == 2 {
             output.push(format!(
                 "{}—{}",
-                &game_versions[interval[0][0]].version,
-                &game_versions[interval[1][0]].version
+                &game_versions[interval[0][0]].version, &game_versions[interval[1][0]].version
             ))
         } else {
             output.push(game_versions[interval[0][0]].version.clone())

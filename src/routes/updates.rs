@@ -1,69 +1,68 @@
 use std::collections::HashMap;
 
 use actix_web::{get, web, HttpRequest, HttpResponse};
-use atom_syndication::{Feed, Text, Person, Category, Generator, Link, Entry, Content};
+use atom_syndication::{Category, Content, Entry, Feed, Generator, Link, Person, Text};
 use serde::Serialize;
 use sqlx::PgPool;
 
+use crate::auth::{filter_authorized_versions, get_user_from_headers, is_authorized};
 use crate::database;
-use crate::database::models::TeamMember;
-use crate::database::models::team_item::QueryTeamMember;
-use crate::models::projects::{Version, VersionType};
-use crate::util::auth::{
-    get_user_from_headers, is_authorized, is_authorized_version,
-};
-use futures::StreamExt;
+use crate::models::pats::Scopes;
+use crate::models::projects::VersionType;
+use crate::models::teams::TeamMember;
+use crate::queue::session::AuthQueue;
 
 use super::ApiError;
+
+pub fn config(cfg: &mut web::ServiceConfig) {
+    cfg.service(forge_updates);
+    cfg.service(atom_feed);
+}
 
 #[get("{id}/forge_updates.json")]
 pub async fn forge_updates(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     const ERROR: &str = "The specified project does not exist!";
 
     let (id,) = info.into_inner();
 
-    let project =
-        database::models::Project::get_from_slug_or_project_id(&id, &**pool)
-            .await?
-            .ok_or_else(|| ApiError::InvalidInput(ERROR.to_string()))?;
+    let project = database::models::Project::get(&id, &**pool, &redis)
+        .await?
+        .ok_or_else(|| ApiError::InvalidInput(ERROR.to_string()))?;
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
 
-    if !is_authorized(&project, &user_option, &pool).await? {
+    if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Err(ApiError::InvalidInput(ERROR.to_string()));
     }
 
-    let version_ids = database::models::Version::get_project_versions(
-        project.id,
-        None,
-        Some(vec!["forge".to_string()]),
-        &**pool,
+    let versions = database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
+
+    let mut versions = filter_authorized_versions(
+        versions
+            .into_iter()
+            .filter(|x| x.loaders.iter().any(|y| *y == "forge"))
+            .collect(),
+        &user_option,
+        &pool,
     )
     .await?;
 
-    let versions =
-        database::models::Version::get_many_full(version_ids, &**pool).await?;
-
-    let mut versions = futures::stream::iter(versions)
-        .filter_map(|data| async {
-            if is_authorized_version(&data.inner, &user_option, &pool)
-                .await
-                .ok()?
-            {
-                Some(data)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>()
-        .await;
-
-    versions
-        .sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
+    versions.sort_by(|a, b| b.date_published.cmp(&a.date_published));
 
     #[derive(Serialize)]
     struct ForgeUpdates {
@@ -81,8 +80,6 @@ pub async fn forge_updates(
     };
 
     for version in versions {
-        let version = Version::from(version);
-
         if version.version_type == VersionType::Release {
             for game_version in &version.game_versions {
                 response
@@ -108,53 +105,84 @@ pub async fn atom_feed(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (id,) = info.into_inner();
 
-    let project =
-        if let Some(proj) = database::models::Project::get_full_from_slug_or_project_id(&id, &**pool)
-            .await? {
-                proj
-            } else {
-                return Ok(HttpResponse::NotFound().body(""));
-            };
+    let Some(project) = database::models::Project::get(&id, &**pool, &redis).await? else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
 
     if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    // I would really like to get rid of this .clone() and making the method take a reference, but that
-    // necessitates a lot of refactoring.
-    let versions =
-        database::models::Version::get_many_full(project.versions.clone(), &**pool).await?;
+    let versions = database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
 
-    let mut versions = futures::stream::iter(versions)
-        .filter_map(|data| async {
-            if is_authorized_version(&data.inner, &user_option, &pool)
-                .await
-                .ok()?
-            {
-                Some(data)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>()
-        .await;
+    let mut versions = filter_authorized_versions(
+        versions
+            .into_iter()
+            .filter(|x| x.loaders.iter().any(|y| *y == "forge"))
+            .collect(),
+        &user_option,
+        &pool,
+    )
+    .await?;
 
-    versions
-        .sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
+    versions.sort_by(|a, b| b.date_published.cmp(&a.date_published));
 
-    let members_data =
-        TeamMember::get_from_team_full(project.inner.team_id, &**pool).await?;
+    let members_data = {
+        let members_data = database::models::TeamMember::get_from_team_full(
+            project.inner.team_id,
+            &**pool,
+            &redis,
+        )
+        .await?;
 
-    fn team_member_to_person(member: &QueryTeamMember) -> Person {
+        let users = crate::database::models::User::get_many_ids(
+            &members_data.iter().map(|x| x.user_id).collect::<Vec<_>>(),
+            &**pool,
+            &redis,
+        )
+        .await?;
+
+        members_data
+            .into_iter()
+            .flat_map(|x| {
+                users
+                    .iter()
+                    .find(|y| y.id == x.user_id)
+                    .map(|y| TeamMember::from(x, y.clone(), true))
+            })
+            .collect::<Vec<TeamMember>>()
+    };
+
+    fn team_member_to_person(member: &TeamMember) -> Person {
         Person {
-            name: member.user.name.as_ref().unwrap_or(&member.user.username).clone(),
+            name: member
+                .user
+                .name
+                .as_ref()
+                .unwrap_or(&member.user.username)
+                .clone(),
             email: None,
-            uri: Some(format!("{}/user/{}", dotenvy::var("SITE_URL").unwrap_or_default(), member.user.username))
+            uri: Some(format!(
+                "{}/user/{}",
+                dotenvy::var("SITE_URL").unwrap_or_default(),
+                member.user.username
+            )),
         }
     }
 
@@ -162,7 +190,7 @@ pub async fn atom_feed(
         Category {
             term: tag.clone(),
             scheme: None,
-            label: Some(tag.clone())
+            label: Some(tag.clone()),
         }
     }
 
@@ -177,7 +205,8 @@ pub async fn atom_feed(
             .filter(|x| x.role == crate::models::teams::OWNER_ROLE)
             .map(team_member_to_person)
             .collect::<Vec<_>>(),
-        categories: project.categories
+        categories: project
+            .categories
             .iter()
             .chain(project.additional_categories.iter())
             .map(tag_to_category)
@@ -186,53 +215,56 @@ pub async fn atom_feed(
             .iter()
             .filter(|x| x.role != crate::models::teams::OWNER_ROLE)
             .map(team_member_to_person)
-        .collect::<Vec<_>>(),
+            .collect::<Vec<_>>(),
         generator: Some(Generator {
             value: "labrinth".to_string(),
             uri: Some("https://github.com/modrinth/labrinth".to_string()),
-            version: Some(env!("CARGO_PKG_VERSION").to_string())
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }),
         icon: project.inner.icon_url.clone(),
-        links: vec![
-            Link {
-                href: format!(
-                    "{}/{}/{}",
-                    dotenvy::var("SITE_URL").unwrap_or_default(),
-                    project.project_type,
-                    project_id                    
-                ),
-                rel: "alternate".to_string(),
-                hreflang: None,
-                mime_type: Some("text/html".to_string()),
-                title: None,
-                length: None
-            }
-        ],
+        links: vec![Link {
+            href: format!(
+                "{}/{}/{}",
+                dotenvy::var("SITE_URL").unwrap_or_default(),
+                project.project_type,
+                project_id
+            ),
+            rel: "alternate".to_string(),
+            hreflang: None,
+            mime_type: Some("text/html".to_string()),
+            title: None,
+            length: None,
+        }],
         logo: None,
         rights: None,
         subtitle: Some(Text::plain(project.inner.description.clone())),
         entries: versions
             .iter()
             .map(|v| {
-                let version_id = crate::models::ids::VersionId::from(v.inner.id);
+                let version_id = crate::models::ids::VersionId::from(v.id);
                 let link = format!(
                     "{}/{}/{}/version/{}",
-                    dotenvy::var("SITE_URL").unwrap_or_default(), project.project_type, project_id, version_id
+                    dotenvy::var("SITE_URL").unwrap_or_default(),
+                    project.project_type,
+                    project_id,
+                    version_id
                 );
 
                 Entry {
-                    title: Text::plain(v.inner.name.clone()),
+                    title: Text::plain(v.name.clone()),
                     id: version_id.to_string(),
-                    updated: v.inner.date_published.into(),
+                    updated: v.date_published.into(),
                     authors: members_data
                         .iter()
-                        .find(|x| x.user.id == v.inner.author_id)
+                        .find(|x| x.user.id == v.author_id)
                         .map(team_member_to_person)
                         .into_iter()
                         .collect::<Vec<_>>(),
-                    categories: v.loaders
+                    categories: v
+                        .loaders
                         .iter()
-                        .chain(v.game_versions.iter())
+                        .map(|x| &x.0)
+                        .chain(v.game_versions.iter().map(|x| &x.0))
                         .map(tag_to_category)
                         .collect::<Vec<_>>(),
                     contributors: vec![],
@@ -242,9 +274,9 @@ pub async fn atom_feed(
                         hreflang: None,
                         mime_type: Some("text/html".to_string()),
                         title: None,
-                        length: None
+                        length: None,
                     }],
-                    published: Some(v.inner.date_published.into()),
+                    published: Some(v.date_published.into()),
                     rights: None,
                     source: None,
                     summary: None,
@@ -253,19 +285,19 @@ pub async fn atom_feed(
                         lang: Some("en_US".to_string()),
                         value: None,
                         src: Some(link),
-                        content_type: None
+                        content_type: None,
                     }),
-                    extensions: Default::default()
+                    extensions: Default::default(),
                 }
             })
             .collect::<Vec<_>>(),
         extensions: Default::default(),
         namespaces: Default::default(),
         base: None,
-        lang: Some("en-US".to_string())
+        lang: Some("en-US".to_string()),
     };
 
     Ok(HttpResponse::Ok()
-        .content_type("text/xml")
+        .content_type("application/atom+xml")
         .body(feed.to_string()))
 }

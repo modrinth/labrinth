@@ -1,5 +1,4 @@
 use super::ids::Base62Id;
-use crate::database::models::team_item::QueryTeamMember;
 use crate::models::users::User;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -13,7 +12,6 @@ pub struct TeamId(pub u64);
 pub const OWNER_ROLE: &str = "Owner";
 pub const DEFAULT_ROLE: &str = "Member";
 
-// TODO: permissions, role names, etc
 /// A team of users who control a project
 #[derive(Serialize, Deserialize)]
 pub struct Team {
@@ -70,13 +68,12 @@ pub struct TeamMember {
 }
 
 impl TeamMember {
-    pub fn from(data: QueryTeamMember, override_permissions: bool) -> Self {
-        let has_flame_anvil_key = data.user.flame_anvil_key.is_some();
-        let mut user: User = data.user.into();
-
-        if !override_permissions {
-            user.has_flame_anvil_key = Some(has_flame_anvil_key);
-        }
+    pub fn from(
+        data: crate::database::models::team_item::TeamMember,
+        user: crate::database::models::User,
+        override_permissions: bool,
+    ) -> Self {
+        let user: User = user.into();
 
         Self {
             team_id: data.team_id.into(),

@@ -3,6 +3,7 @@ use super::teams::TeamId;
 use super::users::UserId;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
+use crate::models::threads::ThreadId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
@@ -48,12 +49,15 @@ pub struct Project {
     /// The date at which the project was first approved.
     //pub approved: Option<DateTime<Utc>>,
     pub approved: Option<DateTime<Utc>>,
+    /// The date at which the project entered the moderation queue
+    pub queued: Option<DateTime<Utc>>,
 
     /// The status of the project
     pub status: ProjectStatus,
     /// The requested status of this projct
     pub requested_status: Option<ProjectStatus>,
 
+    /// DEPRECATED: moved to threads system
     /// The rejection data of the project
     pub moderator_message: Option<ModeratorMessage>,
 
@@ -75,6 +79,11 @@ pub struct Project {
 
     /// A list of the categories that the project is in.
     pub additional_categories: Vec<String>,
+    /// A list of game versions this project supports
+    pub game_versions: Vec<String>,
+    /// A list of loaders this project supports
+    pub loaders: Vec<String>,
+
     /// A list of ids for versions of the project.
     pub versions: Vec<VersionId>,
     /// The URL of the icon of the project
@@ -93,13 +102,14 @@ pub struct Project {
     /// A string of URLs to visual content featuring the project
     pub gallery: Vec<GalleryItem>,
 
-    /// The project linked from FlameAnvil to sync with
-    pub flame_anvil_project: Option<i32>,
-    /// The user_id of the team member whose token
-    pub flame_anvil_user: Option<UserId>,
-
     /// The color of the project (picked from icon)
     pub color: Option<u32>,
+
+    /// The thread of the moderation messages of the project
+    pub thread_id: ThreadId,
+
+    /// The monetization status of this project
+    pub monetization_status: MonetizationStatus,
 }
 
 impl From<QueryProject> for Project {
@@ -117,6 +127,7 @@ impl From<QueryProject> for Project {
             published: m.published,
             updated: m.updated,
             approved: m.approved,
+            queued: m.queued,
             status: m.status,
             requested_status: m.requested_status,
             moderator_message: if let Some(message) = m.moderation_message {
@@ -154,6 +165,8 @@ impl From<QueryProject> for Project {
             followers: m.follows as u32,
             categories: data.categories,
             additional_categories: data.additional_categories,
+            game_versions: data.game_versions,
+            loaders: data.loaders,
             versions: data.versions.into_iter().map(|v| v.into()).collect(),
             icon_url: m.icon_url,
             issues_url: m.issues_url,
@@ -182,9 +195,9 @@ impl From<QueryProject> for Project {
                     ordering: x.ordering,
                 })
                 .collect(),
-            flame_anvil_project: m.flame_anvil_project,
-            flame_anvil_user: m.flame_anvil_user.map(|x| x.into()),
             color: m.color,
+            thread_id: data.thread_id.into(),
+            monetization_status: m.monetization_status,
         }
     }
 }
@@ -402,8 +415,41 @@ impl ProjectStatus {
     }
 }
 
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum MonetizationStatus {
+    ForceDemonetized,
+    Demonetized,
+    Monetized,
+}
+
+impl std::fmt::Display for MonetizationStatus {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.write_str(self.as_str())
+    }
+}
+
+impl MonetizationStatus {
+    pub fn from_str(string: &str) -> MonetizationStatus {
+        match string {
+            "force-demonetized" => MonetizationStatus::ForceDemonetized,
+            "demonetized" => MonetizationStatus::Demonetized,
+            "monetized" => MonetizationStatus::Monetized,
+            _ => MonetizationStatus::Monetized,
+        }
+    }
+    // These are constant, so this can remove unnecessary allocations (`to_string`)
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MonetizationStatus::ForceDemonetized => "force-demonetized",
+            MonetizationStatus::Demonetized => "demonetized",
+            MonetizationStatus::Monetized => "monetized",
+        }
+    }
+}
+
 /// A specific version of a project
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Version {
     /// The ID of the version, encoded as a base62 string.
     pub id: VersionId,
@@ -488,16 +534,10 @@ impl From<QueryVersion> for Version {
                     version_id: d.version_id.map(|i| VersionId(i.0 as u64)),
                     project_id: d.project_id.map(|i| ProjectId(i.0 as u64)),
                     file_name: d.file_name,
-                    dependency_type: DependencyType::from_str(
-                        d.dependency_type.as_str(),
-                    ),
+                    dependency_type: DependencyType::from_str(d.dependency_type.as_str()),
                 })
                 .collect(),
-            game_versions: data
-                .game_versions
-                .into_iter()
-                .map(GameVersion)
-                .collect(),
+            game_versions: data.game_versions.into_iter().map(GameVersion).collect(),
             loaders: data.loaders.into_iter().map(Loader).collect(),
         }
     }
@@ -593,7 +633,7 @@ impl VersionStatus {
 }
 
 /// A single project file, with a url for the file and the file's hash
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct VersionFile {
     /// A map of hashes of the file.  The key is the hashing algorithm
     /// and the value is the string version of the hash.
@@ -707,6 +747,15 @@ impl FileType {
             FileType::RequiredResourcePack => "required-resource-pack",
             FileType::OptionalResourcePack => "optional-resource-pack",
             FileType::Unknown => "unknown",
+        }
+    }
+
+    pub fn from_str(string: &str) -> FileType {
+        match string {
+            "required-resource-pack" => FileType::RequiredResourcePack,
+            "optional-resource-pack" => FileType::OptionalResourcePack,
+            "unknown" => FileType::Unknown,
+            _ => FileType::Unknown,
         }
     }
 }

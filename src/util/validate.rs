@@ -4,15 +4,11 @@ use regex::Regex;
 use validator::{ValidationErrors, ValidationErrorsKind};
 
 lazy_static! {
-    pub static ref RE_URL_SAFE: Regex =
-        Regex::new(r#"^[a-zA-Z0-9!@$()`.+,_"-]*$"#).unwrap();
+    pub static ref RE_URL_SAFE: Regex = Regex::new(r#"^[a-zA-Z0-9!@$()`.+,_"-]*$"#).unwrap();
 }
 
 //TODO: In order to ensure readability, only the first error is printed, this may need to be expanded on in the future!
-pub fn validation_errors_to_string(
-    errors: ValidationErrors,
-    adder: Option<String>,
-) -> String {
+pub fn validation_errors_to_string(errors: ValidationErrors, adder: Option<String>) -> String {
     let mut output = String::new();
 
     let map = errors.into_errors();
@@ -23,19 +19,13 @@ pub fn validation_errors_to_string(
         if let Some(error) = map.get(field) {
             return match error {
                 ValidationErrorsKind::Struct(errors) => {
-                    validation_errors_to_string(
-                        *errors.clone(),
-                        Some(format!("of item {}", field)),
-                    )
+                    validation_errors_to_string(*errors.clone(), Some(format!("of item {field}")))
                 }
                 ValidationErrorsKind::List(list) => {
                     if let Some((index, errors)) = list.iter().next() {
                         output.push_str(&validation_errors_to_string(
                             *errors.clone(),
-                            Some(format!(
-                                "of list {} with index {}",
-                                field, index
-                            )),
+                            Some(format!("of list {field} with index {index}")),
                         ));
                     }
 
@@ -45,12 +35,12 @@ pub fn validation_errors_to_string(
                     if let Some(error) = errors.get(0) {
                         if let Some(adder) = adder {
                             output.push_str(&format!(
-                                "Field {} {} failed validation with error {}",
+                                "Field {} {} failed validation with error: {}",
                                 field, adder, error.code
                             ));
                         } else {
                             output.push_str(&format!(
-                                "Field {} failed validation with error {}",
+                                "Field {} failed validation with error: {}",
                                 field, error.code
                             ));
                         }
@@ -99,4 +89,31 @@ pub fn validate_url(value: &str) -> Result<(), validator::ValidationError> {
     }
 
     Ok(())
+}
+
+pub fn validate_name(value: &str) -> Result<(), validator::ValidationError> {
+    if value.trim().is_empty() {
+        return Err(validator::ValidationError::new(
+            "Name cannot contain only whitespace.",
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_name_with_valid_input() {
+        let result = validate_name("My Test mod");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_name_with_invalid_input_returns_error() {
+        let result = validate_name("  ");
+        assert!(result.is_err());
+    }
 }
