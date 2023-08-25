@@ -74,13 +74,10 @@ impl Image {
         }
     }
 
-    pub async fn get_many_contexted<'a, E>(
+    pub async fn get_many_contexted(
         context: ImageContext,
-        exec: E,
-    ) -> Result<Vec<Image>, sqlx::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Vec<Image>, sqlx::Error> {
         use futures::stream::TryStreamExt;
 
         sqlx::query!(
@@ -94,7 +91,7 @@ impl Image {
             context.context_as_str(),
             context.inner_id().map(|x| x as i64)
         )
-        .fetch_many(exec)
+        .fetch_many(transaction)
         .try_filter_map(|e| async {
             Ok(e.right().map(|row| {
                 let id = ImageId(row.id);

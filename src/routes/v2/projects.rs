@@ -4,7 +4,6 @@ use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::file_hosting::FileHost;
-use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
@@ -13,6 +12,7 @@ use crate::models::projects::{
 };
 use crate::models::teams::Permissions;
 use crate::models::threads::MessageBody;
+use crate::models::{self, images};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::search::{search_for_project, SearchConfig, SearchError};
@@ -1124,29 +1124,19 @@ pub async fn project_edit(
 
             // check new description and body for links to associated images
             // if they no longer exist in the description or body, delete them
-            let uploaded_images = database::models::Image::get_many_contexted(
+            let checkable_strings: Vec<&str> = vec![&new_project.description, &new_project.body]
+                .into_iter()
+                .filter_map(|x| x.as_ref().map(|y| y.as_str()))
+                .collect();
+            images::delete_unused_images(
                 models::images::ImageContext::Project {
                     project_id: Some(id.into()),
                 },
+                checkable_strings,
                 &mut transaction,
+                &redis,
             )
             .await?;
-            for image in uploaded_images {
-                let description_contains = if let Some(description) = &new_project.description {
-                    description.contains(&image.url)
-                } else {
-                    false
-                };
-                let body_contains = if let Some(body) = &new_project.body {
-                    body.contains(&image.url)
-                } else {
-                    false
-                };
-                if !description_contains && !body_contains {
-                    image_item::Image::remove(image.id, &mut transaction, &redis).await?;
-                    image_item::Image::clear_cache(image.id, image.url, &redis).await?;
-                }
-            }
 
             database::models::Project::clear_cache(
                 project_item.inner.id,
@@ -2321,7 +2311,9 @@ pub async fn project_delete(
         WHERE mod_id = $1
         ",
         project.inner.id as database::models::ids::ProjectId,
-    ).execute(&mut *transaction).await?;
+    )
+    .execute(&mut *transaction)
+    .await?;
 
     let result =
         database::models::Project::remove(project.inner.id, &mut transaction, &redis).await?;

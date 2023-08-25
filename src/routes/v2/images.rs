@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use crate::database;
-use crate::database::models::{ids, project_item, thread_item};
+use crate::database::models::{ids, project_item, thread_item, version_item};
 use crate::file_hosting::FileHost;
 use crate::models::images::Image;
-use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
@@ -23,7 +22,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 pub struct ImageUpload {
     pub ext: String,
     pub context: String,
-
 }
 
 #[post("image")]
@@ -37,16 +35,19 @@ pub async fn images_add(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&data.ext) {
+        let context = ImageContext::from_str(&data.context, None);
+        if matches!(context, ImageContext::Unknown) {
+            return Err(ApiError::InvalidInput(format!(
+                "Invalid context specified: {}!",
+                data.context
+            )));
+        }
+        let scopes = vec![context.relevant_scope()];
+
         let cdn_url = dotenvy::var("CDN_URL")?;
-        let user = get_user_from_headers(
-            &req,
-            &**pool,
-            &redis,
-            &session_queue,
-            Some(&[Scopes::IMAGE_POST]),
-        )
-        .await?
-        .1;
+        let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
+            .await?
+            .1;
 
         let bytes =
             read_from_payload(&mut payload, 1_048_576, "Icons must be smaller than 1MiB").await?;
@@ -61,13 +62,6 @@ pub async fn images_add(
             .await?;
 
         let mut transaction = pool.begin().await?;
-
-        let context = ImageContext::from_str(&data.context, None);
-        if matches!(context, ImageContext::Unknown) {
-            return Err(ApiError::InvalidInput(
-                format!("Invalid context specified: {}!", data.context),
-            ));
-        }
 
         let db_image: database::models::Image = database::models::Image {
             id: database::models::generate_image_id(&mut transaction).await?,
@@ -115,15 +109,21 @@ pub async fn image_edit(
     if let Some(data) = image_data {
         let mut transaction = pool.begin().await?;
 
-        let scopes = vec![Scopes::IMAGE_WRITE, data.context.relevant_scope()];
+        let scopes = vec![data.context.relevant_scope()];
         let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
             .await?
             .1;
 
         if user.id == data.owner_id.into() {
-            let checked_id = match data.context {
+            let checked_id: Option<i64> = match data.context {
                 ImageContext::Project { .. } => {
                     project_item::Project::get(&edit.set_id, &mut transaction, &redis)
+                        .await?
+                        .map(|x| x.inner.id.0)
+                }
+                ImageContext::Version { .. } => {
+                    let new_id = serde_json::from_str::<ids::VersionId>(&edit.set_id)?;
+                    version_item::Version::get(new_id, &mut transaction, &redis)
                         .await?
                         .map(|x| x.inner.id.0)
                 }
@@ -169,23 +169,19 @@ pub async fn image_delete(
     let string: String = info.into_inner().0;
 
     let image_data = database::models::Image::get(&string, &**pool, &redis).await?;
-    let user = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::IMAGE_DELETE]),
-    )
-    .await?
-    .1;
-
-    let mut transaction = pool.begin().await?;
     if let Some(data) = image_data {
+        let scopes = vec![data.context.relevant_scope()];
+        let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
+            .await?
+            .1;
+
+        let mut transaction = pool.begin().await?;
         if user.id == data.owner_id.into() {
             database::models::Image::remove(data.id, &mut transaction, &redis).await?;
             return Ok(HttpResponse::Ok().finish());
         }
+        transaction.commit().await?;
     }
-    transaction.commit().await?;
+
     Ok(HttpResponse::NotFound().body(""))
 }

@@ -281,17 +281,27 @@ pub async fn collection_edit(
         }
 
         if let Some(status) = &new_collection.status {
-            sqlx::query!(
-                "
-                UPDATE collections
-                SET status = $1
-                WHERE (id = $2)
-                ",
-                status.to_string(),
-                id as database::models::ids::CollectionId,
-            )
-            .execute(&mut *transaction)
-            .await?;
+            if let Some(user) = user_option {
+                if !(user.role.is_mod()
+                    || collection_item.status.is_approved() && status.can_be_requested())
+                {
+                    return Err(ApiError::CustomAuthentication(
+                        "You don't have permission to set this status!".to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE collections
+                    SET status = $1
+                    WHERE (id = $2)
+                    ",
+                    status.to_string(),
+                    id as database::models::ids::CollectionId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
         }
 
         if let Some(new_project_ids) = &new_collection.new_projects {
