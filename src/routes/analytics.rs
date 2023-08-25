@@ -1,6 +1,5 @@
 use crate::auth::get_user_from_headers;
 use crate::models::analytics::{PageView, Playtime};
-
 use crate::models::pats::Scopes;
 use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
