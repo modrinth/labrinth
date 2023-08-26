@@ -7,7 +7,6 @@ use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::{auth::{is_authorized, is_authorized_version, get_user_from_headers}, database};
 use actix_web::{get, route, web, HttpRequest, HttpResponse};
-use itertools::Itertools;
 use sqlx::PgPool;
 use std::collections::HashSet;
 use yaserde_derive::YaSerialize;
@@ -108,44 +107,24 @@ pub async fn maven_metadata(
     .fetch_all(&**pool)
     .await?;
 
-    let last_release_id = version_names
-        .iter()
-        .filter(|x| x.version_type == "release")
-        .map(|x| x.id)
-        .last();
+    let mut new_versions = Vec::new();
+    let mut vals = HashSet::new();
+    let mut latest_release = None;
 
-    let mut last_release: Option<String> = None;
+    for row in version_names {
+        let value = if vals.contains(&row.version_number) {
+            format!("{}", VersionId(row.id as u64))
+        } else {
+            row.version_number
+        };
 
-    let new_versions: Vec<String> = version_names
-        .into_iter()
-        .group_by(|x| x.version_number.clone())
-        .into_iter()
-        .flat_map(|(vnum, group)| {
-            let versions: Vec<_> = group.collect();
+        vals.insert(value.clone());
+        if row.version_type == "release" {
+            latest_release = Some(value.clone())
+        }
 
-            if versions.len() == 1 {
-                if last_release_id == Some(versions[0].id) {
-                    last_release = Some(vnum.clone());
-                }
-
-                vec![vnum]
-            } else {
-                let vids: Vec<(i64, String)> = versions
-                    .into_iter()
-                    .map(|v| (v.id, VersionId(v.id as u64).to_string()))
-                    .collect();
-
-                for (vid, vid_string) in vids.iter() {
-                    if last_release_id == Some(*vid) {
-                        last_release = Some(vid_string.clone());
-                        break;
-                    }
-                }
-
-                vids.into_iter().map(|x| x.1).collect()
-            }
-        })
-        .collect();
+        new_versions.push(value);
+    }
 
     let project_id: ProjectId = project.inner.id.into();
 
@@ -157,7 +136,7 @@ pub async fn maven_metadata(
                 .last()
                 .unwrap_or(&"release".to_string())
                 .to_string(),
-            release: last_release.unwrap_or_default(),
+            release: latest_release.unwrap_or_default(),
             versions: Versions {
                 versions: new_versions,
             },
@@ -193,11 +172,7 @@ async fn find_version(
 
     // Try to parse version filters from version coords.
     let Some((vnumber, filter)) = vcoords.rsplit_once('-') else {
-        return if exact_matches.len() > 1 {
-            Err(ApiError::InvalidInput("Ambiguous version coordinates".to_string()))
-        } else {
-            Ok(None)
-        };
+        return Ok(exact_matches.get(0).map(|x| (*x).clone()));
     };
 
     let db_loaders: HashSet<String> = Loader::list(pool, redis)
@@ -227,13 +202,7 @@ async fn find_version(
         })
         .collect::<Vec<_>>();
 
-    match matched.len() {
-        1 => Ok(Some(matched[0].clone())),
-        0 => Ok(None),
-        _ => Err(ApiError::InvalidInput(
-            "Ambiguous version coordinates".to_string()
-        )),
-    }
+    Ok(matched.get(0).cloned())
 }
 
 fn find_file<'a>(
