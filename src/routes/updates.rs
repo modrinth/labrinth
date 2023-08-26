@@ -47,7 +47,6 @@ pub async fn forge_updates(
         return Err(ApiError::InvalidInput(ERROR.to_string()));
     }
 
-
     let versions = database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
 
     let mut versions = filter_authorized_versions(

@@ -240,28 +240,6 @@
     },
     "query": "\n                    UPDATE versions\n                    SET name = $1\n                    WHERE (id = $2)\n                    "
   },
-  "0b353c1c8563c5d01d9714262908a7927923e68d63567bb45150ff06de22ec88": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Text",
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT id FROM versions WHERE mod_id = $1 AND (version_number = $2 OR id = $3) ORDER BY date_published ASC LIMIT 2"
-  },
   "0b79ae3825e05ae07058a0a9d02fb0bd68ce37f3c7cf0356d565c23520988816": {
     "describe": {
       "columns": [

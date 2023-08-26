@@ -180,22 +180,15 @@ async fn find_version(
         .ok()
         .map(|x| x as i64);
 
-    let exact_matches = sqlx::query!(
-        "SELECT id FROM versions WHERE mod_id = $1 AND (version_number = $2 OR id = $3) ORDER BY date_published ASC LIMIT 2",
-        project.inner.id as database::models::ids::ProjectId,
-        vcoords,
-        id_option
-    )
-    .fetch_all(pool)
-    .await?;
+    let all_versions = database::models::Version::get_many(&project.versions, pool, redis).await?;
+
+    let exact_matches = all_versions
+        .iter()
+        .filter(|x| &x.inner.version_number == vcoords || Some(x.inner.id.0) == id_option)
+        .collect::<Vec<_>>();
 
     if exact_matches.len() == 1 {
-        return Ok(database::models::Version::get(
-            database::models::ids::VersionId(exact_matches[0].id),
-            pool,
-            &redis
-        )
-        .await?);
+        return Ok(Some(exact_matches[0].clone()));
     }
 
     // Try to parse version filters from version coords.
@@ -207,7 +200,7 @@ async fn find_version(
         };
     };
 
-    let db_loaders: HashSet<String> = Loader::list(pool, &redis)
+    let db_loaders: HashSet<String> = Loader::list(pool, redis)
         .await?
         .into_iter()
         .map(|x| x.loader)
@@ -218,8 +211,7 @@ async fn find_version(
         .map(String::from)
         .partition::<Vec<_>, _>(|el| db_loaders.contains(el));
 
-    let matched = database::models::Version::get_many(&project.versions, &*pool, &redis)
-        .await?
+    let matched = all_versions
         .into_iter()
         .filter(|x| {
             let mut bool = x.inner.version_number == vnumber;
