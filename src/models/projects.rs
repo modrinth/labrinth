@@ -106,7 +106,7 @@ pub struct Project {
     pub color: Option<u32>,
 
     /// The thread of the moderation messages of the project
-    pub thread_id: Option<ThreadId>,
+    pub thread_id: ThreadId,
 
     /// The monetization status of this project
     pub monetization_status: MonetizationStatus,
@@ -196,7 +196,7 @@ impl From<QueryProject> for Project {
                 })
                 .collect(),
             color: m.color,
-            thread_id: m.thread_id.map(|x| x.into()),
+            thread_id: data.thread_id.into(),
             monetization_status: m.monetization_status,
         }
     }
@@ -449,7 +449,7 @@ impl MonetizationStatus {
 }
 
 /// A specific version of a project
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Version {
     /// The ID of the version, encoded as a base62 string.
     pub id: VersionId,
@@ -633,7 +633,7 @@ impl VersionStatus {
 }
 
 /// A single project file, with a url for the file and the file's hash
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct VersionFile {
     /// A map of hashes of the file.  The key is the hashing algorithm
     /// and the value is the string version of the hash.
@@ -747,6 +747,15 @@ impl FileType {
             FileType::RequiredResourcePack => "required-resource-pack",
             FileType::OptionalResourcePack => "optional-resource-pack",
             FileType::Unknown => "unknown",
+        }
+    }
+
+    pub fn from_str(string: &str) -> FileType {
+        match string {
+            "required-resource-pack" => FileType::RequiredResourcePack,
+            "optional-resource-pack" => FileType::OptionalResourcePack,
+            "unknown" => FileType::Unknown,
+            _ => FileType::Unknown,
         }
     }
 }

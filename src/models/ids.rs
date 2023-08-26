@@ -1,8 +1,10 @@
 use thiserror::Error;
 
 pub use super::notifications::NotificationId;
+pub use super::pats::PatId;
 pub use super::projects::{ProjectId, VersionId};
 pub use super::reports::ReportId;
+pub use super::sessions::SessionId;
 pub use super::teams::TeamId;
 pub use super::threads::ThreadId;
 pub use super::threads::ThreadMessageId;
@@ -17,7 +19,6 @@ pub use super::users::UserId;
 ///
 /// This method panics if `n` is 0 or greater than 11, since a `u64`
 /// can only represent up to 11 character base62 strings
-#[allow(dead_code)]
 #[inline]
 pub fn random_base62(n: usize) -> u64 {
     random_base62_rng(&mut rand::thread_rng(), n)
@@ -113,6 +114,8 @@ base62_id_impl!(ReportId, ReportId);
 base62_id_impl!(NotificationId, NotificationId);
 base62_id_impl!(ThreadId, ThreadId);
 base62_id_impl!(ThreadMessageId, ThreadMessageId);
+base62_id_impl!(SessionId, SessionId);
+base62_id_impl!(PatId, PatId);
 
 pub mod base62_impl {
     use serde::de::{self, Deserializer, Visitor};

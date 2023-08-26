@@ -72,10 +72,11 @@ const PLUGIN_LOADERS: &[&str] = &[
 pub async fn send_discord_webhook(
     project_id: ProjectId,
     pool: &PgPool,
+    redis: &deadpool_redis::Pool,
     webhook_url: String,
     message: Option<String>,
 ) -> Result<(), ApiError> {
-    let all_game_versions = GameVersion::list(pool).await?;
+    let all_game_versions = GameVersion::list(pool, redis).await?;
 
     let row =
         sqlx::query!(
@@ -91,7 +92,7 @@ pub async fn send_discord_webhook(
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id AND mc.is_additional = FALSE
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
-            LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ANY($2)
+            LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ALL($2)
             LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
             LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
@@ -151,9 +152,10 @@ pub async fn send_discord_webhook(
                     "liteloader" => 1049793351630733333,
                     "minecraft" => 1049793352964526100,
                     "modloader" => 1049793353962762382,
+                    "neoforge" => 1140437823783190679,
                     "optifine" => 1107352174415052901,
                     "paper" => 1049793355598540810,
-                    "purpur" => 1049793357351751772,
+                    "purpur" => 1140436034505674762,
                     "quilt" => 1049793857681887342,
                     "rift" => 1049793359373414502,
                     "spigot" => 1049793413886779413,
@@ -260,9 +262,7 @@ pub async fn send_discord_webhook(
             })
             .send()
             .await
-            .map_err(|_| {
-                ApiError::DiscordError("Error while sending projects webhook".to_string())
-            })?;
+            .map_err(|_| ApiError::Discord("Error while sending projects webhook".to_string()))?;
     }
 
     Ok(())

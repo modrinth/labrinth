@@ -1,10 +1,11 @@
 use crate::database::models::categories::Loader;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::{QueryFile, QueryVersion};
+use crate::models::pats::Scopes;
 use crate::models::projects::{ProjectId, VersionId};
+use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use crate::util::auth::{get_user_from_headers, is_authorized_version};
-use crate::{database, util::auth::is_authorized};
+use crate::{auth::{is_authorized, is_authorized_version, get_user_from_headers}, database};
 use actix_web::{get, route, web, HttpRequest, HttpResponse};
 use itertools::Itertools;
 use sqlx::PgPool;
@@ -68,15 +69,26 @@ pub async fn maven_metadata(
     req: HttpRequest,
     params: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let project_id = params.into_inner().0;
-    let Some(project) = database::models::Project::get_from_slug_or_project_id(&project_id, &**pool).await? else {
+    let Some(project) = database::models::Project::get(&project_id, &**pool, &redis).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
 
-    if !is_authorized(&project, &user_option, &pool).await? {
+    if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
     }
 
@@ -87,7 +99,7 @@ pub async fn maven_metadata(
         WHERE mod_id = $1 AND status = ANY($2)
         ORDER BY date_published ASC
         ",
-        project.id as database::models::ids::ProjectId,
+        project.inner.id as database::models::ids::ProjectId,
         &*crate::models::projects::VersionStatus::iterator()
             .filter(|x| x.is_listed())
             .map(|x| x.to_string())
@@ -135,7 +147,7 @@ pub async fn maven_metadata(
         })
         .collect();
 
-    let project_id: ProjectId = project.id.into();
+    let project_id: ProjectId = project.inner.id.into();
 
     let respdata = Metadata {
         group_id: "maven.modrinth".to_string(),
@@ -149,7 +161,7 @@ pub async fn maven_metadata(
             versions: Versions {
                 versions: new_versions,
             },
-            last_updated: project.updated.format("%Y%m%d%H%M%S").to_string(),
+            last_updated: project.inner.updated.format("%Y%m%d%H%M%S").to_string(),
         },
     };
 
@@ -162,6 +174,7 @@ async fn find_version(
     project: &QueryProject,
     vcoords: &String,
     pool: &PgPool,
+    redis: &deadpool_redis::Pool,
 ) -> Result<Option<QueryVersion>, ApiError> {
     let id_option = crate::models::ids::base62_impl::parse_base62(vcoords)
         .ok()
@@ -177,9 +190,10 @@ async fn find_version(
     .await?;
 
     if exact_matches.len() == 1 {
-        return Ok(database::models::Version::get_full(
+        return Ok(database::models::Version::get(
             database::models::ids::VersionId(exact_matches[0].id),
             pool,
+            &redis
         )
         .await?);
     }
@@ -193,7 +207,7 @@ async fn find_version(
         };
     };
 
-    let db_loaders: HashSet<String> = Loader::list(pool)
+    let db_loaders: HashSet<String> = Loader::list(pool, &redis)
         .await?
         .into_iter()
         .map(|x| x.loader)
@@ -202,25 +216,30 @@ async fn find_version(
     let (loaders, game_versions) = filter
         .split(',')
         .map(String::from)
-        .partition(|el| db_loaders.contains(el));
+        .partition::<Vec<_>, _>(|el| db_loaders.contains(el));
 
-    let matched = database::models::Version::get_project_versions(
-        project.inner.id,
-        Some(game_versions),
-        Some(loaders),
-        None,
-        Some(2),
-        None,
-        Some(vnumber.to_string()),
-        pool,
-    )
-    .await?;
+    let matched = database::models::Version::get_many(&project.versions, &*pool, &redis)
+        .await?
+        .into_iter()
+        .filter(|x| {
+            let mut bool = x.inner.version_number == vnumber;
+
+            if !loaders.is_empty() {
+                bool &= x.loaders.iter().any(|y| loaders.contains(y));
+            }
+            if !game_versions.is_empty() {
+                bool &= x.game_versions.iter().any(|y| game_versions.contains(y));
+            }
+
+            bool
+        })
+        .collect::<Vec<_>>();
 
     match matched.len() {
-        1 => Ok(database::models::Version::get_full(matched[0], pool).await?),
+        1 => Ok(Some(matched[0].clone())),
         0 => Ok(None),
         _ => Err(ApiError::InvalidInput(
-            "Ambiguous version coordinates".to_string(),
+            "Ambiguous version coordinates".to_string()
         )),
     }
 }
@@ -262,19 +281,30 @@ pub async fn version_file(
     req: HttpRequest,
     params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
-    let Some(project) = database::models::Project::get_full_from_slug_or_project_id(&project_id, &**pool).await? else {
+    let Some(project) = database::models::Project::get(&project_id, &**pool, &redis).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
 
     if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    let Some(version) = find_version(&project, &vnum, &pool).await? else {
+    let Some(version) = find_version(&project, &vnum, &pool, &redis).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
@@ -312,19 +342,30 @@ pub async fn version_file_sha1(
     req: HttpRequest,
     params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
-    let Some(project) = database::models::Project::get_full_from_slug_or_project_id(&project_id, &**pool).await? else {
+    let Some(project) = database::models::Project::get(&project_id, &**pool, &redis).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
 
     if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    let Some(version) = find_version(&project, &vnum, &pool).await? else {
+    let Some(version) = find_version(&project, &vnum, &pool, &redis).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
@@ -343,19 +384,30 @@ pub async fn version_file_sha512(
     req: HttpRequest,
     params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
-    let Some(project) = database::models::Project::get_full_from_slug_or_project_id(&project_id, &**pool).await? else {
+    let Some(project) = database::models::Project::get(&project_id, &**pool, &redis).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 
-    let user_option = get_user_from_headers(req.headers(), &**pool).await.ok();
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
 
     if !is_authorized(&project.inner, &user_option, &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    let Some(version) = find_version(&project, &vnum, &pool).await? else {
+    let Some(version) = find_version(&project, &vnum, &pool, &redis).await? else {
         return Ok(HttpResponse::NotFound().body(""));
     };
 

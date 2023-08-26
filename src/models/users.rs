@@ -1,4 +1,5 @@
 use super::ids::Base62Id;
+use crate::auth::flows::AuthProvider;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -37,22 +38,23 @@ impl Default for Badges {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct User {
     pub id: UserId,
-    pub kratos_id: Option<String>, // None if legacy user unconnected to Minos/Kratos
     pub username: String,
     pub name: Option<String>,
-    pub email: Option<String>,
     pub avatar_url: Option<String>,
     pub bio: Option<String>,
     pub created: DateTime<Utc>,
     pub role: Role,
     pub badges: Badges,
+
     pub payout_data: Option<UserPayoutData>,
+    pub auth_providers: Option<Vec<AuthProvider>>,
+    pub email: Option<String>,
+    pub email_verified: Option<bool>,
+    pub has_password: Option<bool>,
+    pub has_totp: Option<bool>,
+
+    // DEPRECATED. Always returns None
     pub github_id: Option<u64>,
-    pub discord_id: Option<u64>,
-    pub google_id: Option<u128>,
-    pub microsoft_id: Option<u64>,
-    pub apple_id: Option<u64>,
-    pub gitlab_id: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -63,7 +65,7 @@ pub struct UserPayoutData {
     pub payout_address: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum RecipientType {
     Email,
@@ -95,7 +97,7 @@ impl RecipientType {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum RecipientWallet {
     Venmo,
@@ -136,22 +138,20 @@ impl From<DBUser> for User {
     fn from(data: DBUser) -> Self {
         Self {
             id: data.id.into(),
-            kratos_id: data.kratos_id,
             username: data.username,
             name: data.name,
             email: None,
+            email_verified: None,
             avatar_url: data.avatar_url,
             bio: data.bio,
             created: data.created,
             role: Role::from_string(&data.role),
             badges: data.badges,
             payout_data: None,
+            auth_providers: None,
+            has_password: None,
+            has_totp: None,
             github_id: None,
-            discord_id: None,
-            google_id: None,
-            microsoft_id: None,
-            apple_id: None,
-            gitlab_id: None,
         }
     }
 }
