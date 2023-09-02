@@ -18,7 +18,7 @@ impl super::Validator for PluginYmlValidator {
             "bukkit",
             "spigot",
             "paper",
-            "purpur"
+            "purpur",
         ]
     }
 
