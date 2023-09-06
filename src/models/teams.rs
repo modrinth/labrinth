@@ -50,7 +50,7 @@ impl Permissions {
         role: &crate::models::users::Role,
         team_member: &Option<crate::database::models::TeamMember>,
     ) -> Option<Self> {
-        return if role.is_admin() {
+        if role.is_admin() {
             Some(Permissions::ALL)
         } else if let Some(member) = team_member {
             Some(member.permissions)
@@ -58,7 +58,7 @@ impl Permissions {
             Some(Permissions::EDIT_DETAILS | Permissions::EDIT_BODY | Permissions::UPLOAD_VERSION)
         } else {
             None
-        };
+        }
     }
 }
 
