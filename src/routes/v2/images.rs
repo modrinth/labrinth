@@ -97,22 +97,22 @@ pub async fn images_add(
             owner_id: db_image.owner_id.into(),
 
             project_id: if data.context == "project" {
-                db_image.context_id.map(ProjectId)
+                Some(db_image.context_id.map(ProjectId))
             } else {
                 None
             },
             version_id: if data.context == "version" {
-                db_image.context_id.map(VersionId)
+                Some(db_image.context_id.map(VersionId))
             } else {
                 None
             },
             thread_message_id: if data.context == "thread_message" {
-                db_image.context_id.map(ThreadMessageId)
+                Some(db_image.context_id.map(ThreadMessageId))
             } else {
                 None
             },
             report_id: if data.context == "report" {
-                db_image.context_id.map(ReportId)
+                Some(db_image.context_id.map(ReportId))
             } else {
                 None
             },
@@ -144,7 +144,7 @@ pub struct ImageEdit {
 pub async fn image_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
-    web::Query(edit): web::Query<ImageEdit>,
+    web::Json(edit): web::Json<ImageEdit>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
     session_queue: web::Data<AuthQueue>,
@@ -173,30 +173,74 @@ pub async fn image_edit(
         if user.id == data.owner_id.into() {
             let mut checked_id: Option<i64> = None;
             if let Some(project_id) = edit.project_id {
-                checked_id = project_item::Project::get(&project_id, &mut transaction, &redis)
-                    .await?
-                    .map(|x| x.inner.id.0);
+                if data.context_type_name != "project" {
+                    return Err(ApiError::InvalidInput(format!(
+                        "Image is associated with a '{}', not a 'project'!",
+                        data.context_type_name
+                    )));
+                }
+                checked_id = Some(
+                    project_item::Project::get(&project_id, &mut transaction, &redis)
+                        .await?
+                        .ok_or_else(|| ApiError::InvalidInput("Project not found!".to_string()))?
+                        .inner
+                        .id
+                        .0,
+                );
             }
 
             if let Some(version_id) = edit.version_id {
-                let new_id = serde_json::from_str::<ids::VersionId>(&version_id)?;
-                checked_id = version_item::Version::get(new_id, &mut transaction, &redis)
-                    .await?
-                    .map(|x| x.inner.id.0);
+                if data.context_type_name != "version" {
+                    return Err(ApiError::InvalidInput(format!(
+                        "Image is associated with a '{}', not a 'version'!",
+                        data.context_type_name
+                    )));
+                }
+                let new_id = VersionId(parse_base62(&version_id)?);
+                checked_id = Some(
+                    version_item::Version::get(new_id.into(), &mut transaction, &redis)
+                        .await?
+                        .ok_or_else(|| ApiError::InvalidInput("Version not found!".to_string()))?
+                        .inner
+                        .id
+                        .0,
+                );
             }
 
             if let Some(thread_message_id) = edit.thread_message_id {
+                if data.context_type_name != "thread_message" {
+                    return Err(ApiError::InvalidInput(format!(
+                        "Image is associated with a '{}', not a 'thread_message'!",
+                        data.context_type_name
+                    )));
+                }
                 let new_id = serde_json::from_str::<ids::ThreadMessageId>(&thread_message_id)?;
-                checked_id = thread_item::ThreadMessage::get(new_id, &mut transaction)
-                    .await?
-                    .map(|x| x.id.0);
+                checked_id = Some(
+                    thread_item::ThreadMessage::get(new_id, &mut transaction)
+                        .await?
+                        .ok_or_else(|| {
+                            ApiError::InvalidInput("Thread message not found!".to_string())
+                        })?
+                        .id
+                        .0,
+                )
             }
 
             if let Some(report_id) = edit.report_id {
+                if data.context_type_name != "report" {
+                    return Err(ApiError::InvalidInput(format!(
+                        "Image is associated with a '{}', not a 'report'!",
+                        data.context_type_name
+                    )));
+                }
                 let new_id = serde_json::from_str::<ids::ReportId>(&report_id)?;
-                checked_id = report_item::Report::get(new_id, &mut transaction)
-                    .await?
-                    .map(|x| x.id.0);
+                checked_id = Some(
+                    report_item::Report::get(new_id, &mut transaction)
+                        .await?
+                        .ok_or_else(|| ApiError::InvalidInput("Report not found!".to_string()))?
+                        .id
+                        .0,
+                )
             }
 
             if let Some(new_id) = checked_id {

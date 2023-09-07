@@ -28,10 +28,26 @@ pub struct Image {
     pub owner_id: UserId,
 
     // context it is associated with (at most one)
-    pub project_id: Option<ProjectId>,
-    pub version_id: Option<VersionId>,
-    pub thread_message_id: Option<ThreadMessageId>,
-    pub report_id: Option<ReportId>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub project_id: Option<Option<ProjectId>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub version_id: Option<Option<VersionId>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub thread_message_id: Option<Option<ThreadMessageId>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub report_id: Option<Option<ReportId>>,
 }
 
 impl From<QueryImage> for Image {
@@ -51,16 +67,16 @@ impl From<QueryImage> for Image {
 
         match x.context_type_name.as_str() {
             "project" => {
-                image.project_id = x.context_id.map(|x| ProjectId(x as u64));
+                image.project_id = Some(x.context_id.map(|x| ProjectId(x as u64)));
             }
             "version" => {
-                image.version_id = x.context_id.map(|x| VersionId(x as u64));
+                image.version_id = Some(x.context_id.map(|x| VersionId(x as u64)));
             }
             "thread_message" => {
-                image.thread_message_id = x.context_id.map(|x| ThreadMessageId(x as u64));
+                image.thread_message_id = Some(x.context_id.map(|x| ThreadMessageId(x as u64)));
             }
             "report" => {
-                image.report_id = x.context_id.map(|x| ReportId(x as u64));
+                image.report_id = Some(x.context_id.map(|x| ReportId(x as u64)));
             }
             _ => {}
         }

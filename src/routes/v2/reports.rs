@@ -1,6 +1,10 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
+use crate::database;
 use crate::database::models::thread_item::{ThreadBuilder, ThreadMessageBuilder};
+use crate::database::models::{image_item, ImageContextTypeId};
+use crate::models::ids::ImageId;
 use crate::models::ids::{base62_impl::parse_base62, ProjectId, UserId, VersionId};
+use crate::models::images;
 use crate::models::pats::Scopes;
 use crate::models::reports::{ItemType, Report};
 use crate::models::threads::{MessageBody, ThreadType};
@@ -22,12 +26,16 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(report_get);
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct CreateReport {
     pub report_type: String,
     pub item_id: String,
     pub item_type: ItemType,
     pub body: String,
+    // Associations to uploaded images
+    #[validate(length(max = 10))]
+    #[serde(default)]
+    pub uploaded_images: Vec<ImageId>,
 }
 
 #[post("report")]
@@ -147,6 +155,34 @@ pub async fn report_create(
     }
 
     report.insert(&mut transaction).await?;
+
+    for image in new_report.uploaded_images {
+        if let Some(db_image) =
+            image_item::Image::get(image.into(), &mut *transaction, &redis).await?
+        {
+            if db_image.context_type_name == "report" {
+                return Err(ApiError::InvalidInput(format!(
+                    "Image {} is not unused and in the 'report' context",
+                    image
+                )));
+            }
+
+            sqlx::query!(
+                "
+                UPDATE uploaded_images
+                SET context_id = $1
+                WHERE id = $2
+                ",
+                id.0 as i64,
+                image.0 as i64
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            image_item::Image::clear_cache(db_image.id, &redis).await?;
+        }
+    }
+
     let thread_id = ThreadBuilder {
         type_: ThreadType::Report,
         members: vec![],
@@ -423,6 +459,24 @@ pub async fn report_edit(
             .await?;
         }
 
+        // delete any images no longer in the body
+        let checkable_strings: Vec<&str> = vec![&edit_report.body]
+            .into_iter()
+            .filter_map(|x: &Option<String>| x.as_ref().map(|y| y.as_str()))
+            .collect();
+        let image_context_type_id: Option<ImageContextTypeId> =
+            ImageContextTypeId::get_id("report", &mut *transaction).await?;
+        if let Some(image_context_type_id) = image_context_type_id {
+            images::delete_unused_images(
+                image_context_type_id,
+                id.0 as u64,
+                checkable_strings,
+                &mut transaction,
+                &redis,
+            )
+            .await?;
+        }
+
         transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
@@ -442,11 +496,25 @@ pub async fn report_delete(
     check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
 
     let mut transaction = pool.begin().await?;
-    let result = crate::database::models::report_item::Report::remove_full(
-        info.into_inner().0.into(),
-        &mut transaction,
-    )
-    .await?;
+
+    let id = info.into_inner().0;
+    let image_context_type_id: Option<ImageContextTypeId> =
+        ImageContextTypeId::get_id("report", &mut *transaction).await?;
+    if let Some(image_context_type_id) = image_context_type_id {
+        let uploaded_images = database::models::Image::get_many_contexted(
+            image_context_type_id,
+            id.0 as i64,
+            &mut transaction,
+        )
+        .await?;
+        for image in uploaded_images {
+            image_item::Image::remove(image.id, &mut transaction, &redis).await?;
+        }
+    }
+
+    let result =
+        crate::database::models::report_item::Report::remove_full(id.into(), &mut transaction)
+            .await?;
     transaction.commit().await?;
 
     if result.is_some() {
