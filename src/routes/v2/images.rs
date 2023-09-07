@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
+use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::database::models::categories::ImageContextType;
 use crate::database::models::{ids, project_item, report_item, thread_item, version_item};
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
-use crate::models::ids::{ImageId, ProjectId, VersionId, ThreadMessageId};
+use crate::models::ids::{ImageId, ProjectId, ThreadMessageId, VersionId};
 use crate::models::images::Image;
 use crate::models::reports::ReportId;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
-use crate::auth::get_user_from_headers;
 use actix_web::{patch, post, web, HttpRequest, HttpResponse};
 use ids::ImageContextTypeId;
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 #[derive(Serialize, Deserialize)]
 pub struct ImageUpload {
     pub ext: String,
-    
+
     // Context must be an allowed context
     // currently: project, version, thread_message, report
     pub context: String,
@@ -42,15 +42,19 @@ pub async fn images_add(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&data.ext) {
-
         let context = ImageContextTypeId::get_id(&data.context, &**pool).await?;
         let context = match context {
             Some(x) => x,
-            None => return Err(ApiError::InvalidInput("Context must be one of: project, version, thread_message, report".to_string()))
+            None => {
+                return Err(ApiError::InvalidInput(
+                    "Context must be one of: project, version, thread_message, report".to_string(),
+                ))
+            }
         };
 
-
-        let relevant_scope = ImageContextType::relevant_scope(&data.context).ok_or_else(|| ApiError::InvalidInput(format!("Invalid image context: {}", &data.context)))?;
+        let relevant_scope = ImageContextType::relevant_scope(&data.context).ok_or_else(|| {
+            ApiError::InvalidInput(format!("Invalid image context: {}", &data.context))
+        })?;
         let scopes = vec![relevant_scope];
 
         let cdn_url = dotenvy::var("CDN_URL")?;
@@ -93,22 +97,22 @@ pub async fn images_add(
             owner_id: db_image.owner_id.into(),
 
             project_id: if data.context == "project" {
-                db_image.context_id.map(|x| ProjectId(x as u64))
+                db_image.context_id.map(ProjectId)
             } else {
                 None
             },
             version_id: if data.context == "version" {
-                db_image.context_id.map(|x| VersionId(x as u64))
+                db_image.context_id.map(VersionId)
             } else {
                 None
             },
             thread_message_id: if data.context == "thread_message" {
-                db_image.context_id.map(|x|  ThreadMessageId(x as u64))
+                db_image.context_id.map(ThreadMessageId)
             } else {
                 None
             },
             report_id: if data.context == "report" {
-                db_image.context_id.map(|x| ReportId(x as u64))
+                db_image.context_id.map(ReportId)
             } else {
                 None
             },
@@ -123,7 +127,6 @@ pub async fn images_add(
         ))
     }
 }
-
 
 // Associate an image with a context
 // One of project_id, version_id, thread_message_id, or report_id must be specified
@@ -154,7 +157,13 @@ pub async fn image_edit(
         let mut transaction = pool.begin().await?;
 
         // Get scopes needed depending on context
-        let relevant_scope = ImageContextType::relevant_scope(&data.context_type_name).ok_or_else(|| ApiError::InvalidInput(format!("Invalid image context: {}", &data.context_type_name)))?;
+        let relevant_scope =
+            ImageContextType::relevant_scope(&data.context_type_name).ok_or_else(|| {
+                ApiError::InvalidInput(format!(
+                    "Invalid image context: {}",
+                    &data.context_type_name
+                ))
+            })?;
 
         let scopes = vec![relevant_scope];
         let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
@@ -162,34 +171,34 @@ pub async fn image_edit(
             .1;
 
         if user.id == data.owner_id.into() {
-            let mut checked_id : Option<i64> = None;
+            let mut checked_id: Option<i64> = None;
             if let Some(project_id) = edit.project_id {
                 checked_id = project_item::Project::get(&project_id, &mut transaction, &redis)
-                .await?
-                .map(|x| x.inner.id.0);
+                    .await?
+                    .map(|x| x.inner.id.0);
             }
 
             if let Some(version_id) = edit.version_id {
                 let new_id = serde_json::from_str::<ids::VersionId>(&version_id)?;
                 checked_id = version_item::Version::get(new_id, &mut transaction, &redis)
-                .await?
-                .map(|x| x.inner.id.0);
+                    .await?
+                    .map(|x| x.inner.id.0);
             }
 
             if let Some(thread_message_id) = edit.thread_message_id {
                 let new_id = serde_json::from_str::<ids::ThreadMessageId>(&thread_message_id)?;
                 checked_id = thread_item::ThreadMessage::get(new_id, &mut transaction)
-                .await?
-                .map(|x| x.id.0);
+                    .await?
+                    .map(|x| x.id.0);
             }
 
             if let Some(report_id) = edit.report_id {
                 let new_id = serde_json::from_str::<ids::ReportId>(&report_id)?;
                 checked_id = report_item::Report::get(new_id, &mut transaction)
-                .await?
-                .map(|x| x.id.0);
+                    .await?
+                    .map(|x| x.id.0);
             }
-            
+
             if let Some(new_id) = checked_id {
                 sqlx::query!(
                     "

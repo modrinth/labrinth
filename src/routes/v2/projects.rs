@@ -1,8 +1,8 @@
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
 use crate::database;
-use crate::database::models::{image_item, ImageContextTypeId};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
+use crate::database::models::{image_item, ImageContextTypeId};
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::notifications::NotificationBody;
@@ -1129,20 +1129,18 @@ pub async fn project_edit(
                 .filter_map(|x| x.as_ref().map(|y| y.as_str()))
                 .collect();
 
-                let image_context_type_id: Option<ImageContextTypeId> = ImageContextTypeId::get_id(
-                    "project",
-                    &mut *transaction,
-                ).await?;
-                if let Some(image_context_type_id) = image_context_type_id {
-                        images::delete_unused_images(
-                            image_context_type_id,
-                            id.0 as u64,
-                        checkable_strings,
-                        &mut transaction,
-                        &redis,
-                    )
-                    .await?;
-                }
+            let image_context_type_id: Option<ImageContextTypeId> =
+                ImageContextTypeId::get_id("project", &mut *transaction).await?;
+            if let Some(image_context_type_id) = image_context_type_id {
+                images::delete_unused_images(
+                    image_context_type_id,
+                    id.0 as u64,
+                    checkable_strings,
+                    &mut transaction,
+                    &redis,
+                )
+                .await?;
+            }
             database::models::Project::clear_cache(
                 project_item.inner.id,
                 project_item.inner.slug,
@@ -2299,10 +2297,7 @@ pub async fn project_delete(
     }
 
     let mut transaction = pool.begin().await?;
-    let image_context_type_id = ImageContextTypeId::get_id(
-        "project",
-        &mut *transaction,
-    ).await?;
+    let image_context_type_id = ImageContextTypeId::get_id("project", &mut *transaction).await?;
     if let Some(image_context_type_id) = image_context_type_id {
         let uploaded_images = database::models::Image::get_many_contexted(
             image_context_type_id,
@@ -2313,7 +2308,6 @@ pub async fn project_delete(
         for image in uploaded_images {
             image_item::Image::remove(image.id, &mut transaction, &redis).await?;
         }
-    
     }
 
     sqlx::query!(

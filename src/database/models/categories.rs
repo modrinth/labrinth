@@ -517,7 +517,10 @@ impl ReportType {
 }
 
 impl ImageContextTypeId {
-    pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<ImageContextTypeId>, DatabaseError>
+    pub async fn get_id<'a, E>(
+        name: &str,
+        exec: E,
+    ) -> Result<Option<ImageContextTypeId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -531,10 +534,9 @@ impl ImageContextTypeId {
         .fetch_optional(exec)
         .await?;
 
-        Ok(result.map(|r| ImageContextTypeId(r.id as i32)))
+        Ok(result.map(|r| ImageContextTypeId(r.id)))
     }
 }
-
 
 impl ProjectType {
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<ProjectTypeId>, DatabaseError>

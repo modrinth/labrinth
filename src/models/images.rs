@@ -3,12 +3,12 @@ use super::{
     pats::Scopes,
     reports::ReportId,
 };
-use crate::{models::ids::UserId, database::models::{image_item::QueryImage, ImageContextTypeId, categories::ImageContextType}};
 use crate::{
-    database::{
-        self,
-        models::image_item,
-    },
+    database::models::{categories::ImageContextType, image_item::QueryImage, ImageContextTypeId},
+    models::ids::UserId,
+};
+use crate::{
+    database::{self, models::image_item},
     routes::ApiError,
 };
 use chrono::{DateTime, Utc};
@@ -36,7 +36,6 @@ pub struct Image {
 
 impl From<QueryImage> for Image {
     fn from(x: QueryImage) -> Self {
-
         let mut image = Image {
             id: x.id.into(),
             url: x.url,
@@ -53,25 +52,25 @@ impl From<QueryImage> for Image {
         match x.context_type_name.as_str() {
             "project" => {
                 image.project_id = x.context_id.map(|x| ProjectId(x as u64));
-            },
+            }
             "version" => {
                 image.version_id = x.context_id.map(|x| VersionId(x as u64));
-            },
+            }
             "thread_message" => {
                 image.thread_message_id = x.context_id.map(|x| ThreadMessageId(x as u64));
-            },
+            }
             "report" => {
                 image.report_id = x.context_id.map(|x| ReportId(x as u64));
-            },
-            _ => {},
+            }
+            _ => {}
         }
-        
+
         image
     }
 }
 
 impl ImageContextType {
-    pub fn relevant_scope(name : &str) -> Option<Scopes> {
+    pub fn relevant_scope(name: &str) -> Option<Scopes> {
         match name {
             "project" => Some(Scopes::PROJECT_WRITE),
             "version" => Some(Scopes::VERSION_WRITE),
@@ -92,7 +91,12 @@ pub async fn delete_unused_images(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &deadpool_redis::Pool,
 ) -> Result<(), ApiError> {
-    let uploaded_images = database::models::Image::get_many_contexted(context_type_id, context_id as i64, transaction).await?;
+    let uploaded_images = database::models::Image::get_many_contexted(
+        context_type_id,
+        context_id as i64,
+        transaction,
+    )
+    .await?;
 
     for image in uploaded_images {
         let mut should_delete = true;

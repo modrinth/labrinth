@@ -172,7 +172,8 @@ impl Image {
                 .await?;
 
             for image in images {
-                if let Some(image) = image.and_then(|x| serde_json::from_str::<QueryImage>(&x).ok()) {
+                if let Some(image) = image.and_then(|x| serde_json::from_str::<QueryImage>(&x).ok())
+                {
                     remaining_ids.retain(|x| image.id.0 != x.0);
                     found_images.push(image);
                     continue;
