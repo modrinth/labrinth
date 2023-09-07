@@ -6,7 +6,7 @@ use crate::database::models::version_item::{
 };
 use crate::database::models::{self, image_item};
 use crate::file_hosting::FileHost;
-use crate::models::images::{ImageContext, ImageId};
+use crate::models::images::ImageId;
 use crate::models::notifications::NotificationBody;
 use crate::models::pack::PackFileHash;
 use crate::models::pats::Scopes;
@@ -445,19 +445,19 @@ async fn version_create_inner(
         if let Some(db_image) =
             image_item::Image::get(image.into(), &mut *transaction, redis).await?
         {
-            if !matches!(db_image.context, ImageContext::Version { version_id: None }) {
+            if db_image.context_type_name == "version" {
                 return Err(CreateError::InvalidInput(format!(
                     "Image {} is not unused and in the 'version' context",
                     image
                 )));
             }
+
             sqlx::query!(
                 "
                 UPDATE uploaded_images
-                SET context = $1, context_id = $2
-                WHERE id = $3
+                SET context_id = $1
+                WHERE id = $2
                 ",
-                db_image.context.context_as_str(),
                 version_id.0 as i64,
                 image.0 as i64
             )

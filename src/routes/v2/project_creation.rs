@@ -5,7 +5,6 @@ use crate::database::models::{self, image_item};
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::ids::ImageId;
-use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
@@ -789,7 +788,7 @@ async fn project_create_inner(
             if let Some(db_image) =
                 image_item::Image::get(image.into(), &mut *transaction, redis).await?
             {
-                if !matches!(db_image.context, ImageContext::Project { project_id: None }) {
+                if db_image.context_type_name == "project" {
                     return Err(CreateError::InvalidInput(format!(
                         "Image {} is not unused and in the 'project' context",
                         image
@@ -798,10 +797,9 @@ async fn project_create_inner(
                 sqlx::query!(
                     "
                     UPDATE uploaded_images
-                    SET context = $1, context_id = $2
-                    WHERE id = $3
+                    SET context_id = $1
+                    WHERE id = $2
                     ",
-                    db_image.context.context_as_str(),
                     id as models::ids::ProjectId,
                     image.0 as i64
                 )

@@ -1,6 +1,5 @@
 use super::ids::*;
 use crate::database::models::DatabaseError;
-use crate::models::images::ImageContext;
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use serde::{Deserialize, Serialize};
@@ -15,7 +14,23 @@ pub struct Image {
     pub size: u64,
     pub created: DateTime<Utc>,
     pub owner_id: UserId,
-    pub context: ImageContext, // uses model Ids, not database Ids
+
+    // context it is associated with
+    pub context_type_id: ImageContextTypeId,
+    pub context_id: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct QueryImage {
+    pub id: ImageId,
+    pub url: String,
+    pub size: u64,
+    pub created: DateTime<Utc>,
+    pub owner_id: UserId,
+
+    // context it is associated with
+    pub context_type_name: String,
+    pub context_id: Option<i64>,
 }
 
 impl Image {
@@ -26,7 +41,7 @@ impl Image {
         sqlx::query!(
             "
             INSERT INTO uploaded_images (
-                id, url, size, created, owner_id, context, context_id
+                id, url, size, created, owner_id, context_type, context_id
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7
@@ -37,8 +52,8 @@ impl Image {
             self.size as i64,
             self.created,
             self.owner_id as UserId,
-            self.context.context_as_str(),
-            self.context.inner_id().map(|x| x as i64),
+            self.context_type_id.0,
+            self.context_id.map(|x| x as i64),
         )
         .execute(&mut *transaction)
         .await?;
@@ -73,38 +88,41 @@ impl Image {
     }
 
     pub async fn get_many_contexted(
-        context: ImageContext,
+        context_type: ImageContextTypeId,
+        context_id: i64,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<Vec<Image>, sqlx::Error> {
+    ) -> Result<Vec<QueryImage>, sqlx::Error> {
         use futures::stream::TryStreamExt;
 
         sqlx::query!(
             "
-            SELECT i.id, i.url, i.size, i.created, i.owner_id, i.context, i.context_id
+            SELECT i.id, i.url, i.size, i.created, i.owner_id, t.name, i.context_id
             FROM uploaded_images i
-            WHERE i.context = $1
+            LEFT JOIN uploaded_images_context t ON t.id = i.context_type
+            WHERE i.context_type = $1
             AND i.context_id = $2
-            GROUP BY i.id
+            GROUP BY i.id, t.id
             ",
-            context.context_as_str(),
-            context.inner_id().map(|x| x as i64)
+            context_type.0,
+            context_id,
         )
         .fetch_many(transaction)
         .try_filter_map(|e| async {
             Ok(e.right().map(|row| {
                 let id = ImageId(row.id);
 
-                Image {
+                QueryImage {
                     id,
                     url: row.url,
                     size: row.size as u64,
                     created: row.created,
                     owner_id: UserId(row.owner_id),
-                    context: ImageContext::from_str(&row.context, row.context_id.map(|x| x as u64)),
+                    context_type_name: row.name,
+                    context_id: row.context_id,
                 }
             }))
         })
-        .try_collect::<Vec<Image>>()
+        .try_collect::<Vec<QueryImage>>()
         .await
     }
 
@@ -112,7 +130,7 @@ impl Image {
         id: ImageId,
         executor: E,
         redis: &deadpool_redis::Pool,
-    ) -> Result<Option<Image>, DatabaseError>
+    ) -> Result<Option<QueryImage>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -125,7 +143,7 @@ impl Image {
         image_ids: &[ImageId],
         exec: E,
         redis: &deadpool_redis::Pool,
-    ) -> Result<Vec<Image>, DatabaseError>
+    ) -> Result<Vec<QueryImage>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -154,7 +172,7 @@ impl Image {
                 .await?;
 
             for image in images {
-                if let Some(image) = image.and_then(|x| serde_json::from_str::<Image>(&x).ok()) {
+                if let Some(image) = image.and_then(|x| serde_json::from_str::<QueryImage>(&x).ok()) {
                     remaining_ids.retain(|x| image.id.0 != x.0);
                     found_images.push(image);
                     continue;
@@ -163,12 +181,13 @@ impl Image {
         }
 
         if !remaining_ids.is_empty() {
-            let db_images: Vec<Image> = sqlx::query!(
+            let db_images: Vec<QueryImage> = sqlx::query!(
                 "
-                SELECT i.id, i.url, i.size, i.created, i.owner_id, i.context, i.context_id
+                SELECT i.id, i.url, i.size, i.created, i.owner_id, t.name, i.context_id
                 FROM uploaded_images i
+                LEFT JOIN uploaded_images_context t ON t.id = i.context_type
                 WHERE i.id = ANY($1)
-                GROUP BY i.id;
+                GROUP BY i.id, t.id;
                 ",
                 &remaining_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
             )
@@ -177,17 +196,18 @@ impl Image {
                 Ok(e.right().map(|i| {
                     let id = i.id;
 
-                    Image {
+                    QueryImage {
                         id: ImageId(id),
                         url: i.url,
                         size: i.size as u64,
                         created: i.created,
                         owner_id: UserId(i.owner_id),
-                        context: ImageContext::from_str(&i.context, i.context_id.map(|x| x as u64)),
+                        context_type_name: i.name,
+                        context_id: i.context_id,
                     }
                 }))
             })
-            .try_collect::<Vec<Image>>()
+            .try_collect::<Vec<QueryImage>>()
             .await?;
 
             for image in db_images {

@@ -58,6 +58,12 @@ pub struct DonationPlatform {
     pub name: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ImageContextType {
+    pub id: ImageContextTypeId,
+    pub name: String,
+}
+
 impl Category {
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<CategoryId>, DatabaseError>
     where
@@ -509,6 +515,26 @@ impl ReportType {
         Ok(result)
     }
 }
+
+impl ImageContextTypeId {
+    pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<ImageContextTypeId>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT id FROM uploaded_images_context
+            WHERE name = $1
+            ",
+            name
+        )
+        .fetch_optional(exec)
+        .await?;
+
+        Ok(result.map(|r| ImageContextTypeId(r.id as i32)))
+    }
+}
+
 
 impl ProjectType {
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<ProjectTypeId>, DatabaseError>

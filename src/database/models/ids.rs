@@ -196,6 +196,9 @@ pub struct ReportId(pub i64);
 #[derive(Copy, Clone, Debug, Type)]
 #[sqlx(transparent)]
 pub struct ReportTypeId(pub i32);
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]
+#[sqlx(transparent)]
+pub struct ImageContextTypeId(pub i32);
 
 #[derive(Copy, Clone, Debug, Type, Hash, Eq, PartialEq, Deserialize, Serialize)]
 #[sqlx(transparent)]

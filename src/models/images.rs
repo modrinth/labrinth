@@ -3,11 +3,11 @@ use super::{
     pats::Scopes,
     reports::ReportId,
 };
-use crate::models::ids::UserId;
+use crate::{models::ids::UserId, database::models::{image_item::QueryImage, ImageContextTypeId, categories::ImageContextType}};
 use crate::{
     database::{
         self,
-        models::image_item::{self, Image as DBImage},
+        models::image_item,
     },
     routes::ApiError,
 };
@@ -27,85 +27,57 @@ pub struct Image {
     pub created: DateTime<Utc>,
     pub owner_id: UserId,
 
-    pub context: ImageContext,
+    // context it is associated with (at most one)
+    pub project_id: Option<ProjectId>,
+    pub version_id: Option<VersionId>,
+    pub thread_message_id: Option<ThreadMessageId>,
+    pub report_id: Option<ReportId>,
 }
 
-impl From<DBImage> for Image {
-    fn from(x: DBImage) -> Self {
-        Image {
+impl From<QueryImage> for Image {
+    fn from(x: QueryImage) -> Self {
+
+        let mut image = Image {
             id: x.id.into(),
             url: x.url,
             size: x.size,
             created: x.created,
             owner_id: x.owner_id.into(),
-            context: x.context,
+
+            project_id: None,
+            version_id: None,
+            thread_message_id: None,
+            report_id: None,
+        };
+
+        match x.context_type_name.as_str() {
+            "project" => {
+                image.project_id = x.context_id.map(|x| ProjectId(x as u64));
+            },
+            "version" => {
+                image.version_id = x.context_id.map(|x| VersionId(x as u64));
+            },
+            "thread_message" => {
+                image.thread_message_id = x.context_id.map(|x| ThreadMessageId(x as u64));
+            },
+            "report" => {
+                image.report_id = x.context_id.map(|x| ReportId(x as u64));
+            },
+            _ => {},
         }
+        
+        image
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
-pub enum ImageContext {
-    Project {
-        project_id: Option<ProjectId>,
-    },
-    Version {
-        // version changelogs
-        version_id: Option<VersionId>,
-    },
-    ThreadMessage {
-        thread_message_id: Option<ThreadMessageId>,
-    },
-    Report {
-        report_id: Option<ReportId>,
-    },
-    Unknown,
-}
-
-impl ImageContext {
-    pub fn context_as_str(&self) -> &'static str {
-        match self {
-            ImageContext::Project { .. } => "project",
-            ImageContext::Version { .. } => "version",
-            ImageContext::ThreadMessage { .. } => "thread_message",
-            ImageContext::Report { .. } => "report",
-            ImageContext::Unknown => "unknown",
-        }
-    }
-
-    pub fn inner_id(&self) -> Option<u64> {
-        match self {
-            ImageContext::Project { project_id } => project_id.map(|x| x.0),
-            ImageContext::Version { version_id } => version_id.map(|x| x.0),
-            ImageContext::ThreadMessage { thread_message_id } => thread_message_id.map(|x| x.0),
-            ImageContext::Report { report_id } => report_id.map(|x| x.0),
-            ImageContext::Unknown => None,
-        }
-    }
-    pub fn relevant_scope(&self) -> Scopes {
-        match self {
-            ImageContext::Project { .. } => Scopes::PROJECT_WRITE,
-            ImageContext::Version { .. } => Scopes::VERSION_WRITE,
-            ImageContext::ThreadMessage { .. } => Scopes::THREAD_WRITE,
-            ImageContext::Report { .. } => Scopes::REPORT_WRITE,
-            ImageContext::Unknown => Scopes::NONE,
-        }
-    }
-    pub fn from_str(context: &str, id: Option<u64>) -> Self {
-        match context {
-            "project" => ImageContext::Project {
-                project_id: id.map(ProjectId),
-            },
-            "version" => ImageContext::Version {
-                version_id: id.map(VersionId),
-            },
-            "thread_message" => ImageContext::ThreadMessage {
-                thread_message_id: id.map(ThreadMessageId),
-            },
-            "report" => ImageContext::Report {
-                report_id: id.map(ReportId),
-            },
-            _ => ImageContext::Unknown,
+impl ImageContextType {
+    pub fn relevant_scope(name : &str) -> Option<Scopes> {
+        match name {
+            "project" => Some(Scopes::PROJECT_WRITE),
+            "version" => Some(Scopes::VERSION_WRITE),
+            "thread_message" => Some(Scopes::THREAD_WRITE),
+            "report" => Some(Scopes::REPORT_WRITE),
+            _ => None,
         }
     }
 }
@@ -114,12 +86,13 @@ impl ImageContext {
 // if they no longer exist in the String list, delete them
 // Eg: if description is modified and no longer contains a link to an iamge
 pub async fn delete_unused_images(
-    context: ImageContext,
+    context_type_id: ImageContextTypeId,
+    context_id: u64,
     reference_strings: Vec<&str>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &deadpool_redis::Pool,
 ) -> Result<(), ApiError> {
-    let uploaded_images = database::models::Image::get_many_contexted(context, transaction).await?;
+    let uploaded_images = database::models::Image::get_many_contexted(context_type_id, context_id as i64, transaction).await?;
 
     for image in uploaded_images {
         let mut should_delete = true;

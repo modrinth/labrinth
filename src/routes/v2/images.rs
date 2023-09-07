@@ -1,28 +1,33 @@
 use std::sync::Arc;
 
 use crate::database;
+use crate::database::models::categories::ImageContextType;
 use crate::database::models::{ids, project_item, report_item, thread_item, version_item};
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
-use crate::models::ids::ImageId;
+use crate::models::ids::{ImageId, ProjectId, VersionId, ThreadMessageId};
 use crate::models::images::Image;
+use crate::models::reports::ReportId;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
-use crate::{auth::get_user_from_headers, models::images::ImageContext};
-use actix_web::{delete, patch, post, web, HttpRequest, HttpResponse};
-use ids::{ReportId, ThreadMessageId};
+use crate::auth::get_user_from_headers;
+use actix_web::{patch, post, web, HttpRequest, HttpResponse};
+use ids::ImageContextTypeId;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(images_add);
-    cfg.service(web::scope("image").service(image_delete));
+    cfg.service(web::scope("image").service(image_edit));
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ImageUpload {
     pub ext: String,
+    
+    // Context must be an allowed context
+    // currently: project, version, thread_message, report
     pub context: String,
 }
 
@@ -37,14 +42,16 @@ pub async fn images_add(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&data.ext) {
-        let context = ImageContext::from_str(&data.context, None);
-        if matches!(context, ImageContext::Unknown) {
-            return Err(ApiError::InvalidInput(format!(
-                "Invalid context specified: {}!",
-                data.context
-            )));
-        }
-        let scopes = vec![context.relevant_scope()];
+
+        let context = ImageContextTypeId::get_id(&data.context, &**pool).await?;
+        let context = match context {
+            Some(x) => x,
+            None => return Err(ApiError::InvalidInput("Context must be one of: project, version, thread_message, report".to_string()))
+        };
+
+
+        let relevant_scope = ImageContextType::relevant_scope(&data.context).ok_or_else(|| ApiError::InvalidInput(format!("Invalid image context: {}", &data.context)))?;
+        let scopes = vec![relevant_scope];
 
         let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
@@ -71,13 +78,41 @@ pub async fn images_add(
             size: upload_data.content_length as u64,
             created: chrono::Utc::now(),
             owner_id: database::models::UserId::from(user.id),
-            context,
+            context_type_id: context,
+            context_id: None,
         };
 
         // Insert
         db_image.insert(&mut transaction).await?;
 
-        let image = Image::from(db_image);
+        let image = Image {
+            id: db_image.id.into(),
+            url: db_image.url,
+            size: db_image.size,
+            created: db_image.created,
+            owner_id: db_image.owner_id.into(),
+
+            project_id: if data.context == "project" {
+                db_image.context_id.map(|x| ProjectId(x as u64))
+            } else {
+                None
+            },
+            version_id: if data.context == "version" {
+                db_image.context_id.map(|x| VersionId(x as u64))
+            } else {
+                None
+            },
+            thread_message_id: if data.context == "thread_message" {
+                db_image.context_id.map(|x|  ThreadMessageId(x as u64))
+            } else {
+                None
+            },
+            report_id: if data.context == "report" {
+                db_image.context_id.map(|x| ReportId(x as u64))
+            } else {
+                None
+            },
+        };
 
         transaction.commit().await?;
 
@@ -89,9 +124,15 @@ pub async fn images_add(
     }
 }
 
+
+// Associate an image with a context
+// One of project_id, version_id, thread_message_id, or report_id must be specified
 #[derive(Deserialize, Serialize)]
 pub struct ImageEdit {
-    pub set_id: String,
+    pub project_id: Option<String>,
+    pub version_id: Option<String>,
+    pub thread_message_id: Option<String>,
+    pub report_id: Option<String>,
 }
 
 /// Associates an image with a project or thread message
@@ -112,39 +153,43 @@ pub async fn image_edit(
     if let Some(data) = image_data {
         let mut transaction = pool.begin().await?;
 
-        let scopes = vec![data.context.relevant_scope()];
+        // Get scopes needed depending on context
+        let relevant_scope = ImageContextType::relevant_scope(&data.context_type_name).ok_or_else(|| ApiError::InvalidInput(format!("Invalid image context: {}", &data.context_type_name)))?;
+
+        let scopes = vec![relevant_scope];
         let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
             .await?
             .1;
 
         if user.id == data.owner_id.into() {
-            let checked_id: Option<i64> = match data.context {
-                ImageContext::Project { .. } => {
-                    project_item::Project::get(&edit.set_id, &mut transaction, &redis)
-                        .await?
-                        .map(|x| x.inner.id.0)
-                }
-                ImageContext::Version { .. } => {
-                    let new_id = serde_json::from_str::<ids::VersionId>(&edit.set_id)?;
-                    version_item::Version::get(new_id, &mut transaction, &redis)
-                        .await?
-                        .map(|x| x.inner.id.0)
-                }
-                ImageContext::ThreadMessage { .. } => {
-                    let new_id = serde_json::from_str::<ThreadMessageId>(&edit.set_id)?;
-                    thread_item::ThreadMessage::get(new_id, &mut transaction)
-                        .await?
-                        .map(|x| x.id.0)
-                }
-                ImageContext::Report { .. } => {
-                    let new_id = serde_json::from_str::<ReportId>(&edit.set_id)?;
-                    report_item::Report::get(new_id, &mut transaction)
-                        .await?
-                        .map(|x| x.id.0)
-                }
-                ImageContext::Unknown => None,
-            };
+            let mut checked_id : Option<i64> = None;
+            if let Some(project_id) = edit.project_id {
+                checked_id = project_item::Project::get(&project_id, &mut transaction, &redis)
+                .await?
+                .map(|x| x.inner.id.0);
+            }
 
+            if let Some(version_id) = edit.version_id {
+                let new_id = serde_json::from_str::<ids::VersionId>(&version_id)?;
+                checked_id = version_item::Version::get(new_id, &mut transaction, &redis)
+                .await?
+                .map(|x| x.inner.id.0);
+            }
+
+            if let Some(thread_message_id) = edit.thread_message_id {
+                let new_id = serde_json::from_str::<ids::ThreadMessageId>(&thread_message_id)?;
+                checked_id = thread_item::ThreadMessage::get(new_id, &mut transaction)
+                .await?
+                .map(|x| x.id.0);
+            }
+
+            if let Some(report_id) = edit.report_id {
+                let new_id = serde_json::from_str::<ids::ReportId>(&report_id)?;
+                checked_id = report_item::Report::get(new_id, &mut transaction)
+                .await?
+                .map(|x| x.id.0);
+            }
+            
             if let Some(new_id) = checked_id {
                 sqlx::query!(
                     "
@@ -159,38 +204,15 @@ pub async fn image_edit(
                 .await?;
                 transaction.commit().await?;
                 return Ok(HttpResponse::Ok().finish());
+            } else {
+                return Err(ApiError::InvalidInput(
+                    "One of 'project_id', 'version_id', 'thread_message_id', or 'report_id' must be specified!"
+                        .to_string(),
+                ));
             }
         }
 
         transaction.commit().await?;
     }
-    Ok(HttpResponse::NotFound().body(""))
-}
-
-#[delete("{id}")]
-pub async fn image_delete(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    let string: String = info.into_inner().0;
-    let image_id = ImageId(parse_base62(&string)?);
-    let image_data = database::models::Image::get(image_id.into(), &**pool, &redis).await?;
-    if let Some(data) = image_data {
-        let scopes = vec![data.context.relevant_scope()];
-        let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
-            .await?
-            .1;
-
-        let mut transaction = pool.begin().await?;
-        if user.id == data.owner_id.into() {
-            database::models::Image::remove(data.id, &mut transaction, &redis).await?;
-            return Ok(HttpResponse::Ok().finish());
-        }
-        transaction.commit().await?;
-    }
-
     Ok(HttpResponse::NotFound().body(""))
 }

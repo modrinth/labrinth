@@ -2,12 +2,11 @@ use std::sync::Arc;
 
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database;
-use crate::database::models::image_item;
+use crate::database::models::{image_item, ImageContextTypeId};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::file_hosting::FileHost;
 use crate::models::ids::ThreadMessageId;
-use crate::models::images::ImageContext;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
 use crate::models::projects::ProjectStatus;
@@ -466,24 +465,18 @@ pub async fn thread_send_message(
                 if let Some(db_image) =
                     image_item::Image::get((*image).into(), &mut *transaction, &redis).await?
                 {
-                    if !matches!(
-                        db_image.context,
-                        ImageContext::ThreadMessage {
-                            thread_message_id: None
-                        }
-                    ) {
+                    if db_image.context_type_name == "thread_message" {
                         return Err(ApiError::InvalidInput(format!(
-                            "Image {} is not unused and in the 'thread' context",
+                            "Image {} is not unused and in the 'thread_message' context",
                             image
                         )));
                     }
-                    sqlx::query!(
+                        sqlx::query!(
                         "
                         UPDATE uploaded_images
-                        SET context = $1, context_id = $2
-                        WHERE id = $3
+                        SET context_id = $1
+                        WHERE id = $2
                         ",
-                        db_image.context.context_as_str(),
                         thread.id.0,
                         image.0 as i64
                     )
@@ -589,20 +582,22 @@ pub async fn message_delete(
 
         let mut transaction = pool.begin().await?;
 
-        let images = database::Image::get_many_contexted(
-            ImageContext::ThreadMessage {
-                thread_message_id: Some(thread.id.into()),
-            },
-            &mut transaction,
-        )
-        .await?;
-        let cdn_url = dotenvy::var("CDN_URL")?;
-        for image in images {
-            let name = image.url.split(&format!("{cdn_url}/")).nth(1);
-            if let Some(icon_path) = name {
-                file_host.delete_file_version("", icon_path).await?;
-            }
-            database::Image::remove(image.id, &mut transaction, &redis).await?;
+        let image_context_type_id = ImageContextTypeId::get_id("thread_message", &mut transaction).await?;
+        if let Some(image_context_type_id) = image_context_type_id {
+            let images = database::Image::get_many_contexted(
+                image_context_type_id,
+                thread.id.0,
+                &mut transaction,
+            )
+            .await?;
+            let cdn_url = dotenvy::var("CDN_URL")?;
+            for image in images {
+                let name = image.url.split(&format!("{cdn_url}/")).nth(1);
+                if let Some(icon_path) = name {
+                    file_host.delete_file_version("", icon_path).await?;
+                }
+                database::Image::remove(image.id, &mut transaction, &redis).await?;
+            }                
         }
 
         database::models::ThreadMessage::remove_full(thread.id, &mut transaction).await?;
