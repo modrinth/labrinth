@@ -787,7 +787,7 @@ async fn project_create_inner(
 
         for image in project_create_data.uploaded_images {
             if let Some(db_image) =
-                image_item::Image::get_id(image.into(), &mut *transaction, redis).await?
+                image_item::Image::get(image.into(), &mut *transaction, redis).await?
             {
                 if !matches!(db_image.context, ImageContext::Project { project_id: None }) {
                     return Err(CreateError::InvalidInput(format!(
@@ -808,7 +808,7 @@ async fn project_create_inner(
                 .execute(&mut *transaction)
                 .await?;
 
-                image_item::Image::clear_cache(db_image.id, db_image.url, redis).await?;
+                image_item::Image::clear_cache(db_image.id, redis).await?;
             }
         }
 

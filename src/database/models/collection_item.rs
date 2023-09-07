@@ -85,10 +85,10 @@ impl Collection {
         for project_id in self.projects.iter() {
             sqlx::query!(
                 "
-                        INSERT INTO collections_mods (collection_id, mod_id)
-                        VALUES ($1, $2)
-                        ON CONFLICT DO NOTHING
-                        ",
+                    INSERT INTO collections_mods (collection_id, mod_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT DO NOTHING
+                ",
                 self.id as CollectionId,
                 *project_id as ProjectId,
             )

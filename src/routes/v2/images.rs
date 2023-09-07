@@ -1,15 +1,17 @@
 use std::sync::Arc;
 
 use crate::database;
-use crate::database::models::{ids, project_item, thread_item, version_item};
+use crate::database::models::{ids, project_item, report_item, thread_item, version_item};
 use crate::file_hosting::FileHost;
+use crate::models::ids::base62_impl::parse_base62;
+use crate::models::ids::ImageId;
 use crate::models::images::Image;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::{auth::get_user_from_headers, models::images::ImageContext};
 use actix_web::{delete, patch, post, web, HttpRequest, HttpResponse};
-use ids::ThreadMessageId;
+use ids::{ReportId, ThreadMessageId};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -104,7 +106,8 @@ pub async fn image_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string: String = info.into_inner().0;
-    let image_data = database::models::Image::get(&string, &**pool, &redis).await?;
+    let image_id = ImageId(parse_base62(&string)?);
+    let image_data = database::models::Image::get(image_id.into(), &**pool, &redis).await?;
 
     if let Some(data) = image_data {
         let mut transaction = pool.begin().await?;
@@ -130,6 +133,12 @@ pub async fn image_edit(
                 ImageContext::ThreadMessage { .. } => {
                     let new_id = serde_json::from_str::<ThreadMessageId>(&edit.set_id)?;
                     thread_item::ThreadMessage::get(new_id, &mut transaction)
+                        .await?
+                        .map(|x| x.id.0)
+                }
+                ImageContext::Report { .. } => {
+                    let new_id = serde_json::from_str::<ReportId>(&edit.set_id)?;
+                    report_item::Report::get(new_id, &mut transaction)
                         .await?
                         .map(|x| x.id.0)
                 }
@@ -167,8 +176,8 @@ pub async fn image_delete(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string: String = info.into_inner().0;
-
-    let image_data = database::models::Image::get(&string, &**pool, &redis).await?;
+    let image_id = ImageId(parse_base62(&string)?);
+    let image_data = database::models::Image::get(image_id.into(), &**pool, &redis).await?;
     if let Some(data) = image_data {
         let scopes = vec![data.context.relevant_scope()];
         let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))

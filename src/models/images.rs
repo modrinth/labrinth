@@ -1,6 +1,7 @@
 use super::{
     ids::{Base62Id, ProjectId, ThreadMessageId, VersionId},
     pats::Scopes,
+    reports::ReportId,
 };
 use crate::models::ids::UserId;
 use crate::{
@@ -49,10 +50,14 @@ pub enum ImageContext {
         project_id: Option<ProjectId>,
     },
     Version {
+        // version changelogs
         version_id: Option<VersionId>,
     },
     ThreadMessage {
         thread_message_id: Option<ThreadMessageId>,
+    },
+    Report {
+        report_id: Option<ReportId>,
     },
     Unknown,
 }
@@ -63,6 +68,7 @@ impl ImageContext {
             ImageContext::Project { .. } => "project",
             ImageContext::Version { .. } => "version",
             ImageContext::ThreadMessage { .. } => "thread_message",
+            ImageContext::Report { .. } => "report",
             ImageContext::Unknown => "unknown",
         }
     }
@@ -72,6 +78,7 @@ impl ImageContext {
             ImageContext::Project { project_id } => project_id.map(|x| x.0),
             ImageContext::Version { version_id } => version_id.map(|x| x.0),
             ImageContext::ThreadMessage { thread_message_id } => thread_message_id.map(|x| x.0),
+            ImageContext::Report { report_id } => report_id.map(|x| x.0),
             ImageContext::Unknown => None,
         }
     }
@@ -80,6 +87,7 @@ impl ImageContext {
             ImageContext::Project { .. } => Scopes::PROJECT_WRITE,
             ImageContext::Version { .. } => Scopes::VERSION_WRITE,
             ImageContext::ThreadMessage { .. } => Scopes::THREAD_WRITE,
+            ImageContext::Report { .. } => Scopes::REPORT_WRITE,
             ImageContext::Unknown => Scopes::NONE,
         }
     }
@@ -93,6 +101,9 @@ impl ImageContext {
             },
             "thread_message" => ImageContext::ThreadMessage {
                 thread_message_id: id.map(ThreadMessageId),
+            },
+            "report" => ImageContext::Report {
+                report_id: id.map(ReportId),
             },
             _ => ImageContext::Unknown,
         }
@@ -121,7 +132,7 @@ pub async fn delete_unused_images(
 
         if should_delete {
             image_item::Image::remove(image.id, transaction, redis).await?;
-            image_item::Image::clear_cache(image.id, image.url, redis).await?;
+            image_item::Image::clear_cache(image.id, redis).await?;
         }
     }
 
