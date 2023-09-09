@@ -1,15 +1,16 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database;
+use crate::database::models::image_item;
 use crate::database::models::thread_item::{ThreadBuilder, ThreadMessageBuilder};
-use crate::database::models::{image_item, ImageContextTypeId};
 use crate::models::ids::ImageId;
 use crate::models::ids::{base62_impl::parse_base62, ProjectId, UserId, VersionId};
-use crate::models::images;
+use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
 use crate::models::reports::{ItemType, Report};
 use crate::models::threads::{MessageBody, ThreadType};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::img;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::StreamExt;
@@ -156,30 +157,38 @@ pub async fn report_create(
 
     report.insert(&mut transaction).await?;
 
-    for image in new_report.uploaded_images {
+    for image_id in new_report.uploaded_images {
         if let Some(db_image) =
-            image_item::Image::get(image.into(), &mut *transaction, &redis).await?
+            image_item::Image::get(image_id.into(), &mut *transaction, &redis).await?
         {
-            if db_image.context_type_name == "report" {
+            let image: Image = db_image.into();
+            if !matches!(image.context, ImageContext::Report { .. })
+                || image.context.inner_id().is_some()
+            {
                 return Err(ApiError::InvalidInput(format!(
                     "Image {} is not unused and in the 'report' context",
-                    image
+                    image_id
                 )));
             }
 
             sqlx::query!(
                 "
                 UPDATE uploaded_images
-                SET context_id = $1
+                SET report_id = $1
                 WHERE id = $2
                 ",
                 id.0 as i64,
-                image.0 as i64
+                image_id.0 as i64
             )
             .execute(&mut *transaction)
             .await?;
 
-            image_item::Image::clear_cache(db_image.id, &redis).await?;
+            image_item::Image::clear_cache(image.id.into(), &redis).await?;
+        } else {
+            return Err(ApiError::InvalidInput(format!(
+                "Image {} could not be found",
+                image_id
+            )));
         }
     }
 
@@ -464,18 +473,11 @@ pub async fn report_edit(
             .into_iter()
             .filter_map(|x: &Option<String>| x.as_ref().map(|y| y.as_str()))
             .collect();
-        let image_context_type_id: Option<ImageContextTypeId> =
-            ImageContextTypeId::get_id("report", &mut *transaction).await?;
-        if let Some(image_context_type_id) = image_context_type_id {
-            images::delete_unused_images(
-                image_context_type_id,
-                id.0 as u64,
-                checkable_strings,
-                &mut transaction,
-                &redis,
-            )
+        let image_context = ImageContext::Report {
+            report_id: Some(id.into()),
+        };
+        img::delete_unused_images(image_context, checkable_strings, &mut transaction, &redis)
             .await?;
-        }
 
         transaction.commit().await?;
 
@@ -498,18 +500,13 @@ pub async fn report_delete(
     let mut transaction = pool.begin().await?;
 
     let id = info.into_inner().0;
-    let image_context_type_id: Option<ImageContextTypeId> =
-        ImageContextTypeId::get_id("report", &mut *transaction).await?;
-    if let Some(image_context_type_id) = image_context_type_id {
-        let uploaded_images = database::models::Image::get_many_contexted(
-            image_context_type_id,
-            id.0 as i64,
-            &mut transaction,
-        )
-        .await?;
-        for image in uploaded_images {
-            image_item::Image::remove(image.id, &mut transaction, &redis).await?;
-        }
+    let context = ImageContext::Report {
+        report_id: Some(id),
+    };
+    let uploaded_images =
+        database::models::Image::get_many_contexted(context, &mut transaction).await?;
+    for image in uploaded_images {
+        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
     }
 
     let result =

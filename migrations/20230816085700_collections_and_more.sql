@@ -18,11 +18,6 @@ CREATE TABLE collections_mods (
     PRIMARY KEY (collection_id, mod_id)
 );
 
-CREATE TABLE uploaded_images_context (
-    id serial PRIMARY KEY,
-    name varchar(64) NOT NULL
-);
-
 CREATE TABLE uploaded_images (
     id bigint PRIMARY KEY,
     url varchar(2048) NOT NULL,
@@ -30,14 +25,13 @@ CREATE TABLE uploaded_images (
     created timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     owner_id bigint REFERENCES users NOT NULL,
 
-    -- Associated with another table
-    context_type int REFERENCES uploaded_images_context NOT NULL,
-    context_id bigint NULL -- references the id of the context table it's associated with (e.g. version_id)
+    -- Type of contextual association
+    context varchar(64) NOT NULL, -- project, version, thread_message, report, etc.
+
+    -- Only one of these should be set (based on 'context')
+    mod_id bigint NULL REFERENCES mods,
+    version_id bigint NULL REFERENCES versions,
+    thread_message_id bigint NULL REFERENCES threads_messages,
+    report_id bigint NULL REFERENCES reports
+
 );
-
-
--- project, version, thread_message, report
-INSERT INTO uploaded_images_context (name) VALUES ('project');
-INSERT INTO uploaded_images_context (name) VALUES ('version');
-INSERT INTO uploaded_images_context (name) VALUES ('thread_message');
-INSERT INTO uploaded_images_context (name) VALUES ('report');

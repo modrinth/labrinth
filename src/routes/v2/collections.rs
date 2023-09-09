@@ -40,25 +40,15 @@ pub struct CollectionCreateData {
         length(min = 3, max = 64),
         custom(function = "crate::util::validate::validate_name")
     )]
-    #[serde(alias = "collection_name")]
     /// The title or name of the project.
     pub title: String,
     #[validate(length(min = 3, max = 255))]
-    #[serde(alias = "collection_description")]
     /// A short description of the collection.
     pub description: String,
     #[validate(length(max = 32))]
     #[serde(default = "Vec::new")]
     /// A list of initial projects to use with the created collection
-    pub initial_projects: Vec<String>,
-
-    /// If the collection should initialize to public
-    #[serde(default = "default_requested_status")]
-    pub status: CollectionStatus,
-}
-
-fn default_requested_status() -> CollectionStatus {
-    CollectionStatus::Listed
+    pub projects: Vec<String>,
 }
 
 #[post("collection")]
@@ -90,22 +80,19 @@ pub async fn collection_create(
 
     let collection_id: CollectionId = generate_collection_id(&mut transaction).await?.into();
 
-    let initial_project_ids = project_item::Project::get_many(
-        &collection_create_data.initial_projects,
-        &mut transaction,
-        &redis,
-    )
-    .await?
-    .into_iter()
-    .map(|x| x.inner.id.into())
-    .collect::<Vec<ProjectId>>();
+    let initial_project_ids =
+        project_item::Project::get_many(&collection_create_data.projects, &mut transaction, &redis)
+            .await?
+            .into_iter()
+            .map(|x| x.inner.id.into())
+            .collect::<Vec<ProjectId>>();
 
     let collection_builder_actual = collection_item::CollectionBuilder {
         collection_id: collection_id.into(),
         user_id: current_user.id.into(),
         title: collection_create_data.title,
         description: collection_create_data.description,
-        status: collection_create_data.status,
+        status: CollectionStatus::Listed,
         projects: initial_project_ids
             .iter()
             .copied()
@@ -534,6 +521,7 @@ pub async fn collection_delete(
 
     let result =
         database::models::Collection::remove(collection.id, &mut transaction, &redis).await?;
+    database::models::Collection::clear_cache(collection.id, &redis).await?;
 
     transaction.commit().await?;
 

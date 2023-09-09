@@ -581,6 +581,27 @@
     },
     "query": "\n            UPDATE notifications\n            SET read = TRUE\n            WHERE id = ANY($1)\n            "
   },
+  "15fac93c76e72348b50f526e1acb183521d94be335ad8b9dfeb0398d4a8a2fc4": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Varchar",
+          "Int4",
+          "Timestamptz",
+          "Int8",
+          "Varchar",
+          "Int8",
+          "Int8",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO uploaded_images (\n                id, url, size, created, owner_id, context, mod_id, version_id, thread_message_id, report_id\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10\n            );\n            "
+  },
   "16049957962ded08751d5a4ddce2ffac17ecd486f61210c51a952508425d83e6": {
     "describe": {
       "columns": [],
@@ -754,6 +775,84 @@
     },
     "query": "\n            SELECT id FROM mods TABLESAMPLE SYSTEM_ROWS($1) WHERE status = ANY($2)\n            "
   },
+  "1d6a53187082ad9a57294d9f1c13d66131ccc3d4a0cf59d42346474196ea50f8": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "url",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "size",
+          "ordinal": 2,
+          "type_info": "Int4"
+        },
+        {
+          "name": "created",
+          "ordinal": 3,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "owner_id",
+          "ordinal": 4,
+          "type_info": "Int8"
+        },
+        {
+          "name": "context",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "mod_id",
+          "ordinal": 6,
+          "type_info": "Int8"
+        },
+        {
+          "name": "version_id",
+          "ordinal": 7,
+          "type_info": "Int8"
+        },
+        {
+          "name": "thread_message_id",
+          "ordinal": 8,
+          "type_info": "Int8"
+        },
+        {
+          "name": "report_id",
+          "ordinal": 9,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Int8",
+          "Int8",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT id, url, size, created, owner_id, context, mod_id, version_id, thread_message_id, report_id\n            FROM uploaded_images\n            WHERE context = $1\n            AND (mod_id = $2 OR ($2 IS NULL AND mod_id IS NULL))\n            AND (version_id = $3 OR ($3 IS NULL AND version_id IS NULL))\n            AND (thread_message_id = $4 OR ($4 IS NULL AND thread_message_id IS NULL))\n            AND (report_id = $5 OR ($5 IS NULL AND report_id IS NULL))\n            GROUP BY id\n            "
+  },
   "1d6f3e926fc4a27c5af172f672b7f825f9f5fe2d538b06337ef182ab1a553398": {
     "describe": {
       "columns": [
@@ -826,19 +925,6 @@
       }
     },
     "query": "\n            UPDATE threads_messages\n            SET body = $2\n            WHERE id = $1\n            "
-  },
-  "212238299a1a486e171c66fbc48b52a27c736030e182e0b0f4271c58b0258c8e": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                    UPDATE uploaded_images\n                    SET context_id = $1\n                    WHERE id = $2\n                    "
   },
   "21d20e5f09cb0729dc16c8609c35cec5a913f3172b53b8ae05da0096a33b4b64": {
     "describe": {
@@ -1715,23 +1801,18 @@
     },
     "query": "\n                DELETE FROM mods_donations\n                WHERE joining_mod_id = $1\n                "
   },
-  "4708a388f08a988b47fdf799753bcc1635b7d1bc9a434d2c7260d130a0cddb6f": {
+  "45e3f7d3ae0396c0b0196ed959f9b60c57b7c57390758ddcc58fb2e0f276a426": {
     "describe": {
       "columns": [],
       "nullable": [],
       "parameters": {
         "Left": [
           "Int8",
-          "Varchar",
-          "Int4",
-          "Timestamptz",
-          "Int8",
-          "Int4",
           "Int8"
         ]
       }
     },
-    "query": "\n            INSERT INTO uploaded_images (\n                id, url, size, created, owner_id, context_type, context_id\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6, $7\n            );\n            "
+    "query": "\n                        UPDATE uploaded_images\n                        SET thread_message_id = $1\n                        WHERE id = $2\n                        "
   },
   "4778d2f5994fda2f978fa53e0840c1a9a2582ef0434a5ff7f21706f1dc4edcf4": {
     "describe": {
@@ -2318,6 +2399,80 @@
     },
     "query": "\n                    UPDATE versions\n                    SET status = $1\n                    WHERE (id = $2)\n                    "
   },
+  "5c7bc2b59e5bcbe50e556cf28fb7a20de645752beef330b6779ec256f33e666a": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "url",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "size",
+          "ordinal": 2,
+          "type_info": "Int4"
+        },
+        {
+          "name": "created",
+          "ordinal": 3,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "owner_id",
+          "ordinal": 4,
+          "type_info": "Int8"
+        },
+        {
+          "name": "context",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "mod_id",
+          "ordinal": 6,
+          "type_info": "Int8"
+        },
+        {
+          "name": "version_id",
+          "ordinal": 7,
+          "type_info": "Int8"
+        },
+        {
+          "name": "thread_message_id",
+          "ordinal": 8,
+          "type_info": "Int8"
+        },
+        {
+          "name": "report_id",
+          "ordinal": 9,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n                SELECT id, url, size, created, owner_id, context, mod_id, version_id, thread_message_id, report_id\n                FROM uploaded_images\n                WHERE id = ANY($1)\n                GROUP BY id;\n                "
+  },
   "5ca43f2fddda27ad857f230a3427087f1e58150949adc6273156718730c10f69": {
     "describe": {
       "columns": [],
@@ -2589,26 +2744,6 @@
       }
     },
     "query": "\n                SELECT id, name, email,\n                    avatar_url, username, bio,\n                    created, role, badges,\n                    balance, payout_wallet, payout_wallet_type, payout_address,\n                    github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,\n                    email_verified, password, totp_secret\n                FROM users\n                WHERE id = ANY($1) OR LOWER(username) = ANY($2)\n                "
-  },
-  "60e08bdf82715077d6d27cbef05b91f4cad571f072f60234c48bdeb233d1ce84": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int4"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            SELECT id FROM uploaded_images_context\n            WHERE name = $1\n            "
   },
   "61a7f29e024bf2f1368370e3f6e8ef70317c7e8545b5b6d4235f21164948ba27": {
     "describe": {
@@ -3147,6 +3282,19 @@
       }
     },
     "query": "\n                        UPDATE files\n                        SET file_type = $2\n                        WHERE (id = $1)\n                        "
+  },
+  "7628dd456f01d307cc8647b36734b189a5f08dbaa9db78fe28f1de3d8f4757b7": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                UPDATE uploaded_images\n                SET report_id = $1\n                WHERE id = $2\n                "
   },
   "76db1c204139e18002e5751c3dcefff79791a1dd852b62d34fcf008151e8945a": {
     "describe": {
@@ -4496,19 +4644,6 @@
     },
     "query": "SELECT EXISTS(SELECT 1 FROM pats WHERE id=$1)"
   },
-  "ad9c6d802c9e596415008d3f68f33534cef6feb80c3437e2efdff8106b4292df": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                        UPDATE uploaded_images\n                        SET context_id = $1\n                        WHERE id = $2\n                        "
-  },
   "ae1686b8b566dd7ecc57c653c9313a4b324a2ec3a63aa6a44ed1d8ea7999b115": {
     "describe": {
       "columns": [],
@@ -5127,6 +5262,19 @@
     },
     "query": "\n                SELECT id FROM reports\n                WHERE id = ANY($1) AND reporter = $2\n                "
   },
+  "c920cc500f431a2b174d176c3a356d40295137fd87a5308d71aad173d18d9d91": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                UPDATE uploaded_images\n                SET version_id = $1\n                WHERE id = $2\n                "
+  },
   "c94faba99d486b11509fff59465b7cc71983551b035e936ce4d9776510afb514": {
     "describe": {
       "columns": [
@@ -5233,19 +5381,6 @@
       }
     },
     "query": "\n                INSERT INTO hashes (file_id, algorithm, hash)\n                VALUES ($1, $2, $3)\n                "
-  },
-  "cb6b74fd17f5e3acfaa9c35fcbc83b2faf2500c3a73be03e1ba055c3ef514ca5": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                UPDATE uploaded_images\n                SET context_id = $1\n                WHERE id = $2\n                "
   },
   "ccce60dc60ca6c4ea1142ab6d0d81bdb1ee9ed97c992695324aec015e0e190bf": {
     "describe": {
@@ -5423,63 +5558,6 @@
       }
     },
     "query": "\n            INSERT INTO notifications (\n                id, user_id, body\n            )\n            VALUES (\n                $1, $2, $3\n            )\n            "
-  },
-  "d2e339f2405ffcb716ab3074efbfed875f1c66c5f4a5745c877259fc5c927b2e": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "url",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "size",
-          "ordinal": 2,
-          "type_info": "Int4"
-        },
-        {
-          "name": "created",
-          "ordinal": 3,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "owner_id",
-          "ordinal": 4,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "context_id",
-          "ordinal": 6,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true
-      ],
-      "parameters": {
-        "Left": [
-          "Int4",
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT i.id, i.url, i.size, i.created, i.owner_id, t.name, i.context_id\n            FROM uploaded_images i\n            LEFT JOIN uploaded_images_context t ON t.id = i.context_type\n            WHERE i.context_type = $1\n            AND i.context_id = $2\n            GROUP BY i.id, t.id\n            "
   },
   "d331ca8f22da418cf654985c822ce4466824beaa00dea64cde90dc651a03024b": {
     "describe": {
@@ -6167,62 +6245,6 @@
     },
     "query": "\n        SELECT name FROM project_types pt\n        INNER JOIN mods ON mods.project_type = pt.id\n        WHERE mods.id = $1\n        "
   },
-  "f142772df0b3da7a690037a63ae6006128616e80c39c2bc77c635360217175be": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "url",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "size",
-          "ordinal": 2,
-          "type_info": "Int4"
-        },
-        {
-          "name": "created",
-          "ordinal": 3,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "owner_id",
-          "ordinal": 4,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 5,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "context_id",
-          "ordinal": 6,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      }
-    },
-    "query": "\n                SELECT i.id, i.url, i.size, i.created, i.owner_id, t.name, i.context_id\n                FROM uploaded_images i\n                LEFT JOIN uploaded_images_context t ON t.id = i.context_type\n                WHERE i.id = ANY($1)\n                GROUP BY i.id, t.id;\n                "
-  },
   "f1525930830e17b5ee8feb796d9950dd3741131965f050840fa75423b5a54f01": {
     "describe": {
       "columns": [],
@@ -6263,6 +6285,19 @@
       }
     },
     "query": "\n            SELECT id FROM reports\n            WHERE closed = FALSE AND reporter = $1\n            ORDER BY created ASC\n            LIMIT $2;\n            "
+  },
+  "f2c5eccd8099d6f527c1665cfc0f1204b8a0dab6f2b84f9f72fbf5462c6cb1f4": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE uploaded_images\n                    SET mod_id = $1\n                    WHERE id = $2\n                    "
   },
   "f34bbe639ad21801258dc8beaab9877229a451761be07f85a1dd04d027832329": {
     "describe": {

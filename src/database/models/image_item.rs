@@ -1,5 +1,5 @@
 use super::ids::*;
-use crate::database::models::DatabaseError;
+use crate::{database::models::DatabaseError, models::images::ImageContext};
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use serde::{Deserialize, Serialize};
@@ -16,21 +16,12 @@ pub struct Image {
     pub owner_id: UserId,
 
     // context it is associated with
-    pub context_type_id: ImageContextTypeId,
-    pub context_id: Option<u64>,
-}
+    pub context: String,
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct QueryImage {
-    pub id: ImageId,
-    pub url: String,
-    pub size: u64,
-    pub created: DateTime<Utc>,
-    pub owner_id: UserId,
-
-    // context it is associated with
-    pub context_type_name: String,
-    pub context_id: Option<i64>,
+    pub project_id: Option<ProjectId>,
+    pub version_id: Option<VersionId>,
+    pub thread_message_id: Option<ThreadMessageId>,
+    pub report_id: Option<ReportId>,
 }
 
 impl Image {
@@ -41,10 +32,10 @@ impl Image {
         sqlx::query!(
             "
             INSERT INTO uploaded_images (
-                id, url, size, created, owner_id, context_type, context_id
+                id, url, size, created, owner_id, context, mod_id, version_id, thread_message_id, report_id
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
             );
             ",
             self.id as ImageId,
@@ -52,8 +43,11 @@ impl Image {
             self.size as i64,
             self.created,
             self.owner_id as UserId,
-            self.context_type_id.0,
-            self.context_id.map(|x| x as i64),
+            self.context,
+            self.project_id.map(|x| x.0),
+            self.version_id.map(|x| x.0),
+            self.thread_message_id.map(|x| x.0),
+            self.report_id.map(|x| x.0),
         )
         .execute(&mut *transaction)
         .await?;
@@ -88,41 +82,79 @@ impl Image {
     }
 
     pub async fn get_many_contexted(
-        context_type: ImageContextTypeId,
-        context_id: i64,
+        context: ImageContext,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<Vec<QueryImage>, sqlx::Error> {
-        use futures::stream::TryStreamExt;
+    ) -> Result<Vec<Image>, sqlx::Error> {
+        // Set all of project_id, version_id, thread_message_id, report_id to None
+        // Then set the one that is relevant to Some
 
+        let mut project_id = None;
+        let mut version_id = None;
+        let mut thread_message_id = None;
+        let mut report_id = None;
+        match context {
+            ImageContext::Project {
+                project_id: Some(id),
+            } => {
+                project_id = Some(ProjectId::from(id));
+            }
+            ImageContext::Version {
+                version_id: Some(id),
+            } => {
+                version_id = Some(VersionId::from(id));
+            }
+            ImageContext::ThreadMessage {
+                thread_message_id: Some(id),
+            } => {
+                thread_message_id = Some(ThreadMessageId::from(id));
+            }
+            ImageContext::Report {
+                report_id: Some(id),
+            } => {
+                report_id = Some(ReportId::from(id));
+            }
+            _ => {}
+        }
+
+        use futures::stream::TryStreamExt;
         sqlx::query!(
             "
-            SELECT i.id, i.url, i.size, i.created, i.owner_id, t.name, i.context_id
-            FROM uploaded_images i
-            LEFT JOIN uploaded_images_context t ON t.id = i.context_type
-            WHERE i.context_type = $1
-            AND i.context_id = $2
-            GROUP BY i.id, t.id
+            SELECT id, url, size, created, owner_id, context, mod_id, version_id, thread_message_id, report_id
+            FROM uploaded_images
+            WHERE context = $1
+            AND (mod_id = $2 OR ($2 IS NULL AND mod_id IS NULL))
+            AND (version_id = $3 OR ($3 IS NULL AND version_id IS NULL))
+            AND (thread_message_id = $4 OR ($4 IS NULL AND thread_message_id IS NULL))
+            AND (report_id = $5 OR ($5 IS NULL AND report_id IS NULL))
+            GROUP BY id
             ",
-            context_type.0,
-            context_id,
+            context.context_as_str(),
+            project_id.map(|x| x.0),
+            version_id.map(|x| x.0),
+            thread_message_id.map(|x| x.0),
+            report_id.map(|x| x.0),
+
         )
         .fetch_many(transaction)
         .try_filter_map(|e| async {
             Ok(e.right().map(|row| {
                 let id = ImageId(row.id);
 
-                QueryImage {
+                Image {
                     id,
                     url: row.url,
                     size: row.size as u64,
                     created: row.created,
                     owner_id: UserId(row.owner_id),
-                    context_type_name: row.name,
-                    context_id: row.context_id,
+                    context: row.context,
+                    project_id: row.mod_id.map(ProjectId),
+                    version_id: row.version_id.map(VersionId),
+                    thread_message_id: row.thread_message_id.map(ThreadMessageId),
+                    report_id: row.report_id.map(ReportId),
                 }
             }))
         })
-        .try_collect::<Vec<QueryImage>>()
+        .try_collect::<Vec<Image>>()
         .await
     }
 
@@ -130,7 +162,7 @@ impl Image {
         id: ImageId,
         executor: E,
         redis: &deadpool_redis::Pool,
-    ) -> Result<Option<QueryImage>, DatabaseError>
+    ) -> Result<Option<Image>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -143,7 +175,7 @@ impl Image {
         image_ids: &[ImageId],
         exec: E,
         redis: &deadpool_redis::Pool,
-    ) -> Result<Vec<QueryImage>, DatabaseError>
+    ) -> Result<Vec<Image>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -172,8 +204,7 @@ impl Image {
                 .await?;
 
             for image in images {
-                if let Some(image) = image.and_then(|x| serde_json::from_str::<QueryImage>(&x).ok())
-                {
+                if let Some(image) = image.and_then(|x| serde_json::from_str::<Image>(&x).ok()) {
                     remaining_ids.retain(|x| image.id.0 != x.0);
                     found_images.push(image);
                     continue;
@@ -182,13 +213,12 @@ impl Image {
         }
 
         if !remaining_ids.is_empty() {
-            let db_images: Vec<QueryImage> = sqlx::query!(
+            let db_images: Vec<Image> = sqlx::query!(
                 "
-                SELECT i.id, i.url, i.size, i.created, i.owner_id, t.name, i.context_id
-                FROM uploaded_images i
-                LEFT JOIN uploaded_images_context t ON t.id = i.context_type
-                WHERE i.id = ANY($1)
-                GROUP BY i.id, t.id;
+                SELECT id, url, size, created, owner_id, context, mod_id, version_id, thread_message_id, report_id
+                FROM uploaded_images
+                WHERE id = ANY($1)
+                GROUP BY id;
                 ",
                 &remaining_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
             )
@@ -197,18 +227,21 @@ impl Image {
                 Ok(e.right().map(|i| {
                     let id = i.id;
 
-                    QueryImage {
+                    Image {
                         id: ImageId(id),
                         url: i.url,
                         size: i.size as u64,
                         created: i.created,
                         owner_id: UserId(i.owner_id),
-                        context_type_name: i.name,
-                        context_id: i.context_id,
+                        context: i.context,
+                        project_id: i.mod_id.map(ProjectId),
+                        version_id: i.version_id.map(VersionId),
+                        thread_message_id: i.thread_message_id.map(ThreadMessageId),
+                        report_id: i.report_id.map(ReportId),
                     }
                 }))
             })
-            .try_collect::<Vec<QueryImage>>()
+            .try_collect::<Vec<Image>>()
             .await?;
 
             for image in db_images {

@@ -3,13 +3,15 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
-use crate::database::models::{image_item, ImageContextTypeId};
+use crate::database::models::image_item;
+use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
+use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::teams::Permissions;
-use crate::models::{self, images};
 use crate::queue::session::AuthQueue;
+use crate::util::img;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -687,18 +689,11 @@ pub async fn version_edit(
                 .into_iter()
                 .filter_map(|x| x.as_ref().map(|y| y.as_str()))
                 .collect();
-            let image_context_type_id: Option<ImageContextTypeId> =
-                ImageContextTypeId::get_id("version", &mut *transaction).await?;
-            if let Some(image_context_type_id) = image_context_type_id {
-                images::delete_unused_images(
-                    image_context_type_id,
-                    id.0 as u64,
-                    checkable_strings,
-                    &mut transaction,
-                    &redis,
-                )
-                .await?;
-            }
+            let context = ImageContext::Version {
+                version_id: Some(version_item.inner.id.into()),
+            };
+
+            img::delete_unused_images(context, checkable_strings, &mut transaction, &redis).await?;
 
             database::models::Version::clear_cache(&version_item, &redis).await?;
             database::models::Project::clear_cache(
@@ -851,18 +846,13 @@ pub async fn version_delete(
     }
 
     let mut transaction = pool.begin().await?;
-    let image_context_type_id: Option<ImageContextTypeId> =
-        ImageContextTypeId::get_id("version", &mut *transaction).await?;
-    if let Some(image_context_type_id) = image_context_type_id {
-        let uploaded_images = database::models::Image::get_many_contexted(
-            image_context_type_id,
-            version.inner.id.0,
-            &mut transaction,
-        )
-        .await?;
-        for image in uploaded_images {
-            image_item::Image::remove(image.id, &mut transaction, &redis).await?;
-        }
+    let context = ImageContext::Version {
+        version_id: Some(version.inner.id.into()),
+    };
+    let uploaded_images =
+        database::models::Image::get_many_contexted(context, &mut transaction).await?;
+    for image in uploaded_images {
+        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
     }
 
     let result =
