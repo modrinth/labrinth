@@ -154,7 +154,7 @@ pub async fn page_view_ingest(
     Ok(HttpResponse::NoContent().body(""))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct PlaytimeInput {
     seconds: u16,
     loader: String,

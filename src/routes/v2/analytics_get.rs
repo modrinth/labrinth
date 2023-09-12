@@ -1,7 +1,6 @@
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use chrono::{Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::PgPool;
 use std::collections::HashMap;
 
@@ -25,7 +24,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("analytics")
             .service(playtimes_get)
             .service(views_get)
-            .service(countries_get),
+            .service(countries_downloads_get)
+            .service(countries_views_get),
     );
 }
 
@@ -51,23 +51,10 @@ pub struct GetData {
 /// eg:
 /// {
 ///     "4N1tEhnO": {
-///         "20230824": {
-///             "day": 20230824,
-///             "total_seconds": 23,
-///             "loader_seconds": {
-///                 "bukkit": 23
-///             },
-///             "game_version_seconds": {
-///                 "1.2.3": 23
-///             },
-///             "parent_seconds": {
-///                 "": 0
-///             }
-///         }
+///         "20230824": 23
 ///    }
 ///}
 /// Either a list of project_ids or version_ids can be used, but not both. Unauthorized projects/versions will be filtered out.
-/// loader_seconds, game_version_seconds, and parent_seconds are a how many of the total seconds were spent in each loader, game version, and parent version respectively.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct FetchedPlaytime {
     pub time: u64,
@@ -135,26 +122,7 @@ pub async fn playtimes_get(
             hm.insert(id_string.clone(), HashMap::new());
         }
         if let Some(hm) = hm.get_mut(&id_string) {
-            hm.insert(
-                playtime.time.to_string(),
-                FetchedPlaytime {
-                    time: playtime.time,
-                    total_seconds: playtime.total_seconds,
-                    loader_seconds: playtime
-                        .loader_seconds
-                        .into_iter()
-                        .collect::<HashMap<_, _>>(),
-                    game_version_seconds: playtime
-                        .game_version_seconds
-                        .into_iter()
-                        .collect::<HashMap<_, _>>(),
-                    parent_seconds: playtime
-                        .parent_seconds
-                        .into_iter()
-                        .map(|(k, v)| (VersionId(k), v))
-                        .collect::<HashMap<_, _>>(),
-                },
-            );
+            hm.insert(playtime.time.to_string(), playtime.total_seconds);
         }
     }
 
@@ -237,22 +205,19 @@ pub async fn views_get(
 }
 
 /// Get country data for a set of projects or versions
-/// Data is returned as a hashmap of project/version ids to a hashmap of coutnry to views + downloads.
+/// Data is returned as a hashmap of project/version ids to a hashmap of coutnry to downloads.
 /// Unknown countries are labeled "".
 /// This is usuable to see significant performing countries per project
 /// eg:
 /// {
 ///     "4N1tEhnO": {
-///         "CAN": {
-///            total_views: 3213
-///            total_downloads: 22
-///         }
+///         "CAN":  22
 ///    }
 ///}
 /// Either a list of project_ids or version_ids can be used, but not both. Unauthorized projects/versions will be filtered out.
 /// For this endpoint, provided dates are a range to aggregate over, not specific days to fetch
-#[get("countries")]
-pub async fn countries_get(
+#[get("countries/downloads")]
+pub async fn countries_downloads_get(
     req: HttpRequest,
     clickhouse: web::Data<clickhouse::Client>,
     data: web::Json<GetData>,
@@ -308,14 +273,83 @@ pub async fn countries_get(
             hm.insert(id_string.clone(), HashMap::new());
         }
         if let Some(hm) = hm.get_mut(&id_string) {
-            hm.insert(
-                views.country,
-                json!(
-                {
-                    "total_views": views.total_views,
-                    "total_downloads": views.total_downloads
-                }),
-            );
+            hm.insert(views.country, views.total_downloads);
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(hm))
+}
+
+/// Get country data for a set of projects or versions
+/// Data is returned as a hashmap of project/version ids to a hashmap of coutnry to views.
+/// Unknown countries are labeled "".
+/// This is usuable to see significant performing countries per project
+/// eg:
+/// {
+///     "4N1tEhnO": {
+///         "CAN":  56165
+///    }
+///}
+/// Either a list of project_ids or version_ids can be used, but not both. Unauthorized projects/versions will be filtered out.
+/// For this endpoint, provided dates are a range to aggregate over, not specific days to fetch
+#[get("countries/views")]
+pub async fn countries_views_get(
+    req: HttpRequest,
+    clickhouse: web::Data<clickhouse::Client>,
+    data: web::Json<GetData>,
+    session_queue: web::Data<AuthQueue>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+) -> Result<HttpResponse, ApiError> {
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::ANALYTICS]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+
+    let project_ids = data.project_ids.clone();
+    let version_ids = data.version_ids.clone();
+
+    if project_ids.is_some() && version_ids.is_some() {
+        return Err(ApiError::InvalidInput(
+            "Only one of 'project_ids' or 'version_ids' should be used.".to_string(),
+        ));
+    }
+
+    let start_date = data
+        .start_date
+        .unwrap_or(Utc::now().naive_utc().date() - Duration::weeks(2));
+    let end_date = data.end_date.unwrap_or(Utc::now().naive_utc().date());
+
+    // Convert String list to list of ProjectIds or VersionIds
+    // - Filter out unauthorized projects/versions
+    // - If no project_ids or version_ids are provided, we default to all projects the user has access to
+    let (project_ids, version_ids) =
+        filter_allowed_ids(project_ids, version_ids, user_option, &pool, &redis).await?;
+
+    // Get the countries
+    let countries = crate::clickhouse::fetch_countries(
+        project_ids,
+        version_ids,
+        start_date,
+        end_date,
+        clickhouse.into_inner(),
+    )
+    .await?;
+
+    let mut hm = HashMap::new();
+    for views in countries {
+        let id_string = to_base62(views.id);
+        if !hm.contains_key(&id_string) {
+            hm.insert(id_string.clone(), HashMap::new());
+        }
+        if let Some(hm) = hm.get_mut(&id_string) {
+            hm.insert(views.country, views.total_views);
         }
     }
 
