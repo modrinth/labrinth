@@ -33,7 +33,9 @@ pub enum Flow {
         user_id: UserId,
         confirm_email: String,
     },
-    MinecraftAuth,
+    MinecraftAuth {
+        user_id: UserId,
+    },
 }
 
 impl Flow {

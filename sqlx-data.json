@@ -5084,6 +5084,20 @@
     },
     "query": "\n                SELECT id, session, user_id\n                FROM sessions\n                WHERE refresh_expires <= NOW()\n                "
   },
+  "da521379fe01f5b050459b94cf3672a4361fd7945115992a173ec0b122e174b5": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE users\n                    SET minecraft_id = $1, minecraft_username = $2\n                    WHERE id = $3\n                    "
+  },
   "dc6aa2e7bfd5d5004620ddd4cd6a47ecc56159e1489054e0652d56df802fb5e5": {
     "describe": {
       "columns": [],
