@@ -26,6 +26,9 @@ pub struct User {
 
     pub totp_secret: Option<String>,
 
+    pub minecraft_id: Option<String>,
+    pub minecraft_username: Option<String>,
+
     pub username: String,
     pub name: Option<String>,
     pub email: Option<String>,
@@ -208,7 +211,8 @@ impl User {
                     created, role, badges,
                     balance, payout_wallet, payout_wallet_type, payout_address,
                     github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,
-                    email_verified, password, totp_secret
+                    email_verified, password, totp_secret,
+                    minecraft_id, minecraft_username
                 FROM users
                 WHERE id = ANY($1) OR LOWER(username) = ANY($2)
                 ",
@@ -245,6 +249,8 @@ impl User {
                     payout_address: u.payout_address,
                     password: u.password,
                     totp_secret: u.totp_secret,
+                    minecraft_id: u.minecraft_id,
+                    minecraft_username: u.minecraft_username,
                 }))
             })
             .try_collect::<Vec<User>>()

@@ -36,7 +36,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(user_notifications)
             .service(user_follows)
             .service(user_payouts)
-            .service(user_payouts_request),
+            .service(user_payouts_request)
+            .service(link_minecraft_account),
     );
 }
 
@@ -496,6 +497,80 @@ pub async fn user_icon_edit(
             ext.ext
         )))
     }
+}
+
+/// Link a Minecraft account to a Modrinth account.
+/// The stored Minecraft ID is hidden from public access and is (currently) unused.
+#[derive(Deserialize, Serialize)]
+pub struct LinkToken {
+    // The Minecraft access token to link.
+    // This is an access token generated from an xbox live xsts token (like the one cached in theseus' user.json)
+    pub bearer_token: String,
+}
+#[derive(Deserialize)]
+pub struct PlayerInfo {
+    pub id: String,
+    pub name: String,
+}
+#[patch("{id}/link_minecraft")]
+pub async fn link_minecraft_account(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    web::Json(link_token): web::Json<LinkToken>, // callback url
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let (_, user) = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_WRITE]),
+    )
+    .await?;
+
+    let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
+
+    if let Some(actual_user) = id_option {
+        let id = actual_user.id;
+        let user_id: UserId = id.into();
+
+        if user.id == user_id || user.role.is_mod() {
+            const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
+            let token = link_token.bearer_token;
+            let client = reqwest::Client::new();
+            let player_info : PlayerInfo = client
+                .get(PROFILE_URL)
+                .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+                .send()
+                .await?
+                .error_for_status().map_err(|_| {
+                    ApiError::InvalidInput("No account could be found for this Minecraft access token.".to_string())})?
+                .json()
+                .await.map_err(|_| {
+                    ApiError::InvalidInput("No Minecraft account found for this profile. Make sure you own the game and have set a username through the official Minecraft launcher."
+            .to_string())
+                })?;
+
+            sqlx::query!(
+                r#"
+                UPDATE users
+                SET minecraft_id = $1, minecraft_username = $2
+                WHERE id = $3
+                "#,
+                player_info.id,
+                player_info.name,
+                user.id.0 as i64,
+            )
+            .execute(&**pool)
+            .await?;
+
+            return Ok(HttpResponse::Ok().finish());
+        }
+    }
+
+    Ok(HttpResponse::NotFound().finish())
 }
 
 #[derive(Deserialize)]

@@ -227,6 +227,8 @@ impl TempUser {
                 payout_wallet: None,
                 payout_wallet_type: None,
                 payout_address: None,
+                minecraft_id: None,
+                minecraft_username: None,
             }
             .insert(transaction)
             .await?;
@@ -1387,6 +1389,8 @@ pub async fn create_account_with_password(
         payout_wallet: None,
         payout_wallet_type: None,
         payout_address: None,
+        minecraft_id: None,
+        minecraft_username: None,
     }
     .insert(&mut transaction)
     .await?;
