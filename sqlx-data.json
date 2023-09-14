@@ -742,6 +742,18 @@
     },
     "query": "\n                UPDATE users\n                SET avatar_url = $1\n                WHERE (id = $2)\n                "
   },
+  "1abc74fe1da85e031edbc896797991337b57d2c47a8a978f9b9f34b20bf8f410": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        UPDATE collections\n        SET icon_url = NULL, color = NULL\n        WHERE (id = $1)\n        "
+  },
   "1bd7a5460c7fa2b89a28550ff04a47d3edb8c30ee8b344a684ead27f60f9b080": {
     "describe": {
       "columns": [],
@@ -755,18 +767,6 @@
       }
     },
     "query": "\n                UPDATE users\n                SET minecraft_id = $1, minecraft_username = $2\n                WHERE id = $3\n                "
-  },
-  "1abc74fe1da85e031edbc896797991337b57d2c47a8a978f9b9f34b20bf8f410": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n        UPDATE collections\n        SET icon_url = NULL, color = NULL\n        WHERE (id = $1)\n        "
   },
   "1cefe4924d3c1f491739858ce844a22903d2dbe26f255219299f1833a10ce3d7": {
     "describe": {
