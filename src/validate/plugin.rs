@@ -19,8 +19,6 @@ impl super::Validator for PluginYmlValidator {
             "spigot",
             "paper",
             "purpur",
-            "bungeecord",
-            "waterfall",
         ]
     }
 
@@ -68,11 +66,14 @@ impl super::Validator for BungeeCordValidator {
         &self,
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        if archive.by_name("bungee.yml").is_err() {
+        if !archive
+            .file_names()
+            .any(|name| name == "plugin.yml" || name == "bungee.yml")
+        {
             return Ok(ValidationResult::Warning(
-                "No bungee.yml present for plugin file.",
+                "No plugin.yml or bungee.yml present for plugin file.",
             ));
-        }
+        };
 
         Ok(ValidationResult::Pass)
     }
@@ -134,10 +135,11 @@ impl super::Validator for SpongeValidator {
         &self,
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        if !archive
-            .file_names()
-            .any(|name| name == "sponge_plugins.json" || name == "mcmod.info" || name == "META-INF/sponge_plugins.json")
-        {
+        if !archive.file_names().any(|name| {
+            name == "sponge_plugins.json"
+                || name == "mcmod.info"
+                || name == "META-INF/sponge_plugins.json"
+        }) {
             return Ok(ValidationResult::Warning(
                 "No sponge_plugins.json or mcmod.info present for Sponge plugin.",
             ));

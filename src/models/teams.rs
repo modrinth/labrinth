@@ -35,6 +35,7 @@ bitflags::bitflags! {
         const DELETE_PROJECT = 1 << 7;
         const VIEW_ANALYTICS = 1 << 8;
         const VIEW_PAYOUTS = 1 << 9;
+
         const ALL = 0b1111111111;
     }
 }
@@ -42,6 +43,23 @@ bitflags::bitflags! {
 impl Default for Permissions {
     fn default() -> Permissions {
         Permissions::UPLOAD_VERSION | Permissions::DELETE_VERSION
+    }
+}
+
+impl Permissions {
+    pub fn get_permissions_by_role(
+        role: &crate::models::users::Role,
+        team_member: &Option<crate::database::models::TeamMember>,
+    ) -> Option<Self> {
+        if role.is_admin() {
+            Some(Permissions::ALL)
+        } else if let Some(member) = team_member {
+            Some(member.permissions)
+        } else if role.is_mod() {
+            Some(Permissions::EDIT_DETAILS | Permissions::EDIT_BODY | Permissions::UPLOAD_VERSION)
+        } else {
+            None
+        }
     }
 }
 

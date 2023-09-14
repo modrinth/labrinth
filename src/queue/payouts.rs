@@ -287,7 +287,12 @@ pub async fn process_payout(
         .into_iter()
         .map(|x| (x.project_id, x.page_views))
         .collect::<HashMap<u64, u64>>();
-    views_values.extend(downloads_values);
+
+    for (key, value) in downloads_values.iter() {
+        let counter = views_values.entry(*key).or_insert(0);
+        *counter += *value;
+    }
+
     let multipliers: PayoutMultipliers = PayoutMultipliers {
         sum: downloads_sum + views_sum,
         values: views_values,
