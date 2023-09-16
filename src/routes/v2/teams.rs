@@ -1,10 +1,11 @@
 use crate::auth::{get_user_from_headers, is_authorized};
+use crate::database;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::TeamMember;
-use crate::models::ids::ProjectId;
+use crate::models::ids::{ProjectId, OrganizationId};
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
-use crate::models::teams::{Permissions, TeamId};
+use crate::models::teams::{ProjectPermissions, TeamId, OrganizationPermissions};
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
@@ -258,6 +259,7 @@ pub async fn join_team(
             current_user.id.into(),
             None,
             None,
+            None,
             Some(true),
             None,
             None,
@@ -290,8 +292,9 @@ pub struct NewTeamMember {
     pub user_id: UserId,
     #[serde(default = "default_role")]
     pub role: String,
-    #[serde(default = "Permissions::default")]
-    pub permissions: Permissions,
+    #[serde(default = "ProjectPermissions::default")]
+    pub permissions: ProjectPermissions,
+    pub organization_permissions: Option<OrganizationPermissions>,
     #[serde(default)]
     pub payouts_split: Decimal,
     #[serde(default = "default_ordering")]
@@ -320,6 +323,24 @@ pub async fn add_team_member(
     )
     .await?
     .1;
+
+    let result = sqlx::query!(
+        "
+        SELECT m.id AS pid, NULL AS oid
+        FROM mods m
+        WHERE m.team_id = $1
+    
+        UNION ALL
+    
+        SELECT NULL AS pid, o.id AS oid
+        FROM organizations o
+        WHERE o.team_id = $1    
+        ",
+        team_id as crate::database::models::ids::TeamId
+    )
+    .fetch_one(&**pool)
+    .await?;
+
     let member = TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool)
         .await?
         .ok_or_else(|| {
@@ -328,15 +349,49 @@ pub async fn add_team_member(
             )
         })?;
 
-    if !member.permissions.contains(Permissions::MANAGE_INVITES) {
-        return Err(ApiError::CustomAuthentication(
-            "You don't have permission to invite users to this team".to_string(),
-        ));
+
+    if let Some(pid) = result.pid {
+
+        let project = database::models::Project::get_id(database::models::ids::ProjectId(pid), &**pool, &redis).await?.ok_or_else(|| ApiError::InvalidInput("Project ID attached to team is invalid.".to_string()))?;
+        let organization = if let Some(project_oid) = project.inner.organization_id {
+            database::models::Organization::get_id(project_oid.into(), &**pool, &redis).await?
+        } else {
+            None
+        };
+
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &current_user.role,
+            &Some(member.clone()),
+            &organization,
+        ).unwrap_or_default();
+    
+        if !permissions.contains(ProjectPermissions::MANAGE_INVITES) {
+            return Err(ApiError::CustomAuthentication(
+                "You don't have permission to invite users to this team".to_string(),
+            ));
+        }
+        if !permissions.contains(new_member.permissions) {
+            return Err(ApiError::InvalidInput(
+                "The new member has permissions that you don't have".to_string(),
+            ));
+        }    
     }
-    if !member.permissions.contains(new_member.permissions) {
-        return Err(ApiError::InvalidInput(
-            "The new member has permissions that you don't have".to_string(),
-        ));
+
+    if result.oid.is_some() {
+        if !member.organization_permissions.unwrap_or(OrganizationPermissions::empty())
+            .contains(OrganizationPermissions::MANAGE_INVITES)
+        {
+            return Err(ApiError::CustomAuthentication(
+                "You don't have permission to invite users to this organization".to_string(),
+            ));
+        }
+        if !member.organization_permissions.unwrap_or(OrganizationPermissions::empty())
+            .contains(new_member.organization_permissions.unwrap_or(OrganizationPermissions::empty()))
+        {
+            return Err(ApiError::InvalidInput(
+                "The new member has permissions that you don't have".to_string(),
+            ));
+        }
     }
 
     if new_member.role == crate::models::teams::OWNER_ROLE {
@@ -370,13 +425,21 @@ pub async fn add_team_member(
         .await?
         .ok_or_else(|| ApiError::InvalidInput("An invalid User ID specified".to_string()))?;
 
+
+    let organization_permissions = if result.oid.is_some() {
+        new_member.organization_permissions
+    } else {
+        None
+    };
+
     let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
     TeamMember {
         id: new_id,
         team_id,
         user_id: new_member.user_id.into(),
         role: new_member.role.clone(),
-        permissions: new_member.permissions,
+        permissions: Some(new_member.permissions),
+        organization_permissions,
         accepted: false,
         payouts_split: new_member.payouts_split,
         ordering: new_member.ordering,
@@ -384,27 +447,33 @@ pub async fn add_team_member(
     .insert(&mut transaction)
     .await?;
 
-    let result = sqlx::query!(
-        "
-        SELECT m.id
-        FROM mods m
-        WHERE m.team_id = $1
-        ",
-        team_id as crate::database::models::ids::TeamId
-    )
-    .fetch_one(&**pool)
-    .await?;
-
-    NotificationBuilder {
-        body: NotificationBody::TeamInvite {
-            project_id: ProjectId(result.id as u64),
-            team_id: team_id.into(),
-            invited_by: current_user.id,
-            role: new_member.role.clone(),
-        },
+    match (result.pid, result.oid) {
+        (Some(pid), _) => {
+            NotificationBuilder {
+                body: NotificationBody::TeamInvite {
+                    project_id: ProjectId(pid as u64),
+                    team_id: team_id.into(),
+                    invited_by: current_user.id,
+                    role: new_member.role.clone(),
+                },
+            }
+            .insert(new_member.user_id.into(), &mut transaction)
+            .await?;
+        }
+        (None, Some(oid)) => {
+            NotificationBuilder {
+                body: NotificationBody::OrganizationInvite {
+                    organization_id: OrganizationId(oid as u64),
+                    team_id: team_id.into(),
+                    invited_by: current_user.id,
+                    role: new_member.role.clone(),
+                },
+            }
+            .insert(new_member.user_id.into(), &mut transaction)
+            .await?;
+        }
+        _ => return Err(ApiError::InvalidInput("Invalid team ID".to_string())),
     }
-    .insert(new_member.user_id.into(), &mut transaction)
-    .await?;
 
     TeamMember::clear_cache(team_id, &redis).await?;
 
@@ -415,7 +484,8 @@ pub async fn add_team_member(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct EditTeamMember {
-    pub permissions: Option<Permissions>,
+    pub permissions: Option<ProjectPermissions>,
+    pub organization_permissions: Option<OrganizationPermissions>,
     pub role: Option<String>,
     pub payouts_split: Option<Decimal>,
     pub ordering: Option<i64>,
@@ -468,16 +538,77 @@ pub async fn edit_team_member(
         ));
     }
 
-    if !member.permissions.contains(Permissions::EDIT_MEMBER) {
-        return Err(ApiError::CustomAuthentication(
-            "You don't have permission to edit members of this team".to_string(),
-        ));
+    let result = sqlx::query!(
+        "
+        SELECT m.id AS pid, NULL AS oid
+        FROM mods m
+        WHERE m.team_id = $1
+    
+        UNION ALL
+    
+        SELECT NULL AS pid, o.id AS oid
+        FROM organizations o
+        WHERE o.team_id = $1    
+        ",
+        id as crate::database::models::ids::TeamId
+    )
+    .fetch_one(&**pool)
+    .await?;
+
+    // TODO: sohuld noly count these if we are using a project team
+    // TODO TODO TODO
+    // I put scope here to help remind
+    // (see todo below:)
+    /*
+        if project team {}
+        if organization team{}
+
+     */
+
+    {
+        let project = database::models::Project::get_id(database::models::ids::ProjectId(result.pid.unwrap_or(0)), &**pool, &redis).await?.ok_or_else(|| ApiError::InvalidInput("Project ID attached to team is invalid.".to_string()))?;
+        let organization = if let Some(project_oid) = project.inner.organization_id {
+            database::models::Organization::get_id(project_oid.into(), &**pool, &redis).await?
+        } else {
+            None
+        };
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &current_user.role,
+            &Some(member.clone()),
+            &organization,
+        ).unwrap_or_default();
+        if !permissions.contains(ProjectPermissions::EDIT_MEMBER) {
+            return Err(ApiError::CustomAuthentication(
+                "You don't have permission to edit members of this team".to_string(),
+            ));
+        }
+    
+        if let Some(new_permissions) = edit_member.permissions {
+            if !permissions.contains(new_permissions) {
+                return Err(ApiError::InvalidInput(
+                    "The new permissions have permissions that you don't have".to_string(),
+                ));
+            }
+        }    
     }
 
-    if let Some(new_permissions) = edit_member.permissions {
-        if !member.permissions.contains(new_permissions) {
+
+    if let Some(new_permissions) = edit_member.organization_permissions { // TODO: should change this. Shouldn't be able to edit ANY permissions if this is an org account and dont have org permissions, not only these
+        if let Some(organization_permissions) = member.organization_permissions {
+            if !organization_permissions.contains(OrganizationPermissions::EDIT_MEMBER) {
+                return Err(ApiError::InvalidInput(
+                    "You don't have permission to edit organization permissions".to_string(),
+                ));
+            }
+
+            if !organization_permissions.contains(new_permissions) {
+                return Err(ApiError::InvalidInput(
+                    "The new organization permissions have permissions that you don't have".to_string(),
+                ));
+            }
+        } else {
             return Err(ApiError::InvalidInput(
-                "The new permissions have permissions that you don't have".to_string(),
+                "You don't have permission to edit organization permissions".to_string(),
             ));
         }
     }
@@ -500,6 +631,7 @@ pub async fn edit_team_member(
         id,
         user_id,
         edit_member.permissions,
+        edit_member.organization_permissions,
         edit_member.role.clone(),
         None,
         edit_member.payouts_split,
@@ -575,6 +707,7 @@ pub async fn transfer_ownership(
         id.into(),
         current_user.id.into(),
         None,
+        None,
         Some(crate::models::teams::DEFAULT_ROLE.to_string()),
         None,
         None,
@@ -586,7 +719,8 @@ pub async fn transfer_ownership(
     TeamMember::edit_team_member(
         id.into(),
         new_owner.user_id.into(),
-        Some(Permissions::ALL),
+        Some(ProjectPermissions::ALL),
+        Some(OrganizationPermissions::ALL),
         Some(crate::models::teams::OWNER_ROLE.to_string()),
         None,
         None,
@@ -623,6 +757,7 @@ pub async fn remove_team_member(
     )
     .await?
     .1;
+
     let member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool)
         .await?
         .ok_or_else(|| {
@@ -630,6 +765,25 @@ pub async fn remove_team_member(
                 "You don't have permission to edit members of this team".to_string(),
             )
         })?;
+
+
+        let result = sqlx::query!(
+            "
+            SELECT m.id AS pid, NULL AS oid
+            FROM mods m
+            WHERE m.team_id = $1
+        
+            UNION ALL
+        
+            SELECT NULL AS pid, o.id AS oid
+            FROM organizations o
+            WHERE o.team_id = $1    
+            ",
+            id as crate::database::models::ids::TeamId
+        )
+        .fetch_one(&**pool)
+        .await?;
+    
 
     let delete_member = TeamMember::get_from_user_id_pending(id, user_id, &**pool).await?;
 
@@ -643,11 +797,27 @@ pub async fn remove_team_member(
 
         let mut transaction = pool.begin().await?;
 
+        // TODO: restructure should avoid this.
+        // Organization attached to a project this team is attached to
+        let project = database::models::Project::get_id(database::models::ids::ProjectId(result.pid.unwrap_or(0)), &**pool, &redis).await?.ok_or_else(|| ApiError::InvalidInput("Project ID attached to team is invalid.".to_string()))?;
+        let organization = if let Some(project_oid) = project.inner.organization_id {
+            database::models::Organization::get_id(project_oid.into(), &**pool, &redis).await?
+        } else {
+            None
+        };
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &current_user.role,
+            &Some(member.clone()),
+            &organization,
+        ).unwrap_or_default();
+
+
         if delete_member.accepted {
             // Members other than the owner can either leave the team, or be
             // removed by a member with the REMOVE_MEMBER permission.
             if delete_member.user_id == member.user_id
-                || (member.permissions.contains(Permissions::REMOVE_MEMBER) && member.accepted)
+            || (result.pid.is_some() && permissions.contains(ProjectPermissions::REMOVE_MEMBER) && member.accepted)
+            || (result.oid.is_some() && member.organization_permissions.unwrap_or(OrganizationPermissions::empty()).contains(OrganizationPermissions::REMOVE_MEMBER) && member.accepted)
             {
                 TeamMember::delete(id, user_id, &mut transaction).await?;
             } else {
@@ -656,7 +826,8 @@ pub async fn remove_team_member(
                 ));
             }
         } else if delete_member.user_id == member.user_id
-            || (member.permissions.contains(Permissions::MANAGE_INVITES) && member.accepted)
+            || (result.pid.is_some() && permissions.contains(ProjectPermissions::MANAGE_INVITES) && member.accepted)
+            || (result.oid.is_some() && member.organization_permissions.unwrap_or(OrganizationPermissions::empty()).contains(OrganizationPermissions::MANAGE_INVITES) && member.accepted)
         {
             // This is a pending invite rather than a member, so the
             // user being invited or team members with the MANAGE_INVITES

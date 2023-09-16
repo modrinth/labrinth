@@ -3,6 +3,7 @@ use chrono::{Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
+use super::ApiError;
 
 use crate::{
     auth::{filter_authorized_projects, filter_authorized_versions, get_user_from_headers},
@@ -16,8 +17,6 @@ use crate::{
     },
     queue::session::AuthQueue,
 };
-
-use super::ApiError;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(

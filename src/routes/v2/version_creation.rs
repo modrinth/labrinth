@@ -14,7 +14,7 @@ use crate::models::projects::{
     Dependency, DependencyType, FileType, GameVersion, Loader, ProjectId, Version, VersionFile,
     VersionId, VersionStatus, VersionType,
 };
-use crate::models::teams::Permissions;
+use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
@@ -222,9 +222,26 @@ async fn version_create_inner(
                     )
                 })?;
 
-                if !team_member
-                    .permissions
-                    .contains(Permissions::UPLOAD_VERSION)
+                // Get organization attached, if exists, and the member project permissions
+                // TODO: remove this. resdundant with above code kidna
+                let project = models::Project::get_id(project_id, &mut *transaction, redis).await?.ok_or_else(|| {
+                    CreateError::InvalidInput(
+                        "An invalid project id was supplied".to_string(),
+                    )
+                })?;
+                let organization = if let Some(oid) = project.inner.organization_id {
+                    models::Organization::get_id(oid, &mut *transaction, redis).await?
+                } else {
+                    None
+                };
+                let permissions = ProjectPermissions::get_permissions_by_role(
+                    &user.role,
+                    &Some(team_member.clone()),
+                    &organization,
+                ).unwrap_or_default();
+                
+                if !permissions
+                    .contains(ProjectPermissions::UPLOAD_VERSION)
                 {
                     return Err(CreateError::CustomAuthenticationError(
                         "You don't have permission to upload this version!".to_string(),
@@ -579,9 +596,27 @@ async fn upload_file_to_version_inner(
             )
         })?;
 
-        if !team_member
-            .permissions
-            .contains(Permissions::UPLOAD_VERSION)
+        // TODO: restructure, see other todos
+        let project = models::Project::get_id(version.inner.project_id, &mut *transaction, &redis)
+            .await?
+            .ok_or_else(|| {
+                CreateError::InvalidInput(
+                    "An invalid project id was supplied".to_string(),
+                )
+            })?;
+        let organization = if let Some(oid) = project.inner.organization_id {
+            models::Organization::get_id(oid, &mut *transaction, &redis).await?
+        } else {
+            None
+        };
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &Some(team_member.clone()),
+            &organization,
+        ).unwrap_or_default();
+
+        if !permissions
+            .contains(ProjectPermissions::UPLOAD_VERSION)
         {
             return Err(CreateError::CustomAuthenticationError(
                 "You don't have permission to upload files to this version!".to_string(),

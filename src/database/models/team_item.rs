@@ -1,5 +1,5 @@
 use super::ids::*;
-use crate::models::teams::Permissions;
+use crate::models::teams::{ProjectPermissions, OrganizationPermissions, Permissions};
 use itertools::Itertools;
 use redis::cmd;
 use rust_decimal::Decimal;
@@ -14,7 +14,7 @@ pub struct TeamBuilder {
 pub struct TeamMemberBuilder {
     pub user_id: UserId,
     pub role: String,
-    pub permissions: Permissions,
+    pub permissions: Option<Permissions>,
     pub accepted: bool,
     pub payouts_split: Decimal,
     pub ordering: i64,
@@ -39,14 +39,21 @@ impl TeamBuilder {
         .execute(&mut *transaction)
         .await?;
 
+
         for member in self.members {
             let team_member_id = generate_team_member_id(&mut *transaction).await?;
+            let (project_permissions, organization_permissions) = match member.permissions {
+                Some(Permissions::Project(p)) => (Some(p), None),
+                Some(Permissions::Organization(op)) => (None, Some(op)),
+                None => (None, None),
+            };
             let team_member = TeamMember {
                 id: team_member_id,
                 team_id,
                 user_id: member.user_id,
                 role: member.role,
-                permissions: member.permissions,
+                permissions: project_permissions,
+                organization_permissions,
                 accepted: member.accepted,
                 payouts_split: member.payouts_split,
                 ordering: member.ordering,
@@ -54,14 +61,15 @@ impl TeamBuilder {
 
             sqlx::query!(
                 "
-                INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO team_members (id, team_id, user_id, role, permissions, organization_permissions, accepted, payouts_split, ordering)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ",
                 team_member.id as TeamMemberId,
                 team_member.team_id as TeamId,
                 team_member.user_id as UserId,
                 team_member.role,
-                team_member.permissions.bits() as i64,
+                team_member.permissions.map(|p|p.bits() as i64),
+                team_member.organization_permissions.map(|p|p.bits() as i64),
                 team_member.accepted,
                 team_member.payouts_split,
                 team_member.ordering,
@@ -81,14 +89,16 @@ pub struct Team {
 }
 
 /// A member of a team
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct TeamMember {
     pub id: TeamMemberId,
     pub team_id: TeamId,
     /// The ID of the user associated with the member
     pub user_id: UserId,
     pub role: String,
-    pub permissions: Permissions,
+    // Only one of these should be set
+    pub permissions: Option<ProjectPermissions>,
+    pub organization_permissions: Option<OrganizationPermissions>,
     pub accepted: bool,
     pub payouts_split: Decimal,
     pub ordering: i64,
@@ -154,7 +164,7 @@ impl TeamMember {
         if !team_ids_parsed.is_empty() {
             let teams: Vec<TeamMember> = sqlx::query!(
                 "
-                SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.accepted accepted, tm.payouts_split payouts_split, tm.ordering,
+                SELECT tm.id id, tm.team_id team_id, tm.role member_role, tm.permissions permissions, tm.organization_permissions organization_permissions, tm.accepted accepted, tm.payouts_split payouts_split, tm.ordering,
                 tm.user_id user_id
                 FROM team_members tm
                 WHERE tm.team_id = ANY($1)
@@ -169,7 +179,8 @@ impl TeamMember {
                             id: TeamMemberId(m.id),
                             team_id: TeamId(m.team_id),
                             role: m.member_role,
-                            permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
+                            permissions: m.permissions.map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
+                            organization_permissions: m.organization_permissions.map(|op| OrganizationPermissions::from_bits(op as u64).unwrap_or_default()),
                             accepted: m.accepted,
                             user_id: UserId(m.user_id),
                             payouts_split: m.payouts_split,
@@ -240,7 +251,7 @@ impl TeamMember {
 
         let team_members = sqlx::query!(
             "
-            SELECT id, team_id, user_id, role, permissions, accepted, payouts_split, ordering
+            SELECT id, team_id, user_id, role, permissions, organization_permissions, accepted, payouts_split, ordering
             FROM team_members
             WHERE (team_id = ANY($1) AND user_id = $2 AND accepted = TRUE)
             ORDER BY ordering
@@ -256,7 +267,8 @@ impl TeamMember {
                     team_id: TeamId(m.team_id),
                     user_id,
                     role: m.role,
-                    permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
+                    permissions: m.permissions.map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
+                    organization_permissions: m.organization_permissions.map(|op| OrganizationPermissions::from_bits(op as u64).unwrap_or_default()),
                     accepted: m.accepted,
                     payouts_split: m.payouts_split,
                     ordering: m.ordering,
@@ -286,7 +298,7 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT id, user_id, role, permissions, accepted, payouts_split, ordering
+            SELECT id, user_id, role, permissions, organization_permissions, accepted, payouts_split, ordering
             FROM team_members
             WHERE (team_id = $1 AND user_id = $2)
             ",
@@ -302,7 +314,8 @@ impl TeamMember {
                 team_id: id,
                 user_id,
                 role: m.role,
-                permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
+                permissions: m.permissions.map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
+                organization_permissions: m.organization_permissions.map(|op| OrganizationPermissions::from_bits(op as u64).unwrap_or_default()),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
@@ -319,17 +332,18 @@ impl TeamMember {
         sqlx::query!(
             "
             INSERT INTO team_members (
-                id, team_id, user_id, role, permissions, accepted
+                id, team_id, user_id, role, permissions, organization_permissions, accepted
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6
+                $1, $2, $3, $4, $5, $6, $7
             )
             ",
             self.id as TeamMemberId,
             self.team_id as TeamId,
             self.user_id as UserId,
             self.role,
-            self.permissions.bits() as i64,
+            self.permissions.map(|p| p.bits() as i64),
+            self.organization_permissions.map(|op| op.bits() as i64),
             self.accepted,
         )
         .execute(&mut *transaction)
@@ -362,7 +376,8 @@ impl TeamMember {
     pub async fn edit_team_member(
         id: TeamId,
         user_id: UserId,
-        new_permissions: Option<Permissions>,
+        new_permissions: Option<ProjectPermissions>,
+        organization_permissions: Option<OrganizationPermissions>,
         new_role: Option<String>,
         new_accepted: Option<bool>,
         new_payouts_split: Option<Decimal>,
@@ -377,6 +392,21 @@ impl TeamMember {
                 WHERE (team_id = $2 AND user_id = $3)
                 ",
                 permissions.bits() as i64,
+                id as TeamId,
+                user_id as UserId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        if let Some(organization_permissions) = organization_permissions {
+            sqlx::query!(
+                "
+                UPDATE team_members
+                SET organization_permissions = $1
+                WHERE (team_id = $2 AND user_id = $3)
+                ",
+                organization_permissions.bits() as i64,
                 id as TeamId,
                 user_id as UserId,
             )
@@ -458,7 +488,7 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted, tm.payouts_split, tm.ordering FROM mods m
+            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.organization_permissions, tm.accepted, tm.payouts_split, tm.ordering FROM mods m
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND user_id = $2 AND accepted = TRUE
             WHERE m.id = $1
             ",
@@ -474,7 +504,8 @@ impl TeamMember {
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
+                permissions: m.permissions.map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
+                organization_permissions: m.organization_permissions.map(|op| OrganizationPermissions::from_bits(op as u64).unwrap_or_default()),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
@@ -494,7 +525,7 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted, tm.payouts_split, tm.ordering FROM versions v
+            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.organization_permissions, tm.accepted, tm.payouts_split, tm.ordering FROM versions v
             INNER JOIN mods m ON m.id = v.mod_id
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.user_id = $2 AND tm.accepted = TRUE
             WHERE v.id = $1
@@ -511,7 +542,8 @@ impl TeamMember {
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                permissions: Permissions::from_bits(m.permissions as u64).unwrap_or_default(),
+                permissions: m.permissions.map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
+                organization_permissions: m.organization_permissions.map(|op| OrganizationPermissions::from_bits(op as u64).unwrap_or_default()),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
