@@ -152,7 +152,38 @@ impl Organization {
         println!("Found {} organizations in database", found_organizations.len());
 
         Ok(found_organizations)
+    }
 
+    // Gets organization associated with a project ID, if it exists and there is one
+    pub async fn get_associated_organization_project_id<'a, 'b, E>(
+        project_id: ProjectId,
+        exec: E,
+    ) -> Result<Option<Self>, super::DatabaseError>
+    where E: sqlx::Executor<'a, Database = sqlx::Postgres> {
+        let result = sqlx::query!(
+            "
+            SELECT o.id, o.name, o.slug, o.team_id, o.description, o.default_project_permissions
+            FROM organizations o
+            LEFT JOIN mods m ON m.organization_id = o.id
+            WHERE m.id = $1
+            ",
+            project_id as ProjectId,
+        )
+        .fetch_optional(exec)
+        .await?;
+
+        if let Some(result) = result {
+            Ok(Some(Organization {
+                id: OrganizationId(result.id),
+                name: result.name,
+                slug: result.slug,
+                team_id: TeamId(result.team_id),
+                description: result.description,
+                default_project_permissions: ProjectPermissions::from_bits(result.default_project_permissions as u64).unwrap_or_default(),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn clear_cache(
@@ -160,6 +191,7 @@ impl Organization {
         redis: &deadpool_redis::Pool,
     ) -> Result<(), super::DatabaseError> {
         let mut redis = redis.get().await?;
+        // TODO slugs
         cmd("DEL")
             .arg(format!("{}:{}", ORGANIZATIONS_NAMESPACE, id.0))
             .query_async::<_, ()>(&mut redis)

@@ -1,7 +1,7 @@
 use crate::auth::{get_user_from_headers, is_authorized};
 use crate::database;
 use crate::database::models::notification_item::NotificationBuilder;
-use crate::database::models::TeamMember;
+use crate::database::models::{TeamMember, Organization};
 use crate::models::ids::{ProjectId, OrganizationId};
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
@@ -324,6 +324,7 @@ pub async fn add_team_member(
     .await?
     .1;
 
+    // TODO: check usage of this.
     let result = sqlx::query!(
         "
         SELECT m.id AS pid, NULL AS oid
@@ -352,13 +353,7 @@ pub async fn add_team_member(
 
     if let Some(pid) = result.pid {
 
-        let project = database::models::Project::get_id(database::models::ids::ProjectId(pid), &**pool, &redis).await?.ok_or_else(|| ApiError::InvalidInput("Project ID attached to team is invalid.".to_string()))?;
-        let organization = if let Some(project_oid) = project.inner.organization_id {
-            database::models::Organization::get_id(project_oid.into(), &**pool, &redis).await?
-        } else {
-            None
-        };
-
+        let organization = Organization::get_associated_organization_project_id(database::models::ids::ProjectId(pid), &**pool).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &current_user.role,
             &Some(member.clone()),
@@ -566,12 +561,7 @@ pub async fn edit_team_member(
      */
 
     {
-        let project = database::models::Project::get_id(database::models::ids::ProjectId(result.pid.unwrap_or(0)), &**pool, &redis).await?.ok_or_else(|| ApiError::InvalidInput("Project ID attached to team is invalid.".to_string()))?;
-        let organization = if let Some(project_oid) = project.inner.organization_id {
-            database::models::Organization::get_id(project_oid.into(), &**pool, &redis).await?
-        } else {
-            None
-        };
+        let organization = Organization::get_associated_organization_project_id(database::models::ids::ProjectId(result.pid.unwrap_or(0)), &**pool).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &current_user.role,
             &Some(member.clone()),
@@ -799,12 +789,7 @@ pub async fn remove_team_member(
 
         // TODO: restructure should avoid this.
         // Organization attached to a project this team is attached to
-        let project = database::models::Project::get_id(database::models::ids::ProjectId(result.pid.unwrap_or(0)), &**pool, &redis).await?.ok_or_else(|| ApiError::InvalidInput("Project ID attached to team is invalid.".to_string()))?;
-        let organization = if let Some(project_oid) = project.inner.organization_id {
-            database::models::Organization::get_id(project_oid.into(), &**pool, &redis).await?
-        } else {
-            None
-        };
+        let organization = Organization::get_associated_organization_project_id(database::models::ids::ProjectId(result.pid.unwrap_or(0)), &**pool).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &current_user.role,
             &Some(member.clone()),

@@ -4,7 +4,7 @@ use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
     DependencyBuilder, VersionBuilder, VersionFileBuilder,
 };
-use crate::database::models::{self, image_item};
+use crate::database::models::{self, image_item, Organization};
 use crate::file_hosting::FileHost;
 use crate::models::images::{Image, ImageContext, ImageId};
 use crate::models::notifications::NotificationBody;
@@ -597,18 +597,7 @@ async fn upload_file_to_version_inner(
         })?;
 
         // TODO: restructure, see other todos
-        let project = models::Project::get_id(version.inner.project_id, &mut *transaction, &redis)
-            .await?
-            .ok_or_else(|| {
-                CreateError::InvalidInput(
-                    "An invalid project id was supplied".to_string(),
-                )
-            })?;
-        let organization = if let Some(oid) = project.inner.organization_id {
-            models::Organization::get_id(oid, &mut *transaction, &redis).await?
-        } else {
-            None
-        };
+        let organization = Organization::get_associated_organization_project_id(version.inner.project_id, &**pool).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member.clone()),

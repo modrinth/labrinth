@@ -3,7 +3,7 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
-use crate::database::models::image_item;
+use crate::database::models::{image_item, Organization};
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;
@@ -353,11 +353,7 @@ pub async fn version_edit(
         )
         .await?;
 
-        let organization = if let Some(project_oid) = project_item.as_ref().and_then(|p|p.inner.organization_id) {
-            database::models::Organization::get_id(project_oid, &**pool, &redis).await?
-        } else {
-            None
-        };
+        let organization = Organization::get_associated_organization_project_id(database::models::ids::ProjectId(version_item.inner.project_id), &**pool).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member,
@@ -852,20 +848,11 @@ pub async fn version_delete(
             )
         })?;
 
-        let project_item = database::models::Project::get_id(
-            version.inner.project_id,
-            &**pool,
-            &redis,
-        ).await?;
-        let organization_item = if let Some(project_oid) = project_item.as_ref().and_then(|p|p.inner.organization_id) {
-            database::models::Organization::get_id(project_oid, &**pool, &redis).await?
-        } else {
-            None
-        };
+        let organization = Organization::get_associated_organization_project_id(database::models::ids::ProjectId(version.inner.project_id), &**pool).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member),
-            &organization_item,
+            &organization,
         ).unwrap_or_default();
 
         if !permissions
