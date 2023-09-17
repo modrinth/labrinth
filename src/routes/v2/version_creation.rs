@@ -597,7 +597,7 @@ async fn upload_file_to_version_inner(
         })?;
 
         // TODO: restructure, see other todos
-        let organization = Organization::get_associated_organization_project_id(version.inner.project_id, &**pool).await?;
+        let organization = Organization::get_associated_organization_project_id(version.inner.project_id, &**client).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member.clone()),

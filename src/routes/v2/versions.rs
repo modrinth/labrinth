@@ -353,7 +353,7 @@ pub async fn version_edit(
         )
         .await?;
 
-        let organization = Organization::get_associated_organization_project_id(database::models::ids::ProjectId(version_item.inner.project_id), &**pool).await?;
+        let organization = Organization::get_associated_organization_project_id(version_item.inner.project_id, &**pool).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member,
@@ -848,7 +848,7 @@ pub async fn version_delete(
             )
         })?;
 
-        let organization = Organization::get_associated_organization_project_id(database::models::ids::ProjectId(version.inner.project_id), &**pool).await?;
+        let organization = Organization::get_associated_organization_project_id(version.inner.project_id, &**pool).await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member),
