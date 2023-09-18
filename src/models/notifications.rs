@@ -112,11 +112,18 @@ impl From<DBNotification> for Notification {
                         },
                     ],
                 ),
-                NotificationBody::OrganizationInvite { organization_id, role, team_id, .. } =>
-                    (
+                NotificationBody::OrganizationInvite {
+                    organization_id,
+                    role,
+                    team_id,
+                    ..
+                } => (
                     Some("organization_invite".to_string()),
                     "You have been invited to join an organization!".to_string(),
-                    format!("An invite has been sent for you to be {} of an organization", role),
+                    format!(
+                        "An invite has been sent for you to be {} of an organization",
+                        role
+                    ),
                     format!("/organization/{}", organization_id),
                     vec![
                         NotificationAction {
@@ -127,7 +134,10 @@ impl From<DBNotification> for Notification {
                             title: "Deny".to_string(),
                             action_route: (
                                 "DELETE".to_string(),
-                                format!("organization/{organization_id}/members/{}", UserId::from(notif.user_id)),
+                                format!(
+                                    "organization/{organization_id}/members/{}",
+                                    UserId::from(notif.user_id)
+                                ),
                             ),
                         },
                     ],

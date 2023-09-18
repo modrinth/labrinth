@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-
-use super::{ids::{Base62Id, TeamId}, teams::TeamMember};
-use crate::models::users::User;
+use super::{
+    ids::{Base62Id, TeamId},
+    teams::TeamMember,
+};
 use serde::{Deserialize, Serialize};
 
 /// The ID of a team
@@ -9,9 +9,6 @@ use serde::{Deserialize, Serialize};
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct OrganizationId(pub u64);
-
-pub const OWNER_ROLE: &str = "Owner";
-pub const DEFAULT_ROLE: &str = "Member";
 
 /// An organization of users who control a project
 #[derive(Serialize, Deserialize)]

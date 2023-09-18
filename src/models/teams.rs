@@ -28,7 +28,6 @@ pub enum Permissions {
     Organization(OrganizationPermissions),
 }
 
-
 bitflags::bitflags! {
     #[derive(Serialize, Deserialize)]
     #[serde(transparent)]
@@ -69,14 +68,17 @@ impl ProjectPermissions {
                 return Some(organization.default_project_permissions);
             }
         };
-        
-         if role.is_mod() {
-            Some(ProjectPermissions::EDIT_DETAILS | ProjectPermissions::EDIT_BODY | ProjectPermissions::UPLOAD_VERSION)
+
+        if role.is_mod() {
+            Some(
+                ProjectPermissions::EDIT_DETAILS
+                    | ProjectPermissions::EDIT_BODY
+                    | ProjectPermissions::UPLOAD_VERSION,
+            )
         } else {
             None
         }
     }
-
 }
 
 bitflags::bitflags! {
@@ -90,8 +92,10 @@ bitflags::bitflags! {
         const EDIT_MEMBER = 1 << 4;
         const ADD_PROJECT = 1 << 5;
         const REMOVE_PROJECT = 1 << 6;
-        const EDIT_PROJECT_MEMBER = 1 << 7; // Edit permissions of a member in a project owned by the organization TODO
-        const ALL = 0b1111111;
+        const DELETE_ORGANIZATION = 1 << 8;
+        const EDIT_PROJECT_MEMBER = 1 << 9; // Edit permissions of a member in a project owned by the organization TODO
+        const EDIT_PROJECT_DEFAULT_PERMISSIONS = 1 << 10; // Edit the default permissions of a project owned by the organization
+        const ALL = 0b11111111;
         const NONE = 0b0;
     }
 }
@@ -112,14 +116,16 @@ impl OrganizationPermissions {
         } else if let Some(member) = team_member {
             member.organization_permissions
         } else if role.is_mod() {
-            Some(OrganizationPermissions::EDIT_DETAILS | OrganizationPermissions::EDIT_BODY | OrganizationPermissions::ADD_PROJECT)
+            Some(
+                OrganizationPermissions::EDIT_DETAILS
+                    | OrganizationPermissions::EDIT_BODY
+                    | OrganizationPermissions::ADD_PROJECT,
+            )
         } else {
             None
         }
     }
 }
-
-
 
 /// A member of a team
 #[derive(Serialize, Deserialize, Clone)]
@@ -159,15 +165,9 @@ impl TeamMember {
             role: data.role,
             permissions: if override_permissions {
                 None
-            } else {
-                if let Some(permissions) = data.permissions {
-                    Some(Permissions::Project(permissions))
-                } else if let Some(permissions) = data.organization_permissions {
-                    Some(Permissions::Organization(permissions))
-                } else {
-                    None
-                }
-            },
+            } else if let Some(permissions) = data.permissions {
+                Some(Permissions::Project(permissions))
+            } else { data.organization_permissions.map(Permissions::Organization) },
             accepted: data.accepted,
             payouts_split: if override_permissions {
                 None

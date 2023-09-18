@@ -672,7 +672,9 @@ async fn project_create_inner(
                 user_id: current_user.id.into(),
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
                 // Allow all permissions for project creator, even if attached to a project
-                permissions: Some(Permissions::Project(crate::models::teams::ProjectPermissions::ALL)),
+                permissions: Some(Permissions::Project(
+                    crate::models::teams::ProjectPermissions::ALL,
+                )),
                 accepted: true,
                 payouts_split: Decimal::ONE_HUNDRED,
                 ordering: 0,
@@ -750,7 +752,7 @@ async fn project_create_inner(
             project_id: project_id.into(),
             project_type_id,
             team_id,
-            organization_id: project_create_data.organization_id.map(|x| x.into()), 
+            organization_id: project_create_data.organization_id,
             title: project_create_data.title,
             description: project_create_data.description,
             body: project_create_data.body,

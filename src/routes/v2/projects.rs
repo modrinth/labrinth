@@ -410,15 +410,14 @@ pub async fn project_edit(
             &**pool,
         )
         .await?;
-    
 
-        let organization = if let Some(oid) = project_item.inner.organization_id{
-             database::models::Organization::get_id(oid, &**pool, &redis).await?
-        } else {
-            None
-        };
-
-        let permissions = ProjectPermissions::get_permissions_by_role(&user.role, &team_member, &organization);
+        let organization = database::models::Organization::get_associated_organization_project_id(
+            project_item.inner.id,
+            &**pool,
+        )
+        .await?;
+        let permissions =
+            ProjectPermissions::get_permissions_by_role(&user.role, &team_member, &organization);
 
         if let Some(perms) = permissions {
             let mut transaction = pool.begin().await?;
@@ -1270,11 +1269,8 @@ pub async fn projects_edit(
         .iter()
         .filter_map(|x| x.inner.organization_id)
         .collect::<Vec<database::models::OrganizationId>>();
-    let organizations = database::models::Organization::get_many_ids(
-        &organization_ids,
-        &**pool,
-        &redis,
-    ).await?;
+    let organizations =
+        database::models::Organization::get_many_ids(&organization_ids, &**pool, &redis).await?;
 
     let categories = database::models::categories::Category::list(&**pool, &redis).await?;
     let donation_platforms =
@@ -1284,23 +1280,23 @@ pub async fn projects_edit(
 
     for project in projects_data {
         if !user.role.is_mod() {
-
             let team_member = team_members
-            .iter()
-            .find(|x| x.team_id == project.inner.team_id && x.user_id == user.id.into());
-
-            let organization = project.inner.organization_id.and_then(|oid| organizations
                 .iter()
-                .find(|x| x.id == oid));
+                .find(|x| x.team_id == project.inner.team_id && x.user_id == user.id.into());
+
+            let organization = project
+                .inner
+                .organization_id
+                .and_then(|oid| organizations.iter().find(|x| x.id == oid));
 
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &user.role,
                 &team_member.cloned(),
                 &organization.cloned(),
-            ).unwrap_or_default();
+            )
+            .unwrap_or_default();
 
-            if let Some(member) = team_member
-            {
+            if team_member.is_some() {
                 if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(format!(
                         "You do not have the permissions to bulk edit project {}!",
@@ -1622,23 +1618,19 @@ pub async fn project_schedule(
         )
         .await?;
 
-        let organization = if let Some(oid) = project_item.inner.organization_id {
-            database::models::Organization::get_id(oid, &**pool, &redis).await?
-        } else {
-            None
-        };
-
+        let organization = database::models::Organization::get_associated_organization_project_id(
+            project_item.inner.id,
+            &**pool,
+        )
+        .await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member.clone(),
             &organization,
-        ).unwrap_or_default();
-        
-        if !user.role.is_mod()
-            && !team_member
-                .map(|x| permissions.contains(ProjectPermissions::EDIT_DETAILS))
-                .unwrap_or(false)
-        {
+        )
+        .unwrap_or_default();
+
+        if !user.role.is_mod() && !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to edit this project's scheduling data!".to_string(),
             ));
@@ -1731,18 +1723,18 @@ pub async fn project_icon_edit(
                 ApiError::InvalidInput("The specified project does not exist!".to_string())
             })?;
 
-            let organization = if let Some(oid) = project_item.inner.organization_id {
-                database::models::Organization::get_id(oid, &**pool, &redis).await?
-            } else {
-                None
-            };
-    
+            let organization =
+                database::models::Organization::get_associated_organization_project_id(
+                    project_item.inner.id,
+                    &**pool,
+                )
+                .await?;
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &user.role,
                 &Some(team_member.clone()),
                 &organization,
-            ).unwrap_or_default();
-    
+            )
+            .unwrap_or_default();
 
             if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
                 return Err(ApiError::CustomAuthentication(
@@ -1846,18 +1838,17 @@ pub async fn delete_project_icon(
             ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
-        let organization = if let Some(oid) = project_item.inner.organization_id {
-            database::models::Organization::get_id(oid, &**pool, &redis).await?
-        } else {
-            None
-        };
-
+        let organization = database::models::Organization::get_associated_organization_project_id(
+            project_item.inner.id,
+            &**pool,
+        )
+        .await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member.clone()),
             &organization,
-        ).unwrap_or_default();
-
+        )
+        .unwrap_or_default();
 
         if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
@@ -1964,18 +1955,18 @@ pub async fn add_gallery_item(
                 ApiError::InvalidInput("The specified project does not exist!".to_string())
             })?;
 
-            let organization = if let Some(oid) = project_item.inner.organization_id {
-                database::models::Organization::get_id(oid, &**pool, &redis).await?
-            } else {
-                None
-            };
-    
+            let organization =
+                database::models::Organization::get_associated_organization_project_id(
+                    project_item.inner.id,
+                    &**pool,
+                )
+                .await?;
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &user.role,
                 &Some(team_member.clone()),
                 &organization,
-            ).unwrap_or_default();
-    
+            )
+            .unwrap_or_default();
 
             if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
                 return Err(ApiError::CustomAuthentication(
@@ -2119,17 +2110,17 @@ pub async fn edit_gallery_item(
             ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
-        let organization = if let Some(oid) = project_item.inner.organization_id {
-            database::models::Organization::get_id(oid, &**pool, &redis).await?
-        } else {
-            None
-        };
-
+        let organization = database::models::Organization::get_associated_organization_project_id(
+            project_item.inner.id,
+            &**pool,
+        )
+        .await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member.clone()),
             &organization,
-        ).unwrap_or_default();
+        )
+        .unwrap_or_default();
 
         if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
@@ -2282,17 +2273,17 @@ pub async fn delete_gallery_item(
             ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
-        let organization = if let Some(oid) = project_item.inner.organization_id {
-            database::models::Organization::get_id(oid, &**pool, &redis).await?
-        } else {
-            None
-        };
-
+        let organization = database::models::Organization::get_associated_organization_project_id(
+            project_item.inner.id,
+            &**pool,
+        )
+        .await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member.clone()),
             &organization,
-        ).unwrap_or_default();
+        )
+        .unwrap_or_default();
 
         if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
@@ -2389,21 +2380,19 @@ pub async fn project_delete(
             ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
-        let organization = if let Some(oid) = project.inner.organization_id {
-            database::models::Organization::get_id(oid, &**pool, &redis).await?
-        } else {
-            None
-        };
-
+        let organization = database::models::Organization::get_associated_organization_project_id(
+            project.inner.id,
+            &**pool,
+        )
+        .await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member.clone()),
             &organization,
-        ).unwrap_or_default();
+        )
+        .unwrap_or_default();
 
-        if !permissions
-            .contains(ProjectPermissions::DELETE_PROJECT)
-        {
+        if !permissions.contains(ProjectPermissions::DELETE_PROJECT) {
             return Err(ApiError::CustomAuthentication(
                 "You don't have permission to delete this project!".to_string(),
             ));

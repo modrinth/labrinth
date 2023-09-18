@@ -353,12 +353,13 @@ pub async fn version_edit(
         )
         .await?;
 
-        let organization = Organization::get_associated_organization_project_id(version_item.inner.project_id, &**pool).await?;
-        let permissions = ProjectPermissions::get_permissions_by_role(
-            &user.role,
-            &team_member,
-            &organization,
-        );
+        let organization = Organization::get_associated_organization_project_id(
+            version_item.inner.project_id,
+            &**pool,
+        )
+        .await?;
+        let permissions =
+            ProjectPermissions::get_permissions_by_role(&user.role, &team_member, &organization);
 
         if let Some(perms) = permissions {
             if !perms.contains(ProjectPermissions::UPLOAD_VERSION) {
@@ -759,28 +760,22 @@ pub async fn version_schedule(
         )
         .await?;
 
-        let project_item = database::models::Project::get_id(
-            version_item.inner.project_id,
-            &**pool,
-            &redis,
-        ).await?;
-        let organization_item = if let Some(project_oid) = project_item.as_ref().and_then(|p|p.inner.organization_id) {
-            database::models::Organization::get_id(project_oid, &**pool, &redis).await?
-        } else {
-            None
-        };
+        let organization_item =
+            database::models::Organization::get_associated_organization_project_id(
+                version_item.inner.project_id,
+                &**pool,
+            )
+            .await
+            .map_err(ApiError::Database)?;
 
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member,
             &organization_item,
-        ).unwrap_or_default();
+        )
+        .unwrap_or_default();
 
-        if !user.role.is_mod()
-            && !team_member
-                .map(|x| permissions.contains(ProjectPermissions::EDIT_DETAILS))
-                .unwrap_or(false)
-        {
+        if !user.role.is_mod() && !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to edit this version's scheduling data!".to_string(),
             ));
@@ -848,16 +843,17 @@ pub async fn version_delete(
             )
         })?;
 
-        let organization = Organization::get_associated_organization_project_id(version.inner.project_id, &**pool).await?;
+        let organization =
+            Organization::get_associated_organization_project_id(version.inner.project_id, &**pool)
+                .await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member),
             &organization,
-        ).unwrap_or_default();
+        )
+        .unwrap_or_default();
 
-        if !permissions
-            .contains(ProjectPermissions::DELETE_VERSION)
-        {
+        if !permissions.contains(ProjectPermissions::DELETE_VERSION) {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to delete versions in this team".to_string(),
             ));

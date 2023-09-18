@@ -592,7 +592,7 @@ impl Project {
                             id: ProjectId(id),
                             project_type: ProjectTypeId(m.project_type),
                             team_id: TeamId(m.team_id),
-                            organization_id: m.organization_id.map(|x| OrganizationId(x)),
+                            organization_id: m.organization_id.map(OrganizationId),
                             title: m.title.clone(),
                             description: m.description.clone(),
                             downloads: m.downloads,

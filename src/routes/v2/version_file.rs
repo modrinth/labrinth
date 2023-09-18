@@ -192,24 +192,21 @@ pub async fn delete_file(
                 )
             })?;
 
-            let project = database::models::Project::get_id(row.project_id, &**pool, &redis)
+            let organization =
+                database::models::Organization::get_associated_organization_project_id(
+                    row.project_id,
+                    &**pool,
+                )
                 .await
-                .map_err(ApiError::Database)?
-                .ok_or_else(|| ApiError::InvalidInput("Project not found".to_string()))?;
-            let organization = if let Some(project_oid) = project.inner.organization_id {database::models::Organization::get_id(
-                project_oid,
-                &**pool,
-                &redis,
-            ).await.map_err(ApiError::Database)? } else { None};
+                .map_err(ApiError::Database)?;
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &user.role,
                 &Some(team_member.clone()),
                 &organization,
-            ).unwrap_or_default();
+            )
+            .unwrap_or_default();
 
-            if !permissions
-                .contains(ProjectPermissions::DELETE_VERSION)
-            {
+            if !permissions.contains(ProjectPermissions::DELETE_VERSION) {
                 return Err(ApiError::CustomAuthentication(
                     "You don't have permission to delete this file!".to_string(),
                 ));

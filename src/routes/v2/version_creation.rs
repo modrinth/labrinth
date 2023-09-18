@@ -224,25 +224,19 @@ async fn version_create_inner(
 
                 // Get organization attached, if exists, and the member project permissions
                 // TODO: remove this. resdundant with above code kidna
-                let project = models::Project::get_id(project_id, &mut *transaction, redis).await?.ok_or_else(|| {
-                    CreateError::InvalidInput(
-                        "An invalid project id was supplied".to_string(),
-                    )
-                })?;
-                let organization = if let Some(oid) = project.inner.organization_id {
-                    models::Organization::get_id(oid, &mut *transaction, redis).await?
-                } else {
-                    None
-                };
+                let organization = models::Organization::get_associated_organization_project_id(
+                    project_id,
+                    &mut *transaction,
+                )
+                .await?;
                 let permissions = ProjectPermissions::get_permissions_by_role(
                     &user.role,
                     &Some(team_member.clone()),
                     &organization,
-                ).unwrap_or_default();
-                
-                if !permissions
-                    .contains(ProjectPermissions::UPLOAD_VERSION)
-                {
+                )
+                .unwrap_or_default();
+
+                if !permissions.contains(ProjectPermissions::UPLOAD_VERSION) {
                     return Err(CreateError::CustomAuthenticationError(
                         "You don't have permission to upload this version!".to_string(),
                     ));
@@ -597,16 +591,19 @@ async fn upload_file_to_version_inner(
         })?;
 
         // TODO: restructure, see other todos
-        let organization = Organization::get_associated_organization_project_id(version.inner.project_id, &**client).await?;
+        let organization = Organization::get_associated_organization_project_id(
+            version.inner.project_id,
+            &**client,
+        )
+        .await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &Some(team_member.clone()),
             &organization,
-        ).unwrap_or_default();
+        )
+        .unwrap_or_default();
 
-        if !permissions
-            .contains(ProjectPermissions::UPLOAD_VERSION)
-        {
+        if !permissions.contains(ProjectPermissions::UPLOAD_VERSION) {
             return Err(CreateError::CustomAuthenticationError(
                 "You don't have permission to upload files to this version!".to_string(),
             ));
