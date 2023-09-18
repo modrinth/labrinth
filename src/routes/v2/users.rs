@@ -31,6 +31,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("user")
             .service(user_get)
             .service(projects_list)
+            .service(collections_list)
             .service(user_delete)
             .service(user_edit)
             .service(user_icon_edit)
