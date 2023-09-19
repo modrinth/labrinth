@@ -25,7 +25,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(organization_get)
             .service(organizations_edit)
             .service(organization_delete)
-            .service(organization_projects_get),
+            .service(organization_projects_get)
+            .service(organization_projects_add)
+            .service(organization_projects_remove)
+            .service(super::teams::team_members_get_organization),
     );
 }
 
@@ -185,12 +188,8 @@ pub async fn organization_get(
     .ok();
     let user_id = current_user.as_ref().map(|x| x.id.into());
 
-    println!("Getting organization {}", id);
-
     let organization_data = Organization::get(&id, &**pool, &redis).await?;
     if let Some(data) = organization_data {
-        println!("Found organization {}", id);
-
         let members_data = TeamMember::get_from_team_full(data.team_id, &**pool, &redis).await?;
 
         let users = crate::database::models::User::get_many_ids(
@@ -199,7 +198,6 @@ pub async fn organization_get(
             &redis,
         )
         .await?;
-        println!("Found {} users", users.len());
         let logged_in = current_user
             .and_then(|user| {
                 members_data
@@ -207,7 +205,6 @@ pub async fn organization_get(
                     .find(|x| x.user_id == user.id.into() && x.accepted)
             })
             .is_some();
-        println!("Logged in: {}", logged_in);
         let team_members: Vec<_> = members_data
             .into_iter()
             .filter(|x| {
@@ -223,12 +220,10 @@ pub async fn organization_get(
                 })
             })
             .collect();
-        println!("Found {} team members", team_members.len());
 
         let organization = models::organizations::Organization::from(data, team_members);
         return Ok(HttpResponse::Ok().json(organization));
     }
-    println!("Not found organization {}", id);
     Ok(HttpResponse::NotFound().body(""))
 }
 
@@ -543,11 +538,9 @@ pub async fn organization_delete(
             ApiError::InvalidInput("The specified organization does not exist!".to_string())
         })?;
 
-        let permissions = OrganizationPermissions::get_permissions_by_role(
-            &user.role,
-            &Some(team_member),
-        )
-        .unwrap_or_default();
+        let permissions =
+            OrganizationPermissions::get_permissions_by_role(&user.role, &Some(team_member))
+                .unwrap_or_default();
 
         if !permissions.contains(OrganizationPermissions::DELETE_ORGANIZATION) {
             return Err(ApiError::CustomAuthentication(
@@ -611,4 +604,198 @@ pub async fn organization_projects_get(
 
     let projects = filter_authorized_projects(projects_data, &current_user, &pool).await?;
     Ok(HttpResponse::Ok().json(projects))
+}
+
+#[derive(Deserialize)]
+pub struct OrganizationProjectAdd {
+    pub project_id: String, // Also allow slug
+}
+#[post("{id}/projects")]
+pub async fn organization_projects_add(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    project_info: web::Json<OrganizationProjectAdd>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let info = info.into_inner().0;
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_WRITE, Scopes::ORGANIZATION_WRITE]),
+    )
+    .await?
+    .1;
+
+    let organization = database::models::Organization::get(&info, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified organization does not exist!".to_string())
+        })?;
+
+    let project_item = database::models::Project::get(&project_info.project_id, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
+        })?;
+    if project_item.inner.organization_id.is_some() {
+        return Err(ApiError::InvalidInput(
+            "The specified project is already owned by an organization!".to_string(),
+        ));
+    }
+
+    let project_team_member = database::models::TeamMember::get_from_user_id_project(
+        project_item.inner.id,
+        current_user.id.into(),
+        &**pool,
+    )
+    .await?
+    .ok_or_else(|| ApiError::InvalidInput("You are not a member of this project!".to_string()))?;
+
+    let organization_team_member = database::models::TeamMember::get_from_user_id_organization(
+        organization.id,
+        current_user.id.into(),
+        &**pool,
+    )
+    .await?
+    .ok_or_else(|| {
+        ApiError::InvalidInput("You are not a member of this organization!".to_string())
+    })?;
+
+    // Require ownership of a project to add it to an organization
+    if !current_user.role.is_admin()
+        && !project_team_member
+            .role
+            .eq(crate::models::teams::OWNER_ROLE)
+    {
+        return Err(ApiError::CustomAuthentication(
+            "You need to be an owner of a project to add it to an organization!".to_string(),
+        ));
+    }
+
+    let permissions = OrganizationPermissions::get_permissions_by_role(
+        &current_user.role,
+        &Some(organization_team_member),
+    )
+    .unwrap_or_default();
+    if permissions.contains(OrganizationPermissions::ADD_PROJECT) {
+        let mut transaction = pool.begin().await?;
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET organization_id = $1
+            WHERE (id = $2)
+            ",
+            organization.id as database::models::OrganizationId,
+            project_item.inner.id as database::models::ids::ProjectId
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
+
+        database::models::TeamMember::clear_cache(project_item.inner.team_id, &redis).await?;
+        database::models::Project::clear_cache(
+            project_item.inner.id,
+            project_item.inner.slug,
+            None,
+            &redis,
+        )
+        .await?;
+    } else {
+        return Err(ApiError::CustomAuthentication(
+            "You do not have permission to add projects to this organization!".to_string(),
+        ));
+    }
+    Ok(HttpResponse::Ok().finish())
+}
+
+#[delete("{organization_id}/projects/{project_id}")]
+pub async fn organization_projects_remove(
+    req: HttpRequest,
+    info: web::Path<(String, String)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let (organization_id, project_id) = info.into_inner();
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_WRITE, Scopes::ORGANIZATION_WRITE]),
+    )
+    .await?
+    .1;
+
+    let organization = database::models::Organization::get(&organization_id, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified organization does not exist!".to_string())
+        })?;
+
+    let project_item = database::models::Project::get(&project_id, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
+        })?;
+
+    if !project_item
+        .inner
+        .organization_id
+        .eq(&Some(organization.id))
+    {
+        return Err(ApiError::InvalidInput(
+            "The specified project is not owned by this organization!".to_string(),
+        ));
+    }
+
+    let organization_team_member = database::models::TeamMember::get_from_user_id_organization(
+        organization.id,
+        current_user.id.into(),
+        &**pool,
+    )
+    .await?
+    .ok_or_else(|| {
+        ApiError::InvalidInput("You are not a member of this organization!".to_string())
+    })?;
+
+    let permissions = OrganizationPermissions::get_permissions_by_role(
+        &current_user.role,
+        &Some(organization_team_member),
+    )
+    .unwrap_or_default();
+    if permissions.contains(OrganizationPermissions::REMOVE_PROJECT) {
+        let mut transaction = pool.begin().await?;
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET organization_id = NULL
+            WHERE (id = $1)
+            ",
+            project_item.inner.id as database::models::ids::ProjectId
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
+
+        database::models::TeamMember::clear_cache(project_item.inner.team_id, &redis).await?;
+        database::models::Project::clear_cache(
+            project_item.inner.id,
+            project_item.inner.slug,
+            None,
+            &redis,
+        )
+        .await?;
+    } else {
+        return Err(ApiError::CustomAuthentication(
+            "You do not have permission to add projects to this organization!".to_string(),
+        ));
+    }
+    Ok(HttpResponse::Ok().finish())
 }

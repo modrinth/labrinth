@@ -76,6 +76,48 @@ pub struct Team {
     pub id: TeamId,
 }
 
+pub enum TeamAssociationId {
+    Project(ProjectId),
+    Organization(OrganizationId),
+}
+
+impl Team {
+    pub async fn get_team_association<'a, 'b, E>(
+        id: TeamId,
+        executor: E,
+    ) -> Result<Option<TeamAssociationId>, super::DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT m.id AS pid, NULL AS oid, m.team_id AS team
+            FROM mods m
+            WHERE m.team_id = ANY($1)
+            
+            UNION ALL
+                    
+            SELECT NULL AS pid, o.id AS oid, o.team_id AS team
+            FROM organizations o
+            WHERE o.team_id = ANY($1)
+    ",
+            id as TeamId
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        if let Some(t) = result {
+            if let Some(pid) = t.pid {
+                return Ok(Some(TeamAssociationId::Project(ProjectId(pid))));
+            }
+            if let Some(oid) = t.oid {
+                return Ok(Some(TeamAssociationId::Organization(OrganizationId(oid))));
+            }
+        }
+        Ok(None)
+    }
+}
+
 /// A member of a team
 #[derive(Deserialize, Serialize, Clone)]
 pub struct TeamMember {
@@ -84,9 +126,6 @@ pub struct TeamMember {
     /// The ID of the user associated with the member
     pub user_id: UserId,
     pub role: String,
-    /// Only one of these should be set- whatever the team + teammember is associated with.
-    pub project_id: Option<ProjectId>,
-    pub organization_id: Option<OrganizationId>,
     // Only one of these should be set
     pub permissions: Option<ProjectPermissions>,
     pub organization_permissions: Option<OrganizationPermissions>,
@@ -157,19 +196,8 @@ impl TeamMember {
                 "
                 SELECT tm.id, tm.team_id, tm.role AS member_role, tm.permissions, 
                     tm.organization_permissions, tm.accepted, tm.payouts_split, 
-                    tm.ordering, tm.user_id, sub.pid, sub.oid
-                FROM (
-                    SELECT m.id AS pid, NULL AS oid, m.team_id AS team
-                    FROM mods m
-                    WHERE m.team_id = ANY($1)
-                    
-                    UNION ALL
-                    
-                    SELECT NULL AS pid, o.id AS oid, o.team_id AS team
-                    FROM organizations o
-                    WHERE o.team_id = ANY($1)
-                ) AS sub
-                RIGHT JOIN team_members tm ON sub.team = tm.team_id
+                    tm.ordering, tm.user_id
+                FROM team_members tm
                 WHERE tm.team_id = ANY($1)
                 ORDER BY tm.team_id, tm.ordering;
                 ",
@@ -181,8 +209,6 @@ impl TeamMember {
                     id: TeamMemberId(m.id),
                     team_id: TeamId(m.team_id),
                     role: m.member_role,
-                    project_id: m.pid.map(ProjectId),
-                    organization_id: m.oid.map(OrganizationId),
                     permissions: m
                         .permissions
                         .map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
@@ -260,19 +286,8 @@ impl TeamMember {
             "
             SELECT tm.id, tm.team_id, tm.role AS member_role, tm.permissions, 
                 tm.organization_permissions, tm.accepted, tm.payouts_split, tm.role,
-                tm.ordering, tm.user_id, sub.pid, sub.oid
-            FROM (
-                SELECT m.id AS pid, NULL AS oid, m.team_id AS team
-                FROM mods m
-                WHERE m.team_id = ANY($1)
-                
-                UNION ALL
-                
-                SELECT NULL AS pid, o.id AS oid, o.team_id AS team
-                FROM organizations o
-                WHERE o.team_id = ANY($1)
-            ) AS sub
-            RIGHT JOIN team_members tm ON sub.team = tm.team_id
+                tm.ordering, tm.user_id
+            FROM team_members tm
             WHERE (tm.team_id = ANY($1) AND tm.user_id = $2 AND tm.accepted = TRUE)
             ORDER BY ordering
             ",
@@ -287,8 +302,6 @@ impl TeamMember {
                     team_id: TeamId(m.team_id),
                     user_id,
                     role: m.role,
-                    project_id: m.pid.map(ProjectId),
-                    organization_id: m.oid.map(OrganizationId),
                     permissions: m
                         .permissions
                         .map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
@@ -326,19 +339,9 @@ impl TeamMember {
             "
             SELECT tm.id, tm.team_id, tm.role AS member_role, tm.permissions, 
                 tm.organization_permissions, tm.accepted, tm.payouts_split, tm.role,
-                tm.ordering, tm.user_id, sub.pid, sub.oid
-            FROM (
-                SELECT m.id AS pid, NULL AS oid, m.team_id AS team
-                FROM mods m
-                WHERE m.team_id = $1
+                tm.ordering, tm.user_id
                 
-                UNION ALL
-                
-                SELECT NULL AS pid, o.id AS oid, o.team_id AS team
-                FROM organizations o
-                WHERE o.team_id = $1
-            ) AS sub
-            RIGHT JOIN team_members tm ON sub.team = tm.team_id
+            FROM team_members tm
             WHERE (tm.team_id = $1 AND tm.user_id = $2)
             ORDER BY ordering
             ",
@@ -354,8 +357,6 @@ impl TeamMember {
                 team_id: id,
                 user_id,
                 role: m.role,
-                project_id: m.pid.map(ProjectId),
-                organization_id: m.oid.map(OrganizationId),
                 permissions: m
                     .permissions
                     .map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
@@ -550,8 +551,6 @@ impl TeamMember {
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                project_id: Some(id as ProjectId),
-                organization_id: None,
                 permissions: m
                     .permissions
                     .map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
@@ -593,8 +592,6 @@ impl TeamMember {
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                project_id: None,
-                organization_id: Some(id as OrganizationId),
                 permissions: m
                     .permissions
                     .map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),
@@ -637,8 +634,6 @@ impl TeamMember {
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                project_id: Some(ProjectId(m.mod_id)),
-                organization_id: None,
                 permissions: m
                     .permissions
                     .map(|p| ProjectPermissions::from_bits(p as u64).unwrap_or_default()),

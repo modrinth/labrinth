@@ -167,7 +167,9 @@ impl TeamMember {
                 None
             } else if let Some(permissions) = data.permissions {
                 Some(Permissions::Project(permissions))
-            } else { data.organization_permissions.map(Permissions::Organization) },
+            } else {
+                data.organization_permissions.map(Permissions::Organization)
+            },
             accepted: data.accepted,
             payouts_split: if override_permissions {
                 None

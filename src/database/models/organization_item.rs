@@ -176,13 +176,18 @@ impl Organization {
                 .flat_map(|x| parse_base62(&x.to_string()).ok())
                 .map(|x| x as i64)
                 .collect();
+
             let organizations: Vec<Organization> = sqlx::query!(
                 "
                 SELECT id, name, slug, team_id, description, default_project_permissions
                 FROM organizations o
-                WHERE id = ANY($1)
+                WHERE id = ANY($1) OR slug = ANY($2)
                 ",
-                &organization_ids_parsed
+                &organization_ids_parsed,
+                &remaining_strings
+                    .into_iter()
+                    .map(|x| x.to_string().to_lowercase())
+                    .collect::<Vec<_>>(),
             )
             .fetch_many(exec)
             .try_filter_map(|e| async {
