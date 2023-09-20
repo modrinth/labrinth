@@ -621,7 +621,7 @@ pub async fn organizations_edit(
 
                     if results.exists.unwrap_or(true) {
                         return Err(ApiError::InvalidInput(
-                            "Slug collides with other project's id!".to_string(),
+                            "Slug collides with other organization's id!".to_string(),
                         ));
                     }
                 }
@@ -650,7 +650,7 @@ pub async fn organizations_edit(
             Ok(HttpResponse::NoContent().body(""))
         } else {
             Err(ApiError::CustomAuthentication(
-                "You do not have permission to edit this project!".to_string(),
+                "You do not have permission to edit this organization!".to_string(),
             ))
         }
     } else {
@@ -711,6 +711,9 @@ pub async fn organization_delete(
         database::models::Organization::remove(organization.id, &mut transaction, &redis).await?;
 
     transaction.commit().await?;
+
+    database::models::Organization::clear_cache(organization.id, Some(organization.slug), &redis)
+        .await?;
 
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
