@@ -358,8 +358,24 @@ pub async fn version_edit(
             &**pool,
         )
         .await?;
-        let permissions =
-            ProjectPermissions::get_permissions_by_role(&user.role, &team_member, &organization);
+
+        let organization_team_member = if let Some(organization) = &organization {
+            database::models::TeamMember::get_from_user_id(
+                organization.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await?
+        } else {
+            None
+        };
+
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+            &organization,
+        );
 
         if let Some(perms) = permissions {
             if !perms.contains(ProjectPermissions::UPLOAD_VERSION) {
@@ -768,9 +784,21 @@ pub async fn version_schedule(
             .await
             .map_err(ApiError::Database)?;
 
+        let organization_team_member = if let Some(organization) = &organization_item {
+            database::models::TeamMember::get_from_user_id(
+                organization.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await?
+        } else {
+            None
+        };
+
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member,
+            &organization_team_member,
             &organization_item,
         )
         .unwrap_or_default();
@@ -836,19 +864,26 @@ pub async fn version_delete(
             &**pool,
         )
         .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "You do not have permission to delete versions in this team".to_string(),
-            )
-        })?;
+        .map_err(ApiError::Database)?;
 
         let organization =
             Organization::get_associated_organization_project_id(version.inner.project_id, &**pool)
                 .await?;
+
+        let organization_team_member = if let Some(organization) = &organization {
+            database::models::TeamMember::get_from_user_id(
+                organization.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await?
+        } else {
+            None
+        };
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
-            &Some(team_member),
+            &team_member,
+            &organization_team_member,
             &organization,
         )
         .unwrap_or_default();

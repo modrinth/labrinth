@@ -1,20 +1,26 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::auth::{filter_authorized_projects, get_user_from_headers};
 use crate::database::models::team_item::TeamMember;
-use crate::database::models::{generate_organization_id, team_item, Organization};
+use crate::database::models::{
+    categories, generate_organization_id, project_item, team_item, Organization,
+};
+use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::organizations::OrganizationId;
 use crate::models::pats::Scopes;
+use crate::models::projects::DonationLink;
 use crate::models::teams::{OrganizationPermissions, Permissions, ProjectPermissions};
 use crate::queue::session::AuthQueue;
 use crate::routes::v2::project_creation::CreateError;
 use crate::routes::ApiError;
+use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
 
@@ -28,6 +34,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(organization_projects_get)
             .service(organization_projects_add)
             .service(organization_projects_remove)
+            .service(organization_icon_edit)
+            .service(delete_organization_icon)
             .service(super::teams::team_members_get_organization),
     );
 }
@@ -48,6 +56,21 @@ pub struct NewOrganization {
     pub slug: String,
     #[serde(default = "crate::models::teams::ProjectPermissions::default")]
     pub default_project_permissions: ProjectPermissions,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    /// An optional link to the project's discord.
+    pub discord_url: Option<String>,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    /// An optional link to the project's website.
+    pub website_url: Option<String>,
+    #[validate]
+    /// An optional list of donation links.
+    pub donation_urls: Option<Vec<DonationLink>>,
 }
 
 #[post("organization")]
@@ -134,6 +157,28 @@ pub async fn organization_create(
     };
     let team_id = team.insert(&mut transaction).await?;
 
+    // Donation links
+    let mut donation_urls = vec![];
+    if let Some(urls) = &new_organization.donation_urls {
+        for url in urls {
+            let platform_id = categories::DonationPlatform::get_id(&url.id, &mut *transaction)
+                .await?
+                .ok_or_else(|| {
+                    CreateError::InvalidInput(format!(
+                        "Donation platform {} does not exist.",
+                        url.id.clone()
+                    ))
+                })?;
+
+            donation_urls.push(project_item::DonationUrl {
+                platform_id,
+                platform_short: "".to_string(),
+                platform_name: "".to_string(),
+                url: url.url.clone(),
+            })
+        }
+    }
+
     // Create organization
     let organization = Organization {
         id: organization_id,
@@ -142,8 +187,18 @@ pub async fn organization_create(
         description: new_organization.description.clone(),
         default_project_permissions: new_organization.default_project_permissions,
         team_id,
+        website_url: new_organization.website_url.clone(),
+        discord_url: new_organization.discord_url.clone(),
+        donation_urls: vec![],
+        icon_url: None,
+        color: None,
     };
     organization.clone().insert(&mut transaction).await?;
+    for donation in donation_urls {
+        donation
+            .insert_organization(organization_id, &mut transaction)
+            .await?;
+    }
 
     transaction.commit().await?;
 
@@ -155,14 +210,16 @@ pub async fn organization_create(
     let members_data = if let Some(member_data) = member_data {
         vec![crate::models::teams::TeamMember::from(
             member_data,
-            user_data,
+            user_data.clone(),
             false,
         )]
     } else {
         vec![]
     };
 
-    let organization = models::organizations::Organization::from(organization, members_data);
+    let user_data = crate::models::users::User::from(user_data);
+    let organization =
+        models::organizations::Organization::from(organization, &Some(user_data), members_data);
 
     Ok(HttpResponse::Ok().json(organization))
 }
@@ -199,6 +256,7 @@ pub async fn organization_get(
         )
         .await?;
         let logged_in = current_user
+            .as_ref()
             .and_then(|user| {
                 members_data
                     .iter()
@@ -221,7 +279,8 @@ pub async fn organization_get(
             })
             .collect();
 
-        let organization = models::organizations::Organization::from(data, team_members);
+        let organization =
+            models::organizations::Organization::from(data, &current_user, team_members);
         return Ok(HttpResponse::Ok().json(organization));
     }
     Ok(HttpResponse::NotFound().body(""))
@@ -300,14 +359,15 @@ pub async fn organizations_get(
             })
             .collect();
 
-        let organization = models::organizations::Organization::from(data, team_members);
+        let organization =
+            models::organizations::Organization::from(data, &current_user, team_members);
         organizations.push(organization);
     }
 
     Ok(HttpResponse::Ok().json(organizations))
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Serialize, Deserialize, Validate)]
 pub struct OrganizationEdit {
     #[validate(
         length(min = 3, max = 64),
@@ -322,6 +382,18 @@ pub struct OrganizationEdit {
     )]
     pub slug: Option<String>,
     pub default_project_permissions: Option<ProjectPermissions>,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    pub discord_url: Option<String>,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    pub website_url: Option<String>,
+    #[validate]
+    pub donation_urls: Option<Vec<DonationLink>>,
 }
 
 #[patch("{id}")]
@@ -401,6 +473,91 @@ pub async fn organizations_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+            }
+
+            if let Some(discord_url) = &new_organization.discord_url {
+                if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the discord url of this organization!"
+                            .to_string(),
+                    ));
+                }
+                sqlx::query!(
+                    "
+                    UPDATE organizations
+                    SET discord_url = $1
+                    WHERE (id = $2)
+                    ",
+                    discord_url,
+                    id as database::models::ids::OrganizationId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+
+            if let Some(website_url) = &new_organization.website_url {
+                if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the website url of this organization!"
+                            .to_string(),
+                    ));
+                }
+                sqlx::query!(
+                    "
+                    UPDATE organizations
+                    SET website_url = $1
+                    WHERE (id = $2)
+                    ",
+                    website_url,
+                    id as database::models::ids::OrganizationId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
+
+            if let Some(donations) = &new_organization.donation_urls {
+                if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the donation links of this organization!"
+                            .to_string(),
+                    ));
+                }
+
+                sqlx::query!(
+                    "
+                    DELETE FROM organizations_donations
+                    WHERE joining_organization_id = $1
+                    ",
+                    id as database::models::ids::OrganizationId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                for donation in donations {
+                    let platform_id = database::models::categories::DonationPlatform::get_id(
+                        &donation.id,
+                        &mut *transaction,
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInput(format!(
+                            "Platform {} does not exist.",
+                            donation.id.clone()
+                        ))
+                    })?;
+
+                    sqlx::query!(
+                        "
+                        INSERT INTO organizations_donations (joining_organization_id, joining_platform_id, url)
+                        VALUES ($1, $2, $3)
+                        ",
+                        id as database::models::ids::OrganizationId,
+                        platform_id as database::models::ids::DonationPlatformId,
+                        donation.url
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
             }
 
             if let Some(default_project_permissions) = &new_organization.default_project_permissions
@@ -798,4 +955,196 @@ pub async fn organization_projects_remove(
         ));
     }
     Ok(HttpResponse::Ok().finish())
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Extension {
+    pub ext: String,
+}
+
+#[patch("{id}/icon")]
+#[allow(clippy::too_many_arguments)]
+pub async fn organization_icon_edit(
+    web::Query(ext): web::Query<Extension>,
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
+    mut payload: web::Payload,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
+        let cdn_url = dotenvy::var("CDN_URL")?;
+        let user = get_user_from_headers(
+            &req,
+            &**pool,
+            &redis,
+            &session_queue,
+            Some(&[Scopes::ORGANIZATION_WRITE]),
+        )
+        .await?
+        .1;
+        let string = info.into_inner().0;
+
+        let organization_item = database::models::Organization::get(&string, &**pool, &redis)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput("The specified organization does not exist!".to_string())
+            })?;
+
+        if !user.role.is_mod() {
+            let team_member = database::models::TeamMember::get_from_user_id(
+                organization_item.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await
+            .map_err(ApiError::Database)?;
+
+            let permissions =
+                OrganizationPermissions::get_permissions_by_role(&user.role, &team_member)
+                    .unwrap_or_default();
+
+            if !permissions.contains(OrganizationPermissions::EDIT_DETAILS) {
+                return Err(ApiError::CustomAuthentication(
+                    "You don't have permission to edit this organization's icon.".to_string(),
+                ));
+            }
+        }
+
+        if let Some(icon) = organization_item.icon_url {
+            let name = icon.split(&format!("{cdn_url}/")).nth(1);
+
+            if let Some(icon_path) = name {
+                file_host.delete_file_version("", icon_path).await?;
+            }
+        }
+
+        let bytes =
+            read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB").await?;
+
+        let color = crate::util::img::get_color_from_img(&bytes)?;
+
+        let hash = sha1::Sha1::from(&bytes).hexdigest();
+        let organization_id: OrganizationId = organization_item.id.into();
+        let upload_data = file_host
+            .upload_file(
+                content_type,
+                &format!("data/{}/{}.{}", organization_id, hash, ext.ext),
+                bytes.freeze(),
+            )
+            .await?;
+
+        let mut transaction = pool.begin().await?;
+
+        sqlx::query!(
+            "
+            UPDATE organizations
+            SET icon_url = $1, color = $2
+            WHERE (id = $3)
+            ",
+            format!("{}/{}", cdn_url, upload_data.file_name),
+            color.map(|x| x as i32),
+            organization_item.id as database::models::ids::OrganizationId,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        database::models::Organization::clear_cache(
+            organization_item.id,
+            Some(organization_item.slug),
+            &redis,
+        )
+        .await?;
+
+        transaction.commit().await?;
+
+        Ok(HttpResponse::NoContent().body(""))
+    } else {
+        Err(ApiError::InvalidInput(format!(
+            "Invalid format for project icon: {}",
+            ext.ext
+        )))
+    }
+}
+
+#[delete("{id}/icon")]
+pub async fn delete_organization_icon(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::ORGANIZATION_WRITE]),
+    )
+    .await?
+    .1;
+    let string = info.into_inner().0;
+
+    let organization_item = database::models::Organization::get(&string, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified organization does not exist!".to_string())
+        })?;
+
+    if !user.role.is_mod() {
+        let team_member = database::models::TeamMember::get_from_user_id(
+            organization_item.team_id,
+            user.id.into(),
+            &**pool,
+        )
+        .await
+        .map_err(ApiError::Database)?;
+
+        let permissions =
+            OrganizationPermissions::get_permissions_by_role(&user.role, &team_member)
+                .unwrap_or_default();
+
+        if !permissions.contains(OrganizationPermissions::EDIT_DETAILS) {
+            return Err(ApiError::CustomAuthentication(
+                "You don't have permission to edit this organization's icon.".to_string(),
+            ));
+        }
+    }
+
+    let cdn_url = dotenvy::var("CDN_URL")?;
+    if let Some(icon) = organization_item.icon_url {
+        let name = icon.split(&format!("{cdn_url}/")).nth(1);
+
+        if let Some(icon_path) = name {
+            file_host.delete_file_version("", icon_path).await?;
+        }
+    }
+
+    let mut transaction = pool.begin().await?;
+
+    sqlx::query!(
+        "
+        UPDATE organizations
+        SET icon_url = NULL, color = NULL
+        WHERE (id = $1)
+        ",
+        organization_item.id as database::models::ids::OrganizationId,
+    )
+    .execute(&mut *transaction)
+    .await?;
+
+    database::models::Organization::clear_cache(
+        organization_item.id,
+        Some(organization_item.slug),
+        &redis,
+    )
+    .await?;
+
+    transaction.commit().await?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }

@@ -56,18 +56,27 @@ impl Default for ProjectPermissions {
 impl ProjectPermissions {
     pub fn get_permissions_by_role(
         role: &crate::models::users::Role,
-        team_member: &Option<crate::database::models::TeamMember>,
-        project_organization: &Option<crate::database::models::Organization>,
+        project_team_member: &Option<crate::database::models::TeamMember>, // team member of the user in the project
+        organization_team_member: &Option<crate::database::models::TeamMember>, // team member of the user in the organization
+        organization: &Option<crate::database::models::Organization>, // organization of the project
     ) -> Option<Self> {
         if role.is_admin() {
             return Some(ProjectPermissions::ALL);
-        } else if let Some(member) = team_member {
+        }
+
+        if let Some(member) = project_team_member {
             if let Some(permissions) = member.permissions {
                 return Some(permissions);
-            } else if let Some(organization) = project_organization {
-                return Some(organization.default_project_permissions);
             }
-        };
+        }
+
+        if let Some(member) = organization_team_member {
+            if let Some(organization) = organization {
+                if organization.team_id == member.team_id {
+                    return Some(organization.default_project_permissions);
+                }
+            }
+        }
 
         if role.is_mod() {
             Some(
@@ -93,9 +102,8 @@ bitflags::bitflags! {
         const ADD_PROJECT = 1 << 5;
         const REMOVE_PROJECT = 1 << 6;
         const DELETE_ORGANIZATION = 1 << 8;
-        const EDIT_PROJECT_MEMBER = 1 << 9; // Edit permissions of a member in a project owned by the organization TODO
-        const EDIT_PROJECT_DEFAULT_PERMISSIONS = 1 << 10; // Edit the default permissions of a project owned by the organization
-        const ALL = 0b11111111;
+        const EDIT_PROJECT_DEFAULT_PERMISSIONS = 1 << 9; // Edit the default permissions of a project owned by the organization
+        const ALL = 0b1111111111;
         const NONE = 0b0;
     }
 }

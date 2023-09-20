@@ -86,7 +86,6 @@ pub async fn team_members_get_project(
                 })
             })
             .collect();
-
         Ok(HttpResponse::Ok().json(team_members))
     } else {
         Ok(HttpResponse::NotFound().body(""))
@@ -397,9 +396,16 @@ pub async fn add_team_member(
                 ProjectPermissions::from_bits(new_member.permissions).unwrap_or_default();
             let organization =
                 Organization::get_associated_organization_project_id(pid, &**pool).await?;
+            let organization_team_member = if let Some(organization) = &organization {
+                TeamMember::get_from_user_id(organization.team_id, current_user.id.into(), &**pool)
+                    .await?
+            } else {
+                None
+            };
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &current_user.role,
                 &member,
+                &organization_team_member,
                 &organization,
             )
             .unwrap_or_default();
@@ -588,9 +594,16 @@ pub async fn edit_team_member(
         TeamAssociationId::Project(project_id) => {
             let organization =
                 Organization::get_associated_organization_project_id(project_id, &**pool).await?;
+            let organization_team_member = if let Some(organization) = &organization {
+                TeamMember::get_from_user_id(organization.team_id, current_user.id.into(), &**pool)
+                    .await?
+            } else {
+                None
+            };
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &current_user.role,
                 &member.clone(),
+                &organization_team_member,
                 &organization,
             )
             .unwrap_or_default();
@@ -813,15 +826,25 @@ pub async fn remove_team_member(
 
         let mut transaction = pool.begin().await?;
 
-        // TODO: restructure should avoid this.
         // Organization attached to a project this team is attached to
         match team_association {
             TeamAssociationId::Project(pid) => {
                 let organization =
                     Organization::get_associated_organization_project_id(pid, &**pool).await?;
+                let organization_team_member = if let Some(organization) = &organization {
+                    TeamMember::get_from_user_id(
+                        organization.team_id,
+                        current_user.id.into(),
+                        &**pool,
+                    )
+                    .await?
+                } else {
+                    None
+                };
                 let permissions = ProjectPermissions::get_permissions_by_role(
                     &current_user.role,
                     &member,
+                    &organization_team_member,
                     &organization,
                 )
                 .unwrap_or_default();

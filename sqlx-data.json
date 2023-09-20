@@ -455,6 +455,20 @@
     },
     "query": "\n            UPDATE mods\n            SET organization_id = $1\n            WHERE (id = $2)\n            "
   },
+  "0eb293a353be47c61620922634cc339eda0e2422fcc602d7506c7cdf6152c928": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int4",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE organizations\n            SET icon_url = $1, color = $2\n            WHERE (id = $3)\n            "
+  },
   "0f29bb5ba767ebd0669c860994e48e3cb2674f0d53f6c4ab85c79d46b04cbb40": {
     "describe": {
       "columns": [
@@ -1125,22 +1139,6 @@
     },
     "query": "\n            SELECT id FROM loaders\n            WHERE loader = $1\n            "
   },
-  "253bb0d56e7d51d55ddd845077f5d077092b707e9260ff893aa9c963cb12a04c": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Varchar",
-          "Varchar",
-          "Int8",
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO organizations (id, name, slug, team_id, description)\n            VALUES ($1, $2, $3, $4, $5)\n            "
-  },
   "294f264382ad55475b51776cd5d306c4867e8e6966ab79921bba69dc023f8337": {
     "describe": {
       "columns": [],
@@ -1675,6 +1673,38 @@
     },
     "query": "\n            SELECT gv.id id, gv.version version_, gv.type type_, gv.created created, gv.major FROM game_versions gv\n            ORDER BY created DESC\n            "
   },
+  "3d509a54a53bdfc44fea869c997bb72c99beca045da62256772f3711c74cd842": {
+    "describe": {
+      "columns": [
+        {
+          "name": "pid",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "oid",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "team",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        null,
+        null,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT m.id AS pid, NULL AS oid, m.team_id AS team\n            FROM mods m\n            WHERE m.team_id = $1\n            \n            UNION ALL\n                    \n            SELECT NULL AS pid, o.id AS oid, o.team_id AS team\n            FROM organizations o\n            WHERE o.team_id = $1\n    "
+  },
   "3d700aaeb0d5129ac8c297ee0542757435a50a35ec94582d9d6ce67aa5302291": {
     "describe": {
       "columns": [],
@@ -2187,6 +2217,18 @@
     },
     "query": "\n            DELETE FROM user_backup_codes\n            WHERE user_id = $1\n            "
   },
+  "526af4ed878f03f04634503ba5028e75874b69c0abbdbadd17628529494489bb": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    DELETE FROM organizations_donations\n                    WHERE joining_organization_id = $1\n                    "
+  },
   "5295fba2053675c8414c0b37a59943535b9a438a642ea1c68045e987f05ade13": {
     "describe": {
       "columns": [
@@ -2633,57 +2675,6 @@
     },
     "query": "\n            UPDATE mods\n            SET updated = NOW()\n            WHERE id = $1\n            "
   },
-  "5db783cfadb920ba3e3c0e3375fc90d31946c4f1cefffc4427812170a498f94c": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "slug",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "description",
-          "ordinal": 4,
-          "type_info": "Text"
-        },
-        {
-          "name": "default_project_permissions",
-          "ordinal": 5,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array",
-          "TextArray"
-        ]
-      }
-    },
-    "query": "\n                SELECT id, name, slug, team_id, description, default_project_permissions\n                FROM organizations o\n                WHERE id = ANY($1) OR slug = ANY($2)\n                "
-  },
   "5dd9503c98266d44dfef73dda81f0051789280b78d1b0fb4de509ac6ccfcb86a": {
     "describe": {
       "columns": [
@@ -2716,56 +2707,6 @@
       }
     },
     "query": "\n                    UPDATE users\n                    SET name = $1\n                    WHERE (id = $2)\n                    "
-  },
-  "5edc0499fc926b74d8c0d02dc11fd8f2b66aeab6182d2656d26d115aa2952e70": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "slug",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 3,
-          "type_info": "Int8"
-        },
-        {
-          "name": "description",
-          "ordinal": 4,
-          "type_info": "Text"
-        },
-        {
-          "name": "default_project_permissions",
-          "ordinal": 5,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT o.id, o.name, o.slug, o.team_id, o.description, o.default_project_permissions\n            FROM organizations o\n            LEFT JOIN mods m ON m.organization_id = o.id\n            WHERE m.id = $1\n            "
   },
   "5ee2dc5cda9bfc0395da5a4ebf234093e9b8135db5e4a0258b00fa16fb825faa": {
     "describe": {
@@ -3523,6 +3464,19 @@
     },
     "query": "\n                UPDATE uploaded_images\n                SET report_id = $1\n                WHERE id = $2\n                "
   },
+  "766194145b492c08f4573b37850ec334e1e6535114a13cc71ff453bd24cb861e": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE organizations\n                    SET website_url = $1\n                    WHERE (id = $2)\n                    "
+  },
   "76db1c204139e18002e5751c3dcefff79791a1dd852b62d34fcf008151e8945a": {
     "describe": {
       "columns": [
@@ -3552,6 +3506,27 @@
       }
     },
     "query": "\n            SELECT id, short, name FROM donation_platforms\n            "
+  },
+  "76de2d329cacbead4c156d9812c21cade80f132863907a8d30c18d3edf1d7c97": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Int8",
+          "Text",
+          "Int8",
+          "Varchar",
+          "Varchar",
+          "Varchar",
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO organizations (id, name, slug, team_id, description, default_project_permissions, discord_url, website_url, icon_url, color)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n            "
   },
   "7711b7c651015510a101cc409fa6f5229ac93d7209df8bc158f4dd4442f611f2": {
     "describe": {
@@ -3643,6 +3618,20 @@
       }
     },
     "query": "\n                    DELETE FROM loaders_versions WHERE version_id = $1\n                    "
+  },
+  "7a644248be3633fc47cf849c19154bd4b92be1a135c30ce6877274a13a349cd3": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int4",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n                        INSERT INTO organizations_donations (joining_organization_id, joining_platform_id, url)\n                        VALUES ($1, $2, $3)\n                        "
   },
   "7ab21e7613dd88e97cf602e76bff62170c13ceef8104a4ce4cb2d101f8ce4f48": {
     "describe": {
@@ -3945,6 +3934,18 @@
       }
     },
     "query": "\n                DELETE FROM threads_members\n                WHERE user_id = $1\n                "
+  },
+  "91736b6bcc7a08c835cd3f3cea3a133ca42694df8fc3ce34b35d39bea6e1bba1": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n        UPDATE organizations\n        SET icon_url = NULL, color = NULL\n        WHERE (id = $1)\n        "
   },
   "92c00ebff25cfb0464947ea48faac417fabdb3cb3edd5ed45720598c7c12c689": {
     "describe": {
@@ -4887,6 +4888,99 @@
     },
     "query": "\n            DELETE FROM notifications_actions\n            WHERE notification_id = ANY($1)\n            "
   },
+  "bab84c347c70f19f77950466740c30590484638cdd924457b3765d53d8b208e9": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                    UPDATE organizations\n                    SET discord_url = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "bab865b805001fce7bc6d8dc65d98e0ae5b66f69d3ba6af57c7fa517e7c0a53a": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "slug",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "team_id",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "description",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "default_project_permissions",
+          "ordinal": 5,
+          "type_info": "Int8"
+        },
+        {
+          "name": "discord_url",
+          "ordinal": 6,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "website_url",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "icon_url",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "color",
+          "ordinal": 9,
+          "type_info": "Int4"
+        },
+        {
+          "name": "donations",
+          "ordinal": 10,
+          "type_info": "Jsonb"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT o.id, o.name, o.slug, o.team_id, o.description, o.default_project_permissions, o.discord_url, o.website_url, o.icon_url, o.color,\n            JSONB_AGG(DISTINCT jsonb_build_object('platform_id', md.joining_platform_id, 'platform_short', dp.short, 'platform_name', dp.name,'url', md.url)) filter (where md.joining_platform_id is not null) donations\n            FROM organizations o\n            LEFT JOIN organizations_donations md ON md.joining_organization_id = o.id\n            LEFT JOIN donation_platforms dp ON md.joining_platform_id = dp.id\n            LEFT JOIN mods m ON m.organization_id = o.id\n            WHERE m.id = $1\n            GROUP BY o.id;\n            "
+  },
   "bad7cae347771e801976c26f2afaf33bda371051923b8f74a2f32a0ef5c65e57": {
     "describe": {
       "columns": [],
@@ -4899,6 +4993,20 @@
       }
     },
     "query": "\n                UPDATE mods\n                SET discord_url = $1\n                WHERE (id = $2)\n                "
+  },
+  "baedade3863942d7bdedcfdb8418a03cff7d7b2d711ab17206795b229a9a828b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int4",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO organizations_donations (\n                joining_organization_id, joining_platform_id, url\n            )\n            VALUES (\n                $1, $2, $3\n            )\n            "
   },
   "bc91841f9672608a28bd45a862919f2bd34fac0b3479e3b4b67a9f6bea2a562a": {
     "describe": {
@@ -6398,38 +6506,6 @@
     },
     "query": "\n        SELECT name FROM project_types pt\n        INNER JOIN mods ON mods.project_type = pt.id\n        WHERE mods.id = $1\n        "
   },
-  "efe0b38ed33dcc0dd4b3a19377f538cbaf3a5556bb713d721be29a7ba93674f9": {
-    "describe": {
-      "columns": [
-        {
-          "name": "pid",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "oid",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "team",
-          "ordinal": 2,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        null,
-        null,
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array"
-        ]
-      }
-    },
-    "query": "\n            SELECT m.id AS pid, NULL AS oid, m.team_id AS team\n            FROM mods m\n            WHERE m.team_id = ANY($1)\n            \n            UNION ALL\n                    \n            SELECT NULL AS pid, o.id AS oid, o.team_id AS team\n            FROM organizations o\n            WHERE o.team_id = ANY($1)\n    "
-  },
   "f1525930830e17b5ee8feb796d9950dd3741131965f050840fa75423b5a54f01": {
     "describe": {
       "columns": [],
@@ -6742,6 +6818,87 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM notifications WHERE id=$1)"
+  },
+  "fc313ecb17c370d119483b42ec952ec604ca60dd2969fc32f7bd98affdb862cf": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "slug",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "team_id",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "description",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "default_project_permissions",
+          "ordinal": 5,
+          "type_info": "Int8"
+        },
+        {
+          "name": "discord_url",
+          "ordinal": 6,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "website_url",
+          "ordinal": 7,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "icon_url",
+          "ordinal": 8,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "color",
+          "ordinal": 9,
+          "type_info": "Int4"
+        },
+        {
+          "name": "donations",
+          "ordinal": 10,
+          "type_info": "Jsonb"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array",
+          "TextArray"
+        ]
+      }
+    },
+    "query": "\n                SELECT o.id, o.name, o.slug, o.team_id, o.description, o.default_project_permissions, o.discord_url, o.website_url, o.icon_url, o.color,\n                JSONB_AGG(DISTINCT jsonb_build_object('platform_id', md.joining_platform_id, 'platform_short', dp.short, 'platform_name', dp.name,'url', md.url)) filter (where md.joining_platform_id is not null) donations\n                FROM organizations o\n                LEFT JOIN organizations_donations md ON md.joining_organization_id = o.id\n                LEFT JOIN donation_platforms dp ON md.joining_platform_id = dp.id\n                WHERE o.id = ANY($1) OR o.slug = ANY($2)\n                GROUP BY o.id;\n                "
   },
   "fcd15905507769ab7f9839d64d1be3ee3f61cd555aee57dace76f8e53e91d344": {
     "describe": {

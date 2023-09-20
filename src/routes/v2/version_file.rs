@@ -185,12 +185,7 @@ pub async fn delete_file(
                 &**pool,
             )
             .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::CustomAuthentication(
-                    "You don't have permission to delete this file!".to_string(),
-                )
-            })?;
+            .map_err(ApiError::Database)?;
 
             let organization =
                 database::models::Organization::get_associated_organization_project_id(
@@ -199,9 +194,23 @@ pub async fn delete_file(
                 )
                 .await
                 .map_err(ApiError::Database)?;
+
+            let organization_team_member = if let Some(organization) = &organization {
+                database::models::TeamMember::get_from_user_id_organization(
+                    organization.id,
+                    user.id.into(),
+                    &**pool,
+                )
+                .await
+                .map_err(ApiError::Database)?
+            } else {
+                None
+            };
+
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &user.role,
-                &Some(team_member.clone()),
+                &team_member,
+                &organization_team_member,
                 &organization,
             )
             .unwrap_or_default();

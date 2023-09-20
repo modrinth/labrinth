@@ -215,23 +215,30 @@ async fn version_create_inner(
                     user.id.into(),
                     &mut *transaction,
                 )
-                .await?
-                .ok_or_else(|| {
-                    CreateError::CustomAuthenticationError(
-                        "You don't have permission to upload this version!".to_string(),
-                    )
-                })?;
+                .await?;
 
                 // Get organization attached, if exists, and the member project permissions
-                // TODO: remove this. resdundant with above code kidna
                 let organization = models::Organization::get_associated_organization_project_id(
                     project_id,
                     &mut *transaction,
                 )
                 .await?;
+
+                let organization_team_member = if let Some(organization) = &organization {
+                    models::TeamMember::get_from_user_id(
+                        organization.team_id,
+                        user.id.into(),
+                        &mut *transaction,
+                    )
+                    .await?
+                } else {
+                    None
+                };
+
                 let permissions = ProjectPermissions::get_permissions_by_role(
                     &user.role,
-                    &Some(team_member.clone()),
+                    &team_member,
+                    &organization_team_member,
                     &organization,
                 )
                 .unwrap_or_default();
@@ -583,22 +590,29 @@ async fn upload_file_to_version_inner(
             user.id.into(),
             &mut *transaction,
         )
-        .await?
-        .ok_or_else(|| {
-            CreateError::CustomAuthenticationError(
-                "You don't have permission to upload files to this version!".to_string(),
-            )
-        })?;
+        .await?;
 
-        // TODO: restructure, see other todos
         let organization = Organization::get_associated_organization_project_id(
             version.inner.project_id,
             &**client,
         )
         .await?;
+
+        let organization_team_member = if let Some(organization) = &organization {
+            models::TeamMember::get_from_user_id(
+                organization.team_id,
+                user.id.into(),
+                &mut *transaction,
+            )
+            .await?
+        } else {
+            None
+        };
+
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
-            &Some(team_member.clone()),
+            &team_member,
+            &organization_team_member,
             &organization,
         )
         .unwrap_or_default();

@@ -404,20 +404,20 @@ pub async fn project_edit(
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await?;
+        let (team_member, organization_team_member, organization) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        let organization = database::models::Organization::get_associated_organization_project_id(
-            project_item.inner.id,
-            &**pool,
-        )
-        .await?;
-        let permissions =
-            ProjectPermissions::get_permissions_by_role(&user.role, &team_member, &organization);
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+            &organization,
+        );
 
         if let Some(perms) = permissions {
             let mut transaction = pool.begin().await?;
@@ -1272,6 +1272,17 @@ pub async fn projects_edit(
     let organizations =
         database::models::Organization::get_many_ids(&organization_ids, &**pool, &redis).await?;
 
+    let organization_team_ids = organizations
+        .iter()
+        .map(|x| x.team_id)
+        .collect::<Vec<database::models::TeamId>>();
+    let organization_team_members = database::models::TeamMember::get_from_team_full_many(
+        &organization_team_ids,
+        &**pool,
+        &redis,
+    )
+    .await?;
+
     let categories = database::models::categories::Category::list(&**pool, &redis).await?;
     let donation_platforms =
         database::models::categories::DonationPlatform::list(&**pool, &redis).await?;
@@ -1289,9 +1300,18 @@ pub async fn projects_edit(
                 .organization_id
                 .and_then(|oid| organizations.iter().find(|x| x.id == oid));
 
+            let organization_team_member = if let Some(organization) = organization {
+                organization_team_members
+                    .iter()
+                    .find(|x| x.team_id == organization.team_id && x.user_id == user.id.into())
+            } else {
+                None
+            };
+
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &user.role,
                 &team_member.cloned(),
+                &organization_team_member.cloned(),
                 &organization.cloned(),
             )
             .unwrap_or_default();
@@ -1611,21 +1631,18 @@ pub async fn project_schedule(
     let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project_item) = result {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await?;
+        let (team_member, organization_team_member, organization) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        let organization = database::models::Organization::get_associated_organization_project_id(
-            project_item.inner.id,
-            &**pool,
-        )
-        .await?;
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member.clone(),
+            &organization_team_member.clone(),
             &organization,
         )
         .unwrap_or_default();
@@ -1712,26 +1729,25 @@ pub async fn project_icon_edit(
             })?;
 
         if !user.role.is_mod() {
-            let team_member = database::models::TeamMember::get_from_user_id(
-                project_item.inner.team_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::InvalidInput("The specified project does not exist!".to_string())
-            })?;
-
-            let organization =
-                database::models::Organization::get_associated_organization_project_id(
-                    project_item.inner.id,
+            let (team_member, organization_team_member, organization) =
+                database::models::TeamMember::get_for_project_permissions(
+                    &project_item.inner,
+                    user.id.into(),
                     &**pool,
                 )
                 .await?;
+
+            // Hide the project
+            if team_member.is_none() && organization_team_member.is_none() {
+                return Err(ApiError::CustomAuthentication(
+                    "The specified project does not exist!".to_string(),
+                ));
+            }
+
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &user.role,
-                &Some(team_member.clone()),
+                &team_member,
+                &organization_team_member,
                 &organization,
             )
             .unwrap_or_default();
@@ -1827,25 +1843,24 @@ pub async fn delete_project_icon(
         })?;
 
     if !user.role.is_mod() {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified project does not exist!".to_string())
-        })?;
+        let (team_member, organization_team_member, organization) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        let organization = database::models::Organization::get_associated_organization_project_id(
-            project_item.inner.id,
-            &**pool,
-        )
-        .await?;
+        // Hide the project
+        if team_member.is_none() && organization_team_member.is_none() {
+            return Err(ApiError::CustomAuthentication(
+                "The specified project does not exist!".to_string(),
+            ));
+        }
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
-            &Some(team_member.clone()),
+            &team_member,
+            &organization_team_member,
             &organization,
         )
         .unwrap_or_default();
@@ -1944,26 +1959,25 @@ pub async fn add_gallery_item(
         }
 
         if !user.role.is_admin() {
-            let team_member = database::models::TeamMember::get_from_user_id(
-                project_item.inner.team_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::InvalidInput("The specified project does not exist!".to_string())
-            })?;
-
-            let organization =
-                database::models::Organization::get_associated_organization_project_id(
-                    project_item.inner.id,
+            let (team_member, organization_team_member, organization) =
+                database::models::TeamMember::get_for_project_permissions(
+                    &project_item.inner,
+                    user.id.into(),
                     &**pool,
                 )
                 .await?;
+
+            // Hide the project
+            if team_member.is_none() && organization_team_member.is_none() {
+                return Err(ApiError::CustomAuthentication(
+                    "The specified project does not exist!".to_string(),
+                ));
+            }
+
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &user.role,
-                &Some(team_member.clone()),
+                &team_member,
+                &organization_team_member,
                 &organization,
             )
             .unwrap_or_default();
@@ -2099,25 +2113,24 @@ pub async fn edit_gallery_item(
         })?;
 
     if !user.role.is_mod() {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified project does not exist!".to_string())
-        })?;
+        let (team_member, organization_team_member, organization) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        let organization = database::models::Organization::get_associated_organization_project_id(
-            project_item.inner.id,
-            &**pool,
-        )
-        .await?;
+        // Hide the project
+        if team_member.is_none() && organization_team_member.is_none() {
+            return Err(ApiError::CustomAuthentication(
+                "The specified project does not exist!".to_string(),
+            ));
+        }
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
-            &Some(team_member.clone()),
+            &team_member,
+            &organization_team_member,
             &organization,
         )
         .unwrap_or_default();
@@ -2262,25 +2275,25 @@ pub async fn delete_gallery_item(
         })?;
 
     if !user.role.is_mod() {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified project does not exist!".to_string())
-        })?;
+        let (team_member, organization_team_member, organization) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        let organization = database::models::Organization::get_associated_organization_project_id(
-            project_item.inner.id,
-            &**pool,
-        )
-        .await?;
+        // Hide the project
+        if team_member.is_none() && organization_team_member.is_none() {
+            return Err(ApiError::CustomAuthentication(
+                "The specified project does not exist!".to_string(),
+            ));
+        }
+
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
-            &Some(team_member.clone()),
+            &team_member,
+            &organization_team_member,
             &organization,
         )
         .unwrap_or_default();
@@ -2369,25 +2382,25 @@ pub async fn project_delete(
         })?;
 
     if !user.role.is_admin() {
-        let team_member = database::models::TeamMember::get_from_user_id_project(
-            project.inner.id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified project does not exist!".to_string())
-        })?;
+        let (team_member, organization_team_member, organization) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        let organization = database::models::Organization::get_associated_organization_project_id(
-            project.inner.id,
-            &**pool,
-        )
-        .await?;
+        // Hide the project
+        if team_member.is_none() && organization_team_member.is_none() {
+            return Err(ApiError::CustomAuthentication(
+                "The specified project does not exist!".to_string(),
+            ));
+        }
+
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
-            &Some(team_member.clone()),
+            &team_member,
+            &organization_team_member,
             &organization,
         )
         .unwrap_or_default();

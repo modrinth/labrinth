@@ -1,4 +1,4 @@
-use super::ids::*;
+use super::{ids::*, Organization, Project};
 use crate::models::teams::{OrganizationPermissions, Permissions, ProjectPermissions};
 use itertools::Itertools;
 use redis::cmd;
@@ -93,13 +93,13 @@ impl Team {
             "
             SELECT m.id AS pid, NULL AS oid, m.team_id AS team
             FROM mods m
-            WHERE m.team_id = ANY($1)
+            WHERE m.team_id = $1
             
             UNION ALL
                     
             SELECT NULL AS pid, o.id AS oid, o.team_id AS team
             FROM organizations o
-            WHERE o.team_id = ANY($1)
+            WHERE o.team_id = $1
     ",
             id as TeamId
         )
@@ -119,7 +119,7 @@ impl Team {
 }
 
 /// A member of a team
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct TeamMember {
     pub id: TeamMemberId,
     pub team_id: TeamId,
@@ -129,6 +129,7 @@ pub struct TeamMember {
     // Only one of these should be set
     pub permissions: Option<ProjectPermissions>,
     pub organization_permissions: Option<OrganizationPermissions>,
+
     pub accepted: bool,
     pub payouts_split: Decimal,
     pub ordering: i64,
@@ -647,5 +648,32 @@ impl TeamMember {
         } else {
             Ok(None)
         }
+    }
+
+    // Gets all required members for checking permissions of an action on a project
+    // - project team member (a user's membership to a given project)
+    // - organization team member (a user's membership to a given organization that owns a given project)
+    // - organization (the organization that owns a given project)
+    pub async fn get_for_project_permissions<'a, 'b, E>(
+        project: &Project,
+        user_id: UserId,
+        executor: E,
+    ) -> Result<(Option<Self>, Option<Self>, Option<Organization>), super::DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let project_team_member =
+            Self::get_from_user_id(project.team_id, user_id, executor).await?;
+
+        let organization =
+            Organization::get_associated_organization_project_id(project.id, executor).await?;
+
+        let organization_team_member = if let Some(organization) = &organization {
+            Self::get_from_user_id(organization.team_id, user_id, executor).await?
+        } else {
+            None
+        };
+
+        Ok((project_team_member, organization_team_member, organization))
     }
 }
