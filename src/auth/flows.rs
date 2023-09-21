@@ -224,9 +224,6 @@ impl TempUser {
                 role: Role::Developer.to_string(),
                 badges: Badges::default(),
                 balance: Decimal::ZERO,
-                payout_wallet: None,
-                payout_wallet_type: None,
-                payout_address: None,
             }
             .insert(transaction)
             .await?;
@@ -1384,9 +1381,6 @@ pub async fn create_account_with_password(
         role: Role::Developer.to_string(),
         badges: Badges::default(),
         balance: Decimal::ZERO,
-        payout_wallet: None,
-        payout_wallet_type: None,
-        payout_address: None,
     }
     .insert(&mut transaction)
     .await?;

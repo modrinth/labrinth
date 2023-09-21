@@ -4,8 +4,8 @@ use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::pats::Scopes;
 use crate::models::projects::Project;
-use crate::models::users::{Badges, RecipientType, RecipientWallet, Role, UserId};
-use crate::queue::payouts::{PayoutAmount, PayoutItem, PayoutsQueue};
+use crate::models::users::{Badges, Role, UserId};
+use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
@@ -181,21 +181,6 @@ pub struct EditUser {
     pub bio: Option<Option<String>>,
     pub role: Option<Role>,
     pub badges: Option<Badges>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "::serde_with::rust::double_option"
-    )]
-    #[validate]
-    pub payout_data: Option<Option<EditPayoutData>>,
-}
-
-#[derive(Serialize, Deserialize, Validate)]
-pub struct EditPayoutData {
-    pub payout_wallet: RecipientWallet,
-    pub payout_wallet_type: RecipientType,
-    #[validate(length(max = 128))]
-    pub payout_address: String,
 }
 
 #[patch("{id}")]
@@ -325,79 +310,6 @@ pub async fn user_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
-            }
-
-            if let Some(payout_data) = &new_user.payout_data {
-                if let Some(payout_data) = payout_data {
-                    if payout_data.payout_wallet_type == RecipientType::UserHandle
-                        && payout_data.payout_wallet == RecipientWallet::Paypal
-                    {
-                        return Err(ApiError::InvalidInput(
-                            "You cannot use a paypal wallet with a user handle!".to_string(),
-                        ));
-                    }
-
-                    if !scopes.contains(Scopes::PAYOUTS_WRITE) {
-                        return Err(ApiError::Authentication(
-                            AuthenticationError::InvalidCredentials,
-                        ));
-                    }
-
-                    if !match payout_data.payout_wallet_type {
-                        RecipientType::Email => {
-                            validator::validate_email(&payout_data.payout_address)
-                        }
-                        RecipientType::Phone => {
-                            validator::validate_phone(&payout_data.payout_address)
-                        }
-                        RecipientType::UserHandle => true,
-                    } {
-                        return Err(ApiError::InvalidInput(
-                            "Invalid wallet specified!".to_string(),
-                        ));
-                    }
-
-                    let results = sqlx::query!(
-                        "
-                        SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND email IS NULL)
-                        ",
-                        id as crate::database::models::ids::UserId,
-                    )
-                    .fetch_one(&mut *transaction)
-                    .await?;
-
-                    if results.exists.unwrap_or(false) {
-                        return Err(ApiError::InvalidInput(
-                            "You must have an email set on your Modrinth account to enroll in the monetization program!"
-                                .to_string(),
-                        ));
-                    }
-
-                    sqlx::query!(
-                        "
-                        UPDATE users
-                        SET payout_wallet = $1, payout_wallet_type = $2, payout_address = $3
-                        WHERE (id = $4)
-                        ",
-                        payout_data.payout_wallet.as_str(),
-                        payout_data.payout_wallet_type.as_str(),
-                        payout_data.payout_address,
-                        id as crate::database::models::ids::UserId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-                } else {
-                    sqlx::query!(
-                        "
-                        UPDATE users
-                        SET payout_wallet = NULL, payout_wallet_type = NULL, payout_address = NULL
-                        WHERE (id = $1)
-                        ",
-                        id as crate::database::models::ids::UserId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-                }
             }
 
             User::clear_caches(&[(id, Some(actual_user.username))], &redis).await?;
@@ -775,54 +687,30 @@ pub async fn user_payouts_request(
         }
 
         if let Some(payouts_data) = user.payout_data {
-            if let Some(payout_address) = payouts_data.payout_address {
-                if let Some(payout_wallet_type) = payouts_data.payout_wallet_type {
-                    if let Some(payout_wallet) = payouts_data.payout_wallet {
+            if let Some(trolley_id) = payouts_data.trolley_id {
+                if let Some(trolley_status) = payouts_data.trolley_status {
+                    if trolley_status == "active" {
                         return if data.amount < payouts_data.balance {
                             let mut transaction = pool.begin().await?;
 
-                            let leftover = payouts_queue
-                                .send_payout(PayoutItem {
-                                    amount: PayoutAmount {
-                                        currency: "USD".to_string(),
-                                        value: data.amount,
-                                    },
-                                    receiver: payout_address,
-                                    note: "Payment from Modrinth creator monetization program"
-                                        .to_string(),
-                                    recipient_type: payout_wallet_type.to_string().to_uppercase(),
-                                    recipient_wallet: payout_wallet.as_str_api().to_string(),
-                                    sender_item_id: format!(
-                                        "{}-{}",
-                                        UserId::from(id),
-                                        Utc::now().timestamp()
-                                    ),
-                                })
+                            let (batch_id, payment_id) = payouts_queue
+                                .send_payout(&trolley_id, data.amount)
                                 .await?;
 
                             sqlx::query!(
-                                "
-                                INSERT INTO historical_payouts (user_id, amount, status)
-                                VALUES ($1, $2, $3)
-                                ",
-                                id as crate::database::models::ids::UserId,
-                                data.amount,
-                                "success"
-                            )
-                            .execute(&mut *transaction)
-                            .await?;
+                            "
+                            INSERT INTO historical_payouts (user_id, amount, status, batch_id, payment_id)
+                            VALUES ($1, $2, $3, $4, $5)
+                            ",
+                            id as crate::database::models::ids::UserId,
+                            data.amount,
+                            "processing",
+                            batch_id,
+                            payment_id,
+                        )
+                                .execute(&mut *transaction)
+                                .await?;
 
-                            sqlx::query!(
-                                "
-                                UPDATE users
-                                SET balance = balance - $1
-                                WHERE id = $2
-                                ",
-                                data.amount - leftover,
-                                id as crate::database::models::ids::UserId
-                            )
-                            .execute(&mut *transaction)
-                            .await?;
                             User::clear_caches(&[(id, None)], &redis).await?;
 
                             transaction.commit().await?;
@@ -833,6 +721,10 @@ pub async fn user_payouts_request(
                                 "You do not have enough funds to make this payout!".to_string(),
                             ))
                         };
+                    } else {
+                        return Err(ApiError::InvalidInput(
+                            "Please complete payout information via the trolley dashboard!".to_string(),
+                        ))
                     }
                 }
             }

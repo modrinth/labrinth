@@ -26,7 +26,6 @@ pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
             .configure(crate::auth::pats::config)
             .configure(moderation::config)
             .configure(notifications::config)
-            //.configure(pats::config)
             .configure(project_creation::config)
             .configure(projects::config)
             .configure(reports::config)

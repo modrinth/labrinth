@@ -7,10 +7,14 @@ use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::guards::admin_key_guard;
+use crate::util::routes::read_from_payload;
 use crate::DownloadQueue;
-use actix_web::{patch, web, HttpRequest, HttpResponse};
+use actix_web::{patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
+use hex::ToHex;
+use hmac::{Hmac, Mac, NewMac};
 use serde::Deserialize;
+use sha2::Sha256;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
@@ -18,7 +22,11 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("admin").service(count_download));
+    cfg.service(
+        web::scope("admin")
+            .service(count_download)
+            .service(trolley_webhook),
+    );
 }
 
 #[derive(Deserialize)]
@@ -143,4 +151,66 @@ pub async fn count_download(
         .await;
 
     Ok(HttpResponse::NoContent().body(""))
+}
+
+#[derive(Deserialize)]
+pub struct TrolleyWebhook {
+    model: String,
+    action: String,
+    body: HashMap<String, serde_json::Value>,
+}
+
+#[post("/_trolley")]
+#[allow(clippy::too_many_arguments)]
+pub async fn trolley_webhook(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<deadpool_redis::Pool>,
+    mut payload: web::Payload,
+) -> Result<HttpResponse, ApiError> {
+    if let Some(signature) = req.headers().get("X-PaymentRails-Signature") {
+        let payload = read_from_payload(
+            &mut payload,
+            1 * (1 << 20),
+            "Webhook payload exceeds the maximum of 1MiB.",
+        )
+        .await?;
+
+        let mut signature = signature.to_str().ok().unwrap_or_default().split(',');
+        let timestamp = signature
+            .next()
+            .and_then(|x| x.split('=').skip(1).next())
+            .unwrap_or_default();
+        let v1 = signature
+            .next()
+            .and_then(|x| x.split('=').skip(1).next())
+            .unwrap_or_default();
+
+        let mut mac: Hmac<Sha256> =
+            Hmac::new_from_slice(dotenvy::var("TROLLEY_WEBHOOK_SIGNATURE")?.as_bytes())
+                .map_err(|_| ApiError::Payments("error initializing HMAC".to_string()))?;
+        mac.update(timestamp.as_bytes());
+        mac.update(&payload);
+        let request_signature = mac.finalize().into_bytes().encode_hex::<String>();
+
+        if &*request_signature == v1 {
+            let webhook = serde_json::from_slice::<TrolleyWebhook>(&payload)?;
+
+            if webhook.model == "recipient" {
+                // todo: update email + recipient status
+            }
+
+            if webhook.model == "payment" {
+                // todo: update payment status
+                // if new payment status is failed/returned, return money to modrinth balance
+            }
+
+            println!(
+                "webhook: {} {} {:?}",
+                webhook.action, webhook.model, webhook.body
+            );
+        }
+    }
+
+    Ok(HttpResponse::NoContent().finish())
 }
