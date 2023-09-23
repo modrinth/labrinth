@@ -68,7 +68,7 @@ pub struct FetchedPlaytime {
 pub async fn playtimes_get(
     req: HttpRequest,
     clickhouse: web::Data<clickhouse::Client>,
-    data: web::Json<GetData>,
+    data: web::Query<GetData>,
     session_queue: web::Data<AuthQueue>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
@@ -143,7 +143,7 @@ pub async fn playtimes_get(
 pub async fn views_get(
     req: HttpRequest,
     clickhouse: web::Data<clickhouse::Client>,
-    data: web::Json<GetData>,
+    data: web::Query<GetData>,
     session_queue: web::Data<AuthQueue>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
@@ -218,7 +218,7 @@ pub async fn views_get(
 pub async fn downloads_get(
     req: HttpRequest,
     clickhouse: web::Data<clickhouse::Client>,
-    data: web::Json<GetData>,
+    data: web::Query<GetData>,
     session_queue: web::Data<AuthQueue>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
@@ -296,7 +296,7 @@ pub async fn downloads_get(
 pub async fn countries_downloads_get(
     req: HttpRequest,
     clickhouse: web::Data<clickhouse::Client>,
-    data: web::Json<GetData>,
+    data: web::Query<GetData>,
     session_queue: web::Data<AuthQueue>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
@@ -372,7 +372,7 @@ pub async fn countries_downloads_get(
 pub async fn countries_views_get(
     req: HttpRequest,
     clickhouse: web::Data<clickhouse::Client>,
-    data: web::Json<GetData>,
+    data: web::Query<GetData>,
     session_queue: web::Data<AuthQueue>,
     pool: web::Data<PgPool>,
     redis: web::Data<deadpool_redis::Pool>,
