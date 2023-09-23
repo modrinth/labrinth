@@ -38,8 +38,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 pub struct GetData {
     // only one of project_ids or version_ids should be used
     // if neither are provided, all projects the user has access to will be used
-    pub project_ids: Option<Vec<String>>,
-    pub version_ids: Option<Vec<String>>,
+    pub project_ids: Option<String>,
+    pub version_ids: Option<String>,
 
     pub start_date: Option<NaiveDate>, // defaults to 2 weeks ago
     pub end_date: Option<NaiveDate>,   // defaults to now
@@ -84,8 +84,16 @@ pub async fn playtimes_get(
     .map(|x| x.1)
     .ok();
 
-    let project_ids = data.project_ids.clone();
-    let version_ids = data.version_ids.clone();
+    let project_ids = data
+        .project_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
+    let version_ids = data
+        .version_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
 
     if project_ids.is_some() && version_ids.is_some() {
         return Err(ApiError::InvalidInput(
@@ -159,8 +167,16 @@ pub async fn views_get(
     .map(|x| x.1)
     .ok();
 
-    let project_ids = data.project_ids.clone();
-    let version_ids = data.version_ids.clone();
+    let project_ids = data
+        .project_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
+    let version_ids = data
+        .version_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
 
     if project_ids.is_some() && version_ids.is_some() {
         return Err(ApiError::InvalidInput(
@@ -234,8 +250,16 @@ pub async fn downloads_get(
     .map(|x| x.1)
     .ok();
 
-    let project_ids = data.project_ids.clone();
-    let version_ids = data.version_ids.clone();
+    let project_ids = data
+        .project_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
+    let version_ids = data
+        .version_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
 
     if project_ids.is_some() && version_ids.is_some() {
         return Err(ApiError::InvalidInput(
@@ -312,8 +336,16 @@ pub async fn countries_downloads_get(
     .map(|x| x.1)
     .ok();
 
-    let project_ids = data.project_ids.clone();
-    let version_ids = data.version_ids.clone();
+    let project_ids = data
+        .project_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
+    let version_ids = data
+        .version_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
 
     if project_ids.is_some() && version_ids.is_some() {
         return Err(ApiError::InvalidInput(
@@ -388,8 +420,16 @@ pub async fn countries_views_get(
     .map(|x| x.1)
     .ok();
 
-    let project_ids = data.project_ids.clone();
-    let version_ids = data.version_ids.clone();
+    let project_ids = data
+        .project_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
+    let version_ids = data
+        .version_ids
+        .as_ref()
+        .map(|ids| serde_json::from_str::<Vec<String>>(ids))
+        .transpose()?;
 
     if project_ids.is_some() && version_ids.is_some() {
         return Err(ApiError::InvalidInput(
