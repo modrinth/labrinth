@@ -8,6 +8,7 @@ use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::{CollectionId, ProjectId};
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
+use crate::database::redis::RedisPool;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
@@ -56,7 +57,7 @@ pub async fn collection_create(
     req: HttpRequest,
     collection_create_data: web::Json<CollectionCreateData>,
     client: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     let collection_create_data = collection_create_data.into_inner();
@@ -130,7 +131,7 @@ pub async fn collections_get(
     req: HttpRequest,
     web::Query(ids): web::Query<CollectionIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
@@ -162,7 +163,7 @@ pub async fn collection_get(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
@@ -208,7 +209,7 @@ pub async fn collection_edit(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     new_collection: web::Json<EditCollection>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user_option = get_user_from_headers(
@@ -348,7 +349,7 @@ pub async fn collection_icon_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
@@ -434,7 +435,7 @@ pub async fn delete_collection_icon(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -493,7 +494,7 @@ pub async fn collection_delete(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user_option = get_user_from_headers(

@@ -1,9 +1,10 @@
+use crate::database::redis::RedisPool;
+
 use super::ids::*;
 use super::DatabaseError;
 use chrono::DateTime;
 use chrono::Utc;
 use futures::TryStreamExt;
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 const TAGS_NAMESPACE: &str = "tags";
@@ -100,17 +101,13 @@ impl Category {
 
     pub async fn list<'a, E>(
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<Category>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.get().await?;
-        let res = cmd("GET")
-            .arg(format!("{}:category", TAGS_NAMESPACE))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
-            .and_then(|x| serde_json::from_str::<Vec<Category>>(&x).ok());
+        let res = redis.get::<String, _>(TAGS_NAMESPACE, "category").await?
+        .and_then(|x| serde_json::from_str::<Vec<Category>>(&x).ok());
 
         if let Some(res) = res {
             return Ok(res);
@@ -137,13 +134,7 @@ impl Category {
         .try_collect::<Vec<Category>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:category", TAGS_NAMESPACE))
-            .arg(serde_json::to_string(&result)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
+        redis.set(TAGS_NAMESPACE, "category", serde_json::to_string(&result)?, None).await?;
 
         Ok(result)
     }
@@ -169,17 +160,13 @@ impl Loader {
 
     pub async fn list<'a, E>(
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<Loader>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.get().await?;
-        let res = cmd("GET")
-            .arg(format!("{}:loader", TAGS_NAMESPACE))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
-            .and_then(|x| serde_json::from_str::<Vec<Loader>>(&x).ok());
+        let res = redis.get::<String, _>(TAGS_NAMESPACE, "loader").await?
+        .and_then(|x| serde_json::from_str::<Vec<Loader>>(&x).ok());
 
         if let Some(res) = res {
             return Ok(res);
@@ -212,13 +199,7 @@ impl Loader {
         .try_collect::<Vec<_>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:loader", TAGS_NAMESPACE))
-            .arg(serde_json::to_string(&result)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
+        redis.set(TAGS_NAMESPACE, "loader", serde_json::to_string(&result)?, None).await?;
 
         Ok(result)
     }
@@ -258,16 +239,12 @@ impl GameVersion {
 
     pub async fn list<'a, E>(
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<GameVersion>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.get().await?;
-        let res = cmd("GET")
-            .arg(format!("{}:game_version", TAGS_NAMESPACE))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
+        let res = redis.get::<String, _>(TAGS_NAMESPACE, "game_version").await?
             .and_then(|x| serde_json::from_str::<Vec<GameVersion>>(&x).ok());
 
         if let Some(res) = res {
@@ -291,14 +268,7 @@ impl GameVersion {
         .try_collect::<Vec<GameVersion>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:game_version", TAGS_NAMESPACE))
-            .arg(serde_json::to_string(&result)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
-
+        redis.set(TAGS_NAMESPACE, "game_version", serde_json::to_string(&result)?, None).await?;
         Ok(result)
     }
 
@@ -306,7 +276,7 @@ impl GameVersion {
         version_type_option: Option<&str>,
         major_option: Option<bool>,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<GameVersion>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -408,16 +378,12 @@ impl DonationPlatform {
 
     pub async fn list<'a, E>(
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<DonationPlatform>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.get().await?;
-        let res = cmd("GET")
-            .arg(format!("{}:donation_platform", TAGS_NAMESPACE))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
+        let res = redis.get::<String, _>(TAGS_NAMESPACE, "donation_platform").await?
             .and_then(|x| serde_json::from_str::<Vec<DonationPlatform>>(&x).ok());
 
         if let Some(res) = res {
@@ -440,13 +406,7 @@ impl DonationPlatform {
         .try_collect::<Vec<DonationPlatform>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:donation_platform", TAGS_NAMESPACE))
-            .arg(serde_json::to_string(&result)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
+        redis.set(TAGS_NAMESPACE, "donation_platform", serde_json::to_string(&result)?, None).await?;
 
         Ok(result)
     }
@@ -472,16 +432,12 @@ impl ReportType {
 
     pub async fn list<'a, E>(
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<String>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.get().await?;
-        let res = cmd("GET")
-            .arg(format!("{}:report_type", TAGS_NAMESPACE))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
+        let res = redis.get::<String, _>(TAGS_NAMESPACE, "report_type").await?
             .and_then(|x| serde_json::from_str::<Vec<String>>(&x).ok());
 
         if let Some(res) = res {
@@ -498,13 +454,7 @@ impl ReportType {
         .try_collect::<Vec<String>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:report_type", TAGS_NAMESPACE))
-            .arg(serde_json::to_string(&result)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
+        redis.set(TAGS_NAMESPACE, "report_type", serde_json::to_string(&result)?, None).await?;
 
         Ok(result)
     }
@@ -530,16 +480,12 @@ impl ProjectType {
 
     pub async fn list<'a, E>(
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<String>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.get().await?;
-        let res = cmd("GET")
-            .arg(format!("{}:project_type", TAGS_NAMESPACE))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
+        let res = redis.get::<String, _>(TAGS_NAMESPACE, "project_type").await?
             .and_then(|x| serde_json::from_str::<Vec<String>>(&x).ok());
 
         if let Some(res) = res {
@@ -556,13 +502,7 @@ impl ProjectType {
         .try_collect::<Vec<String>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:project_type", TAGS_NAMESPACE))
-            .arg(serde_json::to_string(&result)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
+        redis.set(TAGS_NAMESPACE, "project_type", serde_json::to_string(&result)?, None).await?;
 
         Ok(result)
     }
@@ -588,16 +528,12 @@ impl SideType {
 
     pub async fn list<'a, E>(
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<String>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.get().await?;
-        let res = cmd("GET")
-            .arg(format!("{}:side_type", TAGS_NAMESPACE))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
+        let res = redis.get::<String, _>(TAGS_NAMESPACE, "side_type").await?
             .and_then(|x| serde_json::from_str::<Vec<String>>(&x).ok());
 
         if let Some(res) = res {
@@ -614,13 +550,7 @@ impl SideType {
         .try_collect::<Vec<String>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:side_type", TAGS_NAMESPACE))
-            .arg(serde_json::to_string(&result)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
+        redis.set(TAGS_NAMESPACE, "side_type", serde_json::to_string(&result)?, None).await?;
 
         Ok(result)
     }

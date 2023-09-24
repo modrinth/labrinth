@@ -1,6 +1,7 @@
 use super::ApiError;
 use crate::auth::check_is_moderator_from_headers;
 use crate::database;
+use crate::database::redis::RedisPool;
 use crate::models::projects::ProjectStatus;
 use crate::queue::session::AuthQueue;
 use actix_web::{get, web, HttpRequest, HttpResponse};
@@ -25,7 +26,7 @@ fn default_count() -> i16 {
 pub async fn get_projects(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     count: web::Query<ResultCount>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {

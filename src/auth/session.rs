@@ -10,6 +10,7 @@ use crate::util::env::parse_var;
 use actix_web::http::header::AUTHORIZATION;
 use actix_web::web::{scope, Data, ServiceConfig};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
+use crate::database::redis::RedisPool;
 use chrono::Utc;
 use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
@@ -86,7 +87,7 @@ pub async fn issue_session(
     req: HttpRequest,
     user_id: UserId,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
 ) -> Result<DBSession, AuthenticationError> {
     let metadata = get_session_metadata(&req).await?;
 
@@ -132,7 +133,7 @@ pub async fn issue_session(
 pub async fn list(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let current_user = get_user_from_headers(
@@ -167,7 +168,7 @@ pub async fn delete(
     info: web::Path<(String,)>,
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let current_user = get_user_from_headers(
@@ -206,7 +207,7 @@ pub async fn delete(
 pub async fn refresh(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let current_user = get_user_from_headers(&req, &**pool, &redis, &session_queue, None)

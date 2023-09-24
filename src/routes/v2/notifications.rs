@@ -6,6 +6,7 @@ use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use crate::database::redis::RedisPool;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -32,7 +33,7 @@ pub async fn notifications_get(
     req: HttpRequest,
     web::Query(ids): web::Query<NotificationIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -72,7 +73,7 @@ pub async fn notification_get(
     req: HttpRequest,
     info: web::Path<(NotificationId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -106,7 +107,7 @@ pub async fn notification_read(
     req: HttpRequest,
     info: web::Path<(NotificationId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -149,7 +150,7 @@ pub async fn notification_delete(
     req: HttpRequest,
     info: web::Path<(NotificationId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -192,7 +193,7 @@ pub async fn notifications_read(
     req: HttpRequest,
     web::Query(ids): web::Query<NotificationIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -237,7 +238,7 @@ pub async fn notifications_delete(
     req: HttpRequest,
     web::Query(ids): web::Query<NotificationIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(

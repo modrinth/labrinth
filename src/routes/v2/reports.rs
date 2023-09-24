@@ -10,6 +10,7 @@ use crate::models::reports::{ItemType, Report};
 use crate::models::threads::{MessageBody, ThreadType};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::database::redis::RedisPool;
 use crate::util::img;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
@@ -44,7 +45,7 @@ pub async fn report_create(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     mut body: web::Payload,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let mut transaction = pool.begin().await?;
@@ -235,7 +236,7 @@ fn default_all() -> bool {
 pub async fn reports(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     count: web::Query<ReportsRequestOptions>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -310,7 +311,7 @@ pub async fn reports_get(
     req: HttpRequest,
     web::Query(ids): web::Query<ReportIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let report_ids: Vec<crate::database::models::ids::ReportId> =
@@ -345,7 +346,7 @@ pub async fn reports_get(
 pub async fn report_get(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -385,7 +386,7 @@ pub struct EditReport {
 pub async fn report_edit(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
     session_queue: web::Data<AuthQueue>,
     edit_report: web::Json<EditReport>,
@@ -492,7 +493,7 @@ pub async fn report_delete(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;

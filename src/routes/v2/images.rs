@@ -12,6 +12,7 @@ use crate::routes::v2::threads::is_authorized_thread;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use actix_web::{post, web, HttpRequest, HttpResponse};
+use crate::database::redis::RedisPool;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -41,7 +42,7 @@ pub async fn images_add(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&data.ext) {

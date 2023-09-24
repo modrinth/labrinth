@@ -3,6 +3,7 @@ use crate::models::projects::ProjectId;
 use crate::routes::ApiError;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use crate::database::redis::RedisPool;
 use sqlx::PgPool;
 use std::usize;
 
@@ -72,7 +73,7 @@ const PLUGIN_LOADERS: &[&str] = &[
 pub async fn send_discord_webhook(
     project_id: ProjectId,
     pool: &PgPool,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
     webhook_url: String,
     message: Option<String>,
 ) -> Result<(), ApiError> {

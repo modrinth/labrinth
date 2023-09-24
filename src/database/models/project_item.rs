@@ -1,14 +1,15 @@
 use super::ids::*;
 use crate::database::models;
 use crate::database::models::DatabaseError;
+use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use serde::{Deserialize, Serialize};
 
-const PROJECTS_NAMESPACE: &str = "projects";
-const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
+pub const PROJECTS_NAMESPACE: &str = "projects";
+pub const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
 const PROJECTS_DEPENDENCIES_NAMESPACE: &str = "projects_dependencies";
 const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
@@ -294,7 +295,7 @@ impl Project {
     pub async fn remove(
         id: ProjectId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         let project = Self::get_id(id, &mut *transaction, redis).await?;
 
@@ -428,7 +429,7 @@ impl Project {
     pub async fn get<'a, 'b, E>(
         string: &str,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -441,7 +442,7 @@ impl Project {
     pub async fn get_id<'a, 'b, E>(
         id: ProjectId,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -454,7 +455,7 @@ impl Project {
     pub async fn get_many_ids<'a, E>(
         project_ids: &[ProjectId],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -469,18 +470,18 @@ impl Project {
     pub async fn get_many<'a, E, T: ToString>(
         project_strings: &[T],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let debug_time_0 = std::time::Instant::now();
+
         use futures::TryStreamExt;
 
         if project_strings.is_empty() {
             return Ok(Vec::new());
         }
-
-        let mut redis = redis.get().await?;
 
         let mut found_projects = Vec::new();
         let mut remaining_strings = project_strings
@@ -494,37 +495,17 @@ impl Project {
             .collect::<Vec<_>>();
 
         project_ids.append(
-            &mut cmd("MGET")
-                .arg(
-                    project_strings
-                        .iter()
-                        .map(|x| {
-                            format!(
-                                "{}:{}",
-                                PROJECTS_SLUGS_NAMESPACE,
-                                x.to_string().to_lowercase()
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<i64>>>(&mut redis)
-                .await?
+            &mut redis.multi_get::<i64,_>(PROJECTS_SLUGS_NAMESPACE, project_strings.iter().map(|x| x.to_string().to_lowercase()).collect()).await?
                 .into_iter()
                 .flatten()
                 .collect(),
         );
 
-        if !project_ids.is_empty() {
-            let projects = cmd("MGET")
-                .arg(
-                    project_ids
-                        .iter()
-                        .map(|x| format!("{}:{}", PROJECTS_NAMESPACE, x))
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<String>>>(&mut redis)
-                .await?;
+        let debug_time_1 = std::time::Instant::now();
+        println!("Redis time: {:?}", debug_time_1 - debug_time_0);
 
+        if !project_ids.is_empty() {
+            let projects = redis.multi_get::<String, _>(PROJECTS_NAMESPACE, project_ids).await?;
             for project in projects {
                 if let Some(project) =
                     project.and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
@@ -540,13 +521,15 @@ impl Project {
             }
         }
 
+        let debug_time_2 = std::time::Instant::now();
+        println!("Redis time: {:?}", debug_time_2 - debug_time_1);
+
         if !remaining_strings.is_empty() {
             let project_ids_parsed: Vec<i64> = remaining_strings
                 .iter()
                 .flat_map(|x| parse_base62(&x.to_string()).ok())
                 .map(|x| x as i64)
                 .collect();
-
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
                 SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
@@ -583,7 +566,9 @@ impl Project {
                 .try_filter_map(|e| async {
                     Ok(e.right().map(|m| {
                         let id = m.id;
-
+                        let debug_time_3 = std::time::Instant::now();
+                        println!("inner SQL time: {:?}", debug_time_3 - debug_time_2);
+            
                     QueryProject {
                         inner: Project {
                             id: ProjectId(id),
@@ -665,30 +650,20 @@ impl Project {
                 .try_collect::<Vec<QueryProject>>()
                 .await?;
 
-            for project in db_projects {
-                cmd("SET")
-                    .arg(format!("{}:{}", PROJECTS_NAMESPACE, project.inner.id.0))
-                    .arg(serde_json::to_string(&project)?)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
-                    .await?;
+            let debug_time_3 = std::time::Instant::now();
+            println!("total SQL time: {:?}", debug_time_3 - debug_time_2);
 
+            for project in db_projects {
+                redis.set(PROJECTS_NAMESPACE, project.inner.id.0, serde_json::to_string(&project)?, None).await?;
                 if let Some(slug) = &project.inner.slug {
-                    cmd("SET")
-                        .arg(format!(
-                            "{}:{}",
-                            PROJECTS_SLUGS_NAMESPACE,
-                            slug.to_lowercase()
-                        ))
-                        .arg(project.inner.id.0)
-                        .arg("EX")
-                        .arg(DEFAULT_EXPIRY)
-                        .query_async::<_, ()>(&mut redis)
-                        .await?;
+                    redis.set(PROJECTS_SLUGS_NAMESPACE,
+                        slug.to_lowercase(), project.inner.id.0, None).await?;
                 }
                 found_projects.push(project);
             }
+
+            let debug_time_4 = std::time::Instant::now();
+            println!("Redis time: {:?}", debug_time_4 - debug_time_3);
         }
 
         Ok(found_projects)
@@ -697,7 +672,7 @@ impl Project {
     pub async fn get_dependencies<'a, E>(
         id: ProjectId,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -706,13 +681,7 @@ impl Project {
 
         use futures::stream::TryStreamExt;
 
-        let mut redis = redis.get().await?;
-
-        let dependencies = cmd("GET")
-            .arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?;
-
+        let dependencies = redis.get::<String,_>(PROJECTS_DEPENDENCIES_NAMESPACE, id.0).await?;
         if let Some(dependencies) =
             dependencies.and_then(|x| serde_json::from_str::<Dependencies>(&x).ok())
         {
@@ -746,14 +715,7 @@ impl Project {
         .try_collect::<Dependencies>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0))
-            .arg(serde_json::to_string(&dependencies)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
-
+        redis.set(PROJECTS_DEPENDENCIES_NAMESPACE, id.0, serde_json::to_string(&dependencies)?, None).await?;
         Ok(dependencies)
     }
 
@@ -811,24 +773,15 @@ impl Project {
         id: ProjectId,
         slug: Option<String>,
         clear_dependencies: Option<bool>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
-
-        cmd.arg(format!("{}:{}", PROJECTS_NAMESPACE, id.0));
+        redis.delete(PROJECTS_NAMESPACE, id.0).await?;
         if let Some(slug) = slug {
-            cmd.arg(format!(
-                "{}:{}",
-                PROJECTS_SLUGS_NAMESPACE,
-                slug.to_lowercase()
-            ));
+            redis.delete(PROJECTS_SLUGS_NAMESPACE, slug.to_lowercase()).await?;
         }
         if clear_dependencies.unwrap_or(false) {
-            cmd.arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0));
+            redis.delete(PROJECTS_DEPENDENCIES_NAMESPACE, id.0).await?;
         }
-
-        cmd.query_async::<_, ()>(&mut redis).await?;
 
         Ok(())
     }

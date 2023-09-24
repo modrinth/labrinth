@@ -6,6 +6,7 @@ use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
+use crate::database::redis::RedisPool;
 use crate::models::images::ImageContext;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
@@ -79,7 +80,7 @@ pub struct RandomProjects {
 pub async fn random_projects_get(
     web::Query(count): web::Query<RandomProjects>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     count
         .validate()
@@ -119,7 +120,7 @@ pub async fn projects_get(
     req: HttpRequest,
     web::Query(ids): web::Query<ProjectIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
@@ -146,13 +147,14 @@ pub async fn project_get(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
+    println!("Getting project {}", &string);
     let project_data = database::models::Project::get(&string, &**pool, &redis).await?;
-
+    println!("Got project data {:?}", &project_data);
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -163,8 +165,10 @@ pub async fn project_get(
     .await
     .map(|x| x.1)
     .ok();
+    println!("Got user option {:?}", &user_option);
 
     if let Some(data) = project_data {
+        println!("Got project data {:?}", &data);
         if is_authorized(&data.inner, &user_option, &pool).await? {
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
@@ -177,7 +181,7 @@ pub async fn project_get(
 pub async fn project_get_check(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let slug = info.into_inner().0;
 
@@ -203,7 +207,7 @@ pub async fn dependency_list(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
@@ -381,7 +385,7 @@ pub async fn project_edit(
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,
     new_project: web::Json<EditProject>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -1216,7 +1220,7 @@ pub async fn projects_edit(
     web::Query(ids): web::Query<ProjectIds>,
     pool: web::Data<PgPool>,
     bulk_edit_project: web::Json<BulkEditProject>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -1555,7 +1559,7 @@ pub async fn project_schedule(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
     scheduling_data: web::Json<SchedulingData>,
 ) -> Result<HttpResponse, ApiError> {
@@ -1653,7 +1657,7 @@ pub async fn project_icon_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
@@ -1758,7 +1762,7 @@ pub async fn delete_project_icon(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -1851,7 +1855,7 @@ pub async fn add_gallery_item(
     web::Query(item): web::Query<GalleryCreateQuery>,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
@@ -2003,7 +2007,7 @@ pub async fn edit_gallery_item(
     web::Query(item): web::Query<GalleryEditQuery>,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -2156,7 +2160,7 @@ pub async fn delete_gallery_item(
     web::Query(item): web::Query<GalleryDeleteQuery>,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -2251,7 +2255,7 @@ pub async fn project_delete(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     config: web::Data<SearchConfig>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -2333,7 +2337,7 @@ pub async fn project_follow(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -2412,7 +2416,7 @@ pub async fn project_unfollow(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(

@@ -1,4 +1,4 @@
-use crate::models::projects::MonetizationStatus;
+use crate::{models::projects::MonetizationStatus, database::redis::RedisPool};
 use crate::routes::ApiError;
 use crate::util::env::parse_var;
 use base64::Engine;
@@ -203,7 +203,7 @@ impl PayoutsQueue {
 
 pub async fn process_payout(
     pool: &PgPool,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
     client: &clickhouse::Client,
 ) -> Result<(), ApiError> {
     let start: DateTime<Utc> = DateTime::from_utc(

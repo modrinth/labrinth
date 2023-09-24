@@ -6,6 +6,7 @@ use crate::auth::{
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
+use crate::database::redis::RedisPool;
 use crate::models::teams::Permissions;
 use crate::queue::session::AuthQueue;
 use crate::{database, models};
@@ -49,7 +50,7 @@ pub async fn get_version_from_hash(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -102,7 +103,7 @@ pub async fn download_version(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -152,7 +153,7 @@ pub async fn delete_file(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -255,7 +256,7 @@ pub async fn get_update_from_hash(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     hash_query: web::Query<HashQuery>,
     update_data: web::Json<UpdateData>,
     session_queue: web::Data<AuthQueue>,
@@ -333,7 +334,7 @@ pub struct FileHashes {
 pub async fn get_versions_from_hashes(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_data: web::Json<FileHashes>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -381,7 +382,7 @@ pub async fn get_versions_from_hashes(
 pub async fn get_projects_from_hashes(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_data: web::Json<FileHashes>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -439,7 +440,7 @@ pub struct ManyUpdateData {
 pub async fn update_files(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     update_data: web::Json<ManyUpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -539,7 +540,7 @@ pub struct ManyFileUpdateData {
 pub async fn update_individual_files(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     update_data: web::Json<ManyFileUpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {

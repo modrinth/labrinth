@@ -1,5 +1,6 @@
 use super::ids::*;
 use crate::database::models::DatabaseError;
+use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use chrono::{DateTime, Utc};
 use redis::cmd;
@@ -83,7 +84,7 @@ impl Session {
     pub async fn get<'a, E, T: ToString>(
         id: T,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<Session>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -96,7 +97,7 @@ impl Session {
     pub async fn get_id<'a, 'b, E>(
         id: SessionId,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<Session>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -109,7 +110,7 @@ impl Session {
     pub async fn get_many_ids<'a, E>(
         session_ids: &[SessionId],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<Session>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -124,7 +125,7 @@ impl Session {
     pub async fn get_many<'a, E, T: ToString>(
         session_strings: &[T],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<Session>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -134,8 +135,6 @@ impl Session {
         if session_strings.is_empty() {
             return Ok(Vec::new());
         }
-
-        let mut redis = redis.get().await?;
 
         let mut found_sessions = Vec::new();
         let mut remaining_strings = session_strings
@@ -149,31 +148,14 @@ impl Session {
             .collect::<Vec<_>>();
 
         session_ids.append(
-            &mut cmd("MGET")
-                .arg(
-                    session_strings
-                        .iter()
-                        .map(|x| format!("{}:{}", SESSIONS_IDS_NAMESPACE, x.to_string()))
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<i64>>>(&mut redis)
-                .await?
+            &mut redis.multi_get::<i64, _>(SESSIONS_IDS_NAMESPACE, session_strings.iter().map(|x| x.to_string()).collect()).await?
                 .into_iter()
                 .flatten()
                 .collect(),
         );
 
         if !session_ids.is_empty() {
-            let sessions = cmd("MGET")
-                .arg(
-                    session_ids
-                        .iter()
-                        .map(|x| format!("{}:{}", SESSIONS_NAMESPACE, x))
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<String>>>(&mut redis)
-                .await?;
-
+            let sessions = redis.multi_get::<String, _>(SESSIONS_NAMESPACE, session_ids).await?;
             for session in sessions {
                 if let Some(session) =
                     session.and_then(|x| serde_json::from_str::<Session>(&x).ok())
@@ -225,21 +207,8 @@ impl Session {
                 .await?;
 
             for session in db_sessions {
-                cmd("SET")
-                    .arg(format!("{}:{}", SESSIONS_NAMESPACE, session.id.0))
-                    .arg(serde_json::to_string(&session)?)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
-                    .await?;
-
-                cmd("SET")
-                    .arg(format!("{}:{}", SESSIONS_IDS_NAMESPACE, session.session))
-                    .arg(session.id.0)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
-                    .await?;
+                redis.set(SESSIONS_NAMESPACE, session.id.0, serde_json::to_string(&session)?, None).await?;
+                redis.set(SESSIONS_IDS_NAMESPACE, session.session.clone(), session.id.0, None).await?;
                 found_sessions.push(session);
             }
         }
@@ -250,16 +219,12 @@ impl Session {
     pub async fn get_user_sessions<'a, E>(
         user_id: UserId,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<SessionId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.get().await?;
-        let res = cmd("GET")
-            .arg(format!("{}:{}", SESSIONS_USERS_NAMESPACE, user_id.0))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
+        let res = redis.get::<String,_>(SESSIONS_USERS_NAMESPACE, user_id.0).await?
             .and_then(|x| serde_json::from_str::<Vec<i64>>(&x).ok());
 
         if let Some(res) = res {
@@ -281,41 +246,30 @@ impl Session {
         .try_collect::<Vec<SessionId>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:{}", SESSIONS_USERS_NAMESPACE, user_id.0))
-            .arg(serde_json::to_string(&db_sessions)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
-            .await?;
+        redis.set(SESSIONS_USERS_NAMESPACE, user_id.0, serde_json::to_string(&db_sessions)?, None).await?;
 
         Ok(db_sessions)
     }
 
     pub async fn clear_cache(
         clear_sessions: Vec<(Option<SessionId>, Option<String>, Option<UserId>)>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
         if clear_sessions.is_empty() {
             return Ok(());
         }
 
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
-
         for (id, session, user_id) in clear_sessions {
             if let Some(id) = id {
-                cmd.arg(format!("{}:{}", SESSIONS_NAMESPACE, id.0));
+                redis.delete(SESSIONS_NAMESPACE, id.0).await?;
             }
             if let Some(session) = session {
-                cmd.arg(format!("{}:{}", SESSIONS_IDS_NAMESPACE, session));
+                redis.delete(SESSIONS_IDS_NAMESPACE, session).await?;
             }
             if let Some(user_id) = user_id {
-                cmd.arg(format!("{}:{}", SESSIONS_USERS_NAMESPACE, user_id.0));
+                redis.delete(SESSIONS_USERS_NAMESPACE, user_id.0).await?;
             }
         }
-
-        cmd.query_async::<_, ()>(&mut redis).await?;
 
         Ok(())
     }

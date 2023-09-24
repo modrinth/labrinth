@@ -11,6 +11,7 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use crate::database::redis::RedisPool;
 
 use crate::models::pats::{PersonalAccessToken, Scopes};
 use crate::queue::session::AuthQueue;
@@ -30,7 +31,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 pub async fn get_pats(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -73,7 +74,7 @@ pub async fn create_pat(
     req: HttpRequest,
     info: web::Json<NewPersonalAccessToken>,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     info.0
@@ -159,7 +160,7 @@ pub async fn edit_pat(
     id: web::Path<(String,)>,
     info: web::Json<ModifyPersonalAccessToken>,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -248,7 +249,7 @@ pub async fn delete_pat(
     req: HttpRequest,
     id: web::Path<(String,)>,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(

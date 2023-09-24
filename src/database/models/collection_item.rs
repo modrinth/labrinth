@@ -2,6 +2,7 @@ use super::ids::*;
 use crate::database::models;
 use crate::database::models::DatabaseError;
 use crate::models::collections::CollectionStatus;
+use crate::database::redis::RedisPool;
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use serde::{Deserialize, Serialize};
@@ -102,7 +103,7 @@ impl Collection {
     pub async fn remove(
         id: CollectionId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         let collection = Self::get(id, &mut *transaction, redis).await?;
 
@@ -138,7 +139,7 @@ impl Collection {
     pub async fn get<'a, 'b, E>(
         id: CollectionId,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<Collection>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -151,7 +152,7 @@ impl Collection {
     pub async fn get_many<'a, E>(
         collection_ids: &[CollectionId],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<Collection>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -162,21 +163,12 @@ impl Collection {
             return Ok(Vec::new());
         }
 
-        let mut redis = redis.get().await?;
-
         let mut found_collections = Vec::new();
         let mut remaining_collections: Vec<CollectionId> = collection_ids.to_vec();
 
         if !collection_ids.is_empty() {
-            let collections = cmd("MGET")
-                .arg(
-                    collection_ids
-                        .iter()
-                        .map(|x| format!("{}:{}", COLLECTIONS_NAMESPACE, x.0))
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<String>>>(&mut redis)
-                .await?;
+            let collections = redis.multi_get::<String, _>(
+                COLLECTIONS_NAMESPACE, collection_ids.iter().map(|x| x.0).collect()).await?;
 
             for collection in collections {
                 if let Some(collection) =
@@ -233,14 +225,7 @@ impl Collection {
             .await?;
 
             for collection in db_collections {
-                cmd("SET")
-                    .arg(format!("{}:{}", COLLECTIONS_NAMESPACE, collection.id.0))
-                    .arg(serde_json::to_string(&collection)?)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
-                    .await?;
-
+                redis.set(COLLECTIONS_NAMESPACE, collection.id.0, serde_json::to_string(&collection)?, None).await?;
                 found_collections.push(collection);
             }
         }
@@ -250,14 +235,9 @@ impl Collection {
 
     pub async fn clear_cache(
         id: CollectionId,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
-
-        cmd.arg(format!("{}:{}", COLLECTIONS_NAMESPACE, id.0));
-        cmd.query_async::<_, ()>(&mut redis).await?;
-
+        redis.delete(COLLECTIONS_NAMESPACE, id.0).await?;
         Ok(())
     }
 }

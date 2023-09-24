@@ -11,6 +11,7 @@ use crate::routes::ApiError;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use crate::database::redis::RedisPool;
 use sqlx::PgPool;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -32,7 +33,7 @@ pub async fn team_members_get_project(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
@@ -100,7 +101,7 @@ pub async fn team_members_get(
     req: HttpRequest,
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
@@ -162,7 +163,7 @@ pub async fn teams_get(
     req: HttpRequest,
     web::Query(ids): web::Query<TeamIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     use itertools::Itertools;
@@ -227,7 +228,7 @@ pub async fn join_team(
     req: HttpRequest,
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
@@ -304,7 +305,7 @@ pub async fn add_team_member(
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
     new_member: web::Json<NewTeamMember>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
@@ -427,7 +428,7 @@ pub async fn edit_team_member(
     info: web::Path<(TeamId, UserId)>,
     pool: web::Data<PgPool>,
     edit_member: web::Json<EditTeamMember>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = info.into_inner();
@@ -526,7 +527,7 @@ pub async fn transfer_ownership(
     info: web::Path<(TeamId,)>,
     pool: web::Data<PgPool>,
     new_owner: web::Json<TransferOwnership>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
@@ -607,7 +608,7 @@ pub async fn remove_team_member(
     req: HttpRequest,
     info: web::Path<(TeamId, UserId)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = info.into_inner();
