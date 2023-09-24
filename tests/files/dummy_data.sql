@@ -8,12 +8,14 @@ ALTER TABLE game_versions_versions DISABLE TRIGGER ALL;
 ALTER TABLE files DISABLE TRIGGER ALL;
 ALTER TABLE hashes DISABLE TRIGGER ALL;
 
+-- IDs 1-5, 1-5
 INSERT INTO users (id, username, name, email, role) VALUES (1, 'admin', 'Administrator Test', 'admin@modrinth.com', 'admin');
 INSERT INTO users (id, username, name, email, role) VALUES (2, 'moderator', 'Moderator Test', 'moderator@modrinth.com', 'mod');
 INSERT INTO users (id, username, name, email, role) VALUES (3, 'user', 'User Test', 'user@modrinth.com', 'developer');
 INSERT INTO users (id, username, name, email, role) VALUES (4, 'friend', 'Friend Test', 'friend@modrinth.com', 'developer');
 INSERT INTO users (id, username, name, email, role) VALUES (5, 'enemy', 'Enemy Test', 'enemy@modrinth.com', 'developer');
 
+-- IDs: 50-54, o p q r s
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (50, 1, 'admin-pat', 'mrp_patadmin', B'11111111111111111111111111111111111'::BIGINT, '2030-08-18 15:48:58.435729+00');
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (51, 2, 'moderator-pat', 'mrp_patmoderator', B'11111111111111111111111111111111111'::BIGINT, '2030-08-18 15:48:58.435729+00');
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (52, 3, 'user-pat', 'mrp_patuser', B'11111111111111111111111111111111111'::BIGINT, '2030-08-18 15:48:58.435729+00');
@@ -30,6 +32,7 @@ INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) V
 INSERT INTO teams (id) VALUES (100);
 INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering) VALUES (200, 100, 3, 'Owner', B'1111111111'::BIGINT, true, 100.0, 0);
 
+-- ID: 1000, G8
 INSERT INTO mods (
     id, team_id, title, description, body,
     published, downloads,
@@ -45,6 +48,7 @@ VALUES (
     'testslug', 1, 'monetized'
 );
 
+-- ID: 1100, Hk
 INSERT INTO versions (
     id, mod_id, author_id, name, version_number,
     changelog, date_published, downloads,

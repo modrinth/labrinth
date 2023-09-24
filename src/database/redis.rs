@@ -42,6 +42,7 @@ impl RedisPool {
     {
         let mut redis_connection = self.pool.get().await?;
 
+        println!("SET: {}_{}:{}", self.meta_namespace, namespace, id);
         cmd("SET")
             .arg(format!("{}_{}:{}", self.meta_namespace, namespace, id))
             .arg(data)
@@ -59,6 +60,7 @@ impl RedisPool {
     {
         let mut redis_connection = self.pool.get().await?;
 
+        println!("GET: {}_{}:{}", self.meta_namespace, namespace, id);
         let res = cmd("GET")
             .arg(format!("{}_{}:{}", self.meta_namespace, namespace, id))
             .query_async::<_, Option<R>>(&mut redis_connection)
@@ -72,6 +74,10 @@ impl RedisPool {
     {
         let mut redis_connection = self.pool.get().await?;
 
+        for id in &ids {
+            println!("MGET: {}_{}:{}", self.meta_namespace, namespace, id);
+        }
+        
         let res = cmd("MGET")
             .arg(
                 ids

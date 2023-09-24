@@ -1,5 +1,6 @@
-use actix_web::{App, test::{self, init_service, TestRequest}, HttpResponse, web, dev::{ServiceResponse, Service}};
+use actix_web::{App, test};
 use common::database::TemporaryDatabase;
+use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
 use serde_json::json;
 
 use crate::common::{setup, actix::generate_multipart};
@@ -9,67 +10,57 @@ mod common;
 
 #[actix_rt::test]
 async fn test_get_project() {
-    let debug_time_start_0 = std::time::Instant::now();
     // Test setup and dummy data
     let db = TemporaryDatabase::create_with_dummy().await;
-    let debug_time_start_1 = std::time::Instant::now();
     let labrinth_config = setup(&db).await;
-    let debug_time_start_2 = std::time::Instant::now();
-    println!("Setup time: {:?}", debug_time_start_2 - debug_time_start_1);
-
     let app = App::new()
         .configure(|cfg | labrinth::app_config(cfg, labrinth_config.clone()));
     let test_app = test::init_service(app).await;
 
-    let debug_time_start_3 = std::time::Instant::now();
-    println!("Init time: {:?}", debug_time_start_3 - debug_time_start_2);
+    // Cache should default to unpopulated
+    assert!(db.redis_pool.get::<String, _>(PROJECTS_NAMESPACE, 1000).await.unwrap().is_none());
 
-    ///////////////////////////////////////////////
-    // Perform request on dumy data
+    // Perform request on dummy data
     println!("Sending request");
     let req = test::TestRequest::get()
         .uri("/v2/project/G8")
         .append_header(("Authorization","mrp_patuser"))
         .to_request();
-
-    let debug_time_start_3_1 = std::time::Instant::now();
     let resp = test::call_service(&test_app, req).await;
-    let debug_time_start_3_2 = std::time::Instant::now();
-    println!("RESPONSE TIME: {:?}", debug_time_start_3_2 - debug_time_start_3_1);
-    println!("Response: {:?}", resp.response().body());
     let status = resp.status();
-    assert_eq!(status, 200);
     let body : serde_json::Value = test::read_body_json(resp).await;
+
+    assert_eq!(status, 200);
     assert!(body.get("id").is_some());
     assert_eq!(body.get("slug").unwrap(), &json!("testslug"));
+    let versions = body.get("versions").unwrap().as_array().unwrap();
+    assert!(versions.len() > 0);
+    assert_eq!(versions[0], json!("Hk"));
 
-    let debug_time_start_4 = std::time::Instant::now();
-    println!("Request time: {:?}", debug_time_start_4 - debug_time_start_3);
+    // Confirm that the request was cached
+    println!("Confirming cache");
+    assert_eq!(db.redis_pool.get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, "testslug").await.unwrap(), Some(1000));
+    
+    let cached_project = db.redis_pool.get::<String, _>(PROJECTS_NAMESPACE, 1000).await.unwrap().unwrap();
+    let cached_project : serde_json::Value = serde_json::from_str(&cached_project).unwrap();
+    println!("Cached project: {:?}", cached_project);
+    println!("Cached project: {:?}", cached_project.to_string());
+    println!("{:?}",cached_project.as_object().unwrap());
+    assert_eq!(cached_project.get("inner").unwrap().get("slug").unwrap(), &json!("testslug"));
 
-    ///////////////////////////////////////////////
-    // Perform request on dumy data
-    println!("///////////////////////////////////////////////////////////////");
-    println!("Sending request");
+    // Make the request again, this time it should be cached
     let req = test::TestRequest::get()
         .uri("/v2/project/G8")
         .append_header(("Authorization","mrp_patuser"))
         .to_request();
-
-    let debug_time_start_3_1 = std::time::Instant::now();
     let resp = test::call_service(&test_app, req).await;
-    let debug_time_start_3_2 = std::time::Instant::now();
-    println!("RESPONSE TIME: {:?}", debug_time_start_3_2 - debug_time_start_3_1);
-    println!("Response: {:?}", resp.response().body());
     let status = resp.status();
     assert_eq!(status, 200);
+
     let body : serde_json::Value = test::read_body_json(resp).await;
     assert!(body.get("id").is_some());
     assert_eq!(body.get("slug").unwrap(), &json!("testslug"));
 
-    let debug_time_start_4 = std::time::Instant::now();
-    println!("Request time: {:?}", debug_time_start_4 - debug_time_start_3);
-
-    /////////////////////////////////////
     // Request should fail on non-existent project
     println!("Requesting non-existent project");
     let req = test::TestRequest::get()
@@ -81,31 +72,19 @@ async fn test_get_project() {
     println!("Response: {:?}", resp.response().body());
     assert_eq!(resp.status(), 404);
 
-    let debug_time_start_5 = std::time::Instant::now();
-    println!("Request time: {:?}", debug_time_start_5 - debug_time_start_4);
-
-    // Similarly, request should fail on non-authorized user
+    // Similarly, request should fail on non-authorized user, with a 404 (hiding the existence of the project)
     println!("Requesting project as non-authorized user");
     let req = test::TestRequest::get()
-    .uri("/v2/project/G8")
-    .append_header(("Authorization","mrp_patenemy"))
-    .to_request();
+        .uri("/v2/project/G8")
+        .append_header(("Authorization","mrp_patenemy"))
+        .to_request();
 
     let resp = test::call_service(&test_app, req).await;
     println!("Response: {:?}", resp.response().body());
     assert_eq!(resp.status(), 404);
 
-    let debug_time_start_6 = std::time::Instant::now();
-    println!("Request time: {:?}", debug_time_start_6 - debug_time_start_5);
-
     // Cleanup test db
     db.cleanup().await;
-
-    let debug_time_start_7 = std::time::Instant::now();
-    println!("Cleanup time: {:?}", debug_time_start_7 - debug_time_start_6);
-
-    println!("Total time: {:?}", debug_time_start_7 - debug_time_start_0);
-    panic!("Test panic");
 }
 
 #[actix_rt::test]
@@ -118,11 +97,7 @@ async fn test_add_project() {
     let test_app = test::init_service(app).await;
 
     // Generate project data.
-    let jar_bytes: &[u8] = include_bytes!("../tests/files/basic-mod.jar");
-
-    // let mut data = HashMap::new();
-
-    let json_data = json!(
+    let mut json_data = json!(
         {
             "title": "Test_Add_Project project",
             "slug": "demo",
@@ -156,11 +131,9 @@ async fn test_add_project() {
             name: "basic-mod.jar".to_string(),
             filename: Some("basic-mod.jar".to_string()),
             content_type: Some("application/java-archive".to_string()),
-            data: common::actix::MultipartSegmentData::Binary(jar_bytes.to_vec())
+            data: common::actix::MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod.jar").to_vec())
         }
     ]);
-
-    println!("Sending request");
 
     let req = test::TestRequest::post()
         .uri("/v2/project")
@@ -172,12 +145,108 @@ async fn test_add_project() {
     let resp = test::call_service(&test_app, req).await;
 
     let status = resp.status();
-    println!("Response: {:?}", resp.response().body());
-    println!("Response: {:?}", test::read_body(resp).await);
-
     assert_eq!(status, 200);
+
+    // Get the project we just made
+    let req = test::TestRequest::get()
+        .uri("/v2/project/demo")
+        .append_header(("Authorization","mrp_patuser"))
+        .to_request();
+
+    let resp = test::call_service(&test_app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    let body : serde_json::Value = test::read_body_json(resp).await;
+    let versions = body.get("versions").unwrap().as_array().unwrap();
+    assert!(versions.len() == 1);
+
+    // Reusing with a different slug and the same file should fail
+    // Even if that file is named differently
+    json_data["slug"] = json!("new_demo");
+    json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
+    println!("JSON data: {:?}", json_data.to_string());
+    let (boundary, multipart) = generate_multipart(vec![
+        common::actix::MultipartSegment {
+            name: "data".to_string(),
+            filename: None,
+            content_type: Some("application/json".to_string()),
+            data: common::actix::MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap())
+        },
+        common::actix::MultipartSegment {
+            name: "basic-mod-different.jar".to_string(),
+            filename: Some("basic-mod-different.jar".to_string()),
+            content_type: Some("application/java-archive".to_string()),
+            data: common::actix::MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod.jar").to_vec())
+        }
+    ]);
+    let req = test::TestRequest::post()
+        .uri("/v2/project")
+        .append_header(("Authorization","mrp_patuser"))
+        .append_header(("Content-Type", format!("multipart/form-data; boundary={}", boundary)))
+        .set_payload(multipart)
+        .to_request();
+
+    let resp = test::call_service(&test_app, req).await;
+    println!("Different slug,s same file (with diff name): {:?}", resp.response().body());
+    println!("Response: {:?}", resp.response().body());
+    assert_eq!(resp.status(), 400);
+
+    // Reusing with the same slug and a different file should fail
+    json_data["slug"] = json!("demo");
+    json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
+    let (boundary, multipart) = generate_multipart(vec![
+        common::actix::MultipartSegment {
+            name: "data".to_string(),
+            filename: None,
+            content_type: Some("application/json".to_string()),
+            data: common::actix::MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap())
+        },
+        common::actix::MultipartSegment {
+            name: "basic-mod-different.jar".to_string(),
+            filename: Some("basic-mod-different.jar".to_string()),
+            content_type: Some("application/java-archive".to_string()),
+            data: common::actix::MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod-different.jar").to_vec())
+        }
+    ]);
+    let req = test::TestRequest::post()
+    .uri("/v2/project")
+        .append_header(("Authorization","mrp_patuser"))
+        .append_header(("Content-Type", format!("multipart/form-data; boundary={}", boundary)))
+        .set_payload(multipart)
+        .to_request();
+
+    let resp = test::call_service(&test_app, req).await;
+    println!("Same slug truly different file: {:?}", resp.response().body());
+    println!("Response: {:?}", resp.response().body());
+    assert_eq!(resp.status(), 400);
+    
+    // Different slug, different file should succeed
+    json_data["slug"] = json!("new_demo");
+    json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
+    let (boundary, multipart) = generate_multipart(vec![
+        common::actix::MultipartSegment {
+            name: "data".to_string(),
+            filename: None,
+            content_type: Some("application/json".to_string()),
+            data: common::actix::MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap())
+        },
+        common::actix::MultipartSegment {
+            name: "basic-mod-different.jar".to_string(),
+            filename: Some("basic-mod-different.jar".to_string()),
+            content_type: Some("application/java-archive".to_string()),
+            data: common::actix::MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod-different.jar").to_vec())
+        }
+    ]);
+    let req = test::TestRequest::post()
+        .uri("/v2/project")
+        .append_header(("Authorization","mrp_patuser"))
+        .append_header(("Content-Type", format!("multipart/form-data; boundary={}", boundary)))
+        .set_payload(multipart)
+        .to_request();
+
+    let resp = test::call_service(&test_app, req).await;
+    assert_eq!(resp.status(), 200);
 
     // Cleanup test db
     db.cleanup().await;
-
 }

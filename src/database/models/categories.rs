@@ -8,7 +8,6 @@ use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 
 const TAGS_NAMESPACE: &str = "tags";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 pub struct ProjectType {
     pub id: ProjectTypeId,

@@ -1,5 +1,5 @@
 
-use labrinth::database::{redis::RedisPool, models::project_item::PROJECTS_NAMESPACE};
+use labrinth::database::redis::RedisPool;
 use sqlx::{PgPool, postgres::PgPoolOptions, Executor};
 use url::Url;
 use std::time::Duration;
