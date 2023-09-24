@@ -493,18 +493,6 @@ pub async fn project_edit(
                     )
                     .execute(&mut *transaction)
                     .await?;
-
-                    if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK") {
-                        crate::util::webhook::send_discord_webhook(
-                            project_item.inner.id.into(),
-                            &pool,
-                            &redis,
-                            webhook_url,
-                            None,
-                        )
-                        .await
-                        .ok();
-                    }
                 }
 
                 if status.is_approved() && !project_item.inner.status.is_approved() {
