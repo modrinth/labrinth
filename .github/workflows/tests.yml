@@ -53,10 +53,6 @@ jobs:
 
       - uses: actions-rs/cargo@v1
         with:
-          command: sqlx database setup
-
-      - uses: actions-rs/cargo@v1
-        with:
           command: test
         env:
           BACKBLAZE_BUCKET_ID: ${{ secrets.BACKBLAZE_BUCKET_ID }}
