@@ -81,7 +81,6 @@ async fn main() -> std::io::Result<()> {
         _ => panic!("Invalid storage backend specified. Aborting startup!"),
     };
 
-
     info!("Initializing clickhouse connection");
     let mut clickhouse = clickhouse::init_client().await.unwrap();
 

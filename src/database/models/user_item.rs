@@ -443,7 +443,7 @@ impl User {
             sqlx::query!(
                 "
                 DELETE FROM reports
-                WHERE user_id = $1
+                WHERE user_id = $1 OR reporter = $1
                 ",
                 id as UserId,
             )
