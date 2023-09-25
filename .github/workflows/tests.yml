@@ -51,6 +51,11 @@ jobs:
         env:
           SQLX_OFFLINE: true
 
+      # sets up database for tests
+      - uses: actions-rs/cargo@v1
+        with:
+          command: sqlx database setup
+
       - uses: actions-rs/cargo@v1
         with:
           command: test
