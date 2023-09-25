@@ -51,7 +51,6 @@ jobs:
         env:
           SQLX_OFFLINE: true
 
-      # sets up database for tests
       - uses: actions-rs/cargo@v1
         with:
           command: sqlx database setup
@@ -68,5 +67,5 @@ jobs:
           S3_URL: ${{ secrets.S3_URL }}
           S3_REGION: ${{ secrets.S3_REGION }}
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
-          SQLX_OFFLINE: false
-          DATABASE_URL: postgresql://labrinth:labrinth@localhost/labrinth
+          SQLX_OFFLINE: true
+          DATABASE_URL: postgresql://labrinth:labrinth@localhost/postgres
