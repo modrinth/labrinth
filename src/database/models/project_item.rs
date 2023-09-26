@@ -5,13 +5,11 @@ use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 pub const PROJECTS_NAMESPACE: &str = "projects";
 pub const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
 const PROJECTS_DEPENDENCIES_NAMESPACE: &str = "projects_dependencies";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DonationUrl {

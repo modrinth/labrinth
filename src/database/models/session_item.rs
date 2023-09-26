@@ -3,13 +3,11 @@ use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use chrono::{DateTime, Utc};
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 const SESSIONS_NAMESPACE: &str = "sessions";
 const SESSIONS_IDS_NAMESPACE: &str = "sessions_ids";
 const SESSIONS_USERS_NAMESPACE: &str = "sessions_users";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 pub struct SessionBuilder {
     pub session: String,

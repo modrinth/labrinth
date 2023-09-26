@@ -1,12 +1,10 @@
 use super::ids::*;
 use crate::{models::teams::Permissions, database::redis::RedisPool};
 use itertools::Itertools;
-use redis::cmd;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 const TEAMS_NAMESPACE: &str = "teams";
-const DEFAULT_EXPIRY: i64 = 1800;
 
 pub struct TeamBuilder {
     pub members: Vec<TeamMemberBuilder>,

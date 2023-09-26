@@ -7,7 +7,6 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 const FLOWS_NAMESPACE: &str = "flows";

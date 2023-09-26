@@ -1,5 +1,7 @@
+use actix_web::test::TestRequest;
 use bytes::{BytesMut, Bytes};
 
+#[derive(Debug, Clone)]
 pub struct MultipartSegment {
     pub name : String,
     pub filename : Option<String>,
@@ -7,12 +9,25 @@ pub struct MultipartSegment {
     pub data : MultipartSegmentData
 }
 
+#[derive(Debug, Clone)]
 pub enum MultipartSegmentData {
     Text(String),
     Binary(Vec<u8>)
 }
 
-pub fn generate_multipart(data: Vec<MultipartSegment>) -> (String, Bytes) {
+pub trait AppendsMultipart {
+    fn set_multipart(self, data: Vec<MultipartSegment>) -> Self;
+}
+
+impl AppendsMultipart for TestRequest {
+    fn set_multipart(self, data: Vec<MultipartSegment>) -> Self {
+        let (boundary, payload) = generate_multipart(data);
+        self.append_header(("Content-Type", format!("multipart/form-data; boundary={}", boundary)))
+        .set_payload(payload)
+    }
+}
+
+fn generate_multipart(data: Vec<MultipartSegment>) -> (String, Bytes) {
     let mut boundary = String::from("----WebKitFormBoundary");
     boundary.push_str(&rand::random::<u64>().to_string());
     boundary.push_str(&rand::random::<u64>().to_string());

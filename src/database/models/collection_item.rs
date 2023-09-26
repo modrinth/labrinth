@@ -4,11 +4,9 @@ use crate::database::models::DatabaseError;
 use crate::models::collections::CollectionStatus;
 use crate::database::redis::RedisPool;
 use chrono::{DateTime, Utc};
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 const COLLECTIONS_NAMESPACE: &str = "collections";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 #[derive(Clone)]
 pub struct CollectionBuilder {

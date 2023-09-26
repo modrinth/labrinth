@@ -4,13 +4,11 @@ use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::pats::Scopes;
 use chrono::{DateTime, Utc};
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 const PATS_NAMESPACE: &str = "pats";
 const PATS_TOKENS_NAMESPACE: &str = "pats_tokens";
 const PATS_USERS_NAMESPACE: &str = "pats_users";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct PersonalAccessToken {
@@ -164,8 +162,8 @@ impl PersonalAccessToken {
             .await?;
 
             for pat in db_pats {
-                redis.set(PATS_NAMESPACE, pat.id.0, serde_json::to_string(&pat)?, None);
-                redis.set(PATS_TOKENS_NAMESPACE, pat.access_token.clone(), pat.id.0, None);
+                redis.set(PATS_NAMESPACE, pat.id.0, serde_json::to_string(&pat)?, None).await?;
+                redis.set(PATS_TOKENS_NAMESPACE, pat.access_token.clone(), pat.id.0, None).await?;
                 found_pats.push(pat);
             }
         }

@@ -2,11 +2,9 @@ use super::ids::*;
 use crate::database::redis::RedisPool;
 use crate::{database::models::DatabaseError, models::images::ImageContext};
 use chrono::{DateTime, Utc};
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 const IMAGES_NAMESPACE: &str = "images";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Image {

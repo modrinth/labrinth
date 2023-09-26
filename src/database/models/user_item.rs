@@ -5,14 +5,12 @@ use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::database::redis::RedisPool;
 use crate::models::users::{Badges, RecipientType, RecipientWallet};
 use chrono::{DateTime, Utc};
-use redis::cmd;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 const USERS_NAMESPACE: &str = "users";
 const USER_USERNAMES_NAMESPACE: &str = "users_usernames";
 // const USERS_PROJECTS_NAMESPACE: &str = "users_projects";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct User {
@@ -332,8 +330,6 @@ impl User {
         user_ids: &[(UserId, Option<String>)],
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-
-        let mut cmd = cmd("DEL");
 
         for (id, username) in user_ids {
             redis.delete(USERS_NAMESPACE, id.0).await?;

@@ -405,6 +405,8 @@ pub async fn project_edit(
     let string = info.into_inner().0;
     let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
+    println!("user role {:?}", user.name);
+    println!("user role {}", user.role);
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 

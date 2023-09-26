@@ -3,7 +3,6 @@ use super::DatabaseError;
 use crate::models::projects::{FileType, VersionStatus};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 use crate::database::redis::RedisPool;
 use std::cmp::Ordering;
@@ -11,7 +10,6 @@ use std::collections::HashMap;
 
 const VERSIONS_NAMESPACE: &str = "versions";
 const VERSION_FILES_NAMESPACE: &str = "versions_files";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 #[derive(Clone)]
 pub struct VersionBuilder {
