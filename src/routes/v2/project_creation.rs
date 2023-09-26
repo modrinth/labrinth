@@ -668,6 +668,7 @@ async fn project_create_inner(
         }
 
         let team = models::team_item::TeamBuilder {
+            association_id: models::team_item::TeamAssociationId::Project(project_id.into()),
             members: vec![models::team_item::TeamMemberBuilder {
                 user_id: current_user.id.into(),
                 role: crate::models::teams::OWNER_ROLE.to_owned(),

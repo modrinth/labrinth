@@ -44,30 +44,6 @@ impl DonationUrl {
 
         Ok(())
     }
-
-    pub async fn insert_organization(
-        &self,
-        organization_id: OrganizationId,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), sqlx::error::Error> {
-        sqlx::query!(
-            "
-            INSERT INTO organizations_donations (
-                joining_organization_id, joining_platform_id, url
-            )
-            VALUES (
-                $1, $2, $3
-            )
-            ",
-            organization_id as OrganizationId,
-            self.platform_id as DonationPlatformId,
-            self.url,
-        )
-        .execute(&mut *transaction)
-        .await?;
-
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

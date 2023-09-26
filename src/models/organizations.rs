@@ -1,6 +1,7 @@
+use std::collections::HashMap;
+
 use super::{
     ids::{Base62Id, TeamId},
-    projects::DonationLink,
     teams::{ProjectPermissions, TeamMember},
 };
 use serde::{Deserialize, Serialize};
@@ -24,12 +25,9 @@ pub struct Organization {
     pub name: String,
     /// The description of the organization
     pub description: String,
-    /// The website url of the organization
-    pub website_url: Option<String>,
-    /// The discord url of the organization
-    pub discord_url: Option<String>,
-    /// The donation links for the organization
-    pub donation_urls: Option<Vec<DonationLink>>,
+    /// Any attached urls of the organization
+    /// ie: "discord" -> "https://discord.gg/..."
+    pub urls: HashMap<String, String>,
 
     /// The icon url of the organization
     pub icon_url: Option<String>,
@@ -63,18 +61,7 @@ impl Organization {
             name: data.name,
             description: data.description,
             members: team_members,
-            website_url: data.website_url,
-            discord_url: data.discord_url,
-            donation_urls: Some(
-                data.donation_urls
-                    .into_iter()
-                    .map(|d| DonationLink {
-                        id: d.platform_short,
-                        platform: d.platform_name,
-                        url: d.url,
-                    })
-                    .collect(),
-            ),
+            urls: data.urls,
             icon_url: data.icon_url,
             color: data.color,
             default_project_permissions: if show_permissions {

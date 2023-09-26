@@ -65,7 +65,7 @@ impl ProjectPermissions {
         }
 
         if let Some(member) = project_team_member {
-            if let Some(permissions) = member.permissions {
+            if let Some(Permissions::Project(permissions)) = member.permissions {
                 return Some(permissions);
             }
         }
@@ -120,18 +120,22 @@ impl OrganizationPermissions {
         team_member: &Option<crate::database::models::TeamMember>,
     ) -> Option<Self> {
         if role.is_admin() {
-            Some(OrganizationPermissions::ALL)
-        } else if let Some(member) = team_member {
-            member.organization_permissions
-        } else if role.is_mod() {
-            Some(
+            return Some(OrganizationPermissions::ALL);
+        }
+
+        if let Some(member) = team_member {
+            if let Some(Permissions::Organization(permissions)) = member.permissions {
+                return Some(permissions);
+            }
+        }
+        if role.is_mod() {
+            return Some(
                 OrganizationPermissions::EDIT_DETAILS
                     | OrganizationPermissions::EDIT_BODY
                     | OrganizationPermissions::ADD_PROJECT,
-            )
-        } else {
-            None
+            );
         }
+        None
     }
 }
 
@@ -173,10 +177,12 @@ impl TeamMember {
             role: data.role,
             permissions: if override_permissions {
                 None
-            } else if let Some(permissions) = data.permissions {
+            } else if let Some(Permissions::Project(permissions)) = data.permissions {
                 Some(Permissions::Project(permissions))
+            } else if let Some(Permissions::Organization(permissions)) = data.permissions {
+                Some(Permissions::Organization(permissions))
             } else {
-                data.organization_permissions.map(Permissions::Organization)
+                None
             },
             accepted: data.accepted,
             payouts_split: if override_permissions {

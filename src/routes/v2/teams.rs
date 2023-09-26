@@ -4,7 +4,7 @@ use crate::database::models::team_item::TeamAssociationId;
 use crate::database::models::{Organization, Team, TeamMember};
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
-use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId};
+use crate::models::teams::{OrganizationPermissions, Permissions, ProjectPermissions, TeamId};
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
@@ -320,7 +320,6 @@ pub async fn join_team(
             current_user.id.into(),
             None,
             None,
-            None,
             Some(true),
             None,
             None,
@@ -384,9 +383,10 @@ pub async fn add_team_member(
     .await?
     .1;
 
-    let team_association = Team::get_team_association(team_id, &**pool)
+    let team_association = Team::get(team_id, &**pool)
         .await?
-        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?;
+        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?
+        .association;
     let member = TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
 
     match team_association {
@@ -472,21 +472,14 @@ pub async fn add_team_member(
         .await?
         .ok_or_else(|| ApiError::InvalidInput("An invalid User ID specified".to_string()))?;
 
-    let permissions;
-    let organization_permissions;
-    match team_association {
-        TeamAssociationId::Project(_) => {
-            permissions =
-                Some(ProjectPermissions::from_bits(new_member.permissions).unwrap_or_default());
-            organization_permissions = None;
-        }
-        TeamAssociationId::Organization(_) => {
-            permissions = None;
-            organization_permissions = Some(
-                OrganizationPermissions::from_bits(new_member.permissions).unwrap_or_default(),
-            );
-        }
-    }
+    let permissions = match team_association {
+        TeamAssociationId::Project(_) => Permissions::Project(
+            ProjectPermissions::from_bits(new_member.permissions).unwrap_or_default(),
+        ),
+        TeamAssociationId::Organization(_) => Permissions::Organization(
+            OrganizationPermissions::from_bits(new_member.permissions).unwrap_or_default(),
+        ),
+    };
 
     let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
     TeamMember {
@@ -494,8 +487,8 @@ pub async fn add_team_member(
         team_id,
         user_id: new_member.user_id.into(),
         role: new_member.role.clone(),
-        permissions,
-        organization_permissions,
+        permissions: Some(permissions),
+        association_id: team_association,
         accepted: false,
         payouts_split: new_member.payouts_split,
         ordering: new_member.ordering,
@@ -568,9 +561,10 @@ pub async fn edit_team_member(
     .await?
     .1;
 
-    let team_association = Team::get_team_association(id, &**pool)
+    let team_association = Team::get(id, &**pool)
         .await?
-        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?;
+        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?
+        .association;
     let member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
     let edit_member_db = TeamMember::get_from_user_id_pending(id, user_id, &**pool)
         .await?
@@ -661,28 +655,19 @@ pub async fn edit_team_member(
         ));
     }
 
-    let project_permissions;
-    let organization_permissions;
-    match team_association {
-        TeamAssociationId::Project(_) => {
-            project_permissions = edit_member
-                .permissions
-                .map(|x| ProjectPermissions::from_bits(x).unwrap_or_default());
-            organization_permissions = None;
-        }
-        TeamAssociationId::Organization(_) => {
-            project_permissions = None;
-            organization_permissions = edit_member
-                .permissions
-                .map(|x| OrganizationPermissions::from_bits(x).unwrap_or_default());
-        }
-    }
+    let permissions = match team_association {
+        TeamAssociationId::Project(_) => edit_member
+            .permissions
+            .map(|x| Permissions::Project(ProjectPermissions::from_bits(x).unwrap_or_default())),
+        TeamAssociationId::Organization(_) => edit_member.permissions.map(|x| {
+            Permissions::Organization(OrganizationPermissions::from_bits(x).unwrap_or_default())
+        }),
+    };
 
     TeamMember::edit_team_member(
         id,
         user_id,
-        project_permissions,
-        organization_permissions,
+        permissions,
         edit_member.role.clone(),
         None,
         edit_member.payouts_split,
@@ -758,7 +743,6 @@ pub async fn transfer_ownership(
         id.into(),
         current_user.id.into(),
         None,
-        None,
         Some(crate::models::teams::DEFAULT_ROLE.to_string()),
         None,
         None,
@@ -767,11 +751,16 @@ pub async fn transfer_ownership(
     )
     .await?;
 
+    let owner_permissions = match new_member.association_id {
+        TeamAssociationId::Project(_) => Permissions::Project(ProjectPermissions::ALL),
+        TeamAssociationId::Organization(_) => {
+            Permissions::Organization(OrganizationPermissions::ALL)
+        }
+    };
     TeamMember::edit_team_member(
         id.into(),
         new_owner.user_id.into(),
-        Some(ProjectPermissions::ALL),
-        Some(OrganizationPermissions::ALL),
+        Some(owner_permissions),
         Some(crate::models::teams::OWNER_ROLE.to_string()),
         None,
         None,
@@ -809,9 +798,10 @@ pub async fn remove_team_member(
     .await?
     .1;
 
-    let team_association = Team::get_team_association(id, &**pool)
+    let team_association = Team::get(id, &**pool)
         .await?
-        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?;
+        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?
+        .association;
     let member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
     let delete_member = TeamMember::get_from_user_id_pending(id, user_id, &**pool).await?;

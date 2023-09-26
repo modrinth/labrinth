@@ -2,15 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::auth::{filter_authorized_projects, get_user_from_headers};
-use crate::database::models::team_item::TeamMember;
-use crate::database::models::{
-    categories, generate_organization_id, project_item, team_item, Organization,
-};
+use crate::database::models::team_item::{TeamAssociationId, TeamMember};
+use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::organizations::OrganizationId;
 use crate::models::pats::Scopes;
-use crate::models::projects::DonationLink;
 use crate::models::teams::{OrganizationPermissions, Permissions, ProjectPermissions};
 use crate::queue::session::AuthQueue;
 use crate::routes::v2::project_creation::CreateError;
@@ -56,21 +53,11 @@ pub struct NewOrganization {
     pub slug: String,
     #[serde(default = "crate::models::teams::ProjectPermissions::default")]
     pub default_project_permissions: ProjectPermissions,
-    #[validate(
-        custom(function = "crate::util::validate::validate_url"),
-        length(max = 2048)
-    )]
-    /// An optional link to the project's discord.
-    pub discord_url: Option<String>,
-    #[validate(
-        custom(function = "crate::util::validate::validate_url"),
-        length(max = 2048)
-    )]
-    /// An optional link to the project's website.
-    pub website_url: Option<String>,
-    #[validate]
-    /// An optional list of donation links.
-    pub donation_urls: Option<Vec<DonationLink>>,
+    #[validate(custom(function = "crate::util::validate::validate_urls"))]
+    /// Any desired links for the organization.
+    /// ie: "discord" -> "https://discord.gg/..."
+    #[serde(default)]
+    pub urls: HashMap<String, String>,
 }
 
 #[post("organization")]
@@ -144,6 +131,7 @@ pub async fn organization_create(
 
     // Create organization managerial team
     let team = team_item::TeamBuilder {
+        association_id: TeamAssociationId::Organization(organization_id),
         members: vec![team_item::TeamMemberBuilder {
             user_id: current_user.id.into(),
             role: crate::models::teams::OWNER_ROLE.to_owned(),
@@ -157,28 +145,6 @@ pub async fn organization_create(
     };
     let team_id = team.insert(&mut transaction).await?;
 
-    // Donation links
-    let mut donation_urls = vec![];
-    if let Some(urls) = &new_organization.donation_urls {
-        for url in urls {
-            let platform_id = categories::DonationPlatform::get_id(&url.id, &mut *transaction)
-                .await?
-                .ok_or_else(|| {
-                    CreateError::InvalidInput(format!(
-                        "Donation platform {} does not exist.",
-                        url.id.clone()
-                    ))
-                })?;
-
-            donation_urls.push(project_item::DonationUrl {
-                platform_id,
-                platform_short: "".to_string(),
-                platform_name: "".to_string(),
-                url: url.url.clone(),
-            })
-        }
-    }
-
     // Create organization
     let organization = Organization {
         id: organization_id,
@@ -187,19 +153,11 @@ pub async fn organization_create(
         description: new_organization.description.clone(),
         default_project_permissions: new_organization.default_project_permissions,
         team_id,
-        website_url: new_organization.website_url.clone(),
-        discord_url: new_organization.discord_url.clone(),
-        donation_urls: vec![],
+        urls: new_organization.urls.clone(),
         icon_url: None,
         color: None,
     };
     organization.clone().insert(&mut transaction).await?;
-    for donation in donation_urls {
-        donation
-            .insert_organization(organization_id, &mut transaction)
-            .await?;
-    }
-
     transaction.commit().await?;
 
     // Only member is the owner, the logged in one
@@ -214,7 +172,9 @@ pub async fn organization_create(
             false,
         )]
     } else {
-        vec![]
+        return Err(CreateError::InvalidInput(
+            "Failed to get created team.".to_owned(), // should never happen
+        ));
     };
 
     let user_data = crate::models::users::User::from(user_data);
@@ -382,18 +342,8 @@ pub struct OrganizationEdit {
     )]
     pub slug: Option<String>,
     pub default_project_permissions: Option<ProjectPermissions>,
-    #[validate(
-        custom(function = "crate::util::validate::validate_url"),
-        length(max = 2048)
-    )]
-    pub discord_url: Option<String>,
-    #[validate(
-        custom(function = "crate::util::validate::validate_url"),
-        length(max = 2048)
-    )]
-    pub website_url: Option<String>,
-    #[validate]
-    pub donation_urls: Option<Vec<DonationLink>>,
+    #[validate(custom(function = "crate::util::validate::validate_urls"))]
+    pub urls: Option<HashMap<String, String>>,
 }
 
 #[patch("{id}")]
@@ -475,89 +425,24 @@ pub async fn organizations_edit(
                 .await?;
             }
 
-            if let Some(discord_url) = &new_organization.discord_url {
+            if let Some(urls) = &new_organization.urls {
                 if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the discord url of this organization!"
+                        "You do not have the permissions to edit the urls of this organization!"
                             .to_string(),
                     ));
                 }
                 sqlx::query!(
                     "
                     UPDATE organizations
-                    SET discord_url = $1
+                    SET urls = $1
                     WHERE (id = $2)
                     ",
-                    discord_url,
+                    serde_json::to_string(urls)?,
                     id as database::models::ids::OrganizationId,
                 )
                 .execute(&mut *transaction)
                 .await?;
-            }
-
-            if let Some(website_url) = &new_organization.website_url {
-                if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the website url of this organization!"
-                            .to_string(),
-                    ));
-                }
-                sqlx::query!(
-                    "
-                    UPDATE organizations
-                    SET website_url = $1
-                    WHERE (id = $2)
-                    ",
-                    website_url,
-                    id as database::models::ids::OrganizationId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
-
-            if let Some(donations) = &new_organization.donation_urls {
-                if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the donation links of this organization!"
-                            .to_string(),
-                    ));
-                }
-
-                sqlx::query!(
-                    "
-                    DELETE FROM organizations_donations
-                    WHERE joining_organization_id = $1
-                    ",
-                    id as database::models::ids::OrganizationId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-
-                for donation in donations {
-                    let platform_id = database::models::categories::DonationPlatform::get_id(
-                        &donation.id,
-                        &mut *transaction,
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        ApiError::InvalidInput(format!(
-                            "Platform {} does not exist.",
-                            donation.id.clone()
-                        ))
-                    })?;
-
-                    sqlx::query!(
-                        "
-                        INSERT INTO organizations_donations (joining_organization_id, joining_platform_id, url)
-                        VALUES ($1, $2, $3)
-                        ",
-                        id as database::models::ids::OrganizationId,
-                        platform_id as database::models::ids::DonationPlatformId,
-                        donation.url
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-                }
             }
 
             if let Some(default_project_permissions) = &new_organization.default_project_permissions
