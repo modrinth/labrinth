@@ -67,17 +67,7 @@ pub async fn user_auth_get(
         user.payout_data = None;
     }
 
-    Ok(HttpResponse::Ok().json(
-        get_user_from_headers(
-            &req,
-            &**pool,
-            &redis,
-            &session_queue,
-            Some(&[Scopes::USER_READ]),
-        )
-        .await?
-        .1,
-    ))
+    Ok(HttpResponse::Ok().json(user))
 }
 
 #[derive(Serialize, Deserialize)]

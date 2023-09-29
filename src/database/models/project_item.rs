@@ -473,8 +473,6 @@ impl Project {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let debug_time_0 = std::time::Instant::now();
-
         use futures::TryStreamExt;
 
         if project_strings.is_empty() {
@@ -499,9 +497,6 @@ impl Project {
                 .collect(),
         );
 
-        let debug_time_1 = std::time::Instant::now();
-        println!("Redis time: {:?}", debug_time_1 - debug_time_0);
-
         if !project_ids.is_empty() {
             let projects = redis.multi_get::<String, _>(PROJECTS_NAMESPACE, project_ids).await?;
             for project in projects {
@@ -518,9 +513,6 @@ impl Project {
                 }
             }
         }
-
-        let debug_time_2 = std::time::Instant::now();
-        println!("Redis time: {:?}", debug_time_2 - debug_time_1);
 
         if !remaining_strings.is_empty() {
             let project_ids_parsed: Vec<i64> = remaining_strings
@@ -564,8 +556,6 @@ impl Project {
                 .try_filter_map(|e| async {
                     Ok(e.right().map(|m| {
                         let id = m.id;
-                        let debug_time_3 = std::time::Instant::now();
-                        println!("inner SQL time: {:?}", debug_time_3 - debug_time_2);
             
                     QueryProject {
                         inner: Project {
@@ -648,9 +638,6 @@ impl Project {
                 .try_collect::<Vec<QueryProject>>()
                 .await?;
 
-            let debug_time_3 = std::time::Instant::now();
-            println!("total SQL time: {:?}", debug_time_3 - debug_time_2);
-
             for project in db_projects {
                 redis.set(PROJECTS_NAMESPACE, project.inner.id.0, serde_json::to_string(&project)?, None).await?;
                 if let Some(slug) = &project.inner.slug {
@@ -660,8 +647,6 @@ impl Project {
                 found_projects.push(project);
             }
 
-            let debug_time_4 = std::time::Instant::now();
-            println!("Redis time: {:?}", debug_time_4 - debug_time_3);
         }
 
         Ok(found_projects)

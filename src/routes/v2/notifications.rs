@@ -18,7 +18,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("notification")
             .service(notification_get)
-            .service(notifications_read)
+            .service(notification_read)
             .service(notification_delete),
     );
 }

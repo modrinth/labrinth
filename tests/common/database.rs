@@ -4,6 +4,12 @@ use sqlx::{PgPool, postgres::PgPoolOptions, Executor};
 use url::Url;
 use std::time::Duration;
 
+pub const ADMIN_USER_ID: i64 = 1;
+pub const MOD_USER_ID: i64 = 2;
+pub const USER_USER_ID: i64 = 3;
+pub const FRIEND_USER_ID: i64 = 4;
+pub const ENEMY_USER_ID: i64 = 5;
+
 pub struct TemporaryDatabase {
     pub pool: PgPool,
     pub redis_pool : RedisPool,
@@ -95,12 +101,8 @@ impl TemporaryDatabase {
         - PATs for each of the five users, with full privileges (for testing purposes).
             - 'mrp_patadmin' for admin, etc
         - 1 game version (1.20.1)
-        - 1 dummy project called 'testslug' with the following properties:
-            - 1 team (12345)
-            - 1 team member (test_user)
-            - 1 mod (testslug)
-            - 1 category (test_category)
-            - 1 thread (100)
+        - 1 dummy project called 'testslug' (and testslug2) with the following properties:
+        - several categories, tags, etc
 
         This is a test function, so it panics on error.
     */
@@ -108,6 +110,7 @@ impl TemporaryDatabase {
         let pool = &self.pool.clone();
         pool.execute(include_str!("../files/dummy_data.sql")).await.unwrap();
     }
+
 }
 
 

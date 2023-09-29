@@ -25,13 +25,21 @@ INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (54, 
 INSERT INTO game_versions (id, version, type, created)
 VALUES (20000, '1.20.1', 'release', timezone('utc', now()));
 
-INSERT INTO loaders (id, loader, icon) VALUES (1, 'fabric', 'svgloadercode');
-INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,1);--SELECT 1, id FROM project_types WHERE name = 'mod';
-INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,2); --SELECT 1, id FROM project_types WHERE name = 'modpack';
+INSERT INTO loaders (id, loader) VALUES (1, 'fabric');
+INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,1);
+INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,2); 
+
+INSERT INTO categories (id, category, project_type) VALUES (1, 'combat', 1);
+INSERT INTO categories (id, category, project_type) VALUES (2, 'decoration', 1);
+INSERT INTO categories (id, category, project_type) VALUES (3, 'economy', 1);
+
+INSERT INTO categories (id, category, project_type) VALUES (4, 'combat', 2);
+INSERT INTO categories (id, category, project_type) VALUES (5, 'decoration', 2);
+INSERT INTO categories (id, category, project_type) VALUES (6, 'economy', 2);
 
 -- Inserts 2 dummy projects for testing, with slight differences
 ------------------------------------------------------------
-INSERT INTO teams (id) VALUES (100);
+INSERT INTO teams (id) VALUES (100); -- ID: 100, 1c
 INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering) VALUES (200, 100, 3, 'Owner', B'1111111111'::BIGINT, true, 100.0, 0);
 
 -- ID: 1000, G8
@@ -53,7 +61,7 @@ INSERT INTO hashes (file_id, algorithm, hash) VALUES (800, 'sha1', '10101010');
 INSERT INTO threads (id, thread_type, mod_id, report_id) VALUES (30, 'project', 1000, null);
 
 ------------------------------------------------------------
-INSERT INTO teams (id) VALUES (101);
+INSERT INTO teams (id) VALUES (101);    -- ID: 101, 1d
 INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering) VALUES (201, 101, 3, 'Owner', B'1111111111'::BIGINT, true, 100.0, 0);
 
 -- ID: 1001, G9

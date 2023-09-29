@@ -152,9 +152,7 @@ pub async fn project_get(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
-    println!("Getting project {}", &string);
     let project_data = database::models::Project::get(&string, &**pool, &redis).await?;
-    println!("Got project data {:?}", &project_data);
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -165,10 +163,8 @@ pub async fn project_get(
     .await
     .map(|x| x.1)
     .ok();
-    println!("Got user option {:?}", &user_option);
 
     if let Some(data) = project_data {
-        println!("Got project data {:?}", &data);
         if is_authorized(&data.inner, &user_option, &pool).await? {
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
@@ -279,7 +275,7 @@ pub async fn dependency_list(
     }
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Serialize, Deserialize, Validate)]
 pub struct EditProject {
     #[validate(
         length(min = 3, max = 64),
@@ -405,8 +401,6 @@ pub async fn project_edit(
     let string = info.into_inner().0;
     let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
-    println!("user role {:?}", user.name);
-    println!("user role {}", user.role);
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 
@@ -983,7 +977,6 @@ pub async fn project_edit(
                 .execute(&mut *transaction)
                 .await?;
             }
-
             if let Some(donations) = &new_project.donation_urls {
                 if !perms.contains(Permissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(

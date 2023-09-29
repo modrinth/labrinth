@@ -31,9 +31,9 @@ async fn test_get_project() {
     let body : serde_json::Value = test::read_body_json(resp).await;
 
     assert_eq!(status, 200);
-    assert!(body.get("id").is_some());
-    assert_eq!(body.get("slug").unwrap(), &json!("testslug"));
-    let versions = body.get("versions").unwrap().as_array().unwrap();
+    assert_eq!(body["id"], json!("G8"));
+    assert_eq!(body["slug"], json!("testslug"));
+    let versions = body["versions"].as_array().unwrap();
     assert!(versions.len() > 0);
     assert_eq!(versions[0], json!("Hk"));
 
@@ -43,10 +43,7 @@ async fn test_get_project() {
     
     let cached_project = db.redis_pool.get::<String, _>(PROJECTS_NAMESPACE, 1000).await.unwrap().unwrap();
     let cached_project : serde_json::Value = serde_json::from_str(&cached_project).unwrap();
-    println!("Cached project: {:?}", cached_project);
-    println!("Cached project: {:?}", cached_project.to_string());
-    println!("{:?}",cached_project.as_object().unwrap());
-    assert_eq!(cached_project.get("inner").unwrap().get("slug").unwrap(), &json!("testslug"));
+    assert_eq!(cached_project["inner"]["slug"], json!("testslug"));
 
     // Make the request again, this time it should be cached
     let req = test::TestRequest::get()
@@ -58,8 +55,8 @@ async fn test_get_project() {
     assert_eq!(status, 200);
 
     let body : serde_json::Value = test::read_body_json(resp).await;
-    assert!(body.get("id").is_some());
-    assert_eq!(body.get("slug").unwrap(), &json!("testslug"));
+    assert_eq!(body["id"], json!("G8"));
+    assert_eq!(body["slug"], json!("testslug"));
 
     // Request should fail on non-existent project
     println!("Requesting non-existent project");
@@ -69,7 +66,6 @@ async fn test_get_project() {
         .to_request();
 
     let resp = test::call_service(&test_app, req).await;
-    println!("Response: {:?}", resp.response().body());
     assert_eq!(resp.status(), 404);
 
     // Similarly, request should fail on non-authorized user, with a 404 (hiding the existence of the project)
@@ -80,7 +76,6 @@ async fn test_get_project() {
         .to_request();
 
     let resp = test::call_service(&test_app, req).await;
-    println!("Response: {:?}", resp.response().body());
     assert_eq!(resp.status(), 404);
 
     // Cleanup test db
@@ -88,7 +83,7 @@ async fn test_get_project() {
 }
 
 #[actix_rt::test]
-async fn test_add_project() {    
+async fn test_add_remove_project() {    
     // Test setup and dummy data
     let db = TemporaryDatabase::create_with_dummy().await;
     let labrinth_config = setup(&db).await;
@@ -191,7 +186,7 @@ async fn test_add_project() {
     assert_eq!(resp.status(), 200);
 
     let body : serde_json::Value = test::read_body_json(resp).await;
-    let versions = body.get("versions").unwrap().as_array().unwrap();
+    let versions = body["versions"].as_array().unwrap();
     assert!(versions.len() == 1);
     let uploaded_version_id = &versions[0];
 
@@ -206,7 +201,7 @@ async fn test_add_project() {
     assert_eq!(resp.status(), 200);
 
     let body : serde_json::Value = test::read_body_json(resp).await;
-    let file_version_id = body.get("id").unwrap();
+    let file_version_id = &body["id"];
     assert_eq!(&file_version_id, &uploaded_version_id);
 
     // Reusing with a different slug and the same file should fail
@@ -252,6 +247,36 @@ async fn test_add_project() {
     println!("Different slug, different file: {:?}", resp.response().body());
     assert_eq!(resp.status(), 200);
 
+    // Get
+    let req = test::TestRequest::get()
+        .uri("/v2/project/demo")
+        .append_header(("Authorization","mrp_patuser"))
+        .to_request();
+    let resp = test::call_service(&test_app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body : serde_json::Value = test::read_body_json(resp).await;
+    let id = body["id"].to_string();
+
+    // Remove the project
+    let req = test::TestRequest::delete()
+        .uri("/v2/project/demo")
+        .append_header(("Authorization","mrp_patuser"))
+        .to_request();
+    let resp = test::call_service(&test_app, req).await;
+    assert_eq!(resp.status(), 204);
+
+    // Confirm that the project is gone from the cache
+    assert_eq!(db.redis_pool.get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, "demo").await.unwrap(), None);
+    assert_eq!(db.redis_pool.get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, id).await.unwrap(), None);
+
+    // Old slug no longer works
+    let req = test::TestRequest::get()
+        .uri("/v2/project/demo")
+        .append_header(("Authorization","mrp_patuser"))
+        .to_request();
+    let resp = test::call_service(&test_app, req).await;
+    assert_eq!(resp.status(), 404);
+
     // Cleanup test db
     db.cleanup().await;
 }
@@ -274,7 +299,6 @@ pub async fn test_patch_project() {
         }))
         .to_request();
     let resp = test::call_service(&test_app, req).await;
-    println!("Response: {:?}", resp.response().body());
     assert_eq!(resp.status(), 401);
 
     // Failure because we are setting URL fields to invalid urls.
@@ -287,7 +311,6 @@ pub async fn test_patch_project() {
         }))
         .to_request();
         let resp = test::call_service(&test_app, req).await;
-        println!("Response: {:?}", resp.response().body());
         assert_eq!(resp.status(), 400);
     }
 
@@ -301,7 +324,6 @@ pub async fn test_patch_project() {
         }))
         .to_request();
         let resp = test::call_service(&test_app, req).await;
-        println!("Response: {:?}", resp.response().body());
         assert_eq!(resp.status(), 400);
     }
 
@@ -315,7 +337,6 @@ pub async fn test_patch_project() {
         }))
         .to_request();
         let resp = test::call_service(&test_app, req).await;
-        println!("Response: {:?}", resp.response().body());
         assert_eq!(resp.status(), 401);
 
         // (should work for a mod, though)
@@ -327,7 +348,6 @@ pub async fn test_patch_project() {
         }))
         .to_request();
         let resp = test::call_service(&test_app, req).await;
-        println!("Response: {:?}", resp.response().body());
         assert_eq!(resp.status(), 204);
     }
 
@@ -340,7 +360,6 @@ pub async fn test_patch_project() {
         }))
         .to_request();
     let resp = test::call_service(&test_app, req).await;
-    println!("Response: {:?}", resp.response().body());
     assert_eq!(resp.status(), 400);
 
     // Not allowed to directly set status, as default dummy is "processing"
@@ -352,7 +371,6 @@ pub async fn test_patch_project() {
     }))
     .to_request();
     let resp = test::call_service(&test_app, req).await;
-    println!("Response: {:?}", resp.response().body());
     assert_eq!(resp.status(), 401);
 
     // Sucessful request to patch many fields.
@@ -364,43 +382,52 @@ pub async fn test_patch_project() {
             "title": "New successful title",
             "description": "New successful description",
             "body": "New successful body",
-            "categories": ["fabric"],
+            "categories": ["combat"],
             "license_id": "MIT",
             "issues_url": "https://github.com",
             "discord_url": "https://discord.gg",
             "wiki_url": "https://wiki.com",
             "client_side": "optional",
             "server_side": "required",
-            "donation_urls:": ["https://donate.com"],
+            "donation_urls": [{
+                "id": "patreon",
+                "platform": "Patreon",
+                "url": "https://patreon.com"
+            }]
         }))
         .to_request();
     let resp = test::call_service(&test_app, req).await;
-    println!("Response: {:?}", resp.response().body());
     assert_eq!(resp.status(), 204);
 
+    // Old slug no longer works
     let req = test::TestRequest::get()
         .uri("/v2/project/testslug")
         .append_header(("Authorization","mrp_patuser"))
         .to_request();
     let resp = test::call_service(&test_app, req).await;
-    println!("Response: {:?}", resp.response().body());
+    assert_eq!(resp.status(), 404);
+
+    // Old slug no longer works
+    let req = test::TestRequest::get()
+    .uri("/v2/project/newslug")
+    .append_header(("Authorization","mrp_patuser"))
+    .to_request();
+    let resp = test::call_service(&test_app, req).await;
     assert_eq!(resp.status(), 200);
 
     let body : serde_json::Value = test::read_body_json(resp).await;
-    println!("Body: {:?}", body.to_string());
-    assert_eq!(body.get("slug").unwrap(), &json!("newslug"));
-    assert_eq!(body.get("title").unwrap(), &json!("New successful title"));
-    assert_eq!(body.get("description").unwrap(), &json!("New successful description"));
-    assert_eq!(body.get("body").unwrap(), &json!("New successful body"));
-    assert_eq!(body.get("categories").unwrap(), &json!(["fabric"]));
-    assert_eq!(body.get("license_id").unwrap(), &json!("MIT"));
-    assert_eq!(body.get("issues_url").unwrap(), &json!("https://github.com"));
-    assert_eq!(body.get("discord_url").unwrap(), &json!("https://discord.gg"));
-    assert_eq!(body.get("wiki_url").unwrap(), &json!("https://wiki.com"));
-    assert_eq!(body.get("client_side").unwrap(), &json!("optional"));
-    assert_eq!(body.get("server_side").unwrap(), &json!("required"));
-    assert_eq!(body.get("donation_urls").unwrap(), &json!(["https://donate.com"]));
-
+    assert_eq!(body["slug"], json!("newslug"));
+    assert_eq!(body["title"], json!("New successful title"));
+    assert_eq!(body["description"], json!("New successful description"));
+    assert_eq!(body["body"], json!("New successful body"));
+    assert_eq!(body["categories"], json!(["combat"]));
+    assert_eq!(body["license"]["id"], json!("MIT"));
+    assert_eq!(body["issues_url"], json!("https://github.com"));
+    assert_eq!(body["discord_url"], json!("https://discord.gg"));
+    assert_eq!(body["wiki_url"], json!("https://wiki.com"));
+    assert_eq!(body["client_side"], json!("optional"));
+    assert_eq!(body["server_side"], json!("required"));
+    assert_eq!(body["donation_urls"][0]["url"], json!("https://patreon.com"));
 
 
     // Cleanup test db

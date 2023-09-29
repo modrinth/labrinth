@@ -18,6 +18,7 @@ actix-multipart = "0.6.0"
 actix-cors = "0.6.4"
 actix-ws = "0.2.5"
 actix-files = "0.6.2"
+actix-http = "3.4.0"
 
 tokio = { version = "1.29.1", features = ["sync"] }
 tokio-stream = "0.1.14"
