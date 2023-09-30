@@ -156,6 +156,18 @@
     },
     "query": "\n                    UPDATE mods\n                    SET source_url = $1\n                    WHERE (id = $2)\n                    "
   },
+  "0461463e3e14f6c8ede5571a2905b8171e8caf4ebbd3ec844ef2cebd83980247": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                DELETE FROM reports\n                WHERE user_id = $1 OR reporter = $1\n                "
+  },
   "0472045549758d8eef84592908c438d6222a26926f4b06865b84979fc92564ba": {
     "describe": {
       "columns": [],
@@ -2085,18 +2097,6 @@
     },
     "query": "\n                SELECT mod_id FROM versions WHERE id = $1\n                "
   },
-  "4c58727309e5c79cc0505e57aeba0c977f308429f97b0ed296ab3bc0ebebb435": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                DELETE FROM reports\n                WHERE user_id = $1\n                "
-  },
   "4c9e2190e2a68ffc093a69aaa1fc9384957138f57ac9cd85cbc6179613c13a08": {
     "describe": {
       "columns": [
@@ -2298,26 +2298,6 @@
       }
     },
     "query": "\n                    UPDATE versions\n                    SET version_number = $1\n                    WHERE (id = $2)\n                    "
-  },
-  "5586d60c8f3d58a31e6635ffb3cb30bac389bf21b190dfd1e64a44e837f3879c": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n                    SELECT id FROM mods\n                    WHERE status = $1 AND queued < NOW() - INTERVAL '40 hours'\n                    ORDER BY updated ASC\n                    "
   },
   "5627b3516fc7c3799154098a663b1586aac11b2dc736810f06630ee5d8a54946": {
     "describe": {
@@ -6273,6 +6253,26 @@
       }
     },
     "query": "\n                    UPDATE versions\n                    SET featured = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "e60ea75112db37d3e73812e21b1907716e4762e06aa883af878e3be82e3f87d3": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT c.id FROM collections c\n            WHERE c.user_id = $1\n            "
   },
   "e6db02891be261e61a25716b83c1298482eb9a04f0c026532030aeb374405f13": {
     "describe": {

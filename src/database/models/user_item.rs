@@ -1,4 +1,5 @@
 use super::ids::{ProjectId, UserId};
+use super::CollectionId;
 use crate::database::models::DatabaseError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::users::{Badges, RecipientType, RecipientWallet};
@@ -320,6 +321,30 @@ impl User {
         Ok(projects)
     }
 
+    pub async fn get_collections<'a, E>(
+        user_id: UserId,
+        exec: E,
+    ) -> Result<Vec<CollectionId>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let projects = sqlx::query!(
+            "
+            SELECT c.id FROM collections c
+            WHERE c.user_id = $1
+            ",
+            user_id as UserId,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| CollectionId(m.id))) })
+        .try_collect::<Vec<CollectionId>>()
+        .await?;
+
+        Ok(projects)
+    }
+
     pub async fn get_backup_codes<'a, E>(
         user_id: UserId,
         exec: E,
@@ -463,7 +488,7 @@ impl User {
             sqlx::query!(
                 "
                 DELETE FROM reports
-                WHERE user_id = $1
+                WHERE user_id = $1 OR reporter = $1
                 ",
                 id as UserId,
             )
