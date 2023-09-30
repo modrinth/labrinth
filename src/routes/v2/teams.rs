@@ -2,9 +2,10 @@ use crate::auth::{get_user_from_headers, is_authorized};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::team_item::TeamAssociationId;
 use crate::database::models::{Organization, Team, TeamMember};
+use crate::database::Project;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
-use crate::models::teams::{OrganizationPermissions, Permissions, ProjectPermissions, TeamId};
+use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId};
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
@@ -320,6 +321,7 @@ pub async fn join_team(
             current_user.id.into(),
             None,
             None,
+            None,
             Some(true),
             None,
             None,
@@ -353,7 +355,9 @@ pub struct NewTeamMember {
     #[serde(default = "default_role")]
     pub role: String,
     #[serde(default)]
-    pub permissions: u64, // ProjectPermissions or OrganizationPermissions
+    pub permissions: ProjectPermissions,
+    #[serde(default)]
+    pub organization_permissions: Option<OrganizationPermissions>,
     #[serde(default)]
     pub payouts_split: Decimal,
     #[serde(default = "default_ordering")]
@@ -383,17 +387,14 @@ pub async fn add_team_member(
     .await?
     .1;
 
-    let team_association = Team::get(team_id, &**pool)
+    let team_association = Team::get_association(team_id, &**pool)
         .await?
-        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?
-        .association;
+        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?;
     let member = TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
 
     match team_association {
         // If team is associated with a project, check if they have permissions to invite users to that project
         TeamAssociationId::Project(pid) => {
-            let new_permissions =
-                ProjectPermissions::from_bits(new_member.permissions).unwrap_or_default();
             let organization =
                 Organization::get_associated_organization_project_id(pid, &**pool).await?;
             let organization_team_member = if let Some(organization) = &organization {
@@ -406,7 +407,6 @@ pub async fn add_team_member(
                 &current_user.role,
                 &member,
                 &organization_team_member,
-                &organization,
             )
             .unwrap_or_default();
 
@@ -415,27 +415,44 @@ pub async fn add_team_member(
                     "You don't have permission to invite users to this team".to_string(),
                 ));
             }
-            if !permissions.contains(new_permissions) {
+            if !permissions.contains(new_member.permissions) {
                 return Err(ApiError::InvalidInput(
                     "The new member has permissions that you don't have".to_string(),
+                ));
+            }
+
+            if new_member.organization_permissions.is_some() {
+                return Err(ApiError::InvalidInput(
+                    "The organization permissions of a project team member cannot be set"
+                        .to_string(),
                 ));
             }
         }
         // If team is associated with an organization, check if they have permissions to invite users to that organization
         TeamAssociationId::Organization(_) => {
-            let new_permissions =
-                OrganizationPermissions::from_bits(new_member.permissions).unwrap_or_default();
-            let permissions =
+            let organization_permissions =
                 OrganizationPermissions::get_permissions_by_role(&current_user.role, &member)
                     .unwrap_or_default();
-            if !permissions.contains(OrganizationPermissions::MANAGE_INVITES) {
+            println!("{:?}", organization_permissions);
+            if !organization_permissions.contains(OrganizationPermissions::MANAGE_INVITES) {
                 return Err(ApiError::CustomAuthentication(
                     "You don't have permission to invite users to this organization".to_string(),
                 ));
             }
-            if !permissions.contains(new_permissions) {
+            if !organization_permissions
+                .contains(new_member.organization_permissions.unwrap_or_default())
+            {
                 return Err(ApiError::InvalidInput(
-                    "The new member has permissions that you don't have".to_string(),
+                    "The new member has organization permissions that you don't have".to_string(),
+                ));
+            }
+            if !organization_permissions
+                .contains(OrganizationPermissions::EDIT_MEMBER_DEFAULT_PERMISSIONS)
+                && !new_member.permissions.is_empty()
+            {
+                return Err(ApiError::InvalidInput(
+                    "You do not have permission to give this user default project permissions."
+                        .to_string(),
                 ));
             }
         }
@@ -467,19 +484,9 @@ pub async fn add_team_member(
             ));
         }
     }
-
     crate::database::models::User::get_id(new_member.user_id.into(), &**pool, &redis)
         .await?
         .ok_or_else(|| ApiError::InvalidInput("An invalid User ID specified".to_string()))?;
-
-    let permissions = match team_association {
-        TeamAssociationId::Project(_) => Permissions::Project(
-            ProjectPermissions::from_bits(new_member.permissions).unwrap_or_default(),
-        ),
-        TeamAssociationId::Organization(_) => Permissions::Organization(
-            OrganizationPermissions::from_bits(new_member.permissions).unwrap_or_default(),
-        ),
-    };
 
     let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
     TeamMember {
@@ -487,8 +494,8 @@ pub async fn add_team_member(
         team_id,
         user_id: new_member.user_id.into(),
         role: new_member.role.clone(),
-        permissions: Some(permissions),
-        association_id: team_association,
+        permissions: new_member.permissions,
+        organization_permissions: new_member.organization_permissions,
         accepted: false,
         payouts_split: new_member.payouts_split,
         ordering: new_member.ordering,
@@ -532,7 +539,8 @@ pub async fn add_team_member(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct EditTeamMember {
-    pub permissions: Option<u64>, // ProjectPermissions or OrganizationPermissions
+    pub permissions: Option<ProjectPermissions>,
+    pub organization_permissions: Option<OrganizationPermissions>,
     pub role: Option<String>,
     pub payouts_split: Option<Decimal>,
     pub ordering: Option<i64>,
@@ -561,10 +569,9 @@ pub async fn edit_team_member(
     .await?
     .1;
 
-    let team_association = Team::get(id, &**pool)
+    let team_association = Team::get_association(id, &**pool)
         .await?
-        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?
-        .association;
+        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?;
     let member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
     let edit_member_db = TeamMember::get_from_user_id_pending(id, user_id, &**pool)
         .await?
@@ -598,7 +605,6 @@ pub async fn edit_team_member(
                 &current_user.role,
                 &member.clone(),
                 &organization_team_member,
-                &organization,
             )
             .unwrap_or_default();
             if !permissions.contains(ProjectPermissions::EDIT_MEMBER) {
@@ -608,13 +614,18 @@ pub async fn edit_team_member(
             }
 
             if let Some(new_permissions) = edit_member.permissions {
-                let new_permissions =
-                    ProjectPermissions::from_bits(new_permissions).unwrap_or_default();
                 if !permissions.contains(new_permissions) {
                     return Err(ApiError::InvalidInput(
                         "The new permissions have permissions that you don't have".to_string(),
                     ));
                 }
+            }
+
+            if edit_member.organization_permissions.is_some() {
+                return Err(ApiError::InvalidInput(
+                    "The organization permissions of a project team member cannot be edited"
+                        .to_string(),
+                ));
             }
         }
         TeamAssociationId::Organization(_) => {
@@ -628,15 +639,23 @@ pub async fn edit_team_member(
                 ));
             }
 
-            if let Some(new_permissions) = edit_member.permissions {
-                let new_permissions =
-                    OrganizationPermissions::from_bits(new_permissions).unwrap_or_default();
+            if let Some(new_permissions) = edit_member.organization_permissions {
                 if !organization_permissions.contains(new_permissions) {
                     return Err(ApiError::InvalidInput(
                         "The new organization permissions have permissions that you don't have"
                             .to_string(),
                     ));
                 }
+            }
+
+            if edit_member.permissions.is_some()
+                && !organization_permissions
+                    .contains(OrganizationPermissions::EDIT_MEMBER_DEFAULT_PERMISSIONS)
+            {
+                return Err(ApiError::InvalidInput(
+                    "You do not have permission to give this user default project permissions."
+                        .to_string(),
+                ));
             }
         }
     }
@@ -655,19 +674,11 @@ pub async fn edit_team_member(
         ));
     }
 
-    let permissions = match team_association {
-        TeamAssociationId::Project(_) => edit_member
-            .permissions
-            .map(|x| Permissions::Project(ProjectPermissions::from_bits(x).unwrap_or_default())),
-        TeamAssociationId::Organization(_) => edit_member.permissions.map(|x| {
-            Permissions::Organization(OrganizationPermissions::from_bits(x).unwrap_or_default())
-        }),
-    };
-
     TeamMember::edit_team_member(
         id,
         user_id,
-        permissions,
+        edit_member.permissions,
+        edit_member.organization_permissions,
         edit_member.role.clone(),
         None,
         edit_member.payouts_split,
@@ -709,6 +720,21 @@ pub async fn transfer_ownership(
     .await?
     .1;
 
+    // Forbid transferring ownership of a project team that is owned by an organization
+    // These are owned by the organization owner, and must be removed from the organization first
+    let pid = Team::get_association(id.into(), &**pool).await?;
+    if let Some(TeamAssociationId::Project(pid)) = pid {
+        let result = Project::get_id(pid, &**pool, &redis).await?;
+        if let Some(project_item) = result {
+            if project_item.inner.organization_id.is_some() {
+                return Err(ApiError::InvalidInput(
+                    "You cannot transfer ownership of a project team that is owend by an organization"
+                        .to_string(),
+                ));
+            }
+        }
+    }
+
     if !current_user.role.is_admin() {
         let member = TeamMember::get_from_user_id(id.into(), current_user.id.into(), &**pool)
             .await?
@@ -743,6 +769,7 @@ pub async fn transfer_ownership(
         id.into(),
         current_user.id.into(),
         None,
+        None,
         Some(crate::models::teams::DEFAULT_ROLE.to_string()),
         None,
         None,
@@ -751,16 +778,11 @@ pub async fn transfer_ownership(
     )
     .await?;
 
-    let owner_permissions = match new_member.association_id {
-        TeamAssociationId::Project(_) => Permissions::Project(ProjectPermissions::ALL),
-        TeamAssociationId::Organization(_) => {
-            Permissions::Organization(OrganizationPermissions::ALL)
-        }
-    };
     TeamMember::edit_team_member(
         id.into(),
         new_owner.user_id.into(),
-        Some(owner_permissions),
+        Some(ProjectPermissions::all()),
+        Some(OrganizationPermissions::all()),
         Some(crate::models::teams::OWNER_ROLE.to_string()),
         None,
         None,
@@ -798,10 +820,9 @@ pub async fn remove_team_member(
     .await?
     .1;
 
-    let team_association = Team::get(id, &**pool)
+    let team_association = Team::get_association(id, &**pool)
         .await?
-        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?
-        .association;
+        .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?;
     let member = TeamMember::get_from_user_id(id, current_user.id.into(), &**pool).await?;
 
     let delete_member = TeamMember::get_from_user_id_pending(id, user_id, &**pool).await?;
@@ -835,7 +856,6 @@ pub async fn remove_team_member(
                     &current_user.role,
                     &member,
                     &organization_team_member,
-                    &organization,
                 )
                 .unwrap_or_default();
 

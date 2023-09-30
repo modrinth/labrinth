@@ -404,7 +404,7 @@ pub async fn project_edit(
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 
-        let (team_member, organization_team_member, organization) =
+        let (team_member, organization_team_member) =
             database::models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
@@ -416,7 +416,6 @@ pub async fn project_edit(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization,
         );
 
         if let Some(perms) = permissions {
@@ -1312,7 +1311,6 @@ pub async fn projects_edit(
                 &user.role,
                 &team_member.cloned(),
                 &organization_team_member.cloned(),
-                &organization.cloned(),
             )
             .unwrap_or_default();
 
@@ -1631,7 +1629,7 @@ pub async fn project_schedule(
     let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project_item) = result {
-        let (team_member, organization_team_member, organization) =
+        let (team_member, organization_team_member) =
             database::models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
@@ -1643,7 +1641,6 @@ pub async fn project_schedule(
             &user.role,
             &team_member.clone(),
             &organization_team_member.clone(),
-            &organization,
         )
         .unwrap_or_default();
 
@@ -1729,7 +1726,7 @@ pub async fn project_icon_edit(
             })?;
 
         if !user.role.is_mod() {
-            let (team_member, organization_team_member, organization) =
+            let (team_member, organization_team_member) =
                 database::models::TeamMember::get_for_project_permissions(
                     &project_item.inner,
                     user.id.into(),
@@ -1748,7 +1745,6 @@ pub async fn project_icon_edit(
                 &user.role,
                 &team_member,
                 &organization_team_member,
-                &organization,
             )
             .unwrap_or_default();
 
@@ -1843,7 +1839,7 @@ pub async fn delete_project_icon(
         })?;
 
     if !user.role.is_mod() {
-        let (team_member, organization_team_member, organization) =
+        let (team_member, organization_team_member) =
             database::models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
@@ -1861,7 +1857,6 @@ pub async fn delete_project_icon(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization,
         )
         .unwrap_or_default();
 
@@ -1959,7 +1954,7 @@ pub async fn add_gallery_item(
         }
 
         if !user.role.is_admin() {
-            let (team_member, organization_team_member, organization) =
+            let (team_member, organization_team_member) =
                 database::models::TeamMember::get_for_project_permissions(
                     &project_item.inner,
                     user.id.into(),
@@ -1978,7 +1973,6 @@ pub async fn add_gallery_item(
                 &user.role,
                 &team_member,
                 &organization_team_member,
-                &organization,
             )
             .unwrap_or_default();
 
@@ -2113,7 +2107,7 @@ pub async fn edit_gallery_item(
         })?;
 
     if !user.role.is_mod() {
-        let (team_member, organization_team_member, organization) =
+        let (team_member, organization_team_member) =
             database::models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
@@ -2131,7 +2125,6 @@ pub async fn edit_gallery_item(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization,
         )
         .unwrap_or_default();
 
@@ -2275,7 +2268,7 @@ pub async fn delete_gallery_item(
         })?;
 
     if !user.role.is_mod() {
-        let (team_member, organization_team_member, organization) =
+        let (team_member, organization_team_member) =
             database::models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
@@ -2294,7 +2287,6 @@ pub async fn delete_gallery_item(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization,
         )
         .unwrap_or_default();
 
@@ -2382,7 +2374,7 @@ pub async fn project_delete(
         })?;
 
     if !user.role.is_admin() {
-        let (team_member, organization_team_member, organization) =
+        let (team_member, organization_team_member) =
             database::models::TeamMember::get_for_project_permissions(
                 &project.inner,
                 user.id.into(),
@@ -2401,7 +2393,6 @@ pub async fn project_delete(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization,
         )
         .unwrap_or_default();
 

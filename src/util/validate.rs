@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -88,26 +86,6 @@ pub fn validate_url(value: &str) -> Result<(), validator::ValidationError> {
 
     if url.scheme() != "https" {
         return Err(validator::ValidationError::new("URL must be https"));
-    }
-
-    Ok(())
-}
-
-pub fn validate_urls(value: &HashMap<String, String>) -> Result<(), validator::ValidationError> {
-    if value.len() > 10 {
-        return Err(validator::ValidationError::new(
-            "URLs cannot contain more than 10 items.",
-        ));
-    }
-
-    for value in value.values() {
-        validate_url(value)?;
-
-        if value.len() > 200 {
-            return Err(validator::ValidationError::new(
-                "URLs cannot contain more than 200 characters.",
-            ));
-        }
     }
 
     Ok(())

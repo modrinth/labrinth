@@ -11,7 +11,7 @@ use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
     VersionStatus,
 };
-use crate::models::teams::Permissions;
+use crate::models::teams::ProjectPermissions;
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
@@ -668,14 +668,12 @@ async fn project_create_inner(
         }
 
         let team = models::team_item::TeamBuilder {
-            association_id: models::team_item::TeamAssociationId::Project(project_id.into()),
             members: vec![models::team_item::TeamMemberBuilder {
                 user_id: current_user.id.into(),
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
                 // Allow all permissions for project creator, even if attached to a project
-                permissions: Some(Permissions::Project(
-                    crate::models::teams::ProjectPermissions::ALL,
-                )),
+                permissions: ProjectPermissions::all(),
+                organization_permissions: None,
                 accepted: true,
                 payouts_split: Decimal::ONE_HUNDRED,
                 ordering: 0,

@@ -211,7 +211,6 @@ pub async fn delete_file(
                 &user.role,
                 &team_member,
                 &organization_team_member,
-                &organization,
             )
             .unwrap_or_default();
 

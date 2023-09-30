@@ -21,13 +21,6 @@ pub struct Team {
     pub members: Vec<TeamMember>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(untagged)]
-pub enum Permissions {
-    Project(ProjectPermissions),
-    Organization(OrganizationPermissions),
-}
-
 bitflags::bitflags! {
     #[derive(Serialize, Deserialize)]
     #[serde(transparent)]
@@ -58,24 +51,17 @@ impl ProjectPermissions {
         role: &crate::models::users::Role,
         project_team_member: &Option<crate::database::models::TeamMember>, // team member of the user in the project
         organization_team_member: &Option<crate::database::models::TeamMember>, // team member of the user in the organization
-        organization: &Option<crate::database::models::Organization>, // organization of the project
     ) -> Option<Self> {
         if role.is_admin() {
             return Some(ProjectPermissions::ALL);
         }
 
         if let Some(member) = project_team_member {
-            if let Some(Permissions::Project(permissions)) = member.permissions {
-                return Some(permissions);
-            }
+            return Some(member.permissions);
         }
 
         if let Some(member) = organization_team_member {
-            if let Some(organization) = organization {
-                if organization.team_id == member.team_id {
-                    return Some(organization.default_project_permissions);
-                }
-            }
+            return Some(member.permissions); // Use default project permissions for the organization team member
         }
 
         if role.is_mod() {
@@ -102,7 +88,7 @@ bitflags::bitflags! {
         const ADD_PROJECT = 1 << 5;
         const REMOVE_PROJECT = 1 << 6;
         const DELETE_ORGANIZATION = 1 << 8;
-        const EDIT_PROJECT_DEFAULT_PERMISSIONS = 1 << 9; // Edit the default permissions of a project owned by the organization
+        const EDIT_MEMBER_DEFAULT_PERMISSIONS = 1 << 9; // Separate from EDIT_MEMBER
         const ALL = 0b1111111111;
         const NONE = 0b0;
     }
@@ -124,9 +110,7 @@ impl OrganizationPermissions {
         }
 
         if let Some(member) = team_member {
-            if let Some(Permissions::Organization(permissions)) = member.permissions {
-                return Some(permissions);
-            }
+            return member.organization_permissions;
         }
         if role.is_mod() {
             return Some(
@@ -150,8 +134,14 @@ pub struct TeamMember {
     pub role: String,
     /// A bitset containing the user's permissions in this team.
     /// In an organization-controlled project, these are the unique overriding permissions for the user's role for any project in the organization, if they exist.
-    /// In an organization, these are the meta-permission with regards to the organization.
-    pub permissions: Option<Permissions>,
+    /// In an organization, these are the default project permissions for any project in the organization.
+    /// Not optional- only None if they are being hidden from the user.
+    pub permissions: Option<ProjectPermissions>,
+
+    /// A bitset containing the user's permissions in this organization.
+    /// In a project team, this is None.
+    pub organization_permissions: Option<OrganizationPermissions>,
+
     /// Whether the user has joined the team or is just invited to it
     pub accepted: bool,
 
@@ -170,19 +160,30 @@ impl TeamMember {
         override_permissions: bool,
     ) -> Self {
         let user: User = user.into();
+        Self::from_model(data, user, override_permissions)
+    }
 
+    // Use the User model directly instead of the database model,
+    // if already available.
+    // (Avoids a db query in some cases)
+    pub fn from_model(
+        data: crate::database::models::team_item::TeamMember,
+        user: crate::models::users::User,
+        override_permissions: bool,
+    ) -> Self {
         Self {
             team_id: data.team_id.into(),
             user,
             role: data.role,
             permissions: if override_permissions {
                 None
-            } else if let Some(Permissions::Project(permissions)) = data.permissions {
-                Some(Permissions::Project(permissions))
-            } else if let Some(Permissions::Organization(permissions)) = data.permissions {
-                Some(Permissions::Organization(permissions))
             } else {
+                Some(data.permissions)
+            },
+            organization_permissions: if override_permissions {
                 None
+            } else {
+                data.organization_permissions
             },
             accepted: data.accepted,
             payouts_split: if override_permissions {

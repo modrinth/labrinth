@@ -1,9 +1,4 @@
-use std::collections::HashMap;
-
-use crate::models::{
-    ids::base62_impl::{parse_base62, to_base62},
-    teams::ProjectPermissions,
-};
+use crate::models::ids::base62_impl::{parse_base62, to_base62};
 
 use super::{ids::*, TeamMember};
 use redis::cmd;
@@ -13,6 +8,39 @@ const ORGANIZATIONS_NAMESPACE: &str = "organizations";
 const ORGANIZATIONS_SLUGS_NAMESPACE: &str = "organizations_slugs";
 
 const DEFAULT_EXPIRY: i64 = 1800;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LinkUrl {
+    pub platform_id: LinkPlatformId,
+    pub platform_short: String,
+    pub platform_name: String,
+    pub url: String,
+}
+impl LinkUrl {
+    pub async fn insert_organization(
+        &self,
+        organization_id: OrganizationId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), sqlx::error::Error> {
+        sqlx::query!(
+            "
+            INSERT INTO organization_links (
+                joining_organization_id, joining_platform_id, url
+            )
+            VALUES (
+                $1, $2, $3
+            )
+            ",
+            organization_id as OrganizationId,
+            self.platform_id as LinkPlatformId,
+            self.url,
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        Ok(())
+    }
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 /// An organization of users who together control one or more projects and organizations.
@@ -26,17 +54,11 @@ pub struct Organization {
     /// The associated team of the organization
     pub team_id: TeamId,
 
-    /// The name of the organization
-    pub name: String,
-
     /// The description of the organization
     pub description: String,
 
-    /// Default project permissions for associated projects
-    pub default_project_permissions: ProjectPermissions,
-
     /// Any associated urls for the organization
-    pub urls: HashMap<String, String>,
+    pub link_urls: Vec<LinkUrl>,
 
     /// The display icon for the organization
     pub icon_url: Option<String>,
@@ -50,21 +72,22 @@ impl Organization {
     ) -> Result<(), super::DatabaseError> {
         sqlx::query!(
             "
-            INSERT INTO organizations (id, name, slug, team_id, description, default_project_permissions, urls, icon_url, color)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO organizations (id, slug, team_id, description, icon_url, color)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ",
             self.id.0,
-            self.name,
             self.slug,
             self.team_id as TeamId,
             self.description,
-            self.default_project_permissions.bits() as i64,
-            serde_json::to_string(&self.urls)?,
             self.icon_url,
             self.color.map(|x| x as i32),
         )
         .execute(&mut *transaction)
         .await?;
+
+        for link_url in self.link_urls {
+            link_url.insert_organization(self.id, transaction).await?;
+        }
 
         Ok(())
     }
@@ -192,8 +215,11 @@ impl Organization {
 
             let organizations: Vec<Organization> = sqlx::query!(
                 "
-                SELECT o.id, o.name, o.slug, o.team_id, o.description, o.default_project_permissions, o.urls, o.icon_url, o.color
+                SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color,
+                JSONB_AGG(DISTINCT jsonb_build_object('platform_id', ol.joining_platform_id, 'platform_short', lp.short, 'platform_name', lp.name,'url', ol.url)) filter (where ol.joining_platform_id is not null) links
                 FROM organizations o
+                LEFT JOIN organization_links ol ON ol.joining_organization_id = o.id
+                LEFT JOIN link_platforms lp ON lp.id = ol.joining_platform_id
                 WHERE o.id = ANY($1) OR o.slug = ANY($2)
                 GROUP BY o.id;
                 ",
@@ -207,15 +233,12 @@ impl Organization {
             .try_filter_map(|e| async {
                 Ok(e.right().map(|m| Organization {
                     id: OrganizationId(m.id),
-                    name: m.name,
                     slug: m.slug,
                     team_id: TeamId(m.team_id),
                     description: m.description,
-                    default_project_permissions: ProjectPermissions::from_bits(
-                        m.default_project_permissions as u64,
-                    )
-                    .unwrap_or_default(),
-                    urls: serde_json::from_str(&m.urls).unwrap_or_default(),
+                    link_urls: serde_json::from_value(
+                        m.links.unwrap_or_default(),
+                    ).ok().unwrap_or_default(),
                     icon_url: m.icon_url,
                     color: m.color.map(|x| x as u32),
                 }))
@@ -260,8 +283,11 @@ impl Organization {
     {
         let result = sqlx::query!(
             "
-            SELECT o.id, o.name, o.slug, o.team_id, o.description, o.default_project_permissions, o.urls, o.icon_url, o.color
+            SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color,
+            JSONB_AGG(DISTINCT jsonb_build_object('platform_id', ol.joining_platform_id, 'platform_short', lp.short, 'platform_name', lp.name,'url', ol.url)) filter (where ol.joining_platform_id is not null) links
             FROM organizations o
+            LEFT JOIN organization_links ol ON ol.joining_organization_id = o.id
+            LEFT JOIN link_platforms lp ON lp.id = ol.joining_platform_id
             LEFT JOIN mods m ON m.organization_id = o.id
             WHERE m.id = $1
             GROUP BY o.id;
@@ -274,15 +300,12 @@ impl Organization {
         if let Some(result) = result {
             Ok(Some(Organization {
                 id: OrganizationId(result.id),
-                name: result.name,
                 slug: result.slug,
                 team_id: TeamId(result.team_id),
                 description: result.description,
-                default_project_permissions: ProjectPermissions::from_bits(
-                    result.default_project_permissions as u64,
-                )
-                .unwrap_or_default(),
-                urls: serde_json::from_str(&result.urls)?,
+                link_urls: serde_json::from_value(result.links.unwrap_or_default())
+                    .ok()
+                    .unwrap_or_default(),
                 icon_url: result.icon_url,
                 color: result.color.map(|x| x as u32),
             }))
@@ -296,10 +319,40 @@ impl Organization {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &deadpool_redis::Pool,
     ) -> Result<Option<()>, super::DatabaseError> {
-        let project = Self::get_id(id, &mut *transaction, redis).await?;
+        use futures::TryStreamExt;
 
-        if let Some(organization) = project {
+        let organization = Self::get_id(id, &mut *transaction, redis).await?;
+
+        if let Some(organization) = organization {
+            let projects: Vec<ProjectId> = sqlx::query!(
+                "
+                SELECT m.id
+                FROM mods m
+                WHERE m.organization_id = $1
+                ",
+                id as OrganizationId,
+            )
+            .fetch_many(&mut *transaction)
+            .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.id))) })
+            .try_collect::<Vec<ProjectId>>()
+            .await?;
+
+            for project_id in projects {
+                let _result =
+                    super::project_item::Project::remove(project_id, transaction, redis).await?;
+            }
+
             Organization::clear_cache(id, Some(organization.slug), redis).await?;
+
+            sqlx::query!(
+                "
+                DELETE FROM organization_links
+                WHERE joining_organization_id = $1
+                ",
+                id as OrganizationId,
+            )
+            .execute(&mut *transaction)
+            .await?;
 
             sqlx::query!(
                 "

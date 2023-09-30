@@ -239,7 +239,6 @@ async fn version_create_inner(
                     &user.role,
                     &team_member,
                     &organization_team_member,
-                    &organization,
                 )
                 .unwrap_or_default();
 
@@ -613,7 +612,6 @@ async fn upload_file_to_version_inner(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization,
         )
         .unwrap_or_default();
 

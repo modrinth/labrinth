@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::auth::{filter_authorized_projects, get_user_from_headers};
-use crate::database::models::team_item::{TeamAssociationId, TeamMember};
+use crate::database::models::team_item::TeamMember;
 use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
-use crate::models::organizations::OrganizationId;
+use crate::models::organizations::{OrganizationId, UrlLink};
 use crate::models::pats::Scopes;
-use crate::models::teams::{OrganizationPermissions, Permissions, ProjectPermissions};
+use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
 use crate::queue::session::AuthQueue;
 use crate::routes::v2::project_creation::CreateError;
 use crate::routes::ApiError;
@@ -39,11 +39,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 #[derive(Deserialize, Validate)]
 pub struct NewOrganization {
-    #[validate(
-        length(min = 3, max = 64),
-        custom(function = "crate::util::validate::validate_name")
-    )]
-    pub name: String,
     #[validate(length(min = 3, max = 256))]
     pub description: String,
     #[validate(
@@ -53,11 +48,11 @@ pub struct NewOrganization {
     pub slug: String,
     #[serde(default = "crate::models::teams::ProjectPermissions::default")]
     pub default_project_permissions: ProjectPermissions,
-    #[validate(custom(function = "crate::util::validate::validate_urls"))]
+
     /// Any desired links for the organization.
     /// ie: "discord" -> "https://discord.gg/..."
-    #[serde(default)]
-    pub urls: HashMap<String, String>,
+    #[validate]
+    pub link_urls: Option<Vec<UrlLink>>,
 }
 
 #[post("organization")]
@@ -87,57 +82,48 @@ pub async fn organization_create(
     // Try slug
     let slug_organization_id_option: Option<OrganizationId> =
         serde_json::from_str(&format!("\"{}\"", new_organization.slug)).ok();
-
+    let mut organization_strings = vec![];
     if let Some(slug_organization_id) = slug_organization_id_option {
-        let slug_organization_id: models::ids::OrganizationId = slug_organization_id;
-        let results = sqlx::query!(
-            "
-            SELECT EXISTS(SELECT 1 FROM organizations WHERE id=$1)
-            ",
-            slug_organization_id.0 as i64
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(|e| CreateError::DatabaseError(e.into()))?;
-
-        if results.exists.unwrap_or(false) {
-            return Err(CreateError::SlugCollision);
-        }
+        organization_strings.push(slug_organization_id.to_string());
+    }
+    organization_strings.push(new_organization.slug.clone());
+    let results = Organization::get_many(&organization_strings, &mut *transaction, &redis).await?;
+    if !results.is_empty() {
+        return Err(CreateError::SlugCollision);
     }
 
-    {
-        let results = sqlx::query!(
-            "
-            SELECT EXISTS(SELECT 1 FROM organizations WHERE slug = LOWER($1))
-            ",
-            new_organization.slug
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(|e| CreateError::DatabaseError(e.into()))?;
+    // Create links
+    let mut link_urls = vec![];
+    if let Some(urls) = &new_organization.link_urls {
+        for url in urls {
+            let platform_id =
+                database::models::categories::LinkPlatform::get_id(&url.id, &mut *transaction)
+                    .await?
+                    .ok_or_else(|| {
+                        CreateError::InvalidInput(format!(
+                            "Link platform {} is not allowed.",
+                            url.id.clone()
+                        ))
+                    })?;
 
-        if results.exists.unwrap_or(false) {
-            return Err(CreateError::SlugCollision);
+            link_urls.push(database::models::organization_item::LinkUrl {
+                platform_id,
+                platform_short: "".to_string(),
+                platform_name: "".to_string(),
+                url: url.url.clone(),
+            })
         }
     }
-
-    // Gets the user database data
-    let user_data =
-        crate::database::models::User::get_id(current_user.id.into(), &mut transaction, &redis)
-            .await?
-            .ok_or_else(|| CreateError::InvalidInput("User not found".to_owned()))?;
 
     let organization_id = generate_organization_id(&mut transaction).await?;
 
     // Create organization managerial team
     let team = team_item::TeamBuilder {
-        association_id: TeamAssociationId::Organization(organization_id),
         members: vec![team_item::TeamMemberBuilder {
             user_id: current_user.id.into(),
             role: crate::models::teams::OWNER_ROLE.to_owned(),
-            permissions: Some(Permissions::Organization(
-                crate::models::teams::OrganizationPermissions::ALL,
-            )),
+            permissions: ProjectPermissions::ALL,
+            organization_permissions: Some(OrganizationPermissions::ALL),
             accepted: true,
             payouts_split: Decimal::ONE_HUNDRED,
             ordering: 0,
@@ -148,12 +134,10 @@ pub async fn organization_create(
     // Create organization
     let organization = Organization {
         id: organization_id,
-        name: new_organization.name.clone(),
         slug: new_organization.slug.clone(),
         description: new_organization.description.clone(),
-        default_project_permissions: new_organization.default_project_permissions,
         team_id,
-        urls: new_organization.urls.clone(),
+        link_urls,
         icon_url: None,
         color: None,
     };
@@ -166,9 +150,9 @@ pub async fn organization_create(
         .into_iter()
         .next();
     let members_data = if let Some(member_data) = member_data {
-        vec![crate::models::teams::TeamMember::from(
+        vec![crate::models::teams::TeamMember::from_model(
             member_data,
-            user_data.clone(),
+            current_user.clone(),
             false,
         )]
     } else {
@@ -177,9 +161,7 @@ pub async fn organization_create(
         ));
     };
 
-    let user_data = crate::models::users::User::from(user_data);
-    let organization =
-        models::organizations::Organization::from(organization, &Some(user_data), members_data);
+    let organization = models::organizations::Organization::from(organization, members_data);
 
     Ok(HttpResponse::Ok().json(organization))
 }
@@ -239,8 +221,7 @@ pub async fn organization_get(
             })
             .collect();
 
-        let organization =
-            models::organizations::Organization::from(data, &current_user, team_members);
+        let organization = models::organizations::Organization::from(data, team_members);
         return Ok(HttpResponse::Ok().json(organization));
     }
     Ok(HttpResponse::NotFound().body(""))
@@ -319,8 +300,7 @@ pub async fn organizations_get(
             })
             .collect();
 
-        let organization =
-            models::organizations::Organization::from(data, &current_user, team_members);
+        let organization = models::organizations::Organization::from(data, team_members);
         organizations.push(organization);
     }
 
@@ -329,11 +309,6 @@ pub async fn organizations_get(
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct OrganizationEdit {
-    #[validate(
-        length(min = 3, max = 64),
-        custom(function = "crate::util::validate::validate_name")
-    )]
-    pub name: Option<String>,
     #[validate(length(min = 3, max = 256))]
     pub description: Option<String>,
     #[validate(
@@ -342,8 +317,8 @@ pub struct OrganizationEdit {
     )]
     pub slug: Option<String>,
     pub default_project_permissions: Option<ProjectPermissions>,
-    #[validate(custom(function = "crate::util::validate::validate_urls"))]
-    pub urls: Option<HashMap<String, String>>,
+    #[validate]
+    pub link_urls: Option<Vec<UrlLink>>,
 }
 
 #[patch("{id}")]
@@ -386,25 +361,6 @@ pub async fn organizations_edit(
 
         if let Some(perms) = permissions {
             let mut transaction = pool.begin().await?;
-            if let Some(name) = &new_organization.name {
-                if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the name of this organization!"
-                            .to_string(),
-                    ));
-                }
-                sqlx::query!(
-                    "
-                    UPDATE organizations
-                    SET name = $1
-                    WHERE (id = $2)
-                    ",
-                    name.trim(),
-                    id as database::models::ids::OrganizationId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
             if let Some(description) = &new_organization.description {
                 if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
@@ -415,7 +371,7 @@ pub async fn organizations_edit(
                 sqlx::query!(
                     "
                     UPDATE organizations
-                    SET name = $1
+                    SET description = $1
                     WHERE (id = $2)
                     ",
                     description,
@@ -425,45 +381,48 @@ pub async fn organizations_edit(
                 .await?;
             }
 
-            if let Some(urls) = &new_organization.urls {
+            if let Some(links) = &new_organization.link_urls {
                 if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the urls of this organization!"
+                        "You do not have the permissions to edit the links of this organization!"
                             .to_string(),
                     ));
                 }
                 sqlx::query!(
                     "
-                    UPDATE organizations
-                    SET urls = $1
-                    WHERE (id = $2)
+                    DELETE FROM organization_links
+                    WHERE joining_organization_id = $1
                     ",
-                    serde_json::to_string(urls)?,
                     id as database::models::ids::OrganizationId,
                 )
                 .execute(&mut *transaction)
                 .await?;
-            }
 
-            if let Some(default_project_permissions) = &new_organization.default_project_permissions
-            {
-                if !perms.contains(OrganizationPermissions::EDIT_PROJECT_DEFAULT_PERMISSIONS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the default project permissions of this organization!"
-                            .to_string(),
-                    ));
+                for link in links {
+                    let platform_id = database::models::categories::LinkPlatform::get_id(
+                        &link.id,
+                        &mut *transaction,
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInput(format!(
+                            "Link platform {} is not allowed.",
+                            link.id.clone()
+                        ))
+                    })?;
+
+                    sqlx::query!(
+                        "
+                        INSERT INTO organization_links (joining_organization_id, joining_platform_id, url)
+                        VALUES ($1, $2, $3)
+                        ",
+                        id as database::models::ids::OrganizationId,
+                        platform_id as database::models::ids::LinkPlatformId,
+                        link.url
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
                 }
-                sqlx::query!(
-                    "
-                    UPDATE organizations
-                    SET default_project_permissions = $1
-                    WHERE (id = $2)
-                    ",
-                    default_project_permissions.bits() as i64,
-                    id as database::models::ids::OrganizationId,
-                )
-                .execute(&mut *transaction)
-                .await?;
             }
 
             if let Some(slug) = &new_organization.slug {

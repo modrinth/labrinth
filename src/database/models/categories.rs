@@ -58,6 +58,13 @@ pub struct DonationPlatform {
     pub name: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct LinkPlatform {
+    pub id: LinkPlatformId,
+    pub short: String,
+    pub name: String,
+}
+
 impl Category {
     pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<CategoryId>, DatabaseError>
     where
@@ -442,6 +449,70 @@ impl DonationPlatform {
 
         cmd("SET")
             .arg(format!("{}:donation_platform", TAGS_NAMESPACE))
+            .arg(serde_json::to_string(&result)?)
+            .arg("EX")
+            .arg(DEFAULT_EXPIRY)
+            .query_async::<_, ()>(&mut redis)
+            .await?;
+
+        Ok(result)
+    }
+}
+
+impl LinkPlatform {
+    pub async fn get_id<'a, E>(id: &str, exec: E) -> Result<Option<LinkPlatformId>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT id FROM link_platforms
+            WHERE short = $1
+            ",
+            id
+        )
+        .fetch_optional(exec)
+        .await?;
+
+        Ok(result.map(|r| LinkPlatformId(r.id)))
+    }
+
+    pub async fn list<'a, E>(
+        exec: E,
+        redis: &deadpool_redis::Pool,
+    ) -> Result<Vec<LinkPlatform>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let mut redis = redis.get().await?;
+        let res = cmd("GET")
+            .arg(format!("{}:link_platform", TAGS_NAMESPACE))
+            .query_async::<_, Option<String>>(&mut redis)
+            .await?
+            .and_then(|x| serde_json::from_str::<Vec<LinkPlatform>>(&x).ok());
+
+        if let Some(res) = res {
+            return Ok(res);
+        }
+
+        let result = sqlx::query!(
+            "
+            SELECT id, short, name FROM link_platforms
+            "
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().map(|c| LinkPlatform {
+                id: LinkPlatformId(c.id),
+                short: c.short,
+                name: c.name,
+            }))
+        })
+        .try_collect::<Vec<LinkPlatform>>()
+        .await?;
+
+        cmd("SET")
+            .arg(format!("{}:link_platform", TAGS_NAMESPACE))
             .arg(serde_json::to_string(&result)?)
             .arg("EX")
             .arg(DEFAULT_EXPIRY)

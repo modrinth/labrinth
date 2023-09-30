@@ -1,5 +1,5 @@
 use super::{ids::*, Organization, Project};
-use crate::models::teams::{OrganizationPermissions, Permissions, ProjectPermissions};
+use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
 use itertools::Itertools;
 use redis::cmd;
 use rust_decimal::Decimal;
@@ -10,12 +10,12 @@ const DEFAULT_EXPIRY: i64 = 1800;
 
 pub struct TeamBuilder {
     pub members: Vec<TeamMemberBuilder>,
-    pub association_id: TeamAssociationId,
 }
 pub struct TeamMemberBuilder {
     pub user_id: UserId,
     pub role: String,
-    pub permissions: Option<Permissions>,
+    pub permissions: ProjectPermissions,
+    pub organization_permissions: Option<OrganizationPermissions>,
     pub accepted: bool,
     pub payouts_split: Decimal,
     pub ordering: i64,
@@ -28,25 +28,14 @@ impl TeamBuilder {
     ) -> Result<TeamId, super::DatabaseError> {
         let team_id = generate_team_id(&mut *transaction).await?;
 
-        let team = Team {
-            id: team_id,
-            association: self.association_id,
-        };
+        let team = Team { id: team_id };
 
         sqlx::query!(
             "
-            INSERT INTO teams (id, project_id, organization_id)
-            VALUES ($1, $2, $3)
+            INSERT INTO teams (id)
+            VALUES ($1)
             ",
             team.id as TeamId,
-            match team.association {
-                TeamAssociationId::Project(pid) => Some(pid.0),
-                TeamAssociationId::Organization(_) => None,
-            },
-            match team.association {
-                TeamAssociationId::Project(_) => None,
-                TeamAssociationId::Organization(oid) => Some(oid.0),
-            },
         )
         .execute(&mut *transaction)
         .await?;
@@ -55,18 +44,15 @@ impl TeamBuilder {
             let team_member_id = generate_team_member_id(&mut *transaction).await?;
             sqlx::query!(
                 "
-                INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO team_members (id, team_id, user_id, role, permissions, organization_permissions, accepted, payouts_split, ordering)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ",
                 team_member_id as TeamMemberId,
                 team.id as TeamId,
                 member.user_id as UserId,
                 member.role,
-                match member.permissions {
-                    Some(Permissions::Project(p)) => Some(p.bits() as i64),
-                    Some(Permissions::Organization(op)) => Some(op.bits() as i64),
-                    None => None,
-                },
+                member.permissions.bits() as i64,
+                member.organization_permissions.map(|p| p.bits() as i64),
                 member.accepted,
                 member.payouts_split,
                 member.ordering,
@@ -83,8 +69,6 @@ impl TeamBuilder {
 pub struct Team {
     /// The id of the team
     pub id: TeamId,
-    // The association of the team: either a project or an organization
-    pub association: TeamAssociationId,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Copy)]
@@ -94,18 +78,24 @@ pub enum TeamAssociationId {
 }
 
 impl Team {
-    pub async fn get<'a, 'b, E>(
+    pub async fn get_association<'a, 'b, E>(
         id: TeamId,
         executor: E,
-    ) -> Result<Option<Self>, super::DatabaseError>
+    ) -> Result<Option<TeamAssociationId>, super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
-            SELECT id, project_id, organization_id
-            FROM teams
-            WHERE id = $1
+            SELECT m.id AS pid, NULL AS oid
+            FROM mods m
+            WHERE m.team_id = $1
+            
+            UNION ALL
+             
+            SELECT NULL AS pid, o.id AS oid
+            FROM organizations o
+            WHERE o.team_id = $1    
             ",
             id as TeamId
         )
@@ -115,19 +105,13 @@ impl Team {
         if let Some(t) = result {
             // Only one of project_id or organization_id will be set
             let mut team_association_id = None;
-            if let Some(pid) = t.project_id {
+            if let Some(pid) = t.pid {
                 team_association_id = Some(TeamAssociationId::Project(ProjectId(pid)));
             }
-            if let Some(oid) = t.organization_id {
+            if let Some(oid) = t.oid {
                 team_association_id = Some(TeamAssociationId::Organization(OrganizationId(oid)));
             }
-            return match team_association_id {
-                Some(team_association_id) => Ok(Some(Team {
-                    id: TeamId(t.id),
-                    association: team_association_id,
-                })),
-                None => Ok(None),
-            };
+            return Ok(team_association_id);
         }
         Ok(None)
     }
@@ -138,12 +122,18 @@ impl Team {
 pub struct TeamMember {
     pub id: TeamMemberId,
     pub team_id: TeamId,
-    pub association_id: TeamAssociationId,
 
     /// The ID of the user associated with the member
     pub user_id: UserId,
     pub role: String,
-    pub permissions: Option<Permissions>,
+
+    // The permissions of the user in this project team
+    // For an organization team, these are the fallback permissions for any project in the organization
+    pub permissions: ProjectPermissions,
+
+    // The permissions of the user in this organization team
+    // For a project team, this is None
+    pub organization_permissions: Option<OrganizationPermissions>,
 
     pub accepted: bool,
     pub payouts_split: Decimal,
@@ -210,43 +200,30 @@ impl TeamMember {
         if !team_ids_parsed.is_empty() {
             let teams: Vec<TeamMember> = sqlx::query!(
                 "
-                SELECT tm.id, tm.team_id, tm.role AS member_role, tm.permissions, 
-                tm.accepted, tm.payouts_split, 
-                tm.ordering, tm.user_id, t.project_id, t.organization_id
-                FROM team_members tm
-                LEFT JOIN teams t ON t.id = tm.team_id
-                WHERE tm.team_id = ANY($1)
-                ORDER BY tm.team_id, tm.ordering;
+                SELECT id, team_id, role AS member_role, permissions, organization_permissions,
+                accepted, payouts_split, 
+                ordering, user_id
+                FROM team_members
+                WHERE team_id = ANY($1)
+                ORDER BY team_id, ordering;
                 ",
                 &team_ids_parsed
             )
             .fetch_many(exec)
             .try_filter_map(|e| async {
-                Ok(e.right().and_then(|m| {
-                    let association_id = match (m.project_id, m.organization_id) {
-                        (Some(pid), _) => TeamAssociationId::Project(ProjectId(pid)),
-                        (_, Some(oid)) => TeamAssociationId::Organization(OrganizationId(oid)),
-                        _ => return None,
-                    };
-
-                    Some(TeamMember {
-                        id: TeamMemberId(m.id),
-                        team_id: TeamId(m.team_id),
-                        role: m.member_role,
-                        permissions: m.permissions.map(|p| match association_id {
-                            TeamAssociationId::Project(_) => Permissions::Project(
-                                ProjectPermissions::from_bits(p as u64).unwrap_or_default(),
-                            ),
-                            TeamAssociationId::Organization(_) => Permissions::Organization(
-                                OrganizationPermissions::from_bits(p as u64).unwrap_or_default(),
-                            ),
-                        }),
-                        association_id,
-                        accepted: m.accepted,
-                        user_id: UserId(m.user_id),
-                        payouts_split: m.payouts_split,
-                        ordering: m.ordering,
-                    })
+                Ok(e.right().map(|m| TeamMember {
+                    id: TeamMemberId(m.id),
+                    team_id: TeamId(m.team_id),
+                    role: m.member_role,
+                    permissions: ProjectPermissions::from_bits(m.permissions as u64)
+                        .unwrap_or_default(),
+                    organization_permissions: m
+                        .organization_permissions
+                        .map(|p| OrganizationPermissions::from_bits(p as u64).unwrap_or_default()),
+                    accepted: m.accepted,
+                    user_id: UserId(m.user_id),
+                    payouts_split: m.payouts_split,
+                    ordering: m.ordering,
                 }))
             })
             .try_collect::<Vec<TeamMember>>()
@@ -312,12 +289,11 @@ impl TeamMember {
 
         let team_members = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.role AS member_role, tm.permissions, 
-            tm.accepted, tm.payouts_split, tm.role,
-            tm.ordering, tm.user_id, t.project_id, t.organization_id
-            FROM team_members tm
-            LEFT JOIN teams t ON t.id = tm.team_id
-            WHERE (tm.team_id = ANY($1) AND tm.user_id = $2 AND tm.accepted = TRUE)
+            SELECT id, team_id, role AS member_role, permissions, organization_permissions,
+            accepted, payouts_split, role,
+            ordering, user_id
+            FROM team_members
+            WHERE (team_id = ANY($1) AND user_id = $2 AND accepted = TRUE)
             ORDER BY ordering
             ",
             &team_ids_parsed,
@@ -326,26 +302,17 @@ impl TeamMember {
         .fetch_many(executor)
         .try_filter_map(|e| async {
             if let Some(m) = e.right() {
-                let association_id = match (m.project_id, m.organization_id) {
-                    (Some(pid), _) => TeamAssociationId::Project(ProjectId(pid)),
-                    (_, Some(oid)) => TeamAssociationId::Organization(OrganizationId(oid)),
-                    _ => return Ok(None),
-                };
                 Ok(Some(Ok(TeamMember {
                     id: TeamMemberId(m.id),
                     team_id: TeamId(m.team_id),
                     user_id,
                     role: m.role,
-                    permissions: m.permissions.map(|p| match association_id {
-                        TeamAssociationId::Project(_) => Permissions::Project(
-                            ProjectPermissions::from_bits(p as u64).unwrap_or_default(),
-                        ),
-                        TeamAssociationId::Organization(_) => Permissions::Organization(
-                            OrganizationPermissions::from_bits(p as u64).unwrap_or_default(),
-                        ),
-                    }),
+                    permissions: ProjectPermissions::from_bits(m.permissions as u64)
+                        .unwrap_or_default(),
+                    organization_permissions: m
+                        .organization_permissions
+                        .map(|p| OrganizationPermissions::from_bits(p as u64).unwrap_or_default()),
                     accepted: m.accepted,
-                    association_id,
                     payouts_split: m.payouts_split,
                     ordering: m.ordering,
                 })))
@@ -374,13 +341,12 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.role AS member_role, tm.permissions, 
-                tm.accepted, tm.payouts_split, tm.role,
-                tm.ordering, tm.user_id, t.project_id, t.organization_id
+            SELECT id, team_id, role AS member_role, permissions, organization_permissions,
+                accepted, payouts_split, role,
+                ordering, user_id
                 
-            FROM team_members tm
-            LEFT JOIN teams t ON t.id = tm.team_id
-            WHERE (tm.team_id = $1 AND tm.user_id = $2)
+            FROM team_members
+            WHERE (team_id = $1 AND user_id = $2)
             ORDER BY ordering
             ",
             id as TeamId,
@@ -390,25 +356,16 @@ impl TeamMember {
         .await?;
 
         if let Some(m) = result {
-            let association_id = match (m.project_id, m.organization_id) {
-                (Some(pid), _) => TeamAssociationId::Project(ProjectId(pid)),
-                (_, Some(oid)) => TeamAssociationId::Organization(OrganizationId(oid)),
-                _ => return Ok(None),
-            };
             Ok(Some(TeamMember {
                 id: TeamMemberId(m.id),
                 team_id: id,
                 user_id,
                 role: m.role,
-                permissions: m.permissions.map(|p| match association_id {
-                    TeamAssociationId::Project(_) => Permissions::Project(
-                        ProjectPermissions::from_bits(p as u64).unwrap_or_default(),
-                    ),
-                    TeamAssociationId::Organization(_) => Permissions::Organization(
-                        OrganizationPermissions::from_bits(p as u64).unwrap_or_default(),
-                    ),
-                }),
-                association_id,
+                permissions: ProjectPermissions::from_bits(m.permissions as u64)
+                    .unwrap_or_default(),
+                organization_permissions: m
+                    .organization_permissions
+                    .map(|p| OrganizationPermissions::from_bits(p as u64).unwrap_or_default()),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
@@ -425,20 +382,18 @@ impl TeamMember {
         sqlx::query!(
             "
             INSERT INTO team_members (
-                id, team_id, user_id, role, permissions, accepted
+                id, team_id, user_id, role, permissions, organization_permissions, accepted
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6
+                $1, $2, $3, $4, $5, $6, $7
             )
             ",
             self.id as TeamMemberId,
             self.team_id as TeamId,
             self.user_id as UserId,
             self.role,
-            self.permissions.as_ref().map(|p| match p {
-                Permissions::Project(p) => p.bits() as i64,
-                Permissions::Organization(op) => op.bits() as i64,
-            }),
+            self.permissions.bits() as i64,
+            self.organization_permissions.map(|p| p.bits() as i64),
             self.accepted,
         )
         .execute(&mut *transaction)
@@ -471,7 +426,8 @@ impl TeamMember {
     pub async fn edit_team_member(
         id: TeamId,
         user_id: UserId,
-        new_permissions: Option<Permissions>,
+        new_permissions: Option<ProjectPermissions>,
+        new_organization_permissions: Option<OrganizationPermissions>,
         new_role: Option<String>,
         new_accepted: Option<bool>,
         new_payouts_split: Option<Decimal>,
@@ -485,10 +441,22 @@ impl TeamMember {
                 SET permissions = $1
                 WHERE (team_id = $2 AND user_id = $3)
                 ",
-                match permissions {
-                    Permissions::Project(p) => p.bits() as i64,
-                    Permissions::Organization(op) => op.bits() as i64,
-                },
+                permissions.bits() as i64,
+                id as TeamId,
+                user_id as UserId,
+            )
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        if let Some(organization_permissions) = new_organization_permissions {
+            sqlx::query!(
+                "
+                UPDATE team_members
+                SET organization_permissions = $1
+                WHERE (team_id = $2 AND user_id = $3)
+                ",
+                organization_permissions.bits() as i64,
                 id as TeamId,
                 user_id as UserId,
             )
@@ -570,10 +538,9 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted, tm.payouts_split, tm.ordering, t.project_id, t.organization_id
+            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.organization_permissions, tm.accepted, tm.payouts_split, tm.ordering
             FROM mods m
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND user_id = $2 AND accepted = TRUE
-            LEFT JOIN teams t ON t.id = tm.team_id
             WHERE m.id = $1
             ",
             id as ProjectId,
@@ -583,25 +550,16 @@ impl TeamMember {
             .await?;
 
         if let Some(m) = result {
-            let association_id = match (m.project_id, m.organization_id) {
-                (Some(pid), _) => TeamAssociationId::Project(ProjectId(pid)),
-                (_, Some(oid)) => TeamAssociationId::Organization(OrganizationId(oid)),
-                _ => return Ok(None),
-            };
             Ok(Some(TeamMember {
                 id: TeamMemberId(m.id),
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                permissions: m.permissions.map(|p| match association_id {
-                    TeamAssociationId::Project(_) => Permissions::Project(
-                        ProjectPermissions::from_bits(p as u64).unwrap_or_default(),
-                    ),
-                    TeamAssociationId::Organization(_) => Permissions::Organization(
-                        OrganizationPermissions::from_bits(p as u64).unwrap_or_default(),
-                    ),
-                }),
-                association_id,
+                permissions: ProjectPermissions::from_bits(m.permissions as u64)
+                    .unwrap_or_default(),
+                organization_permissions: m
+                    .organization_permissions
+                    .map(|p| OrganizationPermissions::from_bits(p as u64).unwrap_or_default()),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
@@ -621,10 +579,9 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted, tm.payouts_split, tm.ordering, t.project_id, t.organization_id
+            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.organization_permissions, tm.accepted, tm.payouts_split, tm.ordering
             FROM organizations o
             INNER JOIN team_members tm ON tm.team_id = o.team_id AND user_id = $2 AND accepted = TRUE
-            LEFT JOIN teams t ON t.id = tm.team_id
             WHERE o.id = $1
             ",
             id as OrganizationId,
@@ -634,25 +591,16 @@ impl TeamMember {
             .await?;
 
         if let Some(m) = result {
-            let association_id = match (m.project_id, m.organization_id) {
-                (Some(pid), _) => TeamAssociationId::Project(ProjectId(pid)),
-                (_, Some(oid)) => TeamAssociationId::Organization(OrganizationId(oid)),
-                _ => return Ok(None),
-            };
             Ok(Some(TeamMember {
                 id: TeamMemberId(m.id),
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                permissions: m.permissions.map(|p| match association_id {
-                    TeamAssociationId::Project(_) => Permissions::Project(
-                        ProjectPermissions::from_bits(p as u64).unwrap_or_default(),
-                    ),
-                    TeamAssociationId::Organization(_) => Permissions::Organization(
-                        OrganizationPermissions::from_bits(p as u64).unwrap_or_default(),
-                    ),
-                }),
-                association_id,
+                permissions: ProjectPermissions::from_bits(m.permissions as u64)
+                    .unwrap_or_default(),
+                organization_permissions: m
+                    .organization_permissions
+                    .map(|p| OrganizationPermissions::from_bits(p as u64).unwrap_or_default()),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
@@ -672,11 +620,10 @@ impl TeamMember {
     {
         let result = sqlx::query!(
             "
-            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.accepted, tm.payouts_split, tm.ordering, v.mod_id, t.project_id, t.organization_id 
+            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.organization_permissions, tm.accepted, tm.payouts_split, tm.ordering, v.mod_id 
             FROM versions v
             INNER JOIN mods m ON m.id = v.mod_id
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.user_id = $2 AND tm.accepted = TRUE
-            LEFT JOIN teams t ON t.id = tm.team_id
             WHERE v.id = $1
             ",
             id as VersionId,
@@ -686,25 +633,16 @@ impl TeamMember {
             .await?;
 
         if let Some(m) = result {
-            let association_id = match (m.project_id, m.organization_id) {
-                (Some(pid), _) => TeamAssociationId::Project(ProjectId(pid)),
-                (_, Some(oid)) => TeamAssociationId::Organization(OrganizationId(oid)),
-                _ => return Ok(None),
-            };
             Ok(Some(TeamMember {
                 id: TeamMemberId(m.id),
                 team_id: TeamId(m.team_id),
                 user_id,
                 role: m.role,
-                permissions: m.permissions.map(|p| match association_id {
-                    TeamAssociationId::Project(_) => Permissions::Project(
-                        ProjectPermissions::from_bits(p as u64).unwrap_or_default(),
-                    ),
-                    TeamAssociationId::Organization(_) => Permissions::Organization(
-                        OrganizationPermissions::from_bits(p as u64).unwrap_or_default(),
-                    ),
-                }),
-                association_id,
+                permissions: ProjectPermissions::from_bits(m.permissions as u64)
+                    .unwrap_or_default(),
+                organization_permissions: m
+                    .organization_permissions
+                    .map(|p| OrganizationPermissions::from_bits(p as u64).unwrap_or_default()),
                 accepted: m.accepted,
                 payouts_split: m.payouts_split,
                 ordering: m.ordering,
@@ -714,15 +652,14 @@ impl TeamMember {
         }
     }
 
-    // Gets all required members for checking permissions of an action on a project
+    // Gets both required members for checking permissions of an action on a project
     // - project team member (a user's membership to a given project)
     // - organization team member (a user's membership to a given organization that owns a given project)
-    // - organization (the organization that owns a given project)
     pub async fn get_for_project_permissions<'a, 'b, E>(
         project: &Project,
         user_id: UserId,
         executor: E,
-    ) -> Result<(Option<Self>, Option<Self>, Option<Organization>), super::DatabaseError>
+    ) -> Result<(Option<Self>, Option<Self>), super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
@@ -738,6 +675,6 @@ impl TeamMember {
             None
         };
 
-        Ok((project_team_member, organization_team_member, organization))
+        Ok((project_team_member, organization_team_member))
     }
 }

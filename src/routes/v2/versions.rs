@@ -374,7 +374,6 @@ pub async fn version_edit(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization,
         );
 
         if let Some(perms) = permissions {
@@ -799,7 +798,6 @@ pub async fn version_schedule(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization_item,
         )
         .unwrap_or_default();
 
@@ -884,7 +882,6 @@ pub async fn version_delete(
             &user.role,
             &team_member,
             &organization_team_member,
-            &organization,
         )
         .unwrap_or_default();
 
