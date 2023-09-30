@@ -6,7 +6,7 @@ use crate::database::models::team_item::TeamMember;
 use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
-use crate::models::organizations::{OrganizationId, UrlLink};
+use crate::models::organizations::OrganizationId;
 use crate::models::pats::Scopes;
 use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
 use crate::queue::session::AuthQueue;
@@ -48,11 +48,6 @@ pub struct NewOrganization {
     pub slug: String,
     #[serde(default = "crate::models::teams::ProjectPermissions::default")]
     pub default_project_permissions: ProjectPermissions,
-
-    /// Any desired links for the organization.
-    /// ie: "discord" -> "https://discord.gg/..."
-    #[validate]
-    pub link_urls: Option<Vec<UrlLink>>,
 }
 
 #[post("organization")]
@@ -92,29 +87,6 @@ pub async fn organization_create(
         return Err(CreateError::SlugCollision);
     }
 
-    // Create links
-    let mut link_urls = vec![];
-    if let Some(urls) = &new_organization.link_urls {
-        for url in urls {
-            let platform_id =
-                database::models::categories::LinkPlatform::get_id(&url.id, &mut *transaction)
-                    .await?
-                    .ok_or_else(|| {
-                        CreateError::InvalidInput(format!(
-                            "Link platform {} is not allowed.",
-                            url.id.clone()
-                        ))
-                    })?;
-
-            link_urls.push(database::models::organization_item::LinkUrl {
-                platform_id,
-                platform_short: "".to_string(),
-                platform_name: "".to_string(),
-                url: url.url.clone(),
-            })
-        }
-    }
-
     let organization_id = generate_organization_id(&mut transaction).await?;
 
     // Create organization managerial team
@@ -137,7 +109,6 @@ pub async fn organization_create(
         slug: new_organization.slug.clone(),
         description: new_organization.description.clone(),
         team_id,
-        link_urls,
         icon_url: None,
         color: None,
     };
@@ -317,8 +288,6 @@ pub struct OrganizationEdit {
     )]
     pub slug: Option<String>,
     pub default_project_permissions: Option<ProjectPermissions>,
-    #[validate]
-    pub link_urls: Option<Vec<UrlLink>>,
 }
 
 #[patch("{id}")]
@@ -379,50 +348,6 @@ pub async fn organizations_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
-            }
-
-            if let Some(links) = &new_organization.link_urls {
-                if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the links of this organization!"
-                            .to_string(),
-                    ));
-                }
-                sqlx::query!(
-                    "
-                    DELETE FROM organization_links
-                    WHERE joining_organization_id = $1
-                    ",
-                    id as database::models::ids::OrganizationId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-
-                for link in links {
-                    let platform_id = database::models::categories::LinkPlatform::get_id(
-                        &link.id,
-                        &mut *transaction,
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        ApiError::InvalidInput(format!(
-                            "Link platform {} is not allowed.",
-                            link.id.clone()
-                        ))
-                    })?;
-
-                    sqlx::query!(
-                        "
-                        INSERT INTO organization_links (joining_organization_id, joining_platform_id, url)
-                        VALUES ($1, $2, $3)
-                        ",
-                        id as database::models::ids::OrganizationId,
-                        platform_id as database::models::ids::LinkPlatformId,
-                        link.url
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-                }
             }
 
             if let Some(slug) = &new_organization.slug {

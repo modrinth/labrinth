@@ -1,8 +1,6 @@
 use super::ApiError;
 use crate::database::models;
-use crate::database::models::categories::{
-    DonationPlatform, LinkPlatform, ProjectType, ReportType, SideType,
-};
+use crate::database::models::categories::{DonationPlatform, ProjectType, ReportType, SideType};
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};
 use models::categories::{Category, GameVersion, Loader};
@@ -17,7 +15,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(license_list)
             .service(license_text)
             .service(donation_platform_list)
-            .service(link_platform_list)
             .service(report_type_list)
             .service(project_type_list)
             .service(side_type_list),
@@ -181,28 +178,6 @@ pub async fn donation_platform_list(
         .await?
         .into_iter()
         .map(|x| DonationPlatformQueryData {
-            short: x.short,
-            name: x.name,
-        })
-        .collect();
-    Ok(HttpResponse::Ok().json(results))
-}
-
-#[derive(serde::Serialize)]
-pub struct LinkPlatformQueryData {
-    short: String,
-    name: String,
-}
-
-#[get("link_platform")]
-pub async fn link_platform_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
-) -> Result<HttpResponse, ApiError> {
-    let results: Vec<LinkPlatformQueryData> = LinkPlatform::list(&**pool, &redis)
-        .await?
-        .into_iter()
-        .map(|x| LinkPlatformQueryData {
             short: x.short,
             name: x.name,
         })

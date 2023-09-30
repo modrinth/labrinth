@@ -1775,20 +1775,6 @@
     },
     "query": "\n        UPDATE users\n        SET password = $1\n        WHERE (id = $2)\n        "
   },
-  "444d04aff06cd5aa3cf2d4e574dacfaf3c34c362bc44afbe408b55b87fbc9686": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int4",
-          "Varchar"
-        ]
-      }
-    },
-    "query": "\n                        INSERT INTO organization_links (joining_organization_id, joining_platform_id, url)\n                        VALUES ($1, $2, $3)\n                        "
-  },
   "4514723bdc1eb8a781215075bec51af1cc6fabe88a469338d5a59533eabf80c5": {
     "describe": {
       "columns": [
@@ -2193,20 +2179,6 @@
       }
     },
     "query": "\n            INSERT INTO threads (\n                id, thread_type, mod_id, report_id\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            "
-  },
-  "51339ecff5305f2e1b4d664a55872d3259b1b6298d43eba9d7977886d7127cb3": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int4",
-          "Varchar"
-        ]
-      }
-    },
-    "query": "\n            INSERT INTO organization_links (\n                joining_organization_id, joining_platform_id, url\n            )\n            VALUES (\n                $1, $2, $3\n            )\n            "
   },
   "51e53fa0cc848654300067d4f598da49a16f5ce3aa046d1b08628566b80ce88f": {
     "describe": {
@@ -3995,74 +3967,6 @@
     },
     "query": "\n                        UPDATE users\n                        SET payout_wallet = $1, payout_wallet_type = $2, payout_address = $3\n                        WHERE (id = $4)\n                        "
   },
-  "8d7f899dc91025da20e5cd3cde87d17caa152385535f33b10d483bd7da02863c": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                    DELETE FROM organization_links\n                    WHERE joining_organization_id = $1\n                    "
-  },
-  "8dc7ba7f9a21b93af12e21d80757f6ed12ab8a004e1eb931f34db164e1e8cfa8": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "slug",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "description",
-          "ordinal": 3,
-          "type_info": "Text"
-        },
-        {
-          "name": "icon_url",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "color",
-          "ordinal": 5,
-          "type_info": "Int4"
-        },
-        {
-          "name": "links",
-          "ordinal": 6,
-          "type_info": "Jsonb"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n            SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color,\n            JSONB_AGG(DISTINCT jsonb_build_object('platform_id', ol.joining_platform_id, 'platform_short', lp.short, 'platform_name', lp.name,'url', ol.url)) filter (where ol.joining_platform_id is not null) links\n            FROM organizations o\n            LEFT JOIN organization_links ol ON ol.joining_organization_id = o.id\n            LEFT JOIN link_platforms lp ON lp.id = ol.joining_platform_id\n            LEFT JOIN mods m ON m.organization_id = o.id\n            WHERE m.id = $1\n            GROUP BY o.id;\n            "
-  },
   "8f5e2a570cf35b2d158182bac37fd40bcec277bbdeddaece5efaa88600048a70": {
     "describe": {
       "columns": [],
@@ -4245,6 +4149,57 @@
       }
     },
     "query": "\n                    UPDATE mods\n                    SET wiki_url = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "99a3a60e4fcddb044d23025da2fec3059d78b1730110fd286dc24129efcd2ccf": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "slug",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "team_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "description",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "icon_url",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "color",
+          "ordinal": 5,
+          "type_info": "Int4"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8Array",
+          "TextArray"
+        ]
+      }
+    },
+    "query": "\n                SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color\n                FROM organizations o\n                WHERE o.id = ANY($1) OR o.slug = ANY($2)\n                GROUP BY o.id;\n                "
   },
   "99e7779380ebae726051ba8e2810f37bee36f3fb36729c07ef11d0ac1b611d7e": {
     "describe": {
@@ -4687,36 +4642,6 @@
     },
     "query": "\n                                UPDATE users\n                                SET balance = balance - $1\n                                WHERE id = $2\n                                "
   },
-  "b221d8e54feeb350436373167f30006467211c98719797fbd6b8080f1ae12949": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int4"
-        },
-        {
-          "name": "short",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "name",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": []
-      }
-    },
-    "query": "\n            SELECT id, short, name FROM link_platforms\n            "
-  },
   "b26cbb11458743ba0677f4ca24ceaff0f9766ddac4a076010c98cf086dd1d7af": {
     "describe": {
       "columns": [
@@ -5048,26 +4973,6 @@
       }
     },
     "query": "\n            SELECT id FROM game_versions\n            WHERE version = $1\n            "
-  },
-  "c22cc948f58f1f58832680008602f715d08d6a38d925ef148815b1b9fd35b6c9": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int4"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            SELECT id FROM link_platforms\n            WHERE short = $1\n            "
   },
   "c2564faa5f5a7d8aa485f4becde16ebf54d16f2dc41a70471e3b4fc896f11fd1": {
     "describe": {
@@ -5494,6 +5399,56 @@
     },
     "query": "SELECT EXISTS(SELECT 1 FROM files WHERE id=$1)"
   },
+  "cd8f134c33c2c02543587a53044f491b61db3e1fff7aaae711d54ef574eb4539": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "slug",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "team_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "description",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "icon_url",
+          "ordinal": 4,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "color",
+          "ordinal": 5,
+          "type_info": "Int4"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color\n            FROM organizations o\n            LEFT JOIN mods m ON m.organization_id = o.id\n            WHERE m.id = $1\n            GROUP BY o.id;\n            "
+  },
   "cdd7f8f95c308d9474e214d584c03be0466214da1e157f6bc577b76dbef7df86": {
     "describe": {
       "columns": [],
@@ -5606,18 +5561,6 @@
       }
     },
     "query": "\n                UPDATE collections\n                SET title = $1\n                WHERE (id = $2)\n                "
-  },
-  "cee44ec35c542714a52efb843d265fe48905f2c7c30aace51c2412b8a10e2d4b": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "\n                DELETE FROM organization_links\n                WHERE joining_organization_id = $1\n                "
   },
   "cef01012769dcd499a0d16ce65ffc1e94bce362a7246b6a0a38d133afb90d3b6": {
     "describe": {
@@ -6009,63 +5952,6 @@
       }
     },
     "query": "\n                SELECT id, session, user_id\n                FROM sessions\n                WHERE refresh_expires <= NOW()\n                "
-  },
-  "da18852f9503350655ab44ba6c24250bca564545171794b04351bc10ec9d771a": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "slug",
-          "ordinal": 1,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "team_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "description",
-          "ordinal": 3,
-          "type_info": "Text"
-        },
-        {
-          "name": "icon_url",
-          "ordinal": 4,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "color",
-          "ordinal": 5,
-          "type_info": "Int4"
-        },
-        {
-          "name": "links",
-          "ordinal": 6,
-          "type_info": "Jsonb"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        null
-      ],
-      "parameters": {
-        "Left": [
-          "Int8Array",
-          "TextArray"
-        ]
-      }
-    },
-    "query": "\n                SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color,\n                JSONB_AGG(DISTINCT jsonb_build_object('platform_id', ol.joining_platform_id, 'platform_short', lp.short, 'platform_name', lp.name,'url', ol.url)) filter (where ol.joining_platform_id is not null) links\n                FROM organizations o\n                LEFT JOIN organization_links ol ON ol.joining_organization_id = o.id\n                LEFT JOIN link_platforms lp ON lp.id = ol.joining_platform_id\n                WHERE o.id = ANY($1) OR o.slug = ANY($2)\n                GROUP BY o.id;\n                "
   },
   "dc6aa2e7bfd5d5004620ddd4cd6a47ecc56159e1489054e0652d56df802fb5e5": {
     "describe": {

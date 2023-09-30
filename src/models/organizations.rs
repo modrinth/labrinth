@@ -3,7 +3,6 @@ use super::{
     teams::TeamMember,
 };
 use serde::{Deserialize, Serialize};
-use validator::Validate;
 
 /// The ID of a team
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,9 +21,6 @@ pub struct Organization {
     pub team_id: TeamId,
     /// The description of the organization
     pub description: String,
-    /// Any attached urls of the organization
-    /// ie: "discord" -> "https://discord.gg/..."
-    pub link_urls: Option<Vec<UrlLink>>,
 
     /// The icon url of the organization
     pub icon_url: Option<String>,
@@ -46,29 +42,8 @@ impl Organization {
             team_id: data.team_id.into(),
             description: data.description,
             members: team_members,
-            link_urls: Some(
-                data.link_urls
-                    .into_iter()
-                    .map(|d| UrlLink {
-                        id: d.platform_short,
-                        platform: d.platform_name,
-                        url: d.url,
-                    })
-                    .collect(),
-            ),
             icon_url: data.icon_url,
             color: data.color,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Validate, Clone, Eq, PartialEq)]
-pub struct UrlLink {
-    pub id: String,
-    pub platform: String,
-    #[validate(
-        custom(function = "crate::util::validate::validate_url"),
-        length(max = 2048)
-    )]
-    pub url: String,
 }

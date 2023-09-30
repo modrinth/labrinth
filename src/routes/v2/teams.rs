@@ -28,6 +28,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
+// Returns all members of a project,
+// including the team members of the project's team, but
+// also the members of the organization's team if the project is associated with an organization
+// (Unlike team_members_get_project, which only returns the members of the project's team)
 #[get("{id}/members")]
 pub async fn team_members_get_project(
     req: HttpRequest,
@@ -54,14 +58,28 @@ pub async fn team_members_get_project(
         if !is_authorized(&project.inner, &current_user, &pool).await? {
             return Ok(HttpResponse::NotFound().body(""));
         }
-        let members_data =
+        let mut members_data =
             TeamMember::get_from_team_full(project.inner.team_id, &**pool, &redis).await?;
-        let users = crate::database::models::User::get_many_ids(
-            &members_data.iter().map(|x| x.user_id).collect::<Vec<_>>(),
-            &**pool,
-            &redis,
-        )
-        .await?;
+        let mut member_user_ids = members_data.iter().map(|x| x.user_id).collect::<Vec<_>>();
+
+        // Adds the organization's team members to the list of members, if the project is associated with an organization
+        if let Some(oid) = project.inner.organization_id {
+            let organization_data = Organization::get_id(oid, &**pool, &redis).await?;
+            if let Some(organization_data) = organization_data {
+                let org_team =
+                    TeamMember::get_from_team_full(organization_data.team_id, &**pool, &redis)
+                        .await?;
+                for member in org_team {
+                    if !member_user_ids.contains(&member.user_id) {
+                        member_user_ids.push(member.user_id);
+                        members_data.push(member);
+                    }
+                }
+            }
+        }
+
+        let users =
+            crate::database::models::User::get_many_ids(&member_user_ids, &**pool, &redis).await?;
 
         let user_id = current_user.as_ref().map(|x| x.id.into());
 
@@ -158,6 +176,7 @@ pub async fn team_members_get_organization(
     }
 }
 
+// Returns all members of a team, but not necessarily those of a project-team's organization (unlike team_members_get_project)
 #[get("{id}/members")]
 pub async fn team_members_get(
     req: HttpRequest,

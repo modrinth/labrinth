@@ -9,39 +9,6 @@ const ORGANIZATIONS_SLUGS_NAMESPACE: &str = "organizations_slugs";
 
 const DEFAULT_EXPIRY: i64 = 1800;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LinkUrl {
-    pub platform_id: LinkPlatformId,
-    pub platform_short: String,
-    pub platform_name: String,
-    pub url: String,
-}
-impl LinkUrl {
-    pub async fn insert_organization(
-        &self,
-        organization_id: OrganizationId,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), sqlx::error::Error> {
-        sqlx::query!(
-            "
-            INSERT INTO organization_links (
-                joining_organization_id, joining_platform_id, url
-            )
-            VALUES (
-                $1, $2, $3
-            )
-            ",
-            organization_id as OrganizationId,
-            self.platform_id as LinkPlatformId,
-            self.url,
-        )
-        .execute(&mut *transaction)
-        .await?;
-
-        Ok(())
-    }
-}
-
 #[derive(Deserialize, Serialize, Clone, Debug)]
 /// An organization of users who together control one or more projects and organizations.
 pub struct Organization {
@@ -56,9 +23,6 @@ pub struct Organization {
 
     /// The description of the organization
     pub description: String,
-
-    /// Any associated urls for the organization
-    pub link_urls: Vec<LinkUrl>,
 
     /// The display icon for the organization
     pub icon_url: Option<String>,
@@ -84,10 +48,6 @@ impl Organization {
         )
         .execute(&mut *transaction)
         .await?;
-
-        for link_url in self.link_urls {
-            link_url.insert_organization(self.id, transaction).await?;
-        }
 
         Ok(())
     }
@@ -215,11 +175,8 @@ impl Organization {
 
             let organizations: Vec<Organization> = sqlx::query!(
                 "
-                SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color,
-                JSONB_AGG(DISTINCT jsonb_build_object('platform_id', ol.joining_platform_id, 'platform_short', lp.short, 'platform_name', lp.name,'url', ol.url)) filter (where ol.joining_platform_id is not null) links
+                SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color
                 FROM organizations o
-                LEFT JOIN organization_links ol ON ol.joining_organization_id = o.id
-                LEFT JOIN link_platforms lp ON lp.id = ol.joining_platform_id
                 WHERE o.id = ANY($1) OR o.slug = ANY($2)
                 GROUP BY o.id;
                 ",
@@ -236,9 +193,6 @@ impl Organization {
                     slug: m.slug,
                     team_id: TeamId(m.team_id),
                     description: m.description,
-                    link_urls: serde_json::from_value(
-                        m.links.unwrap_or_default(),
-                    ).ok().unwrap_or_default(),
                     icon_url: m.icon_url,
                     color: m.color.map(|x| x as u32),
                 }))
@@ -283,11 +237,8 @@ impl Organization {
     {
         let result = sqlx::query!(
             "
-            SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color,
-            JSONB_AGG(DISTINCT jsonb_build_object('platform_id', ol.joining_platform_id, 'platform_short', lp.short, 'platform_name', lp.name,'url', ol.url)) filter (where ol.joining_platform_id is not null) links
+            SELECT o.id, o.slug, o.team_id, o.description, o.icon_url, o.color
             FROM organizations o
-            LEFT JOIN organization_links ol ON ol.joining_organization_id = o.id
-            LEFT JOIN link_platforms lp ON lp.id = ol.joining_platform_id
             LEFT JOIN mods m ON m.organization_id = o.id
             WHERE m.id = $1
             GROUP BY o.id;
@@ -303,9 +254,6 @@ impl Organization {
                 slug: result.slug,
                 team_id: TeamId(result.team_id),
                 description: result.description,
-                link_urls: serde_json::from_value(result.links.unwrap_or_default())
-                    .ok()
-                    .unwrap_or_default(),
                 icon_url: result.icon_url,
                 color: result.color.map(|x| x as u32),
             }))
@@ -343,16 +291,6 @@ impl Organization {
             }
 
             Organization::clear_cache(id, Some(organization.slug), redis).await?;
-
-            sqlx::query!(
-                "
-                DELETE FROM organization_links
-                WHERE joining_organization_id = $1
-                ",
-                id as OrganizationId,
-            )
-            .execute(&mut *transaction)
-            .await?;
 
             sqlx::query!(
                 "

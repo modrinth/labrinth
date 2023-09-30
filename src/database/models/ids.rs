@@ -183,9 +183,6 @@ pub struct SideTypeId(pub i32);
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct DonationPlatformId(pub i32);
-#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]
-#[sqlx(transparent)]
-pub struct LinkPlatformId(pub i32);
 
 #[derive(Copy, Clone, Debug, Type, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[sqlx(transparent)]
