@@ -1,6 +1,6 @@
 use crate::validate::{SupportedGameVersions, ValidationError, ValidationResult};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 use zip::ZipArchive;
 
 pub struct FabricValidator;
@@ -36,6 +36,24 @@ impl super::Validator for FabricValidator {
             ));
         }
 
-        Ok(ValidationResult::Pass)
+        let manifest = {
+            let mut file = if let Ok(file) = archive.by_name("META-INF/MANIFEST.MF") {
+                file
+            } else {
+                return Ok(ValidationResult::Warning("Java JAR manifest is missing."));
+            };
+
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)?;
+            contents
+        };
+
+        if let Some(line) = manifest.lines().find(|&l| l.starts_with("Fabric-Jar-Type")) {
+            if line == "classes" {
+                Ok(ValidationResult::Pass)
+            }
+        }
+
+        Ok(ValidationResult::Warning("Fabric mod file is not recognized as a 'classes' file"))
     }
 }

@@ -731,6 +731,8 @@ impl DependencyType {
 pub enum FileType {
     RequiredResourcePack,
     OptionalResourcePack,
+    SourcesJar,
+    JavadocJar,
     Unknown,
 }
 
@@ -746,6 +748,8 @@ impl FileType {
         match self {
             FileType::RequiredResourcePack => "required-resource-pack",
             FileType::OptionalResourcePack => "optional-resource-pack",
+            FileType::SourcesJar => "sources-jar",
+            FileType::JavadocJar => "javadoc-jar",
             FileType::Unknown => "unknown",
         }
     }
@@ -754,6 +758,8 @@ impl FileType {
         match string {
             "required-resource-pack" => FileType::RequiredResourcePack,
             "optional-resource-pack" => FileType::OptionalResourcePack,
+            "sources-jar" => FileType::SourcesJar,
+            "javadoc-jar" => FileType::JavadocJar,
             "unknown" => FileType::Unknown,
             _ => FileType::Unknown,
         }

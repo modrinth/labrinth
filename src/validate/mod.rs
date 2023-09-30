@@ -121,6 +121,16 @@ pub async fn validate_file(
                     project_type = "resourcepack".to_string();
                     loaders = vec![Loader("minecraft".to_string())];
                 }
+                FileType::SourcesJar => {
+                    Ok(ValidationResult::Warning(
+                        "Source files should not be marked primary",
+                    ))
+                }
+                FileType::JavadocJar => {
+                    Ok(ValidationResult::Warning(
+                        "Javadoc files should not be marked primary",
+                    ))
+                }
                 FileType::Unknown => {}
             }
         }
