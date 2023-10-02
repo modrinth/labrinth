@@ -1,6 +1,6 @@
 CREATE TABLE organizations (
     id bigint PRIMARY KEY,
-    slug varchar(255) NOT NULL,
+    title varchar(255) NOT NULL, -- also slug
     description text NOT NULL,
     created_at timestamp NOT NULL DEFAULT now(),
     updated_at timestamp NOT NULL DEFAULT now(),
