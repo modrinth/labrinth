@@ -660,6 +660,18 @@
     },
     "query": "\n        SELECT EXISTS(SELECT 1 FROM mod_follows mf WHERE mf.follower_id = $1 AND mf.mod_id = $2)\n        "
   },
+  "10279b5a8383ba8e286f1bfb9a486e3f8b362c46cfc2647c90a83a10e5329569": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                        UPDATE threads\n                        SET show_in_mod_inbox = FALSE\n                        WHERE id = $1\n                        "
+  },
   "1209ffc1ffbea89f7060573275dc7325ac4d7b4885b6c1d1ec92998e6012e455": {
     "describe": {
       "columns": [],
