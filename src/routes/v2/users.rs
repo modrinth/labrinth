@@ -143,7 +143,7 @@ pub async fn projects_list(
             .map(|y| y.role.is_mod() || y.id == user_id)
             .unwrap_or(false);
 
-        let project_data = User::get_projects(id, &**pool).await?;
+        let project_data = User::get_projects(id, &**pool, &redis).await?;
 
         let response: Vec<_> =
             crate::database::Project::get_many_ids(&project_data, &**pool, &redis)

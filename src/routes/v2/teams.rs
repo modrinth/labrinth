@@ -1,7 +1,7 @@
 use crate::auth::{get_user_from_headers, is_authorized};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::team_item::TeamAssociationId;
-use crate::database::models::{Organization, Team, TeamMember};
+use crate::database::models::{Organization, Team, TeamMember, User};
 use crate::database::Project;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
@@ -348,6 +348,7 @@ pub async fn join_team(
         )
         .await?;
 
+        User::clear_project_cache(&[current_user.id.into()], &redis).await?;
         TeamMember::clear_cache(team_id, &redis).await?;
 
         transaction.commit().await?;
@@ -954,6 +955,7 @@ pub async fn remove_team_member(
         }
 
         TeamMember::clear_cache(id, &redis).await?;
+        User::clear_project_cache(&[current_user.id.into()], &redis).await?;
 
         transaction.commit().await?;
         Ok(HttpResponse::NoContent().body(""))

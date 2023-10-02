@@ -1,9 +1,10 @@
-use super::ids::*;
+use super::{ids::*, User};
 use crate::database::models;
 use crate::database::models::DatabaseError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
+use futures::TryStreamExt;
 use redis::cmd;
 use serde::{Deserialize, Serialize};
 
@@ -404,15 +405,20 @@ impl Project {
 
             models::TeamMember::clear_cache(project.inner.team_id, redis).await?;
 
-            sqlx::query!(
+            let affected_user_ids = sqlx::query!(
                 "
                 DELETE FROM team_members
                 WHERE team_id = $1
+                RETURNING user_id
                 ",
                 project.inner.team_id as TeamId,
             )
-            .execute(&mut *transaction)
+            .fetch_many(&mut *transaction)
+            .try_filter_map(|e| async { Ok(e.right().map(|x| UserId(x.user_id))) })
+            .try_collect::<Vec<_>>()
             .await?;
+
+            User::clear_project_cache(&affected_user_ids, redis).await?;
 
             sqlx::query!(
                 "
