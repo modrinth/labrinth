@@ -92,3 +92,5 @@ color-thief = "0.2.2"
 woothee = "0.13.0"
 
 lettre = "0.10.4"
+
+atom_syndication = "0.12.2"
