@@ -314,7 +314,6 @@ impl User {
             .and_then(|x| serde_json::from_str::<Vec<ProjectId>>(&x).ok());
 
         if let Some(projects) = cached_projects {
-            log::info!("Returning cached!");
             return Ok(projects);
         }
 
