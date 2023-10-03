@@ -148,15 +148,7 @@ pub async fn atom_feed(
 
     let versions = database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
 
-    let mut versions = filter_authorized_versions(
-        versions
-            .into_iter()
-            .filter(|x| x.loaders.iter().any(|y| *y == "forge"))
-            .collect(),
-        &user_option,
-        &pool,
-    )
-    .await?;
+    let mut versions = filter_authorized_versions(versions, &user_option, &pool).await?;
 
     versions.sort_by(|a, b| b.date_published.cmp(&a.date_published));
 
@@ -212,10 +204,16 @@ pub async fn atom_feed(
     }
 
     let project_id = crate::models::ids::ProjectId::from(project.inner.id);
+    let project_link = format!(
+        "{}/{}/{}",
+        dotenvy::var("SITE_URL").unwrap_or_default(),
+        project.project_type,
+        project_id
+    );
 
     let feed = Feed {
         title: Text::plain(project.inner.title.clone()),
-        id: project_id.to_string(),
+        id: project_link.clone(),
         updated: project.inner.updated.into(),
         authors: members_data
             .iter()
@@ -239,19 +237,28 @@ pub async fn atom_feed(
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }),
         icon: project.inner.icon_url.clone(),
-        links: vec![Link {
-            href: format!(
-                "{}/{}/{}",
-                dotenvy::var("SITE_URL").unwrap_or_default(),
-                project.project_type,
-                project_id
-            ),
-            rel: "alternate".to_string(),
-            hreflang: None,
-            mime_type: Some("text/html".to_string()),
-            title: None,
-            length: None,
-        }],
+        links: vec![
+            Link {
+                href: project_link,
+                rel: "alternate".to_string(),
+                hreflang: None,
+                mime_type: Some("text/html".to_string()),
+                title: None,
+                length: None,
+            },
+            Link {
+                href: format!(
+                    "{}/updates/{}/feed.atom",
+                    dotenvy::var("SELF_ADDR").unwrap_or_default(),
+                    project_id
+                ),
+                rel: "self".to_string(),
+                hreflang: None,
+                mime_type: Some("application/atom+xml".to_string()),
+                title: None,
+                length: None,
+            },
+        ],
         logo: None,
         rights: None,
         subtitle: Some(Text::plain(project.inner.description.clone())),
@@ -269,7 +276,7 @@ pub async fn atom_feed(
 
                 Entry {
                     title: Text::plain(v.name.clone()),
-                    id: version_id.to_string(),
+                    id: link.clone(),
                     updated: v.date_published.into(),
                     authors: members_data
                         .iter()
@@ -299,10 +306,10 @@ pub async fn atom_feed(
                     summary: None,
                     content: Some(Content {
                         base: None,
-                        lang: Some("en_US".to_string()),
+                        lang: Some("en-us".to_string()),
                         value: None,
                         src: Some(link),
-                        content_type: None,
+                        content_type: Some("text/html".to_string()),
                     }),
                     extensions: Default::default(),
                 }
