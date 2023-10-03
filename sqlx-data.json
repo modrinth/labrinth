@@ -4001,6 +4001,26 @@
     },
     "query": "\n        UPDATE threads\n        SET show_in_mod_inbox = FALSE\n        WHERE id = $1\n        "
   },
+  "8f74918aa923e516b6b2967b7d1afbd02c8bde5466d22ad60ad735f8358cbf04": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                DELETE FROM team_members\n                WHERE team_id = $1\n                RETURNING user_id\n                "
+  },
   "912250d37f13a98a21165c72bfc1eaa8a85b9952dd6750c117dca7fbb1bb8962": {
     "describe": {
       "columns": [],
