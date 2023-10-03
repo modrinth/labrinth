@@ -1,4 +1,5 @@
 use super::ids::{ProjectId, UserId};
+use super::CollectionId;
 use crate::database::models::DatabaseError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::users::{Badges, RecipientType, RecipientWallet};
@@ -185,8 +186,10 @@ impl User {
 
             for user in users {
                 if let Some(user) = user.and_then(|x| serde_json::from_str::<User>(&x).ok()) {
-                    remaining_strings
-                        .retain(|x| &to_base62(user.id.0 as u64) != x && &user.username != x);
+                    remaining_strings.retain(|x| {
+                        &to_base62(user.id.0 as u64) != x
+                            && user.username.to_lowercase() != x.to_lowercase()
+                    });
                     found_users.push(user);
                     continue;
                 }
@@ -313,6 +316,30 @@ impl User {
         .fetch_many(exec)
         .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.id))) })
         .try_collect::<Vec<ProjectId>>()
+        .await?;
+
+        Ok(projects)
+    }
+
+    pub async fn get_collections<'a, E>(
+        user_id: UserId,
+        exec: E,
+    ) -> Result<Vec<CollectionId>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let projects = sqlx::query!(
+            "
+            SELECT c.id FROM collections c
+            WHERE c.user_id = $1
+            ",
+            user_id as UserId,
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| CollectionId(m.id))) })
+        .try_collect::<Vec<CollectionId>>()
         .await?;
 
         Ok(projects)
@@ -461,7 +488,7 @@ impl User {
             sqlx::query!(
                 "
                 DELETE FROM reports
-                WHERE user_id = $1
+                WHERE user_id = $1 OR reporter = $1
                 ",
                 id as UserId,
             )

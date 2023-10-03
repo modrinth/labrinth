@@ -1,14 +1,17 @@
 use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
-use crate::database::models;
 use crate::database::models::thread_item::ThreadBuilder;
+use crate::database::models::{self, image_item};
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
+use crate::models::ids::ImageId;
+use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
 use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
     VersionStatus,
 };
+use crate::models::teams::ProjectPermissions;
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
@@ -233,6 +236,14 @@ struct ProjectCreateData {
     #[serde(default = "default_requested_status")]
     /// The status of the mod to be set once it is approved
     pub requested_status: ProjectStatus,
+
+    // Associations to uploaded images in body/description
+    #[validate(length(max = 10))]
+    #[serde(default)]
+    pub uploaded_images: Vec<ImageId>,
+
+    /// The id of the organization to create the project in
+    pub organization_id: Option<models::ids::OrganizationId>,
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -367,8 +378,8 @@ async fn project_create_inner(
     let mut versions_map = std::collections::HashMap::new();
     let mut gallery_urls = Vec::new();
 
-    let all_game_versions = models::categories::GameVersion::list(&mut *transaction).await?;
-    let all_loaders = models::categories::Loader::list(&mut *transaction).await?;
+    let all_game_versions = models::categories::GameVersion::list(&mut *transaction, redis).await?;
+    let all_loaders = models::categories::Loader::list(&mut *transaction, redis).await?;
 
     {
         // The first multipart field must be named "data" and contain a
@@ -466,7 +477,6 @@ async fn project_create_inner(
                 .await?,
             );
         }
-
         project_create_data = create_data;
     }
 
@@ -512,7 +522,7 @@ async fn project_create_inner(
                 icon_data = Some(
                     process_icon_upload(
                         uploaded_files,
-                        project_id,
+                        project_id.0,
                         file_extension,
                         file_host,
                         field,
@@ -661,7 +671,9 @@ async fn project_create_inner(
             members: vec![models::team_item::TeamMemberBuilder {
                 user_id: current_user.id.into(),
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
-                permissions: crate::models::teams::Permissions::ALL,
+                // Allow all permissions for project creator, even if attached to a project
+                permissions: ProjectPermissions::all(),
+                organization_permissions: None,
                 accepted: true,
                 payouts_split: Decimal::ONE_HUNDRED,
                 ordering: 0,
@@ -739,6 +751,7 @@ async fn project_create_inner(
             project_id: project_id.into(),
             project_type_id,
             team_id,
+            organization_id: project_create_data.organization_id,
             title: project_create_data.title,
             description: project_create_data.description,
             body: project_create_data.body,
@@ -779,6 +792,41 @@ async fn project_create_inner(
 
         let id = project_builder_actual.insert(&mut *transaction).await?;
 
+        for image_id in project_create_data.uploaded_images {
+            if let Some(db_image) =
+                image_item::Image::get(image_id.into(), &mut *transaction, redis).await?
+            {
+                let image: Image = db_image.into();
+                if !matches!(image.context, ImageContext::Project { .. })
+                    || image.context.inner_id().is_some()
+                {
+                    return Err(CreateError::InvalidInput(format!(
+                        "Image {} is not unused and in the 'project' context",
+                        image_id
+                    )));
+                }
+
+                sqlx::query!(
+                    "
+                    UPDATE uploaded_images
+                    SET mod_id = $1
+                    WHERE id = $2
+                    ",
+                    id as models::ids::ProjectId,
+                    image_id.0 as i64
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                image_item::Image::clear_cache(image.id.into(), redis).await?;
+            } else {
+                return Err(CreateError::InvalidInput(format!(
+                    "Image {} does not exist",
+                    image_id
+                )));
+            }
+        }
+
         let thread_id = ThreadBuilder {
             type_: ThreadType::Project,
             members: vec![],
@@ -793,6 +841,7 @@ async fn project_create_inner(
             slug: project_builder.slug.clone(),
             project_type: project_create_data.project_type.clone(),
             team: team_id.into(),
+            organization: project_create_data.organization_id.map(|x| x.into()),
             title: project_builder.title.clone(),
             description: project_builder.description.clone(),
             body: project_builder.body.clone(),
@@ -833,14 +882,6 @@ async fn project_create_inner(
             thread_id: thread_id.into(),
             monetization_status: MonetizationStatus::Monetized,
         };
-
-        if status == ProjectStatus::Processing {
-            if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK") {
-                crate::util::webhook::send_discord_webhook(response.id, pool, webhook_url, None)
-                    .await
-                    .ok();
-            }
-        }
 
         Ok(HttpResponse::Ok().json(response))
     }
@@ -929,7 +970,7 @@ async fn create_initial_version(
 
 async fn process_icon_upload(
     uploaded_files: &mut Vec<UploadedFile>,
-    project_id: ProjectId,
+    id: u64,
     file_extension: &str,
     file_host: &dyn FileHost,
     mut field: Field,
@@ -944,7 +985,7 @@ async fn process_icon_upload(
         let upload_data = file_host
             .upload_file(
                 content_type,
-                &format!("data/{project_id}/{hash}.{file_extension}"),
+                &format!("data/{id}/{hash}.{file_extension}"),
                 data.freeze(),
             )
             .await?;

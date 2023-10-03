@@ -49,8 +49,8 @@ impl DependencyBuilder {
         } else if let Some(version_id) = self.version_id {
             sqlx::query!(
                 "
-                    SELECT mod_id FROM versions WHERE id = $1
-                    ",
+                SELECT mod_id FROM versions WHERE id = $1
+                ",
                 version_id as VersionId,
             )
             .fetch_optional(&mut *transaction)
@@ -67,8 +67,8 @@ impl DependencyBuilder {
             ",
             version_id as VersionId,
             self.dependency_type,
-            project_id.map(|x| x.0),
             self.version_id.map(|x| x.0),
+            project_id.map(|x| x.0),
             self.file_name,
         )
         .execute(&mut *transaction)
@@ -379,6 +379,17 @@ impl Version {
             id as VersionId,
         )
         .execute(&mut *transaction)
+        .await?;
+
+        crate::database::models::Project::update_game_versions(
+            ProjectId(project_id.mod_id),
+            &mut *transaction,
+        )
+        .await?;
+        crate::database::models::Project::update_loaders(
+            ProjectId(project_id.mod_id),
+            &mut *transaction,
+        )
         .await?;
 
         Ok(Some(()))
@@ -716,7 +727,7 @@ impl Version {
 
             for (key, mut files) in save_files {
                 cmd("SET")
-                    .arg(format!("{}:{}", VERSIONS_NAMESPACE, key))
+                    .arg(format!("{}:{}", VERSION_FILES_NAMESPACE, key))
                     .arg(serde_json::to_string(&files)?)
                     .arg("EX")
                     .arg(DEFAULT_EXPIRY)

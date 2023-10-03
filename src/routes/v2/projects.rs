@@ -1,20 +1,23 @@
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
 use crate::database;
+use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
+use crate::models::images::ImageContext;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
     DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType,
 };
-use crate::models::teams::Permissions;
+use crate::models::teams::ProjectPermissions;
 use crate::models::threads::MessageBody;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::search::{search_for_project, SearchConfig, SearchError};
+use crate::util::img;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
@@ -401,29 +404,25 @@ pub async fn project_edit(
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await?;
-        let permissions;
+        let (team_member, organization_team_member) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        if user.role.is_admin() {
-            permissions = Some(Permissions::ALL)
-        } else if let Some(ref member) = team_member {
-            permissions = Some(member.permissions)
-        } else if user.role.is_mod() {
-            permissions = Some(Permissions::EDIT_DETAILS | Permissions::EDIT_BODY)
-        } else {
-            permissions = None
-        }
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        );
 
         if let Some(perms) = permissions {
             let mut transaction = pool.begin().await?;
 
             if let Some(title) = &new_project.title {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the title of this project!"
                             .to_string(),
@@ -444,7 +443,7 @@ pub async fn project_edit(
             }
 
             if let Some(description) = &new_project.description {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the description of this project!"
                             .to_string(),
@@ -465,7 +464,7 @@ pub async fn project_edit(
             }
 
             if let Some(status) = &new_project.status {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the status of this project!"
                             .to_string(),
@@ -500,16 +499,16 @@ pub async fn project_edit(
                     .execute(&mut *transaction)
                     .await?;
 
-                    if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK") {
-                        crate::util::webhook::send_discord_webhook(
-                            project_item.inner.id.into(),
-                            &pool,
-                            webhook_url,
-                            None,
-                        )
-                        .await
-                        .ok();
-                    }
+                    sqlx::query!(
+                        "
+                        UPDATE threads
+                        SET show_in_mod_inbox = FALSE
+                        WHERE id = $1
+                        ",
+                        project_item.thread_id as database::models::ids::ThreadId,
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
                 }
 
                 if status.is_approved() && !project_item.inner.status.is_approved() {
@@ -530,6 +529,7 @@ pub async fn project_edit(
                         crate::util::webhook::send_discord_webhook(
                             project_item.inner.id.into(),
                             &pool,
+                            &redis,
                             webhook_url,
                             None,
                         )
@@ -546,6 +546,30 @@ pub async fn project_edit(
                         )
                         .execute(&mut *transaction)
                         .await?;
+                    }
+                }
+
+                if user.role.is_mod() {
+                    if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK") {
+                        crate::util::webhook::send_discord_webhook(
+                            project_item.inner.id.into(),
+                            &pool,
+                            &redis,
+                            webhook_url,
+                            Some(
+                                format!(
+                                    "**[{}]({}/user/{})** changed project status from **{}** to **{}**",
+                                    user.username,
+                                    dotenvy::var("SITE_URL")?,
+                                    user.username,
+                                    &project_item.inner.status.as_friendly_str(),
+                                    status.as_friendly_str(),
+                                )
+                                .to_string(),
+                            ),
+                        )
+                        .await
+                        .ok();
                     }
                 }
 
@@ -605,7 +629,7 @@ pub async fn project_edit(
             }
 
             if let Some(requested_status) = &new_project.requested_status {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the requested status of this project!"
                             .to_string(),
@@ -634,7 +658,7 @@ pub async fn project_edit(
                 .await?;
             }
 
-            if perms.contains(Permissions::EDIT_DETAILS) {
+            if perms.contains(ProjectPermissions::EDIT_DETAILS) {
                 if new_project.categories.is_some() {
                     sqlx::query!(
                         "
@@ -661,7 +685,7 @@ pub async fn project_edit(
             }
 
             if let Some(categories) = &new_project.categories {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the categories of this project!"
                             .to_string(),
@@ -693,7 +717,7 @@ pub async fn project_edit(
             }
 
             if let Some(categories) = &new_project.additional_categories {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the additional categories of this project!"
                             .to_string(),
@@ -725,7 +749,7 @@ pub async fn project_edit(
             }
 
             if let Some(issues_url) = &new_project.issues_url {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the issues URL of this project!"
                             .to_string(),
@@ -746,7 +770,7 @@ pub async fn project_edit(
             }
 
             if let Some(source_url) = &new_project.source_url {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the source URL of this project!"
                             .to_string(),
@@ -767,7 +791,7 @@ pub async fn project_edit(
             }
 
             if let Some(wiki_url) = &new_project.wiki_url {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the wiki URL of this project!"
                             .to_string(),
@@ -788,7 +812,7 @@ pub async fn project_edit(
             }
 
             if let Some(license_url) = &new_project.license_url {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the license URL of this project!"
                             .to_string(),
@@ -809,7 +833,7 @@ pub async fn project_edit(
             }
 
             if let Some(discord_url) = &new_project.discord_url {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the discord URL of this project!"
                             .to_string(),
@@ -830,7 +854,7 @@ pub async fn project_edit(
             }
 
             if let Some(slug) = &new_project.slug {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the slug of this project!"
                             .to_string(),
@@ -888,7 +912,7 @@ pub async fn project_edit(
             }
 
             if let Some(new_side) = &new_project.client_side {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the side type of this mod!"
                             .to_string(),
@@ -916,7 +940,7 @@ pub async fn project_edit(
             }
 
             if let Some(new_side) = &new_project.server_side {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the side type of this project!"
                             .to_string(),
@@ -944,7 +968,7 @@ pub async fn project_edit(
             }
 
             if let Some(license) = &new_project.license_id {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the license of this project!"
                             .to_string(),
@@ -975,7 +999,7 @@ pub async fn project_edit(
             }
 
             if let Some(donations) = &new_project.donation_urls {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the donation links of this project!"
                             .to_string(),
@@ -1067,7 +1091,7 @@ pub async fn project_edit(
             }
 
             if let Some(body) = &new_project.body {
-                if !perms.contains(Permissions::EDIT_BODY) {
+                if !perms.contains(ProjectPermissions::EDIT_BODY) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the body of this project!"
                             .to_string(),
@@ -1088,7 +1112,7 @@ pub async fn project_edit(
             }
 
             if let Some(monetization_status) = &new_project.monetization_status {
-                if !perms.contains(Permissions::EDIT_DETAILS) {
+                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the monetization status of this project!"
                             .to_string(),
@@ -1119,6 +1143,18 @@ pub async fn project_edit(
                 .await?;
             }
 
+            // check new description and body for links to associated images
+            // if they no longer exist in the description or body, delete them
+            let checkable_strings: Vec<&str> = vec![&new_project.description, &new_project.body]
+                .into_iter()
+                .filter_map(|x| x.as_ref().map(|y| y.as_str()))
+                .collect();
+
+            let context = ImageContext::Project {
+                project_id: Some(id.into()),
+            };
+
+            img::delete_unused_images(context, checkable_strings, &mut transaction, &redis).await?;
             database::models::Project::clear_cache(
                 project_item.inner.id,
                 project_item.inner.slug,
@@ -1251,18 +1287,58 @@ pub async fn projects_edit(
     let team_members =
         database::models::TeamMember::get_from_team_full_many(&team_ids, &**pool, &redis).await?;
 
-    let categories = database::models::categories::Category::list(&**pool).await?;
-    let donation_platforms = database::models::categories::DonationPlatform::list(&**pool).await?;
+    let organization_ids = projects_data
+        .iter()
+        .filter_map(|x| x.inner.organization_id)
+        .collect::<Vec<database::models::OrganizationId>>();
+    let organizations =
+        database::models::Organization::get_many_ids(&organization_ids, &**pool, &redis).await?;
+
+    let organization_team_ids = organizations
+        .iter()
+        .map(|x| x.team_id)
+        .collect::<Vec<database::models::TeamId>>();
+    let organization_team_members = database::models::TeamMember::get_from_team_full_many(
+        &organization_team_ids,
+        &**pool,
+        &redis,
+    )
+    .await?;
+
+    let categories = database::models::categories::Category::list(&**pool, &redis).await?;
+    let donation_platforms =
+        database::models::categories::DonationPlatform::list(&**pool, &redis).await?;
 
     let mut transaction = pool.begin().await?;
 
     for project in projects_data {
         if !user.role.is_mod() {
-            if let Some(member) = team_members
+            let team_member = team_members
                 .iter()
-                .find(|x| x.team_id == project.inner.team_id && x.user_id == user.id.into())
-            {
-                if !member.permissions.contains(Permissions::EDIT_DETAILS) {
+                .find(|x| x.team_id == project.inner.team_id && x.user_id == user.id.into());
+
+            let organization = project
+                .inner
+                .organization_id
+                .and_then(|oid| organizations.iter().find(|x| x.id == oid));
+
+            let organization_team_member = if let Some(organization) = organization {
+                organization_team_members
+                    .iter()
+                    .find(|x| x.team_id == organization.team_id && x.user_id == user.id.into())
+            } else {
+                None
+            };
+
+            let permissions = ProjectPermissions::get_permissions_by_role(
+                &user.role,
+                &team_member.cloned(),
+                &organization_team_member.cloned(),
+            )
+            .unwrap_or_default();
+
+            if team_member.is_some() {
+                if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(format!(
                         "You do not have the permissions to bulk edit project {}!",
                         project.inner.title
@@ -1576,20 +1652,36 @@ pub async fn project_schedule(
     let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project_item) = result {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await?;
+        let (team_member, organization_team_member) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        if !user.role.is_mod()
-            && !team_member
-                .map(|x| x.permissions.contains(Permissions::EDIT_DETAILS))
-                .unwrap_or(false)
-        {
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member.clone(),
+            &organization_team_member.clone(),
+        )
+        .unwrap_or_default();
+
+        if !user.role.is_mod() && !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to edit this project's scheduling data!".to_string(),
+            ));
+        }
+
+        if !project_item.inner.status.is_approved() {
+            return Err(ApiError::InvalidInput(
+                "This project has not been approved yet. Submit to the queue with the private status to schedule it in the future!".to_string(),
+            ));
+        }
+
+        if project_item.inner.webhook_sent {
+            return Err(ApiError::InvalidInput(
+                "This project already has been published. It cannot be scheduled!".to_string(),
             ));
         }
 
@@ -1657,18 +1749,29 @@ pub async fn project_icon_edit(
             })?;
 
         if !user.role.is_mod() {
-            let team_member = database::models::TeamMember::get_from_user_id(
-                project_item.inner.team_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::InvalidInput("The specified project does not exist!".to_string())
-            })?;
+            let (team_member, organization_team_member) =
+                database::models::TeamMember::get_for_project_permissions(
+                    &project_item.inner,
+                    user.id.into(),
+                    &**pool,
+                )
+                .await?;
 
-            if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
+            // Hide the project
+            if team_member.is_none() && organization_team_member.is_none() {
+                return Err(ApiError::CustomAuthentication(
+                    "The specified project does not exist!".to_string(),
+                ));
+            }
+
+            let permissions = ProjectPermissions::get_permissions_by_role(
+                &user.role,
+                &team_member,
+                &organization_team_member,
+            )
+            .unwrap_or_default();
+
+            if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
                 return Err(ApiError::CustomAuthentication(
                     "You don't have permission to edit this project's icon.".to_string(),
                 ));
@@ -1759,18 +1862,28 @@ pub async fn delete_project_icon(
         })?;
 
     if !user.role.is_mod() {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified project does not exist!".to_string())
-        })?;
+        let (team_member, organization_team_member) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
+        // Hide the project
+        if team_member.is_none() && organization_team_member.is_none() {
+            return Err(ApiError::CustomAuthentication(
+                "The specified project does not exist!".to_string(),
+            ));
+        }
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        )
+        .unwrap_or_default();
+
+        if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
                 "You don't have permission to edit this project's icon.".to_string(),
             ));
@@ -1864,18 +1977,29 @@ pub async fn add_gallery_item(
         }
 
         if !user.role.is_admin() {
-            let team_member = database::models::TeamMember::get_from_user_id(
-                project_item.inner.team_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::InvalidInput("The specified project does not exist!".to_string())
-            })?;
+            let (team_member, organization_team_member) =
+                database::models::TeamMember::get_for_project_permissions(
+                    &project_item.inner,
+                    user.id.into(),
+                    &**pool,
+                )
+                .await?;
 
-            if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
+            // Hide the project
+            if team_member.is_none() && organization_team_member.is_none() {
+                return Err(ApiError::CustomAuthentication(
+                    "The specified project does not exist!".to_string(),
+                ));
+            }
+
+            let permissions = ProjectPermissions::get_permissions_by_role(
+                &user.role,
+                &team_member,
+                &organization_team_member,
+            )
+            .unwrap_or_default();
+
+            if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
                 return Err(ApiError::CustomAuthentication(
                     "You don't have permission to edit this project's gallery.".to_string(),
                 ));
@@ -2006,18 +2130,28 @@ pub async fn edit_gallery_item(
         })?;
 
     if !user.role.is_mod() {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified project does not exist!".to_string())
-        })?;
+        let (team_member, organization_team_member) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
+        // Hide the project
+        if team_member.is_none() && organization_team_member.is_none() {
+            return Err(ApiError::CustomAuthentication(
+                "The specified project does not exist!".to_string(),
+            ));
+        }
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        )
+        .unwrap_or_default();
+
+        if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
                 "You don't have permission to edit this project's gallery.".to_string(),
             ));
@@ -2157,18 +2291,29 @@ pub async fn delete_gallery_item(
         })?;
 
     if !user.role.is_mod() {
-        let team_member = database::models::TeamMember::get_from_user_id(
-            project_item.inner.team_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified project does not exist!".to_string())
-        })?;
+        let (team_member, organization_team_member) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project_item.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        if !team_member.permissions.contains(Permissions::EDIT_DETAILS) {
+        // Hide the project
+        if team_member.is_none() && organization_team_member.is_none() {
+            return Err(ApiError::CustomAuthentication(
+                "The specified project does not exist!".to_string(),
+            ));
+        }
+
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        )
+        .unwrap_or_default();
+
+        if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
                 "You don't have permission to edit this project's gallery.".to_string(),
             ));
@@ -2252,21 +2397,29 @@ pub async fn project_delete(
         })?;
 
     if !user.role.is_admin() {
-        let team_member = database::models::TeamMember::get_from_user_id_project(
-            project.inner.id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified project does not exist!".to_string())
-        })?;
+        let (team_member, organization_team_member) =
+            database::models::TeamMember::get_for_project_permissions(
+                &project.inner,
+                user.id.into(),
+                &**pool,
+            )
+            .await?;
 
-        if !team_member
-            .permissions
-            .contains(Permissions::DELETE_PROJECT)
-        {
+        // Hide the project
+        if team_member.is_none() && organization_team_member.is_none() {
+            return Err(ApiError::CustomAuthentication(
+                "The specified project does not exist!".to_string(),
+            ));
+        }
+
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        )
+        .unwrap_or_default();
+
+        if !permissions.contains(ProjectPermissions::DELETE_PROJECT) {
             return Err(ApiError::CustomAuthentication(
                 "You don't have permission to delete this project!".to_string(),
             ));
@@ -2274,6 +2427,24 @@ pub async fn project_delete(
     }
 
     let mut transaction = pool.begin().await?;
+    let context = ImageContext::Project {
+        project_id: Some(project.inner.id.into()),
+    };
+    let uploaded_images =
+        database::models::Image::get_many_contexted(context, &mut transaction).await?;
+    for image in uploaded_images {
+        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
+    }
+
+    sqlx::query!(
+        "
+        DELETE FROM collections_mods
+        WHERE mod_id = $1
+        ",
+        project.inner.id as database::models::ids::ProjectId,
+    )
+    .execute(&mut *transaction)
+    .await?;
 
     let result =
         database::models::Project::remove(project.inner.id, &mut transaction, &redis).await?;

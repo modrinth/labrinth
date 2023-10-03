@@ -3,6 +3,7 @@ pub mod email;
 pub mod flows;
 pub mod pats;
 pub mod session;
+mod templates;
 pub mod validate;
 
 pub use checks::{
@@ -43,6 +44,8 @@ pub enum AuthenticationError {
     InvalidClientId,
     #[error("User email/account is already registered on Modrinth")]
     DuplicateUser,
+    #[error("Invalid state sent, you probably need to get a new websocket")]
+    SocketError,
     #[error("Invalid callback URL specified")]
     Url,
 }
@@ -63,27 +66,35 @@ impl actix_web::ResponseError for AuthenticationError {
             AuthenticationError::Url => StatusCode::BAD_REQUEST,
             AuthenticationError::FileHosting(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::DuplicateUser => StatusCode::BAD_REQUEST,
+            AuthenticationError::SocketError => StatusCode::BAD_REQUEST,
         }
     }
 
     fn error_response(&self) -> HttpResponse {
         HttpResponse::build(self.status_code()).json(ApiError {
-            error: match self {
-                AuthenticationError::Env(..) => "environment_error",
-                AuthenticationError::Sqlx(..) => "database_error",
-                AuthenticationError::Database(..) => "database_error",
-                AuthenticationError::SerDe(..) => "invalid_input",
-                AuthenticationError::Reqwest(..) => "network_error",
-                AuthenticationError::InvalidCredentials => "invalid_credentials",
-                AuthenticationError::Decoding(..) => "decoding_error",
-                AuthenticationError::Mail(..) => "mail_error",
-                AuthenticationError::InvalidAuthMethod => "invalid_auth_method",
-                AuthenticationError::InvalidClientId => "invalid_client_id",
-                AuthenticationError::Url => "url_error",
-                AuthenticationError::FileHosting(..) => "file_hosting",
-                AuthenticationError::DuplicateUser => "duplicate_user",
-            },
+            error: self.error_name(),
             description: &self.to_string(),
         })
+    }
+}
+
+impl AuthenticationError {
+    pub fn error_name(&self) -> &'static str {
+        match self {
+            AuthenticationError::Env(..) => "environment_error",
+            AuthenticationError::Sqlx(..) => "database_error",
+            AuthenticationError::Database(..) => "database_error",
+            AuthenticationError::SerDe(..) => "invalid_input",
+            AuthenticationError::Reqwest(..) => "network_error",
+            AuthenticationError::InvalidCredentials => "invalid_credentials",
+            AuthenticationError::Decoding(..) => "decoding_error",
+            AuthenticationError::Mail(..) => "mail_error",
+            AuthenticationError::InvalidAuthMethod => "invalid_auth_method",
+            AuthenticationError::InvalidClientId => "invalid_client_id",
+            AuthenticationError::Url => "url_error",
+            AuthenticationError::FileHosting(..) => "file_hosting",
+            AuthenticationError::DuplicateUser => "duplicate_user",
+            AuthenticationError::SocketError => "socket",
+        }
     }
 }

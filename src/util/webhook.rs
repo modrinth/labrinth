@@ -72,10 +72,11 @@ const PLUGIN_LOADERS: &[&str] = &[
 pub async fn send_discord_webhook(
     project_id: ProjectId,
     pool: &PgPool,
+    redis: &deadpool_redis::Pool,
     webhook_url: String,
     message: Option<String>,
 ) -> Result<(), ApiError> {
-    let all_game_versions = GameVersion::list(pool).await?;
+    let all_game_versions = GameVersion::list(pool, redis).await?;
 
     let row =
         sqlx::query!(
@@ -151,9 +152,10 @@ pub async fn send_discord_webhook(
                     "liteloader" => 1049793351630733333,
                     "minecraft" => 1049793352964526100,
                     "modloader" => 1049793353962762382,
+                    "neoforge" => 1140437823783190679,
                     "optifine" => 1107352174415052901,
                     "paper" => 1049793355598540810,
-                    "purpur" => 1049793357351751772,
+                    "purpur" => 1140436034505674762,
                     "quilt" => 1049793857681887342,
                     "rift" => 1049793359373414502,
                     "spigot" => 1049793413886779413,

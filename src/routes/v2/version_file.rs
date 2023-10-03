@@ -6,7 +6,7 @@ use crate::auth::{
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
-use crate::models::teams::Permissions;
+use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::{database, models};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
@@ -185,17 +185,36 @@ pub async fn delete_file(
                 &**pool,
             )
             .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::CustomAuthentication(
-                    "You don't have permission to delete this file!".to_string(),
-                )
-            })?;
+            .map_err(ApiError::Database)?;
 
-            if !team_member
-                .permissions
-                .contains(Permissions::DELETE_VERSION)
-            {
+            let organization =
+                database::models::Organization::get_associated_organization_project_id(
+                    row.project_id,
+                    &**pool,
+                )
+                .await
+                .map_err(ApiError::Database)?;
+
+            let organization_team_member = if let Some(organization) = &organization {
+                database::models::TeamMember::get_from_user_id_organization(
+                    organization.id,
+                    user.id.into(),
+                    &**pool,
+                )
+                .await
+                .map_err(ApiError::Database)?
+            } else {
+                None
+            };
+
+            let permissions = ProjectPermissions::get_permissions_by_role(
+                &user.role,
+                &team_member,
+                &organization_team_member,
+            )
+            .unwrap_or_default();
+
+            if !permissions.contains(ProjectPermissions::DELETE_VERSION) {
                 return Err(ApiError::CustomAuthentication(
                     "You don't have permission to delete this file!".to_string(),
                 ));
@@ -305,7 +324,7 @@ pub async fn get_update_from_hash(
 
                         bool
                     })
-                    .sorted_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published))
+                    .sorted_by(|a, b| a.inner.date_published.cmp(&b.inner.date_published))
                     .collect::<Vec<_>>();
 
             if let Some(first) = versions.pop() {
@@ -484,6 +503,7 @@ pub async fn update_files(
         for file in files.iter().filter(|x| x.project_id == project.inner.id) {
             let version = all_versions
                 .iter()
+                .filter(|x| x.inner.project_id == file.project_id)
                 .filter(|x| {
                     let mut bool = true;
 
@@ -589,6 +609,7 @@ pub async fn update_individual_files(
                 if let Some(query_file) = update_data.hashes.iter().find(|x| &x.hash == hash) {
                     let version = all_versions
                         .iter()
+                        .filter(|x| x.inner.project_id == file.project_id)
                         .filter(|x| {
                             let mut bool = true;
 

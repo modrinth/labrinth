@@ -21,7 +21,7 @@ pub struct DonationUrl {
 }
 
 impl DonationUrl {
-    pub async fn insert(
+    pub async fn insert_project(
         &self,
         project_id: ProjectId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -90,6 +90,7 @@ pub struct ProjectBuilder {
     pub project_id: ProjectId,
     pub project_type_id: ProjectTypeId,
     pub team_id: TeamId,
+    pub organization_id: Option<OrganizationId>,
     pub title: String,
     pub description: String,
     pub body: String,
@@ -123,6 +124,7 @@ impl ProjectBuilder {
             id: self.project_id,
             project_type: self.project_type_id,
             team_id: self.team_id,
+            organization_id: self.organization_id,
             title: self.title,
             description: self.description,
             body: self.body,
@@ -154,6 +156,8 @@ impl ProjectBuilder {
             webhook_sent: false,
             color: self.color,
             monetization_status: self.monetization_status,
+            loaders: vec![],
+            game_versions: vec![],
         };
         project_struct.insert(&mut *transaction).await?;
 
@@ -163,7 +167,9 @@ impl ProjectBuilder {
         }
 
         for donation in self.donation_urls {
-            donation.insert(self.project_id, &mut *transaction).await?;
+            donation
+                .insert_project(self.project_id, &mut *transaction)
+                .await?;
         }
 
         for gallery in self.gallery_items {
@@ -196,6 +202,9 @@ impl ProjectBuilder {
             .await?;
         }
 
+        Project::update_game_versions(self.project_id, &mut *transaction).await?;
+        Project::update_loaders(self.project_id, &mut *transaction).await?;
+
         Ok(self.project_id)
     }
 }
@@ -204,6 +213,7 @@ pub struct Project {
     pub id: ProjectId,
     pub project_type: ProjectTypeId,
     pub team_id: TeamId,
+    pub organization_id: Option<OrganizationId>,
     pub title: String,
     pub description: String,
     pub body: String,
@@ -231,6 +241,8 @@ pub struct Project {
     pub webhook_sent: bool,
     pub color: Option<u32>,
     pub monetization_status: MonetizationStatus,
+    pub loaders: Vec<String>,
+    pub game_versions: Vec<String>,
 }
 
 impl Project {
@@ -524,7 +536,8 @@ impl Project {
                 {
                     remaining_strings.retain(|x| {
                         &to_base62(project.inner.id.0 as u64) != x
-                            && project.inner.slug.as_ref() != Some(x)
+                            && project.inner.slug.as_ref().map(|x| x.to_lowercase())
+                                != Some(x.to_lowercase())
                     });
                     found_projects.push(project);
                     continue;
@@ -538,17 +551,16 @@ impl Project {
                 .flat_map(|x| parse_base62(&x.to_string()).ok())
                 .map(|x| x as i64)
                 .collect();
+
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
                 SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
                 m.icon_url icon_url, m.body body, m.published published,
                 m.updated updated, m.approved approved, m.queued, m.status status, m.requested_status requested_status,
                 m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
-                m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
+                m.team_id team_id, m.organization_id organization_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
                 cs.name client_side_type, ss.name server_side_type, pt.name project_type_name, m.webhook_sent, m.color,
-                t.id thread_id, m.monetization_status monetization_status,
-                ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
-                JSONB_AGG(DISTINCT jsonb_build_object('id', gv.version, 'created', gv.created)) filter (where gv.version is not null) game_versions,
+                t.id thread_id, m.monetization_status monetization_status, m.loaders loaders, m.game_versions game_versions,
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,
                 JSONB_AGG(DISTINCT jsonb_build_object('id', v.id, 'date_published', v.date_published)) filter (where v.id is not null) versions,
@@ -565,10 +577,6 @@ impl Project {
                 LEFT JOIN mods_categories mc ON mc.joining_mod_id = m.id
                 LEFT JOIN categories c ON mc.joining_category_id = c.id
                 LEFT JOIN versions v ON v.mod_id = m.id AND v.status = ANY($3)
-                LEFT JOIN loaders_versions lv ON v.id = lv.version_id
-                LEFT JOIN loaders l ON lv.loader_id = l.id
-                LEFT JOIN game_versions_versions gvv ON v.id = gvv.joining_version_id
-                LEFT JOIN game_versions gv ON gvv.game_version_id = gv.id
                 WHERE m.id = ANY($1) OR m.slug = ANY($2)
                 GROUP BY pt.id, cs.id, ss.id, t.id, m.id;
                 ",
@@ -586,6 +594,7 @@ impl Project {
                             id: ProjectId(id),
                             project_type: ProjectTypeId(m.project_type),
                             team_id: TeamId(m.team_id),
+                            organization_id: m.organization_id.map(OrganizationId),
                             title: m.title.clone(),
                             description: m.description.clone(),
                             downloads: m.downloads,
@@ -619,6 +628,8 @@ impl Project {
                             monetization_status: MonetizationStatus::from_str(
                                 &m.monetization_status,
                             ),
+                            loaders: m.loaders,
+                            game_versions: m.game_versions,
                         },
                         project_type: m.project_type_name,
                         categories: m.categories.unwrap_or_default(),
@@ -654,25 +665,7 @@ impl Project {
                             ).ok().unwrap_or_default(),
                             client_side: crate::models::projects::SideType::from_str(&m.client_side_type),
                             server_side: crate::models::projects::SideType::from_str(&m.server_side_type),
-                            loaders: m.loaders.unwrap_or_default(),
-                            game_versions: {
-                                #[derive(Deserialize)]
-                                struct GameVersion {
-                                    pub id: String,
-                                    pub created: DateTime<Utc>,
-                                }
-
-                                let mut game_versions: Vec<GameVersion> = serde_json::from_value(
-                                    m.game_versions.unwrap_or_default(),
-                                )
-                                    .ok()
-                                    .unwrap_or_default();
-
-                                game_versions.sort_by(|a, b| a.created.cmp(&b.created));
-
-                                game_versions.into_iter().map(|x| x.id).collect()
-                            },
-                            thread_id: ThreadId(m.thread_id),
+                        thread_id: ThreadId(m.thread_id),
                     }}))
                 })
                 .try_collect::<Vec<QueryProject>>()
@@ -770,6 +763,56 @@ impl Project {
         Ok(dependencies)
     }
 
+    pub async fn update_game_versions(
+        id: ProjectId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), sqlx::error::Error> {
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET game_versions = (
+                SELECT COALESCE(ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null), array[]::varchar[])
+                FROM versions v
+                     INNER JOIN game_versions_versions gvv ON v.id = gvv.joining_version_id
+                     INNER JOIN game_versions gv on gvv.game_version_id = gv.id
+                WHERE v.mod_id = mods.id AND v.status != ALL($2)
+            )
+            WHERE id = $1
+            ",
+            id as ProjectId,
+            &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>()
+        )
+            .execute(&mut *transaction)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_loaders(
+        id: ProjectId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), sqlx::error::Error> {
+        sqlx::query!(
+            "
+            UPDATE mods
+            SET loaders = (
+                SELECT COALESCE(ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null), array[]::varchar[])
+                FROM versions v
+                     INNER JOIN loaders_versions lv ON lv.version_id = v.id
+                     INNER JOIN loaders l on lv.loader_id = l.id
+                WHERE v.mod_id = mods.id AND v.status != ALL($2)
+            )
+            WHERE id = $1
+            ",
+            id as ProjectId,
+            &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>()
+        )
+            .execute(&mut *transaction)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn clear_cache(
         id: ProjectId,
         slug: Option<String>,
@@ -808,7 +851,5 @@ pub struct QueryProject {
     pub gallery_items: Vec<GalleryItem>,
     pub client_side: crate::models::projects::SideType,
     pub server_side: crate::models::projects::SideType,
-    pub loaders: Vec<String>,
-    pub game_versions: Vec<String>,
     pub thread_id: ThreadId,
 }

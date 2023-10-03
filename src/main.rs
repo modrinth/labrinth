@@ -1,23 +1,24 @@
 use crate::file_hosting::S3Host;
+use crate::queue::analytics::AnalyticsQueue;
 use crate::queue::download::DownloadQueue;
-use crate::queue::payouts::PayoutsQueue;
+use crate::queue::payouts::{process_payout, PayoutsQueue};
 use crate::queue::session::AuthQueue;
+use crate::queue::socket::ActiveSockets;
 use crate::ratelimit::errors::ARError;
 use crate::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use crate::ratelimit::middleware::RateLimiter;
+use crate::util::cors::default_cors;
 use crate::util::env::{parse_strings_from_var, parse_var};
-use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
-use chrono::{DateTime, Utc};
 use deadpool_redis::{Config, Runtime};
 use env_logger::Env;
 use log::{error, info, warn};
 use search::indexing::index_projects;
-use search::indexing::IndexingSettings;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 mod auth;
+mod clickhouse;
 mod database;
 mod file_hosting;
 mod models;
@@ -77,9 +78,17 @@ async fn main() -> std::io::Result<()> {
         .expect("Database connection failed");
 
     // Redis connector
-    let redis_cfg = Config::from_url(dotenvy::var("REDIS_URL").expect("Redis URL not set"));
-    let redis_pool = redis_cfg
-        .create_pool(Some(Runtime::Tokio1))
+    let redis_pool = Config::from_url(dotenvy::var("REDIS_URL").expect("Redis URL not set"))
+        .builder()
+        .expect("Error building Redis pool")
+        .max_size(
+            dotenvy::var("DATABASE_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(10000),
+        )
+        .runtime(Runtime::Tokio1)
+        .build()
         .expect("Redis connection failed");
 
     let storage_backend = dotenvy::var("STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string());
@@ -121,8 +130,7 @@ async fn main() -> std::io::Result<()> {
         let search_config_ref = search_config_ref.clone();
         async move {
             info!("Indexing local database");
-            let settings = IndexingSettings { index_local: true };
-            let result = index_projects(pool_ref, settings, &search_config_ref).await;
+            let result = index_projects(pool_ref, &search_config_ref).await;
             if let Err(e) = result {
                 warn!("Local project indexing failed: {:?}", e);
             }
@@ -133,7 +141,7 @@ async fn main() -> std::io::Result<()> {
     // Changes statuses of scheduled projects/versions
     let pool_ref = pool.clone();
     // TODO: Clear cache when these are run
-    scheduler.run(std::time::Duration::from_secs(60), move || {
+    scheduler.run(std::time::Duration::from_secs(60 * 5), move || {
         let pool_ref = pool_ref.clone();
         info!("Releasing scheduled versions/projects!");
 
@@ -172,81 +180,13 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    // Reminding moderators to review projects which have been in the queue longer than 40hr
-    let pool_ref = pool.clone();
-    let webhook_message_sent = Arc::new(Mutex::new(Vec::<(
-        database::models::ProjectId,
-        DateTime<Utc>,
-    )>::new()));
-
-    scheduler.run(std::time::Duration::from_secs(10 * 60), move || {
-        let pool_ref = pool_ref.clone();
-        let webhook_message_sent_ref = webhook_message_sent.clone();
-        info!("Checking reviewed projects submitted more than 40hrs ago");
-
-        async move {
-            let do_steps = async {
-                use futures::TryStreamExt;
-
-                let project_ids = sqlx::query!(
-                    "
-                    SELECT id FROM mods
-                    WHERE status = $1 AND queued < NOW() - INTERVAL '40 hours'
-                    ORDER BY updated ASC
-                    ",
-                    crate::models::projects::ProjectStatus::Processing.as_str(),
-                )
-                    .fetch_many(&pool_ref)
-                    .try_filter_map(|e| async {
-                        Ok(e.right().map(|m| database::models::ProjectId(m.id)))
-                    })
-                    .try_collect::<Vec<database::models::ProjectId>>()
-                    .await?;
-
-                let mut webhook_message_sent_ref = webhook_message_sent_ref.lock().await;
-
-                webhook_message_sent_ref.retain(|x| Utc::now() - x.1 < chrono::Duration::hours(12));
-
-                for project in project_ids {
-                    if webhook_message_sent_ref.iter().any(|x| x.0 == project) { continue; }
-
-                    if let Ok(webhook_url) =
-                        dotenvy::var("MODERATION_DISCORD_WEBHOOK")
-                    {
-                        util::webhook::send_discord_webhook(
-                            project.into(),
-                            &pool_ref,
-                            webhook_url,
-                            Some("<@&783155186491195394> This project has been in the queue for over 40 hours!".to_string()),
-                        )
-                            .await
-                            .ok();
-
-                        webhook_message_sent_ref.push((project, Utc::now()));
-                    }
-                }
-
-                Ok::<(), routes::ApiError>(())
-            };
-
-            if let Err(e) = do_steps.await {
-                warn!(
-                    "Checking reviewed projects submitted more than 40hrs ago failed: {:?}",
-                    e
-                );
-            }
-
-            info!("Finished checking reviewed projects submitted more than 40hrs ago");
-        }
-    });
-
     scheduler::schedule_versions(&mut scheduler, pool.clone());
 
     let download_queue = web::Data::new(DownloadQueue::new());
 
     let pool_ref = pool.clone();
     let download_queue_ref = download_queue.clone();
-    scheduler.run(std::time::Duration::from_secs(30), move || {
+    scheduler.run(std::time::Duration::from_secs(60 * 5), move || {
         let pool_ref = pool_ref.clone();
         let download_queue_ref = download_queue_ref.clone();
 
@@ -265,7 +205,7 @@ async fn main() -> std::io::Result<()> {
     let pool_ref = pool.clone();
     let redis_ref = redis_pool.clone();
     let session_queue_ref = session_queue.clone();
-    scheduler.run(std::time::Duration::from_secs(60), move || {
+    scheduler.run(std::time::Duration::from_secs(60 * 30), move || {
         let pool_ref = pool_ref.clone();
         let redis_ref = redis_ref.clone();
         let session_queue_ref = session_queue_ref.clone();
@@ -280,11 +220,75 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
+    info!("Initializing clickhouse connection");
+    let clickhouse = clickhouse::init_client().await.unwrap();
+
+    let reader = Arc::new(queue::maxmind::MaxMindIndexer::new().await.unwrap());
+    {
+        let reader_ref = reader.clone();
+        scheduler.run(std::time::Duration::from_secs(60 * 60 * 24), move || {
+            let reader_ref = reader_ref.clone();
+
+            async move {
+                info!("Downloading MaxMind GeoLite2 country database");
+                let result = reader_ref.index().await;
+                if let Err(e) = result {
+                    warn!(
+                        "Downloading MaxMind GeoLite2 country database failed: {:?}",
+                        e
+                    );
+                }
+                info!("Done downloading MaxMind GeoLite2 country database");
+            }
+        });
+    }
+    info!("Downloading MaxMind GeoLite2 country database");
+
+    let analytics_queue = Arc::new(AnalyticsQueue::new());
+    {
+        let client_ref = clickhouse.clone();
+        let analytics_queue_ref = analytics_queue.clone();
+        scheduler.run(std::time::Duration::from_secs(60 * 5), move || {
+            let client_ref = client_ref.clone();
+            let analytics_queue_ref = analytics_queue_ref.clone();
+
+            async move {
+                info!("Indexing analytics queue");
+                let result = analytics_queue_ref.index(client_ref).await;
+                if let Err(e) = result {
+                    warn!("Indexing analytics queue failed: {:?}", e);
+                }
+                info!("Done indexing analytics queue");
+            }
+        });
+    }
+
+    {
+        let pool_ref = pool.clone();
+        let redis_ref = redis_pool.clone();
+        let client_ref = clickhouse.clone();
+        scheduler.run(std::time::Duration::from_secs(60 * 60 * 6), move || {
+            let pool_ref = pool_ref.clone();
+            let redis_ref = redis_ref.clone();
+            let client_ref = client_ref.clone();
+
+            async move {
+                info!("Started running payouts");
+                let result = process_payout(&pool_ref, &redis_ref, &client_ref).await;
+                if let Err(e) = result {
+                    warn!("Payouts run failed: {:?}", e);
+                }
+                info!("Done running payouts");
+            }
+        });
+    }
+
     let ip_salt = Pepper {
         pepper: models::ids::Base62Id(models::ids::random_base62(11)).to_string(),
     };
 
     let payouts_queue = web::Data::new(Mutex::new(PayoutsQueue::new()));
+    let active_sockets = web::Data::new(RwLock::new(ActiveSockets::default()));
 
     let store = MemoryStore::new();
 
@@ -294,14 +298,6 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(actix_web::middleware::Compress::default())
-            .wrap(
-                Cors::default()
-                    .allow_any_origin()
-                    .allow_any_header()
-                    .allow_any_method()
-                    .max_age(3600)
-                    .send_wildcard(),
-            )
             .wrap(
                 RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
                     .with_identifier(|req| {
@@ -323,6 +319,7 @@ async fn main() -> std::io::Result<()> {
                     .with_max_requests(300)
                     .with_ignore_key(dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok()),
             )
+            .wrap(sentry_actix::Sentry::new())
             .app_data(
                 web::FormConfig::default().error_handler(|err, _req| {
                     routes::ApiError::Validation(err.to_string()).into()
@@ -351,11 +348,14 @@ async fn main() -> std::io::Result<()> {
             .app_data(session_queue.clone())
             .app_data(payouts_queue.clone())
             .app_data(web::Data::new(ip_salt.clone()))
-            .wrap(sentry_actix::Sentry::new())
-            .configure(routes::root_config)
+            .app_data(web::Data::new(analytics_queue.clone()))
+            .app_data(web::Data::new(clickhouse.clone()))
+            .app_data(web::Data::new(reader.clone()))
+            .app_data(active_sockets.clone())
             .configure(routes::v2::config)
             .configure(routes::v3::config)
-            .default_service(web::get().to(routes::not_found))
+            .configure(routes::root_config)
+            .default_service(web::get().wrap(default_cors()).to(routes::not_found))
     })
     .bind(dotenvy::var("BIND_ADDR").unwrap())?
     .run()
@@ -431,9 +431,6 @@ fn check_env_vars() -> bool {
         failed |= true;
     }
 
-    failed |= check_var::<String>("ARIADNE_ADMIN_KEY");
-    failed |= check_var::<String>("ARIADNE_URL");
-
     failed |= check_var::<String>("PAYPAL_API_URL");
     failed |= check_var::<String>("PAYPAL_CLIENT_ID");
     failed |= check_var::<String>("PAYPAL_CLIENT_SECRET");
@@ -461,6 +458,22 @@ fn check_env_vars() -> bool {
 
     failed |= check_var::<String>("BEEHIIV_PUBLICATION_ID");
     failed |= check_var::<String>("BEEHIIV_API_KEY");
+
+    if parse_strings_from_var("ANALYTICS_ALLOWED_ORIGINS").is_none() {
+        warn!(
+            "Variable `ANALYTICS_ALLOWED_ORIGINS` missing in dotenv or not a json array of strings"
+        );
+        failed |= true;
+    }
+
+    failed |= check_var::<String>("CLICKHOUSE_URL");
+    failed |= check_var::<String>("CLICKHOUSE_USER");
+    failed |= check_var::<String>("CLICKHOUSE_PASSWORD");
+    failed |= check_var::<String>("CLICKHOUSE_DATABASE");
+
+    failed |= check_var::<String>("MAXMIND_LICENSE_KEY");
+
+    failed |= check_var::<u64>("PAYOUTS_BUDGET");
 
     failed
 }
