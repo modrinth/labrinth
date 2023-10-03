@@ -1,13 +1,10 @@
-use crate::models::ids::base62_impl::{parse_base62, to_base62};
+use crate::{models::ids::base62_impl::{parse_base62, to_base62}, database::redis::RedisPool};
 
 use super::{ids::*, TeamMember};
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 const ORGANIZATIONS_NAMESPACE: &str = "organizations";
 const ORGANIZATIONS_TITLES_NAMESPACE: &str = "organizations_titles";
-
-const DEFAULT_EXPIRY: i64 = 1800;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 /// An organization of users who together control one or more projects and organizations.
@@ -55,7 +52,7 @@ impl Organization {
     pub async fn get<'a, E>(
         string: &str,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<Self>, super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -68,7 +65,7 @@ impl Organization {
     pub async fn get_id<'a, 'b, E>(
         id: OrganizationId,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<Self>, super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -81,7 +78,7 @@ impl Organization {
     pub async fn get_many_ids<'a, 'b, E>(
         organization_ids: &[OrganizationId],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<Self>, super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -96,7 +93,7 @@ impl Organization {
     pub async fn get_many<'a, E, T: ToString>(
         organization_strings: &[T],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<Self>, super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -106,8 +103,6 @@ impl Organization {
         if organization_strings.is_empty() {
             return Ok(Vec::new());
         }
-
-        let mut redis = redis.get().await?;
 
         let mut found_organizations = Vec::new();
         let mut remaining_strings = organization_strings
@@ -121,36 +116,24 @@ impl Organization {
             .collect::<Vec<_>>();
 
         organization_ids.append(
-            &mut cmd("MGET")
-                .arg(
-                    organization_strings
-                        .iter()
-                        .map(|x| {
-                            format!(
-                                "{}:{}",
-                                ORGANIZATIONS_TITLES_NAMESPACE,
-                                x.to_string().to_lowercase()
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<i64>>>(&mut redis)
-                .await?
-                .into_iter()
-                .flatten()
-                .collect(),
+            &mut redis
+            .multi_get::<i64, _>(
+                ORGANIZATIONS_TITLES_NAMESPACE,
+                organization_strings
+                    .iter()
+                    .map(|x| x.to_string().to_lowercase())
+                    .collect(),
+            )
+            .await?
+            .into_iter()
+            .flatten()
+            .collect()
         );
 
         if !organization_ids.is_empty() {
-            let organizations = cmd("MGET")
-                .arg(
-                    organization_ids
-                        .iter()
-                        .map(|x| format!("{}:{}", ORGANIZATIONS_NAMESPACE, x))
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<String>>>(&mut redis)
-                .await?;
+            let organizations = redis
+            .multi_get::<String, _>(ORGANIZATIONS_NAMESPACE, organization_ids)
+            .await?;
 
             for organization in organizations {
                 if let Some(organization) =
@@ -201,25 +184,23 @@ impl Organization {
             .await?;
 
             for organization in organizations {
-                cmd("SET")
-                    .arg(format!("{}:{}", ORGANIZATIONS_NAMESPACE, organization.id.0))
-                    .arg(serde_json::to_string(&organization)?)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
+                redis
+                .set(
+                    ORGANIZATIONS_NAMESPACE,
+                    organization.id.0,
+                    serde_json::to_string(&organization)?,
+                    None,
+                )
+                .await?;
+                redis
+                    .set(
+                        ORGANIZATIONS_TITLES_NAMESPACE,
+                        organization.title.to_lowercase(),
+                        organization.id.0,
+                        None,
+                    )
                     .await?;
 
-                cmd("SET")
-                    .arg(format!(
-                        "{}:{}",
-                        ORGANIZATIONS_TITLES_NAMESPACE,
-                        organization.title.to_lowercase()
-                    ))
-                    .arg(organization.id.0)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
-                    .await?;
                 found_organizations.push(organization);
             }
         }
@@ -265,7 +246,7 @@ impl Organization {
     pub async fn remove(
         id: OrganizationId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, super::DatabaseError> {
         use futures::TryStreamExt;
 
@@ -333,19 +314,18 @@ impl Organization {
     pub async fn clear_cache(
         id: OrganizationId,
         title: Option<String>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), super::DatabaseError> {
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
-        cmd.arg(format!("{}:{}", ORGANIZATIONS_NAMESPACE, id.0));
+
+        redis.delete(ORGANIZATIONS_NAMESPACE, id.0).await?;
         if let Some(title) = title {
-            cmd.arg(format!(
-                "{}:{}",
-                ORGANIZATIONS_TITLES_NAMESPACE,
-                title.to_lowercase()
-            ));
+            redis
+                .delete(
+                    ORGANIZATIONS_TITLES_NAMESPACE,
+                    title.to_lowercase(),
+                )
+                .await?;
         }
-        cmd.query_async::<_, ()>(&mut redis).await?;
 
         Ok(())
     }
