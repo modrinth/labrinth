@@ -485,8 +485,6 @@ impl Project {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        use futures::TryStreamExt;
-
         if project_strings.is_empty() {
             return Ok(Vec::new());
         }
@@ -715,8 +713,6 @@ impl Project {
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         type Dependencies = Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>;
-
-        use futures::stream::TryStreamExt;
 
         let mut redis = redis.get().await?;
 

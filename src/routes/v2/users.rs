@@ -686,11 +686,13 @@ pub async fn user_notifications(
         }
 
         let mut notifications: Vec<Notification> =
-            crate::database::models::notification_item::Notification::get_many_user(id, &**pool)
-                .await?
-                .into_iter()
-                .map(Into::into)
-                .collect();
+            crate::database::models::notification_item::Notification::get_many_user(
+                id, &**pool, &redis,
+            )
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect();
 
         notifications.sort_by(|a, b| b.created.cmp(&a.created));
 

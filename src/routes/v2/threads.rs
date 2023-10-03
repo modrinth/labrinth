@@ -409,6 +409,7 @@ pub async fn thread_send_message(
                     .insert_many(
                         members.into_iter().map(|x| x.user_id).collect(),
                         &mut transaction,
+                        &redis,
                     )
                     .await?;
                 }
@@ -434,7 +435,7 @@ pub async fn thread_send_message(
                             report_id: Some(report.id.into()),
                         },
                     }
-                    .insert(report.reporter, &mut transaction)
+                    .insert(report.reporter, &mut transaction, &redis)
                     .await?;
                 }
             }

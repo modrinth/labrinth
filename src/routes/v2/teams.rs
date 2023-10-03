@@ -533,7 +533,7 @@ pub async fn add_team_member(
                     role: new_member.role.clone(),
                 },
             }
-            .insert(new_member.user_id.into(), &mut transaction)
+            .insert(new_member.user_id.into(), &mut transaction, &redis)
             .await?;
         }
         TeamAssociationId::Organization(oid) => {
@@ -545,7 +545,7 @@ pub async fn add_team_member(
                     role: new_member.role.clone(),
                 },
             }
-            .insert(new_member.user_id.into(), &mut transaction)
+            .insert(new_member.user_id.into(), &mut transaction, &redis)
             .await?;
         }
     }
