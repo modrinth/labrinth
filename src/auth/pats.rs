@@ -4,6 +4,7 @@ use crate::database::models::generate_pat_id;
 use crate::auth::get_user_from_headers;
 use crate::routes::ApiError;
 
+use crate::database::redis::RedisPool;
 use actix_web::web::{self, Data};
 use actix_web::{delete, get, patch, post, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -11,7 +12,6 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use crate::database::redis::RedisPool;
 
 use crate::models::pats::{PersonalAccessToken, Scopes};
 use crate::queue::session::AuthQueue;

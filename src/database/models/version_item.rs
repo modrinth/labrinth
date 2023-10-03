@@ -1,10 +1,10 @@
 use super::ids::*;
 use super::DatabaseError;
+use crate::database::redis::RedisPool;
 use crate::models::projects::{FileType, VersionStatus};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use crate::database::redis::RedisPool;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
@@ -77,7 +77,7 @@ impl DependencyBuilder {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VersionFileBuilder {
     pub url: String,
     pub filename: String,
@@ -129,7 +129,7 @@ impl VersionFileBuilder {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HashBuilder {
     pub algorithm: String,
     pub hash: Vec<u8>,
@@ -423,10 +423,11 @@ impl Version {
 
         let mut version_ids_parsed: Vec<i64> = version_ids.iter().map(|x| x.0).collect();
 
-
         let mut found_versions = Vec::new();
 
-        let versions = redis.multi_get::<String,_>(VERSIONS_NAMESPACE, version_ids_parsed.clone()).await?;
+        let versions = redis
+            .multi_get::<String, _>(VERSIONS_NAMESPACE, version_ids_parsed.clone())
+            .await?;
 
         for version in versions {
             if let Some(version) =
@@ -578,7 +579,14 @@ impl Version {
                 .await?;
 
             for version in db_versions {
-                redis.set(VERSIONS_NAMESPACE, version.inner.id.0,serde_json::to_string(&version)?,None).await?;
+                redis
+                    .set(
+                        VERSIONS_NAMESPACE,
+                        version.inner.id.0,
+                        serde_json::to_string(&version)?,
+                        None,
+                    )
+                    .await?;
 
                 found_versions.push(version);
             }
@@ -622,13 +630,17 @@ impl Version {
 
         let mut file_ids_parsed = hashes.to_vec();
 
-
         let mut found_files = Vec::new();
 
-        let files = redis.multi_get::<String,_>(VERSION_FILES_NAMESPACE, file_ids_parsed
-            .iter()
-            .map(|hash| format!("{}_{}", algorithm, hash))
-            .collect::<Vec<_>>()).await?;
+        let files = redis
+            .multi_get::<String, _>(
+                VERSION_FILES_NAMESPACE,
+                file_ids_parsed
+                    .iter()
+                    .map(|hash| format!("{}_{}", algorithm, hash))
+                    .collect::<Vec<_>>(),
+            )
+            .await?;
 
         for file in files {
             if let Some(mut file) =
@@ -704,7 +716,14 @@ impl Version {
             }
 
             for (key, mut files) in save_files {
-                redis.set(VERSION_FILES_NAMESPACE, key, serde_json::to_string(&files)?, None).await?;
+                redis
+                    .set(
+                        VERSION_FILES_NAMESPACE,
+                        key,
+                        serde_json::to_string(&files)?,
+                        None,
+                    )
+                    .await?;
 
                 found_files.append(&mut files);
             }
@@ -717,12 +736,13 @@ impl Version {
         version: &QueryVersion,
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-
         redis.delete(VERSIONS_NAMESPACE, version.inner.id.0).await?;
 
         for file in &version.files {
             for (algo, hash) in &file.hashes {
-                redis.delete(VERSION_FILES_NAMESPACE, format!("{}_{}", algo, hash)).await?;
+                redis
+                    .delete(VERSION_FILES_NAMESPACE, format!("{}_{}", algo, hash))
+                    .await?;
             }
         }
 

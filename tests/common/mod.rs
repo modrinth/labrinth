@@ -1,16 +1,17 @@
-
-use std::sync::Arc;
-use labrinth::{LabrinthConfig, 
-    util::env::{parse_strings_from_var, parse_var}, 
-    file_hosting, queue};
 use labrinth::clickhouse;
+use labrinth::{
+    file_hosting, queue,
+    util::env::{parse_strings_from_var, parse_var},
+    LabrinthConfig,
+};
+use std::sync::Arc;
 
 use self::database::TemporaryDatabase;
 
 pub mod actix;
 pub mod database;
 
-pub async fn setup(db : &TemporaryDatabase) -> LabrinthConfig { 
+pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
     println!("Setting up labrinth config");
 
     dotenvy::dotenv().ok();
@@ -21,7 +22,8 @@ pub async fn setup(db : &TemporaryDatabase) -> LabrinthConfig {
 
     let pool = db.pool.clone();
     let redis_pool = db.redis_pool.clone();
-    let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> = Arc::new(file_hosting::MockHost::new());
+    let file_host: Arc<dyn file_hosting::FileHost + Send + Sync> =
+        Arc::new(file_hosting::MockHost::new());
     let mut clickhouse = clickhouse::init_client().await.unwrap();
 
     let maxmind_reader = Arc::new(queue::maxmind::MaxMindIndexer::new().await.unwrap());
@@ -68,7 +70,9 @@ fn check_test_vars() -> bool {
     }
 
     if parse_strings_from_var("ALLOWED_CALLBACK_URLS").is_none() {
-        println!("Variable `ALLOWED_CALLBACK_URLS` missing in dotenv or not a json array of strings");
+        println!(
+            "Variable `ALLOWED_CALLBACK_URLS` missing in dotenv or not a json array of strings"
+        );
         failed |= true;
     }
 

@@ -1,11 +1,12 @@
-
-
 use std::sync::Arc;
 
 use actix_web::web;
 use database::redis::RedisPool;
-use log::{warn, info};
-use queue::{session::AuthQueue, socket::ActiveSockets, payouts::PayoutsQueue, analytics::AnalyticsQueue, download::DownloadQueue};
+use log::{info, warn};
+use queue::{
+    analytics::AnalyticsQueue, download::DownloadQueue, payouts::PayoutsQueue, session::AuthQueue,
+    socket::ActiveSockets,
+};
 use scheduler::Scheduler;
 use sqlx::Postgres;
 use tokio::sync::{Mutex, RwLock};
@@ -14,7 +15,9 @@ extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;
 use util::cors::default_cors;
 
-use crate::{queue::payouts::process_payout, search::indexing::index_projects, util::env::parse_var};
+use crate::{
+    queue::payouts::process_payout, search::indexing::index_projects, util::env::parse_var,
+};
 
 pub mod auth;
 pub mod clickhouse;
@@ -51,8 +54,13 @@ pub struct LabrinthConfig {
     pub active_sockets: web::Data<RwLock<ActiveSockets>>,
 }
 
-pub fn app_setup(pool: sqlx::Pool<Postgres>, redis_pool: RedisPool, clickhouse : &mut Client, file_host : Arc<dyn file_hosting::FileHost + Send + Sync>, maxmind : Arc<queue::maxmind::MaxMindIndexer>) -> LabrinthConfig {
-
+pub fn app_setup(
+    pool: sqlx::Pool<Postgres>,
+    redis_pool: RedisPool,
+    clickhouse: &mut Client,
+    file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
+    maxmind: Arc<queue::maxmind::MaxMindIndexer>,
+) -> LabrinthConfig {
     info!(
         "Starting Labrinth on {}",
         dotenvy::var("BIND_ADDR").unwrap()
@@ -167,7 +175,6 @@ pub fn app_setup(pool: sqlx::Pool<Postgres>, redis_pool: RedisPool, clickhouse :
         }
     });
 
-
     let reader = maxmind.clone();
     {
         let reader_ref = reader.clone();
@@ -250,31 +257,26 @@ pub fn app_setup(pool: sqlx::Pool<Postgres>, redis_pool: RedisPool, clickhouse :
         analytics_queue,
         active_sockets,
     }
-
 }
 
 pub fn app_config(cfg: &mut web::ServiceConfig, labrinth_config: LabrinthConfig) {
     cfg.app_data(
-        web::FormConfig::default().error_handler(|err, _req| {
-            routes::ApiError::Validation(err.to_string()).into()
-        }),
+        web::FormConfig::default()
+            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
     )
     .app_data(
-        web::PathConfig::default().error_handler(|err, _req| {
-            routes::ApiError::Validation(err.to_string()).into()
-        }),
+        web::PathConfig::default()
+            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
     )
     .app_data(
-        web::QueryConfig::default().error_handler(|err, _req| {
-            routes::ApiError::Validation(err.to_string()).into()
-        }),
+        web::QueryConfig::default()
+            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
     )
     .app_data(
-        web::JsonConfig::default().error_handler(|err, _req| {
-            routes::ApiError::Validation(err.to_string()).into()
-        }),
+        web::JsonConfig::default()
+            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
     )
-.app_data(web::Data::new(labrinth_config.redis_pool.clone()))
+    .app_data(web::Data::new(labrinth_config.redis_pool.clone()))
     .app_data(web::Data::new(labrinth_config.pool.clone()))
     .app_data(web::Data::new(labrinth_config.file_host.clone()))
     .app_data(web::Data::new(labrinth_config.search_config.clone()))

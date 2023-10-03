@@ -3,10 +3,10 @@ use crate::auth::{
     filter_authorized_projects, filter_authorized_versions, get_user_from_headers,
     is_authorized_version,
 };
+use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
-use crate::database::redis::RedisPool;
 use crate::models::teams::Permissions;
 use crate::queue::session::AuthQueue;
 use crate::{database, models};
@@ -22,7 +22,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(delete_file)
             .service(get_version_from_hash)
             .service(download_version)
-            .service(get_update_from_hash),
+            .service(get_update_from_hash)
+            .service(get_projects_from_hashes), // TODO: confirm this should be added
     );
 
     cfg.service(
@@ -325,6 +326,7 @@ pub async fn get_update_from_hash(
 // Requests above with multiple versions below
 #[derive(Deserialize)]
 pub struct FileHashes {
+    #[serde(default = "default_algorithm")]
     pub algorithm: String,
     pub hashes: Vec<String>,
 }
@@ -391,7 +393,7 @@ pub async fn get_projects_from_hashes(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::VERSION_READ]),
+        Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
     )
     .await
     .map(|x| x.1)
@@ -429,6 +431,7 @@ pub async fn get_projects_from_hashes(
 
 #[derive(Deserialize)]
 pub struct ManyUpdateData {
+    #[serde(default = "default_algorithm")]
     pub algorithm: String,
     pub hashes: Vec<String>,
     pub loaders: Option<Vec<String>>,
@@ -532,6 +535,7 @@ pub struct FileUpdateData {
 
 #[derive(Deserialize)]
 pub struct ManyFileUpdateData {
+    #[serde(default = "default_algorithm")]
     pub algorithm: String,
     pub hashes: Vec<FileUpdateData>,
 }

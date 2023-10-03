@@ -2,6 +2,7 @@ use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item};
+use crate::database::redis::RedisPool;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
 use crate::models::ids::ImageId;
@@ -28,7 +29,6 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
-use crate::database::redis::RedisPool;
 use thiserror::Error;
 use validator::Validate;
 

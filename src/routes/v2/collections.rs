@@ -2,13 +2,13 @@ use crate::auth::checks::{filter_authorized_collections, is_authorized_collectio
 use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::database::models::{collection_item, generate_collection_id, project_item};
+use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::collections::{Collection, CollectionStatus};
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::{CollectionId, ProjectId};
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
-use crate::database::redis::RedisPool;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;

@@ -51,7 +51,7 @@ bitflags::bitflags! {
         const VERSION_READ = 1 << 15;
         // write to a version's data (metadata, files, etc)
         const VERSION_WRITE = 1 << 16;
-        // delete a project
+        // delete a version
         const VERSION_DELETE = 1 << 17;
 
         // create a report

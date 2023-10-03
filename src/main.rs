@@ -1,12 +1,12 @@
+use actix_web::{App, HttpServer};
+use env_logger::Env;
+use labrinth::database::redis::RedisPool;
 use labrinth::file_hosting::S3Host;
 use labrinth::ratelimit::errors::ARError;
 use labrinth::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use labrinth::ratelimit::middleware::RateLimiter;
-use labrinth::{clickhouse, database, file_hosting, queue};
 use labrinth::util::env::{parse_strings_from_var, parse_var};
-use labrinth::database::redis::RedisPool;
-use actix_web::{App, HttpServer};
-use env_logger::Env;
+use labrinth::{clickhouse, database, file_hosting, queue};
 use log::{error, info, warn};
 
 use std::sync::Arc;
@@ -124,7 +124,7 @@ async fn main() -> std::io::Result<()> {
                     .with_ignore_key(dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok()),
             )
             .wrap(sentry_actix::Sentry::new())
-            .configure(|cfg | labrinth::app_config(cfg, labrinth_config.clone()))
+            .configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()))
     })
     .bind(dotenvy::var("BIND_ADDR").unwrap())?
     .run()

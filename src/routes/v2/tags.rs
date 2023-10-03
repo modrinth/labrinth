@@ -1,9 +1,9 @@
 use super::ApiError;
 use crate::database::models;
 use crate::database::models::categories::{DonationPlatform, ProjectType, ReportType, SideType};
+use crate::database::redis::RedisPool;
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};
-use crate::database::redis::RedisPool;
 use models::categories::{Category, GameVersion, Loader};
 use sqlx::PgPool;
 

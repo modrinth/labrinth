@@ -1,5 +1,5 @@
 use super::ids::*;
-use crate::{models::teams::Permissions, database::redis::RedisPool};
+use crate::{database::redis::RedisPool, models::teams::Permissions};
 use itertools::Itertools;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -123,7 +123,9 @@ impl TeamMember {
 
         let mut found_teams = Vec::new();
 
-        let teams = redis.multi_get::<String,_>(TEAMS_NAMESPACE, team_ids_parsed.clone()).await?;
+        let teams = redis
+            .multi_get::<String, _>(TEAMS_NAMESPACE, team_ids_parsed.clone())
+            .await?;
 
         for team_raw in teams {
             if let Some(mut team) = team_raw
@@ -171,7 +173,14 @@ impl TeamMember {
             for (id, members) in &teams.into_iter().group_by(|x| x.team_id) {
                 let mut members = members.collect::<Vec<_>>();
 
-                redis.set(TEAMS_NAMESPACE, id.0, serde_json::to_string(&members)?, None).await?;
+                redis
+                    .set(
+                        TEAMS_NAMESPACE,
+                        id.0,
+                        serde_json::to_string(&members)?,
+                        None,
+                    )
+                    .await?;
                 found_teams.append(&mut members);
             }
         }
@@ -179,10 +188,7 @@ impl TeamMember {
         Ok(found_teams)
     }
 
-    pub async fn clear_cache(
-        id: TeamId,
-        redis: &RedisPool,
-    ) -> Result<(), super::DatabaseError> {
+    pub async fn clear_cache(id: TeamId, redis: &RedisPool) -> Result<(), super::DatabaseError> {
         redis.delete(TEAMS_NAMESPACE, id.0).await?;
         Ok(())
     }

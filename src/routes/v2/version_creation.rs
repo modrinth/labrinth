@@ -697,6 +697,9 @@ async fn upload_file_to_version_inner(
         }
     }
 
+    // Clear version cache
+    models::Version::clear_cache(&version, &redis).await?;
+
     Ok(HttpResponse::NoContent().body(""))
 }
 

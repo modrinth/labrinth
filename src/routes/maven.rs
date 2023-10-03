@@ -1,11 +1,11 @@
 use crate::database::models::categories::Loader;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::{QueryFile, QueryVersion};
+use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;
 use crate::models::projects::{ProjectId, VersionId};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use crate::database::redis::RedisPool;
 use crate::{
     auth::{get_user_from_headers, is_authorized, is_authorized_version},
     database,

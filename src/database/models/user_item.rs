@@ -1,8 +1,8 @@
 use super::ids::{ProjectId, UserId};
 use super::CollectionId;
 use crate::database::models::DatabaseError;
-use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::database::redis::RedisPool;
+use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::users::{Badges, RecipientType, RecipientWallet};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -150,14 +150,24 @@ impl User {
             .collect::<Vec<_>>();
 
         user_ids.append(
-            &mut redis.multi_get::<i64,_>(USER_USERNAMES_NAMESPACE, users_strings.iter().map(|x| x.to_string().to_lowercase()).collect()).await?
+            &mut redis
+                .multi_get::<i64, _>(
+                    USER_USERNAMES_NAMESPACE,
+                    users_strings
+                        .iter()
+                        .map(|x| x.to_string().to_lowercase())
+                        .collect(),
+                )
+                .await?
                 .into_iter()
                 .flatten()
                 .collect(),
         );
 
         if !user_ids.is_empty() {
-            let users = redis.multi_get::<String,_>(USERS_NAMESPACE, user_ids).await?;
+            let users = redis
+                .multi_get::<String, _>(USERS_NAMESPACE, user_ids)
+                .await?;
             for user in users {
                 if let Some(user) = user.and_then(|x| serde_json::from_str::<User>(&x).ok()) {
                     remaining_strings.retain(|x| {
@@ -226,8 +236,22 @@ impl User {
             .await?;
 
             for user in db_users {
-                redis.set(USERS_NAMESPACE, user.id.0, serde_json::to_string(&user)?, None).await?;
-                redis.set(USER_USERNAMES_NAMESPACE, user.username.to_lowercase(), user.id.0, None).await?;
+                redis
+                    .set(
+                        USERS_NAMESPACE,
+                        user.id.0,
+                        serde_json::to_string(&user)?,
+                        None,
+                    )
+                    .await?;
+                redis
+                    .set(
+                        USER_USERNAMES_NAMESPACE,
+                        user.username.to_lowercase(),
+                        user.id.0,
+                        None,
+                    )
+                    .await?;
                 found_users.push(user);
             }
         }
@@ -330,13 +354,13 @@ impl User {
         user_ids: &[(UserId, Option<String>)],
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-
         for (id, username) in user_ids {
             redis.delete(USERS_NAMESPACE, id.0).await?;
 
             if let Some(username) = username {
-                redis.delete(USER_USERNAMES_NAMESPACE,
-                    username.to_lowercase()).await?;
+                redis
+                    .delete(USER_USERNAMES_NAMESPACE, username.to_lowercase())
+                    .await?;
             }
         }
 

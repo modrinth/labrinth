@@ -184,14 +184,15 @@ impl Image {
             return Ok(Vec::new());
         }
 
-
         let mut found_images = Vec::new();
         let mut remaining_ids = image_ids.to_vec();
 
         let image_ids = image_ids.iter().map(|x| x.0).collect::<Vec<_>>();
 
         if !image_ids.is_empty() {
-            let images = redis.multi_get::<String,_>(IMAGES_NAMESPACE, image_ids).await?;
+            let images = redis
+                .multi_get::<String, _>(IMAGES_NAMESPACE, image_ids)
+                .await?;
             for image in images {
                 if let Some(image) = image.and_then(|x| serde_json::from_str::<Image>(&x).ok()) {
                     remaining_ids.retain(|x| image.id.0 != x.0);
@@ -234,7 +235,14 @@ impl Image {
             .await?;
 
             for image in db_images {
-                redis.set(IMAGES_NAMESPACE, image.id.0, serde_json::to_string(&image)?, None).await?;
+                redis
+                    .set(
+                        IMAGES_NAMESPACE,
+                        image.id.0,
+                        serde_json::to_string(&image)?,
+                        None,
+                    )
+                    .await?;
                 found_images.push(image);
             }
         }
@@ -242,10 +250,7 @@ impl Image {
         Ok(found_images)
     }
 
-    pub async fn clear_cache(
-        id: ImageId,
-        redis: &RedisPool,
-    ) -> Result<(), DatabaseError> {
+    pub async fn clear_cache(id: ImageId, redis: &RedisPool) -> Result<(), DatabaseError> {
         redis.delete(IMAGES_NAMESPACE, id.0).await?;
         Ok(())
     }

@@ -491,14 +491,24 @@ impl Project {
             .collect::<Vec<_>>();
 
         project_ids.append(
-            &mut redis.multi_get::<i64,_>(PROJECTS_SLUGS_NAMESPACE, project_strings.iter().map(|x| x.to_string().to_lowercase()).collect()).await?
+            &mut redis
+                .multi_get::<i64, _>(
+                    PROJECTS_SLUGS_NAMESPACE,
+                    project_strings
+                        .iter()
+                        .map(|x| x.to_string().to_lowercase())
+                        .collect(),
+                )
+                .await?
                 .into_iter()
                 .flatten()
                 .collect(),
         );
 
         if !project_ids.is_empty() {
-            let projects = redis.multi_get::<String, _>(PROJECTS_NAMESPACE, project_ids).await?;
+            let projects = redis
+                .multi_get::<String, _>(PROJECTS_NAMESPACE, project_ids)
+                .await?;
             for project in projects {
                 if let Some(project) =
                     project.and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
@@ -639,14 +649,26 @@ impl Project {
                 .await?;
 
             for project in db_projects {
-                redis.set(PROJECTS_NAMESPACE, project.inner.id.0, serde_json::to_string(&project)?, None).await?;
+                redis
+                    .set(
+                        PROJECTS_NAMESPACE,
+                        project.inner.id.0,
+                        serde_json::to_string(&project)?,
+                        None,
+                    )
+                    .await?;
                 if let Some(slug) = &project.inner.slug {
-                    redis.set(PROJECTS_SLUGS_NAMESPACE,
-                        slug.to_lowercase(), project.inner.id.0, None).await?;
+                    redis
+                        .set(
+                            PROJECTS_SLUGS_NAMESPACE,
+                            slug.to_lowercase(),
+                            project.inner.id.0,
+                            None,
+                        )
+                        .await?;
                 }
                 found_projects.push(project);
             }
-
         }
 
         Ok(found_projects)
@@ -664,7 +686,9 @@ impl Project {
 
         use futures::stream::TryStreamExt;
 
-        let dependencies = redis.get::<String,_>(PROJECTS_DEPENDENCIES_NAMESPACE, id.0).await?;
+        let dependencies = redis
+            .get::<String, _>(PROJECTS_DEPENDENCIES_NAMESPACE, id.0)
+            .await?;
         if let Some(dependencies) =
             dependencies.and_then(|x| serde_json::from_str::<Dependencies>(&x).ok())
         {
@@ -698,7 +722,14 @@ impl Project {
         .try_collect::<Dependencies>()
         .await?;
 
-        redis.set(PROJECTS_DEPENDENCIES_NAMESPACE, id.0, serde_json::to_string(&dependencies)?, None).await?;
+        redis
+            .set(
+                PROJECTS_DEPENDENCIES_NAMESPACE,
+                id.0,
+                serde_json::to_string(&dependencies)?,
+                None,
+            )
+            .await?;
         Ok(dependencies)
     }
 
@@ -760,7 +791,9 @@ impl Project {
     ) -> Result<(), DatabaseError> {
         redis.delete(PROJECTS_NAMESPACE, id.0).await?;
         if let Some(slug) = slug {
-            redis.delete(PROJECTS_SLUGS_NAMESPACE, slug.to_lowercase()).await?;
+            redis
+                .delete(PROJECTS_SLUGS_NAMESPACE, slug.to_lowercase())
+                .await?;
         }
         if clear_dependencies.unwrap_or(false) {
             redis.delete(PROJECTS_DEPENDENCIES_NAMESPACE, id.0).await?;

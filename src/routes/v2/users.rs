@@ -1,12 +1,12 @@
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::User;
+use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::collections::{Collection, CollectionStatus};
 use crate::models::notifications::Notification;
 use crate::models::pats::Scopes;
 use crate::models::projects::Project;
 use crate::models::users::{Badges, RecipientType, RecipientWallet, Role, UserId};
-use crate::database::redis::RedisPool;
 use crate::queue::payouts::{PayoutAmount, PayoutItem, PayoutsQueue};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;

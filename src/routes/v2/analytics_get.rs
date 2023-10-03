@@ -1,8 +1,3 @@
-use actix_web::{get, web, HttpRequest, HttpResponse};
-use chrono::{Duration, NaiveDate, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
-use std::collections::HashMap;
 use crate::database::redis::RedisPool;
 use crate::{
     auth::{filter_authorized_projects, filter_authorized_versions, get_user_from_headers},
@@ -16,6 +11,11 @@ use crate::{
     },
     queue::session::AuthQueue,
 };
+use actix_web::{get, web, HttpRequest, HttpResponse};
+use chrono::{Duration, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::collections::HashMap;
 
 use super::ApiError;
 

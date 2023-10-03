@@ -98,15 +98,14 @@ impl Category {
         Ok(result.map(|r| CategoryId(r.id)))
     }
 
-    pub async fn list<'a, E>(
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<Category>, DatabaseError>
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<Category>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String, _>(TAGS_NAMESPACE, "category").await?
-        .and_then(|x| serde_json::from_str::<Vec<Category>>(&x).ok());
+        let res = redis
+            .get::<String, _>(TAGS_NAMESPACE, "category")
+            .await?
+            .and_then(|x| serde_json::from_str::<Vec<Category>>(&x).ok());
 
         if let Some(res) = res {
             return Ok(res);
@@ -133,7 +132,14 @@ impl Category {
         .try_collect::<Vec<Category>>()
         .await?;
 
-        redis.set(TAGS_NAMESPACE, "category", serde_json::to_string(&result)?, None).await?;
+        redis
+            .set(
+                TAGS_NAMESPACE,
+                "category",
+                serde_json::to_string(&result)?,
+                None,
+            )
+            .await?;
 
         Ok(result)
     }
@@ -157,15 +163,14 @@ impl Loader {
         Ok(result.map(|r| LoaderId(r.id)))
     }
 
-    pub async fn list<'a, E>(
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<Loader>, DatabaseError>
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<Loader>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String, _>(TAGS_NAMESPACE, "loader").await?
-        .and_then(|x| serde_json::from_str::<Vec<Loader>>(&x).ok());
+        let res = redis
+            .get::<String, _>(TAGS_NAMESPACE, "loader")
+            .await?
+            .and_then(|x| serde_json::from_str::<Vec<Loader>>(&x).ok());
 
         if let Some(res) = res {
             return Ok(res);
@@ -198,7 +203,14 @@ impl Loader {
         .try_collect::<Vec<_>>()
         .await?;
 
-        redis.set(TAGS_NAMESPACE, "loader", serde_json::to_string(&result)?, None).await?;
+        redis
+            .set(
+                TAGS_NAMESPACE,
+                "loader",
+                serde_json::to_string(&result)?,
+                None,
+            )
+            .await?;
 
         Ok(result)
     }
@@ -236,14 +248,13 @@ impl GameVersion {
         Ok(result.map(|r| GameVersionId(r.id)))
     }
 
-    pub async fn list<'a, E>(
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<GameVersion>, DatabaseError>
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<GameVersion>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String, _>(TAGS_NAMESPACE, "game_version").await?
+        let res = redis
+            .get::<String, _>(TAGS_NAMESPACE, "game_version")
+            .await?
             .and_then(|x| serde_json::from_str::<Vec<GameVersion>>(&x).ok());
 
         if let Some(res) = res {
@@ -267,7 +278,14 @@ impl GameVersion {
         .try_collect::<Vec<GameVersion>>()
         .await?;
 
-        redis.set(TAGS_NAMESPACE, "game_version", serde_json::to_string(&result)?, None).await?;
+        redis
+            .set(
+                TAGS_NAMESPACE,
+                "game_version",
+                serde_json::to_string(&result)?,
+                None,
+            )
+            .await?;
         Ok(result)
     }
 
@@ -382,7 +400,9 @@ impl DonationPlatform {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String, _>(TAGS_NAMESPACE, "donation_platform").await?
+        let res = redis
+            .get::<String, _>(TAGS_NAMESPACE, "donation_platform")
+            .await?
             .and_then(|x| serde_json::from_str::<Vec<DonationPlatform>>(&x).ok());
 
         if let Some(res) = res {
@@ -405,7 +425,14 @@ impl DonationPlatform {
         .try_collect::<Vec<DonationPlatform>>()
         .await?;
 
-        redis.set(TAGS_NAMESPACE, "donation_platform", serde_json::to_string(&result)?, None).await?;
+        redis
+            .set(
+                TAGS_NAMESPACE,
+                "donation_platform",
+                serde_json::to_string(&result)?,
+                None,
+            )
+            .await?;
 
         Ok(result)
     }
@@ -429,14 +456,13 @@ impl ReportType {
         Ok(result.map(|r| ReportTypeId(r.id)))
     }
 
-    pub async fn list<'a, E>(
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<String>, DatabaseError>
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<String>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String, _>(TAGS_NAMESPACE, "report_type").await?
+        let res = redis
+            .get::<String, _>(TAGS_NAMESPACE, "report_type")
+            .await?
             .and_then(|x| serde_json::from_str::<Vec<String>>(&x).ok());
 
         if let Some(res) = res {
@@ -453,7 +479,14 @@ impl ReportType {
         .try_collect::<Vec<String>>()
         .await?;
 
-        redis.set(TAGS_NAMESPACE, "report_type", serde_json::to_string(&result)?, None).await?;
+        redis
+            .set(
+                TAGS_NAMESPACE,
+                "report_type",
+                serde_json::to_string(&result)?,
+                None,
+            )
+            .await?;
 
         Ok(result)
     }
@@ -477,14 +510,13 @@ impl ProjectType {
         Ok(result.map(|r| ProjectTypeId(r.id)))
     }
 
-    pub async fn list<'a, E>(
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<String>, DatabaseError>
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<String>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String, _>(TAGS_NAMESPACE, "project_type").await?
+        let res = redis
+            .get::<String, _>(TAGS_NAMESPACE, "project_type")
+            .await?
             .and_then(|x| serde_json::from_str::<Vec<String>>(&x).ok());
 
         if let Some(res) = res {
@@ -501,7 +533,14 @@ impl ProjectType {
         .try_collect::<Vec<String>>()
         .await?;
 
-        redis.set(TAGS_NAMESPACE, "project_type", serde_json::to_string(&result)?, None).await?;
+        redis
+            .set(
+                TAGS_NAMESPACE,
+                "project_type",
+                serde_json::to_string(&result)?,
+                None,
+            )
+            .await?;
 
         Ok(result)
     }
@@ -525,14 +564,13 @@ impl SideType {
         Ok(result.map(|r| SideTypeId(r.id)))
     }
 
-    pub async fn list<'a, E>(
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<String>, DatabaseError>
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<String>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String, _>(TAGS_NAMESPACE, "side_type").await?
+        let res = redis
+            .get::<String, _>(TAGS_NAMESPACE, "side_type")
+            .await?
             .and_then(|x| serde_json::from_str::<Vec<String>>(&x).ok());
 
         if let Some(res) = res {
@@ -549,7 +587,14 @@ impl SideType {
         .try_collect::<Vec<String>>()
         .await?;
 
-        redis.set(TAGS_NAMESPACE, "side_type", serde_json::to_string(&result)?, None).await?;
+        redis
+            .set(
+                TAGS_NAMESPACE,
+                "side_type",
+                serde_json::to_string(&result)?,
+                None,
+            )
+            .await?;
 
         Ok(result)
     }

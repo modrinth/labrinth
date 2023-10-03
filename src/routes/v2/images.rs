@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::auth::{get_user_from_headers, is_authorized, is_authorized_version};
 use crate::database;
 use crate::database::models::{project_item, report_item, thread_item, version_item};
+use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::{ThreadMessageId, VersionId};
 use crate::models::images::{Image, ImageContext};
@@ -12,7 +13,6 @@ use crate::routes::v2::threads::is_authorized_thread;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use actix_web::{post, web, HttpRequest, HttpResponse};
-use crate::database::redis::RedisPool;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 

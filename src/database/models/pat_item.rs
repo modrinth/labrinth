@@ -10,7 +10,7 @@ const PATS_NAMESPACE: &str = "pats";
 const PATS_TOKENS_NAMESPACE: &str = "pats_tokens";
 const PATS_USERS_NAMESPACE: &str = "pats_users";
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PersonalAccessToken {
     pub id: PatId,
     pub name: String,
@@ -93,7 +93,6 @@ impl PersonalAccessToken {
             return Ok(Vec::new());
         }
 
-
         let mut found_pats = Vec::new();
         let mut remaining_strings = pat_strings
             .iter()
@@ -106,14 +105,21 @@ impl PersonalAccessToken {
             .collect::<Vec<_>>();
 
         pat_ids.append(
-            &mut redis.multi_get::<i64,_>(PATS_TOKENS_NAMESPACE, pat_strings.iter().map(|x| x.to_string()).collect()).await?
+            &mut redis
+                .multi_get::<i64, _>(
+                    PATS_TOKENS_NAMESPACE,
+                    pat_strings.iter().map(|x| x.to_string()).collect(),
+                )
+                .await?
                 .into_iter()
                 .flatten()
-                .collect()
+                .collect(),
         );
 
         if !pat_ids.is_empty() {
-            let pats = redis.multi_get::<String,_>(PATS_NAMESPACE, pat_ids).await?;
+            let pats = redis
+                .multi_get::<String, _>(PATS_NAMESPACE, pat_ids)
+                .await?;
             for pat in pats {
                 if let Some(pat) =
                     pat.and_then(|x| serde_json::from_str::<PersonalAccessToken>(&x).ok())
@@ -162,8 +168,17 @@ impl PersonalAccessToken {
             .await?;
 
             for pat in db_pats {
-                redis.set(PATS_NAMESPACE, pat.id.0, serde_json::to_string(&pat)?, None).await?;
-                redis.set(PATS_TOKENS_NAMESPACE, pat.access_token.clone(), pat.id.0, None).await?;
+                redis
+                    .set(PATS_NAMESPACE, pat.id.0, serde_json::to_string(&pat)?, None)
+                    .await?;
+                redis
+                    .set(
+                        PATS_TOKENS_NAMESPACE,
+                        pat.access_token.clone(),
+                        pat.id.0,
+                        None,
+                    )
+                    .await?;
                 found_pats.push(pat);
             }
         }
@@ -179,7 +194,8 @@ impl PersonalAccessToken {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String,_>(PATS_USERS_NAMESPACE, user_id.0)
+        let res = redis
+            .get::<String, _>(PATS_USERS_NAMESPACE, user_id.0)
             .await?
             .and_then(|x| serde_json::from_str::<Vec<i64>>(&x).ok());
 
@@ -202,7 +218,14 @@ impl PersonalAccessToken {
         .try_collect::<Vec<PatId>>()
         .await?;
 
-        redis.set(PATS_USERS_NAMESPACE, user_id.0, serde_json::to_string(&db_pats)?, None).await?;
+        redis
+            .set(
+                PATS_USERS_NAMESPACE,
+                user_id.0,
+                serde_json::to_string(&db_pats)?,
+                None,
+            )
+            .await?;
         Ok(db_pats)
     }
 

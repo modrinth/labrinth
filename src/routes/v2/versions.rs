@@ -3,8 +3,8 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
-use crate::database::redis::RedisPool;
 use crate::database::models::image_item;
+use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;

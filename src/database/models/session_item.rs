@@ -146,14 +146,21 @@ impl Session {
             .collect::<Vec<_>>();
 
         session_ids.append(
-            &mut redis.multi_get::<i64, _>(SESSIONS_IDS_NAMESPACE, session_strings.iter().map(|x| x.to_string()).collect()).await?
+            &mut redis
+                .multi_get::<i64, _>(
+                    SESSIONS_IDS_NAMESPACE,
+                    session_strings.iter().map(|x| x.to_string()).collect(),
+                )
+                .await?
                 .into_iter()
                 .flatten()
                 .collect(),
         );
 
         if !session_ids.is_empty() {
-            let sessions = redis.multi_get::<String, _>(SESSIONS_NAMESPACE, session_ids).await?;
+            let sessions = redis
+                .multi_get::<String, _>(SESSIONS_NAMESPACE, session_ids)
+                .await?;
             for session in sessions {
                 if let Some(session) =
                     session.and_then(|x| serde_json::from_str::<Session>(&x).ok())
@@ -205,8 +212,22 @@ impl Session {
                 .await?;
 
             for session in db_sessions {
-                redis.set(SESSIONS_NAMESPACE, session.id.0, serde_json::to_string(&session)?, None).await?;
-                redis.set(SESSIONS_IDS_NAMESPACE, session.session.clone(), session.id.0, None).await?;
+                redis
+                    .set(
+                        SESSIONS_NAMESPACE,
+                        session.id.0,
+                        serde_json::to_string(&session)?,
+                        None,
+                    )
+                    .await?;
+                redis
+                    .set(
+                        SESSIONS_IDS_NAMESPACE,
+                        session.session.clone(),
+                        session.id.0,
+                        None,
+                    )
+                    .await?;
                 found_sessions.push(session);
             }
         }
@@ -222,7 +243,9 @@ impl Session {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let res = redis.get::<String,_>(SESSIONS_USERS_NAMESPACE, user_id.0).await?
+        let res = redis
+            .get::<String, _>(SESSIONS_USERS_NAMESPACE, user_id.0)
+            .await?
             .and_then(|x| serde_json::from_str::<Vec<i64>>(&x).ok());
 
         if let Some(res) = res {
@@ -244,7 +267,14 @@ impl Session {
         .try_collect::<Vec<SessionId>>()
         .await?;
 
-        redis.set(SESSIONS_USERS_NAMESPACE, user_id.0, serde_json::to_string(&db_sessions)?, None).await?;
+        redis
+            .set(
+                SESSIONS_USERS_NAMESPACE,
+                user_id.0,
+                serde_json::to_string(&db_sessions)?,
+                None,
+            )
+            .await?;
 
         Ok(db_sessions)
     }

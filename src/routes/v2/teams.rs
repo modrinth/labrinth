@@ -1,6 +1,7 @@
 use crate::auth::{get_user_from_headers, is_authorized};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::TeamMember;
+use crate::database::redis::RedisPool;
 use crate::models::ids::ProjectId;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
@@ -11,7 +12,6 @@ use crate::routes::ApiError;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use crate::database::redis::RedisPool;
 use sqlx::PgPool;
 
 pub fn config(cfg: &mut web::ServiceConfig) {

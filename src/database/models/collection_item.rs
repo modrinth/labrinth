@@ -1,8 +1,8 @@
 use super::ids::*;
 use crate::database::models;
 use crate::database::models::DatabaseError;
-use crate::models::collections::CollectionStatus;
 use crate::database::redis::RedisPool;
+use crate::models::collections::CollectionStatus;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -165,8 +165,12 @@ impl Collection {
         let mut remaining_collections: Vec<CollectionId> = collection_ids.to_vec();
 
         if !collection_ids.is_empty() {
-            let collections = redis.multi_get::<String, _>(
-                COLLECTIONS_NAMESPACE, collection_ids.iter().map(|x| x.0).collect()).await?;
+            let collections = redis
+                .multi_get::<String, _>(
+                    COLLECTIONS_NAMESPACE,
+                    collection_ids.iter().map(|x| x.0).collect(),
+                )
+                .await?;
 
             for collection in collections {
                 if let Some(collection) =
@@ -223,7 +227,14 @@ impl Collection {
             .await?;
 
             for collection in db_collections {
-                redis.set(COLLECTIONS_NAMESPACE, collection.id.0, serde_json::to_string(&collection)?, None).await?;
+                redis
+                    .set(
+                        COLLECTIONS_NAMESPACE,
+                        collection.id.0,
+                        serde_json::to_string(&collection)?,
+                        None,
+                    )
+                    .await?;
                 found_collections.push(collection);
             }
         }
@@ -231,10 +242,7 @@ impl Collection {
         Ok(found_collections)
     }
 
-    pub async fn clear_cache(
-        id: CollectionId,
-        redis: &RedisPool,
-    ) -> Result<(), DatabaseError> {
+    pub async fn clear_cache(id: CollectionId, redis: &RedisPool) -> Result<(), DatabaseError> {
         redis.delete(COLLECTIONS_NAMESPACE, id.0).await?;
         Ok(())
     }

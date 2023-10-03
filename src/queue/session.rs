@@ -43,11 +43,7 @@ impl AuthQueue {
         std::mem::replace(&mut queue, HashSet::with_capacity(len))
     }
 
-    pub async fn index(
-        &self,
-        pool: &PgPool,
-        redis: &RedisPool,
-    ) -> Result<(), DatabaseError> {
+    pub async fn index(&self, pool: &PgPool, redis: &RedisPool) -> Result<(), DatabaseError> {
         let session_queue = self.take_sessions().await;
         let pat_queue = self.take_pats().await;
 

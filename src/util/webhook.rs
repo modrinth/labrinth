@@ -1,9 +1,9 @@
 use crate::database::models::categories::GameVersion;
+use crate::database::redis::RedisPool;
 use crate::models::projects::ProjectId;
 use crate::routes::ApiError;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use crate::database::redis::RedisPool;
 use sqlx::PgPool;
 use std::usize;
 

@@ -1,12 +1,12 @@
 use crate::auth::get_user_from_headers;
 use crate::database;
+use crate::database::redis::RedisPool;
 use crate::models::ids::NotificationId;
 use crate::models::notifications::Notification;
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
-use crate::database::redis::RedisPool;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
