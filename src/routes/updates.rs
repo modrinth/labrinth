@@ -195,11 +195,11 @@ pub async fn atom_feed(
         }
     }
 
-    fn tag_to_category(tag: &String) -> Category {
+    fn tag_to_category(tag: &str) -> Category {
         Category {
-            term: tag.clone(),
+            term: tag.to_string(),
             scheme: None,
-            label: Some(tag.clone()),
+            label: Some(tag.to_string()),
         }
     }
 
@@ -224,6 +224,7 @@ pub async fn atom_feed(
             .categories
             .iter()
             .chain(project.additional_categories.iter())
+            .map(|x| x.as_str())
             .map(tag_to_category)
             .collect::<Vec<_>>(),
         contributors: members_data
@@ -265,13 +266,12 @@ pub async fn atom_feed(
         entries: versions
             .iter()
             .map(|v| {
-                let version_id = crate::models::ids::VersionId::from(v.id);
                 let link = format!(
                     "{}/{}/{}/version/{}",
                     dotenvy::var("SITE_URL").unwrap_or_default(),
                     project.project_type,
                     project_id,
-                    version_id
+                    v.id
                 );
 
                 Entry {
@@ -287,8 +287,8 @@ pub async fn atom_feed(
                     categories: v
                         .loaders
                         .iter()
-                        .map(|x| &x.0)
-                        .chain(v.game_versions.iter().map(|x| &x.0))
+                        .map(|x| x.0.as_str())
+                        .chain(v.game_versions.iter().map(|x| x.0.as_str()))
                         .map(tag_to_category)
                         .collect::<Vec<_>>(),
                     contributors: vec![],
