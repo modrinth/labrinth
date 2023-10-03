@@ -1,3 +1,4 @@
+use super::ApiError;
 use crate::database::redis::RedisPool;
 use crate::{
     auth::{filter_authorized_projects, filter_authorized_versions, get_user_from_headers},
@@ -16,8 +17,6 @@ use chrono::{Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
-
-use super::ApiError;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
