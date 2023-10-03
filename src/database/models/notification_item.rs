@@ -3,6 +3,7 @@ use crate::database::models::DatabaseError;
 use crate::models::notifications::NotificationBody;
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
+use itertools::Itertools;
 use redis::cmd;
 use serde::{Deserialize, Serialize};
 
@@ -72,23 +73,25 @@ impl Notification {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &deadpool_redis::Pool,
     ) -> Result<(), DatabaseError> {
-        for notification in notifications {
-            sqlx::query!(
-                "
-                INSERT INTO notifications (
-                    id, user_id, body
-                )
-                VALUES (
-                    $1, $2, $3
-                )
-                ",
-                notification.id as NotificationId,
-                notification.user_id as UserId,
-                serde_json::value::to_value(notification.body.clone())?
+        let notification_ids = notifications.iter().map(|n| n.id.0).collect_vec();
+        let user_ids = notifications.iter().map(|n| n.user_id.0).collect_vec();
+        let bodies = notifications
+            .iter()
+            .map(|n| Ok(serde_json::value::to_value(n.body.clone())?))
+            .collect::<Result<Vec<_>, DatabaseError>>()?;
+        sqlx::query!(
+            "
+            INSERT INTO notifications (
+                id, user_id, body
             )
-            .execute(&mut *transaction)
-            .await?;
-        }
+            SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::jsonb[])
+            ",
+            &notification_ids[..],
+            &user_ids[..],
+            &bodies[..],
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         Notification::clear_user_notifications_cache(
             notifications.iter().map(|n| &n.user_id),
