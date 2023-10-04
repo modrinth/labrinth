@@ -69,7 +69,7 @@ async fn create_index(
             },
         )) => {
             // Only create index and set settings if the index doesn't already exist
-            let task = client.create_index(name, Some("project_id")).await?;
+            let task = client.create_index(name, Some("version_id")).await?;
             let task = task.wait_for_completion(client, None, None).await?;
             let index = task
                 .try_make_index(client)
@@ -103,7 +103,7 @@ async fn add_to_index(
 ) -> Result<(), IndexingError> {
     for chunk in mods.chunks(MEILISEARCH_CHUNK_SIZE) {
         index
-            .add_documents(chunk, Some("project_id"))
+            .add_documents(chunk, Some("version_id"))
             .await?
             .wait_for_completion(client, None, None)
             .await?;
@@ -150,6 +150,7 @@ pub async fn add_projects(
 
 fn default_settings() -> Settings {
     Settings::new()
+        .with_distinct_attribute("project_id")
         .with_displayed_attributes(DEFAULT_DISPLAYED_ATTRIBUTES)
         .with_searchable_attributes(DEFAULT_SEARCHABLE_ATTRIBUTES)
         .with_sortable_attributes(DEFAULT_SORTABLE_ATTRIBUTES)
@@ -161,6 +162,7 @@ fn default_settings() -> Settings {
 
 const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "project_id",
+    "version_id",
     "project_type",
     "slug",
     "author",

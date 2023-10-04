@@ -71,6 +71,7 @@ impl SearchConfig {
 /// This contains some extra data that is not returned by search results.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UploadSearchProject {
+    pub version_id: String,
     pub project_id: String,
     pub project_type: String,
     pub slug: Option<String>,
@@ -111,6 +112,7 @@ pub struct SearchResults {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResultSearchProject {
+    pub version_id: String,
     pub project_id: String,
     pub project_type: String,
     pub slug: Option<String>,

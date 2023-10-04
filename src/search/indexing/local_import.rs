@@ -12,7 +12,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
     Ok(
         sqlx::query!(
             "
-            SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
+            SELECT m.id id, v.id version_id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,
             m.team_id team_id, m.license license, m.slug slug, m.status status_name, m.color color,
             cs.name client_side_type, ss.name server_side_type, pt.name project_type_name, u.username username,
@@ -22,10 +22,10 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
             ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null) versions,
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is false) gallery,
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery
-            FROM mods m
+            FROM versions v
+            INNER JOIN mods m ON v.mod_id = m.id AND m.status = ANY($2)
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
-            LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ALL($1)
             LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
             LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
@@ -36,8 +36,8 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
             INNER JOIN side_types ss ON m.server_side = ss.id
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
             INNER JOIN users u ON tm.user_id = u.id
-            WHERE m.status = ANY($2)
-            GROUP BY m.id, cs.id, ss.id, pt.id, u.id;
+            WHERE v.status != ANY($1)
+            GROUP BY v.id, m.id, cs.id, ss.id, pt.id, u.id;
             ",
             &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>(),
             &*crate::models::projects::ProjectStatus::iterator().filter(|x| x.is_searchable()).map(|x| x.to_string()).collect::<Vec<String>>(),
@@ -57,6 +57,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
                     let versions = m.versions.unwrap_or_default();
 
                     let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
+                    let version_id: crate::models::projects::ProjectId = ProjectId(m.version_id).into();
 
                     let license = match m.license.split(' ').next() {
                         Some(license) => license.to_string(),
@@ -69,6 +70,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
                     };
 
                     UploadSearchProject {
+                        version_id: version_id.to_string(),
                         project_id: project_id.to_string(),
                         title: m.title,
                         description: m.description,
