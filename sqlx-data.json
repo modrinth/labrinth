@@ -3415,20 +3415,6 @@
     },
     "query": "\n            UPDATE mods\n            SET icon_url = $1, color = $2\n            WHERE (id = $3)\n            "
   },
-  "73eb05239e1abe32e0d7bc60e2a126fad0e353139bca2ffda0d23e4b70938067": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Jsonb"
-        ]
-      }
-    },
-    "query": "\n                INSERT INTO notifications (\n                    id, user_id, body\n                )\n                VALUES (\n                    $1, $2, $3\n                )\n                "
-  },
   "742f20f422361971c21b72c629c57a6c3870d8d6c41577496907290db5994f12": {
     "describe": {
       "columns": [],
@@ -3849,6 +3835,20 @@
       }
     },
     "query": "\n                    UPDATE pats\n                    SET expires = $1\n                    WHERE id = $2\n                    "
+  },
+  "8a9bf48b3d4aa665136568a9bf9ddb8e5d81ed27ce587e26672dfb45a44c7b9c": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array",
+          "Int8Array",
+          "JsonbArray"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO notifications (\n                id, user_id, body\n            )\n            SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::jsonb[])\n            "
   },
   "8abb317c85f48c7dd9ccf4a7b8fbc0b58ac73f7ae87ff2dfe67009a51089f784": {
     "describe": {
