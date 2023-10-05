@@ -405,7 +405,7 @@ pub async fn report_edit(
     let report = crate::database::models::report_item::Report::get(id, &**pool).await?;
 
     if let Some(report) = report {
-        if !user.role.is_mod() && report.user_id != Some(user.id.into()) {
+        if !user.role.is_mod() && report.reporter != user.id.into() {
             return Ok(HttpResponse::NotFound().body(""));
         }
 
@@ -496,7 +496,14 @@ pub async fn report_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    check_is_moderator_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::REPORT_DELETE]),
+    )
+    .await?;
 
     let mut transaction = pool.begin().await?;
 

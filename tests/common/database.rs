@@ -1,13 +1,56 @@
+#![allow(dead_code)]
+
 use labrinth::database::redis::RedisPool;
 use sqlx::{postgres::PgPoolOptions, Executor, PgPool};
 use std::time::Duration;
 use url::Url;
 
-pub const ADMIN_USER_ID: i64 = 1;
-pub const MOD_USER_ID: i64 = 2;
-pub const USER_USER_ID: i64 = 3;
-pub const FRIEND_USER_ID: i64 = 4;
-pub const ENEMY_USER_ID: i64 = 5;
+// The dummy test database adds a fair bit of 'dummy' data to test with.
+// These constants are used to refer to that data, and are described here.
+
+// The user IDs are as follows:
+pub const ADMIN_USER_ID: &str = "1";
+pub const MOD_USER_ID: &str = "2";
+pub const USER_USER_ID: &str = "3"; // This is the 'main' user ID, and is used for most tests.
+pub const FRIEND_USER_ID: &str = "4"; // This is exactly the same as USER_USER_ID, but could be used for testing friend-only endpoints (ie: teams, etc)
+pub const ENEMY_USER_ID: &str = "5"; // This is exactly the same as USER_USER_ID, but could be used for testing friend-only endpoints (ie: teams, etc)
+
+pub const ADMIN_USER_ID_PARSED: i64 = 1;
+pub const MOD_USER_ID_PARSED: i64 = 2;
+pub const USER_USER_ID_PARSED: i64 = 3;
+pub const FRIEND_USER_ID_PARSED: i64 = 4;
+pub const ENEMY_USER_ID_PARSED: i64 = 5;
+
+// These are full-scoped PATs- as if the user was logged in (including illegal scopes).
+pub const ADMIN_USER_PAT : &str = "mrp_patadmin";
+pub const MOD_USER_PAT : &str = "mrp_patmoderator";
+pub const USER_USER_PAT : &str = "mrp_patuser";
+pub const FRIEND_USER_PAT : &str = "mrp_patfriend";
+pub const ENEMY_USER_PAT : &str = "mrp_patenemy";
+
+// There are two test projects. They are both created by user 3 (USER_USER_ID).
+// They differ only in that 'ALPHA' is a public, approved project, and 'BETA' is a private, project in queue.
+// The same goes for their corresponding versions- one listed, one draft.
+pub const PROJECT_ALPHA_TEAM_ID : &str = "1c";
+pub const PROJECT_BETA_TEAM_ID : &str = "1d";
+
+pub const PROJECT_ALPHA_PROJECT_ID : &str = "G8";
+pub const PROJECT_BETA_PROJECT_ID : &str = "G9";
+
+pub const PROJECT_ALPHA_PROJECT_SLUG : &str = "testslug";
+pub const PROJECT_BETA_PROJECT_SLUG : &str = "testslug2";
+
+pub const PROJECT_ALPHA_VERSION_ID : &str = "Hk";
+pub const PROJECT_BETA_VERSION_ID : &str = "Hl";
+
+// These are threads created alongside the projects.
+pub const PROJECT_ALPHA_THREAD_ID : &str = "U";
+pub const PROJECT_BETA_THREAD_ID : &str = "V";
+
+// These are the hashes of the files attached to their versions: they do not reflect a 'real' hash of data.
+// This can be used for /version_file/ type endpoints which get a project's data from its hash.
+pub const PROJECT_ALPHA_THREAD_FILE_HASH : &str = "000000000";
+pub const PROJECT_BETA_THREAD_FILE_HASH : &str = "111111111";
 
 pub struct TemporaryDatabase {
     pub pool: PgPool,
@@ -16,6 +59,13 @@ pub struct TemporaryDatabase {
 }
 
 impl TemporaryDatabase {
+    // Creates a temporary database like sqlx::test does
+    // 1. Logs into the main database
+    // 2. Creates a new randomly generated database
+    // 3. Runs migrations on the new database
+    // 4. (Optionally, by using create_with_dummy) adds dummy data to the database
+    // If a db is created with create_with_dummy, it must be cleaned up with cleanup.
+    // This means that dbs will only 'remain' if a test fails (for examination of the db), and will be cleaned up otherwise. 
     pub async fn create() -> Self {
         let temp_database_name = generate_random_database_name();
         println!("Creating temporary database: {}", &temp_database_name);
@@ -68,6 +118,9 @@ impl TemporaryDatabase {
         db
     }
 
+    // Deletes the temporary database
+    // If a temporary db is created, it must be cleaned up with cleanup.
+    // This means that dbs will only 'remain' if a test fails (for examination of the db), and will be cleaned up otherwise. 
     pub async fn cleanup(mut self) {
         let database_url = dotenvy::var("DATABASE_URL").expect("No database URL");
         self.pool.close().await;
@@ -95,20 +148,6 @@ impl TemporaryDatabase {
             .expect("Database deletion failed");
     }
 
-    /*
-        Adds the following dummy data to the database:
-        - 5 users (admin, mod, user, friend, enemy)
-            - Admin and mod have special powers, the others do not
-            - User is our mock user. Friend and enemy can be used to simulate a collaborator to user to be given permnissions on a project,
-            whereas enemy might be banned or otherwise not given permission. (These are arbitrary and dependent on the test)
-        - PATs for each of the five users, with full privileges (for testing purposes).
-            - 'mrp_patadmin' for admin, etc
-        - 1 game version (1.20.1)
-        - 1 dummy project called 'testslug' (and testslug2) with the following properties:
-        - several categories, tags, etc
-
-        This is a test function, so it panics on error.
-    */
     pub async fn add_dummy_data(&self) {
         let pool = &self.pool.clone();
         pool.execute(include_str!("../files/dummy_data.sql"))

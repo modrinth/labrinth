@@ -10,7 +10,10 @@ use self::database::TemporaryDatabase;
 
 pub mod actix;
 pub mod database;
+pub mod environment;
 
+// Testing equivalent to 'setup' function, producing a LabrinthConfig
+// If making a test, you should probably use environment::TestEnvironment::new() (which calls this)
 pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
     println!("Setting up labrinth config");
 
@@ -38,6 +41,9 @@ pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
 }
 
 // This is so that env vars not used immediately don't panic at runtime
+// Currently, these are the same as main.rs ones.
+// TODO: go through after all tests are created and remove any that are not used
+// Low priority as .env file should include all of these anyway
 fn check_test_vars() -> bool {
     let mut failed = false;
 

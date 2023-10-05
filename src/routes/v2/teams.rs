@@ -453,7 +453,6 @@ pub async fn add_team_member(
             let organization_permissions =
                 OrganizationPermissions::get_permissions_by_role(&current_user.role, &member)
                     .unwrap_or_default();
-            println!("{:?}", organization_permissions);
             if !organization_permissions.contains(OrganizationPermissions::MANAGE_INVITES) {
                 return Err(ApiError::CustomAuthentication(
                     "You don't have permission to invite users to this organization".to_string(),

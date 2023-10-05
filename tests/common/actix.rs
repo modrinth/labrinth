@@ -1,6 +1,7 @@
 use actix_web::test::TestRequest;
 use bytes::{Bytes, BytesMut};
 
+// Multipart functionality (actix-test does not innately support multipart)
 #[derive(Debug, Clone)]
 pub struct MultipartSegment {
     pub name: String,
@@ -10,6 +11,7 @@ pub struct MultipartSegment {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum MultipartSegmentData {
     Text(String),
     Binary(Vec<u8>),

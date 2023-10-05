@@ -512,7 +512,14 @@ pub async fn moderation_inbox(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = check_is_moderator_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::THREAD_READ]),
+    )
+    .await?;
 
     let ids = sqlx::query!(
         "
@@ -540,7 +547,14 @@ pub async fn thread_read(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    check_is_moderator_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::THREAD_READ]),
+    )
+    .await?;
 
     let id = info.into_inner().0;
     let mut transaction = pool.begin().await?;

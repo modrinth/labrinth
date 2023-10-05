@@ -40,16 +40,14 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 #[derive(Deserialize, Validate)]
 pub struct NewOrganization {
-    #[validate(length(min = 3, max = 256))]
-    pub description: String,
     #[validate(
         length(min = 3, max = 64),
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
     // Title of the organization, also used as slug
     pub title: String,
-    #[serde(default = "crate::models::teams::ProjectPermissions::default")]
-    pub default_project_permissions: ProjectPermissions,
+    #[validate(length(min = 3, max = 256))]
+    pub description: String,
 }
 
 #[post("organization")]
@@ -290,7 +288,6 @@ pub struct OrganizationEdit {
     )]
     // Title of the organization, also used as slug
     pub title: Option<String>,
-    pub default_project_permissions: Option<ProjectPermissions>,
 }
 
 #[patch("{id}")]
@@ -508,7 +505,7 @@ pub async fn organization_projects_get(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::ORGANIZATION_READ]),
+        Some(&[Scopes::ORGANIZATION_READ, Scopes::PROJECT_READ]),
     )
     .await
     .map(|x| x.1)
@@ -520,7 +517,7 @@ pub async fn organization_projects_get(
     let project_ids = sqlx::query!(
         "
         SELECT m.id FROM organizations o
-        LEFT JOIN mods m ON m.id = o.id
+        INNER JOIN mods m ON m.organization_id = o.id
         WHERE (o.id = $1 AND $1 IS NOT NULL) OR (o.title = $2 AND $2 IS NOT NULL)
         ",
         possible_organization_id.map(|x| x as i64),

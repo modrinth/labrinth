@@ -1,9 +1,10 @@
-use actix_web::{test, App};
-use common::database::TemporaryDatabase;
+use actix_web::test;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
 use serde_json::json;
 
-use crate::common::{actix::AppendsMultipart, setup};
+use crate::common::database::*;
+
+use crate::common::{actix::AppendsMultipart, environment::TestEnvironment};
 
 // importing common module.
 mod common;
@@ -11,13 +12,10 @@ mod common;
 #[actix_rt::test]
 async fn test_get_project() {
     // Test setup and dummy data
-    let db = TemporaryDatabase::create_with_dummy().await;
-    let labrinth_config = setup(&db).await;
-    let app = App::new().configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()));
-    let test_app = test::init_service(app).await;
+    let test_env = TestEnvironment::new().await;
 
     // Cache should default to unpopulated
-    assert!(db
+    assert!(test_env.db
         .redis_pool
         .get::<String, _>(PROJECTS_NAMESPACE, 1000)
         .await
@@ -25,33 +23,31 @@ async fn test_get_project() {
         .is_none());
 
     // Perform request on dummy data
-    println!("Sending request");
     let req = test::TestRequest::get()
-        .uri("/v2/project/G8")
-        .append_header(("Authorization", "mrp_patuser"))
+        .uri(&format!("/v2/project/{PROJECT_ALPHA_PROJECT_ID}"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     let status = resp.status();
     let body: serde_json::Value = test::read_body_json(resp).await;
 
     assert_eq!(status, 200);
-    assert_eq!(body["id"], json!("G8"));
+    assert_eq!(body["id"], json!(PROJECT_ALPHA_PROJECT_ID));
     assert_eq!(body["slug"], json!("testslug"));
     let versions = body["versions"].as_array().unwrap();
-    assert!(versions.len() > 0);
-    assert_eq!(versions[0], json!("Hk"));
+    assert!(!versions.is_empty());
+    assert_eq!(versions[0], json!(PROJECT_ALPHA_VERSION_ID));
 
     // Confirm that the request was cached
-    println!("Confirming cache");
     assert_eq!(
-        db.redis_pool
+        test_env.db.redis_pool
             .get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, "testslug")
             .await
             .unwrap(),
         Some(1000)
     );
 
-    let cached_project = db
+    let cached_project = test_env.db
         .redis_pool
         .get::<String, _>(PROJECTS_NAMESPACE, 1000)
         .await
@@ -62,48 +58,43 @@ async fn test_get_project() {
 
     // Make the request again, this time it should be cached
     let req = test::TestRequest::get()
-        .uri("/v2/project/G8")
-        .append_header(("Authorization", "mrp_patuser"))
+        .uri(&format!("/v2/project/{PROJECT_ALPHA_PROJECT_ID}"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     let status = resp.status();
     assert_eq!(status, 200);
 
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["id"], json!("G8"));
+    assert_eq!(body["id"], json!(PROJECT_ALPHA_PROJECT_ID));
     assert_eq!(body["slug"], json!("testslug"));
 
     // Request should fail on non-existent project
-    println!("Requesting non-existent project");
     let req = test::TestRequest::get()
         .uri("/v2/project/nonexistent")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
 
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 404);
 
     // Similarly, request should fail on non-authorized user, on a yet-to-be-approved or hidden project, with a 404 (hiding the existence of the project)
-    println!("Requesting project as non-authorized user");
     let req = test::TestRequest::get()
-        .uri("/v2/project/G9")
-        .append_header(("Authorization", "mrp_patenemy"))
+        .uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}"))
+        .append_header(("Authorization", ENEMY_USER_PAT))
         .to_request();
 
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 404);
 
     // Cleanup test db
-    db.cleanup().await;
+    test_env.cleanup().await;
 }
 
 #[actix_rt::test]
 async fn test_add_remove_project() {
     // Test setup and dummy data
-    let db = TemporaryDatabase::create_with_dummy().await;
-    let labrinth_config = setup(&db).await;
-    let app = App::new().configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()));
-    let test_app = test::init_service(app).await;
+    let test_env = TestEnvironment::new().await;
 
     // Generate test project data.
     let mut json_data = json!(
@@ -185,10 +176,10 @@ async fn test_add_remove_project() {
     // Add a project- simple, should work.
     let req = test::TestRequest::post()
         .uri("/v2/project")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
 
     let status = resp.status();
     assert_eq!(status, 200);
@@ -196,10 +187,10 @@ async fn test_add_remove_project() {
     // Get the project we just made, and confirm that it's correct
     let req = test::TestRequest::get()
         .uri("/v2/project/demo")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
 
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = test::read_body_json(resp).await;
@@ -208,15 +199,15 @@ async fn test_add_remove_project() {
     let uploaded_version_id = &versions[0];
 
     // Checks files to ensure they were uploaded and correctly identify the file
-    let hash = sha1::Sha1::from(include_bytes!("../tests/files/basic-mod.jar").to_vec())
+    let hash = sha1::Sha1::from(include_bytes!("../tests/files/basic-mod.jar"))
         .digest()
         .to_string();
     let req = test::TestRequest::get()
         .uri(&format!("/v2/version_file/{hash}?algorithm=sha1"))
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
 
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = test::read_body_json(resp).await;
@@ -227,54 +218,48 @@ async fn test_add_remove_project() {
     // Even if that file is named differently
     let req = test::TestRequest::post()
         .uri("/v2/project")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_multipart(vec![
             json_diff_slug_file_segment.clone(), // Different slug, different file name
             file_diff_name_segment.clone(),      // Different file name, same content
         ])
         .to_request();
 
-    let resp = test::call_service(&test_app, req).await;
-    println!("Different slug, same file: {:?}", resp.response().body());
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 400);
 
     // Reusing with the same slug and a different file should fail
     let req = test::TestRequest::post()
         .uri("/v2/project")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_multipart(vec![
             json_diff_file_segment.clone(), // Same slug, different file name
             file_diff_name_content_segment.clone(), // Different file name, different content
         ])
         .to_request();
 
-    let resp = test::call_service(&test_app, req).await;
-    println!("Same slug, different file: {:?}", resp.response().body());
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 400);
 
     // Different slug, different file should succeed
     let req = test::TestRequest::post()
         .uri("/v2/project")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_multipart(vec![
             json_diff_slug_file_segment.clone(), // Different slug, different file name
             file_diff_name_content_segment.clone(), // Different file name, same content
         ])
         .to_request();
 
-    let resp = test::call_service(&test_app, req).await;
-    println!(
-        "Different slug, different file: {:?}",
-        resp.response().body()
-    );
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
 
     // Get
     let req = test::TestRequest::get()
         .uri("/v2/project/demo")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
     let id = body["id"].to_string();
@@ -282,21 +267,21 @@ async fn test_add_remove_project() {
     // Remove the project
     let req = test::TestRequest::delete()
         .uri("/v2/project/demo")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     // Confirm that the project is gone from the cache
     assert_eq!(
-        db.redis_pool
+        test_env.db.redis_pool
             .get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, "demo")
             .await
             .unwrap(),
         None
     );
     assert_eq!(
-        db.redis_pool
+        test_env.db.redis_pool
             .get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, id)
             .await
             .unwrap(),
@@ -306,44 +291,41 @@ async fn test_add_remove_project() {
     // Old slug no longer works
     let req = test::TestRequest::get()
         .uri("/v2/project/demo")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 404);
 
     // Cleanup test db
-    db.cleanup().await;
+    test_env.cleanup().await;
 }
 
 #[actix_rt::test]
 pub async fn test_patch_project() {
-    let db = TemporaryDatabase::create_with_dummy().await;
-    let labrinth_config = setup(&db).await;
-    let app = App::new().configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()));
-    let test_app = test::init_service(app).await;
+    let test_env = TestEnvironment::new().await;
 
     // First, we do some patch requests that should fail.
     // Failure because the user is not authorized.
     let req = test::TestRequest::patch()
         .uri("/v2/project/testslug")
-        .append_header(("Authorization", "mrp_patenemy"))
+        .append_header(("Authorization", ENEMY_USER_PAT))
         .set_json(json!({
             "title": "Test_Add_Project project - test 1",
         }))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 401);
 
     // Failure because we are setting URL fields to invalid urls.
     for url_type in ["issues_url", "source_url", "wiki_url", "discord_url"] {
         let req = test::TestRequest::patch()
             .uri("/v2/project/testslug")
-            .append_header(("Authorization", "mrp_patuser"))
+            .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 url_type: "w.fake.url",
             }))
             .to_request();
-        let resp = test::call_service(&test_app, req).await;
+        let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 400);
     }
 
@@ -351,12 +333,12 @@ pub async fn test_patch_project() {
     for req in ["unknown", "processing", "withheld", "scheduled"] {
         let req = test::TestRequest::patch()
             .uri("/v2/project/testslug")
-            .append_header(("Authorization", "mrp_patuser"))
+            .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 "requested_status": req,
             }))
             .to_request();
-        let resp = test::call_service(&test_app, req).await;
+        let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 400);
     }
 
@@ -364,52 +346,52 @@ pub async fn test_patch_project() {
     for key in ["moderation_message", "moderation_message_body"] {
         let req = test::TestRequest::patch()
             .uri("/v2/project/testslug")
-            .append_header(("Authorization", "mrp_patuser"))
+            .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 key: "test",
             }))
             .to_request();
-        let resp = test::call_service(&test_app, req).await;
+        let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 401);
 
         // (should work for a mod, though)
         let req = test::TestRequest::patch()
             .uri("/v2/project/testslug")
-            .append_header(("Authorization", "mrp_patmoderator"))
+            .append_header(("Authorization", MOD_USER_PAT))
             .set_json(json!({
                 key: "test",
             }))
             .to_request();
-        let resp = test::call_service(&test_app, req).await;
+        let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 204);
     }
 
     // Failure because the slug is already taken.
     let req = test::TestRequest::patch()
         .uri("/v2/project/testslug")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "slug": "testslug2", // the other dummy project has this slug
         }))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 400);
 
     // Not allowed to directly set status, as 'testslug2' (the other project) is "processing" and cannot have its status changed like this.
     let req = test::TestRequest::patch()
         .uri("/v2/project/testslug2")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "status": "private"
         }))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env .call(req).await;
     assert_eq!(resp.status(), 401);
 
     // Sucessful request to patch many fields.
     let req = test::TestRequest::patch()
         .uri("/v2/project/testslug")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "slug": "newslug",
             "title": "New successful title",
@@ -429,23 +411,23 @@ pub async fn test_patch_project() {
             }]
         }))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     // Old slug no longer works
     let req = test::TestRequest::get()
         .uri("/v2/project/testslug")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 404);
 
     // Old slug no longer works
     let req = test::TestRequest::get()
         .uri("/v2/project/newslug")
-        .append_header(("Authorization", "mrp_patuser"))
+        .append_header(("Authorization", USER_USER_PAT))
         .to_request();
-    let resp = test::call_service(&test_app, req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = test::read_body_json(resp).await;
@@ -466,8 +448,8 @@ pub async fn test_patch_project() {
     );
 
     // Cleanup test db
-    db.cleanup().await;
+    test_env.cleanup().await;
 }
 
-// TODO: you are missing a lot of routes on projects here
-// TODO: using permissions/scopes, can we SEE projects existence that we are not allowed to? (ie 401 isntead of 404)
+// TODO: Missing routes on projects
+// TODO: using permissions/scopes, can we SEE projects existence that we are not allowed to? (ie 401 instead of 404)
