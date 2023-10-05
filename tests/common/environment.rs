@@ -1,20 +1,20 @@
 #![allow(dead_code)]
 
+use super::database::{TemporaryDatabase, USER_USER_ID_PARSED};
+use crate::common::setup;
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
     App,
 };
 use chrono::Utc;
-use super::database::{TemporaryDatabase, USER_USER_ID_PARSED};
 use labrinth::{
     database::{self, models::generate_pat_id},
     models::pats::Scopes,
 };
-use crate::common::setup;
 
 // A complete test environment, with a test actix app and a database.
-// Must be called in an #[actix_rt::test] context. It also simulates a 
+// Must be called in an #[actix_rt::test] context. It also simulates a
 // temporary sqlx db like #[sqlx::test] would.
 // Use .call(req) on it directly to make a test call as if test::call_service(req) were being used.
 pub struct TestEnvironment {
@@ -28,7 +28,10 @@ impl TestEnvironment {
         let labrinth_config = setup(&db).await;
         let app = App::new().configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()));
         let test_app = test::init_service(app).await;
-        Self { test_app: Box::new(test_app), db }
+        Self {
+            test_app: Box::new(test_app),
+            db,
+        }
     }
     pub async fn cleanup(self) {
         self.db.cleanup().await;
@@ -39,16 +42,29 @@ impl TestEnvironment {
     }
 }
 
-
 trait LocalService {
-    fn call(&self, req: actix_http::Request) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ServiceResponse, actix_web::Error>>>>;
+    fn call(
+        &self,
+        req: actix_http::Request,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<ServiceResponse, actix_web::Error>>>,
+    >;
 }
 impl<S> LocalService for S
 where
-    S: actix_web::dev::Service<actix_http::Request, Response = ServiceResponse, Error = actix_web::Error>,
+    S: actix_web::dev::Service<
+        actix_http::Request,
+        Response = ServiceResponse,
+        Error = actix_web::Error,
+    >,
     S::Future: 'static,
 {
-    fn call(&self, req: actix_http::Request) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ServiceResponse, actix_web::Error>>>> {
+    fn call(
+        &self,
+        req: actix_http::Request,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<ServiceResponse, actix_web::Error>>>,
+    > {
         Box::pin(self.call(req))
     }
 }
@@ -58,8 +74,7 @@ where
 // - returns a 200-299 if the scope is present
 // - returns failure and success JSON bodies for requests that are 200 (for performing non-simple follow-up tests on)
 // This uses a builder format, so you can chain methods to set the parameters to non-defaults (most will probably be not need to be set).
-pub struct ScopeTest<'a>
-{
+pub struct ScopeTest<'a> {
     test_env: &'a TestEnvironment,
     // Scopes expected to fail on this test. By default, this is all scopes except the success scopes.
     // (To ensure we have isolated the scope we are testing)
@@ -70,8 +85,7 @@ pub struct ScopeTest<'a>
     expected_failure_code: u16,
 }
 
-impl<'a> ScopeTest<'a>
-{
+impl<'a> ScopeTest<'a> {
     pub fn new(test_env: &'a TestEnvironment) -> Self {
         Self {
             test_env,
@@ -107,13 +121,18 @@ impl<'a> ScopeTest<'a>
     // success_scopes : the scopes that we are testing that should succeed
     // returns a tuple of (failure_body, success_body)
     // Should return a String error if on unexpected status code, allowing unwrapping in tests.
-    pub async fn test<T>(&self, req_gen: T, success_scopes: Scopes) -> Result<(serde_json::Value, serde_json::Value), String>
-    where     T: Fn() -> TestRequest
+    pub async fn test<T>(
+        &self,
+        req_gen: T,
+        success_scopes: Scopes,
+    ) -> Result<(serde_json::Value, serde_json::Value), String>
+    where
+        T: Fn() -> TestRequest,
     {
-
         // First, create a PAT with failure scopes
         let failure_scopes = self.failure_scopes.unwrap_or(Scopes::ALL ^ success_scopes);
-        let access_token_all_others = create_test_pat(failure_scopes, self.user_id, &self.test_env.db).await;
+        let access_token_all_others =
+            create_test_pat(failure_scopes, self.user_id, &self.test_env.db).await;
 
         // Create a PAT with the success scopes
         let access_token = create_test_pat(success_scopes, self.user_id, &self.test_env.db).await;
@@ -164,9 +183,7 @@ impl<'a> ScopeTest<'a>
             serde_json::Value::Null
         };
         Ok((failure_body, success_body))
-
     }
-
 }
 
 // Creates a PAT with the given scopes, and returns the access token

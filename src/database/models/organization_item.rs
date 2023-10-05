@@ -1,4 +1,7 @@
-use crate::{models::ids::base62_impl::{parse_base62, to_base62}, database::redis::RedisPool};
+use crate::{
+    database::redis::RedisPool,
+    models::ids::base62_impl::{parse_base62, to_base62},
+};
 
 use super::{ids::*, TeamMember};
 use serde::{Deserialize, Serialize};
@@ -117,23 +120,23 @@ impl Organization {
 
         organization_ids.append(
             &mut redis
-            .multi_get::<i64, _>(
-                ORGANIZATIONS_TITLES_NAMESPACE,
-                organization_strings
-                    .iter()
-                    .map(|x| x.to_string().to_lowercase())
-                    .collect(),
-            )
-            .await?
-            .into_iter()
-            .flatten()
-            .collect()
+                .multi_get::<i64, _>(
+                    ORGANIZATIONS_TITLES_NAMESPACE,
+                    organization_strings
+                        .iter()
+                        .map(|x| x.to_string().to_lowercase())
+                        .collect(),
+                )
+                .await?
+                .into_iter()
+                .flatten()
+                .collect(),
         );
 
         if !organization_ids.is_empty() {
             let organizations = redis
-            .multi_get::<String, _>(ORGANIZATIONS_NAMESPACE, organization_ids)
-            .await?;
+                .multi_get::<String, _>(ORGANIZATIONS_NAMESPACE, organization_ids)
+                .await?;
 
             for organization in organizations {
                 if let Some(organization) =
@@ -185,13 +188,13 @@ impl Organization {
 
             for organization in organizations {
                 redis
-                .set(
-                    ORGANIZATIONS_NAMESPACE,
-                    organization.id.0,
-                    serde_json::to_string(&organization)?,
-                    None,
-                )
-                .await?;
+                    .set(
+                        ORGANIZATIONS_NAMESPACE,
+                        organization.id.0,
+                        serde_json::to_string(&organization)?,
+                        None,
+                    )
+                    .await?;
                 redis
                     .set(
                         ORGANIZATIONS_TITLES_NAMESPACE,
@@ -316,14 +319,10 @@ impl Organization {
         title: Option<String>,
         redis: &RedisPool,
     ) -> Result<(), super::DatabaseError> {
-
         redis.delete(ORGANIZATIONS_NAMESPACE, id.0).await?;
         if let Some(title) = title {
             redis
-                .delete(
-                    ORGANIZATIONS_TITLES_NAMESPACE,
-                    title.to_lowercase(),
-                )
+                .delete(ORGANIZATIONS_TITLES_NAMESPACE, title.to_lowercase())
                 .await?;
         }
 

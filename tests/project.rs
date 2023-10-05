@@ -15,7 +15,8 @@ async fn test_get_project() {
     let test_env = TestEnvironment::new().await;
 
     // Cache should default to unpopulated
-    assert!(test_env.db
+    assert!(test_env
+        .db
         .redis_pool
         .get::<String, _>(PROJECTS_NAMESPACE, 1000)
         .await
@@ -40,14 +41,17 @@ async fn test_get_project() {
 
     // Confirm that the request was cached
     assert_eq!(
-        test_env.db.redis_pool
+        test_env
+            .db
+            .redis_pool
             .get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, "testslug")
             .await
             .unwrap(),
         Some(1000)
     );
 
-    let cached_project = test_env.db
+    let cached_project = test_env
+        .db
         .redis_pool
         .get::<String, _>(PROJECTS_NAMESPACE, 1000)
         .await
@@ -274,14 +278,18 @@ async fn test_add_remove_project() {
 
     // Confirm that the project is gone from the cache
     assert_eq!(
-        test_env.db.redis_pool
+        test_env
+            .db
+            .redis_pool
             .get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, "demo")
             .await
             .unwrap(),
         None
     );
     assert_eq!(
-        test_env.db.redis_pool
+        test_env
+            .db
+            .redis_pool
             .get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, id)
             .await
             .unwrap(),
@@ -385,7 +393,7 @@ pub async fn test_patch_project() {
             "status": "private"
         }))
         .to_request();
-    let resp = test_env .call(req).await;
+    let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 401);
 
     // Sucessful request to patch many fields.

@@ -571,7 +571,7 @@ impl Project {
                 .try_filter_map(|e| async {
                     Ok(e.right().map(|m| {
                         let id = m.id;
-            
+
                     QueryProject {
                         inner: Project {
                             id: ProjectId(id),

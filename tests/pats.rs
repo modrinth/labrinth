@@ -22,7 +22,7 @@ pub async fn pat_full_test() {
 
     // Create a PAT for a full test
     let req = test::TestRequest::post()
-        .uri(&"/v2/pat".to_string())
+        .uri("/v2/pat")
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "scopes": Scopes::COLLECTION_CREATE, // Collection create as an easily tested example
@@ -46,7 +46,7 @@ pub async fn pat_full_test() {
     // Get PAT again
     let req = test::TestRequest::get()
         .append_header(("Authorization", USER_USER_PAT))
-        .uri(&"/v2/pat".to_string())
+        .uri("/v2/pat")
         .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status().as_u16(), 200);
@@ -62,7 +62,7 @@ pub async fn pat_full_test() {
         let token = token.to_string();
         async {
             let req = test::TestRequest::post()
-                .uri(&"/v2/collection".to_string())
+                .uri("/v2/collection")
                 .append_header(("Authorization", token))
                 .set_json(json!({
                     "title": "Test Collection 1",
@@ -167,7 +167,7 @@ pub async fn bad_pats() {
 
     // Creating a PAT with no name should fail
     let req = test::TestRequest::post()
-        .uri(&"/v2/pat".to_string())
+        .uri("/v2/pat")
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "scopes": Scopes::COLLECTION_CREATE, // Collection create as an easily tested example
@@ -180,7 +180,7 @@ pub async fn bad_pats() {
     // Name too short or too long should fail
     for name in ["n", "this_name_is_too_long".repeat(16).as_str()] {
         let req = test::TestRequest::post()
-            .uri(&"/v2/pat".to_string())
+            .uri("/v2/pat")
             .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 "name": name,
@@ -194,7 +194,7 @@ pub async fn bad_pats() {
 
     // Creating a PAT with an expiry in the past should fail
     let req = test::TestRequest::post()
-        .uri(&"/v2/pat".to_string())
+        .uri("/v2/pat")
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "scopes": Scopes::COLLECTION_CREATE, // Collection create as an easily tested example
@@ -212,7 +212,7 @@ pub async fn bad_pats() {
             continue;
         }
         let req = test::TestRequest::post()
-            .uri(&"/v2/pat".to_string())
+            .uri("/v2/pat")
             .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 "scopes": scope.bits(),
@@ -229,7 +229,7 @@ pub async fn bad_pats() {
 
     // Create a 'good' PAT for patching
     let req = test::TestRequest::post()
-        .uri(&"/v2/pat".to_string())
+        .uri("/v2/pat")
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "scopes": Scopes::COLLECTION_CREATE,
@@ -245,7 +245,7 @@ pub async fn bad_pats() {
     // Patching to a bad name should fail
     for name in ["n", "this_name_is_too_long".repeat(16).as_str()] {
         let req = test::TestRequest::post()
-            .uri(&"/v2/pat".to_string())
+            .uri("/v2/pat")
             .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 "name": name,

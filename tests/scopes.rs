@@ -1,5 +1,4 @@
-
-use actix_web::test::{TestRequest, self};
+use actix_web::test::{self, TestRequest};
 use bytes::Bytes;
 use chrono::{Duration, Utc};
 use common::{actix::AppendsMultipart, database::PROJECT_ALPHA_THREAD_ID};
@@ -8,7 +7,7 @@ use serde_json::json;
 
 use crate::common::{
     database::*,
-    environment::{TestEnvironment, ScopeTest},
+    environment::{ScopeTest, TestEnvironment},
 };
 
 // importing common module.
@@ -25,65 +24,82 @@ mod common;
 async fn user_scopes() {
     // Test setup and dummy data
     let test_env = TestEnvironment::new().await;
-    
+
     // User reading
     let read_user = Scopes::USER_READ;
     let req_gen = || TestRequest::get().uri("/v2/user");
-    let (_, success) = ScopeTest::new(&test_env).test(req_gen, read_user).await.unwrap();
+    let (_, success) = ScopeTest::new(&test_env)
+        .test(req_gen, read_user)
+        .await
+        .unwrap();
     assert!(success["email"].as_str().is_none()); // email should not be present
     assert!(success["payout_data"].as_object().is_none()); // payout should not be present
 
     // Email reading
     let read_email = Scopes::USER_READ | Scopes::USER_READ_EMAIL;
     let req_gen = || TestRequest::get().uri("/v2/user");
-    let (_, success) = ScopeTest::new(&test_env).test(req_gen, read_email).await.unwrap();
+    let (_, success) = ScopeTest::new(&test_env)
+        .test(req_gen, read_email)
+        .await
+        .unwrap();
     assert_eq!(success["email"], json!("user@modrinth.com")); // email should be present
 
     // Payout reading
     let read_payout = Scopes::USER_READ | Scopes::PAYOUTS_READ;
     let req_gen = || TestRequest::get().uri("/v2/user");
-    let (_, success) = ScopeTest::new(&test_env).test(req_gen, read_payout).await.unwrap();
+    let (_, success) = ScopeTest::new(&test_env)
+        .test(req_gen, read_payout)
+        .await
+        .unwrap();
     assert!(success["payout_data"].as_object().is_some()); // payout should be present
 
     // User writing
     // We use the Admin PAT for this test, on the 'user' user
     let write_user = Scopes::USER_WRITE;
     let req_gen = || {
-        TestRequest::patch()
-            .uri("/v2/user/user")
-            .set_json(json!( {
-                // Do not include 'username', as to not change the rest of the tests
-                "name": "NewName",
-                "bio": "New bio",
-                "location": "New location",
-                "role": "admin",
-                "badges": 5,
-                // Do not include payout info, different scope
-            }))
+        TestRequest::patch().uri("/v2/user/user").set_json(json!( {
+            // Do not include 'username', as to not change the rest of the tests
+            "name": "NewName",
+            "bio": "New bio",
+            "location": "New location",
+            "role": "admin",
+            "badges": 5,
+            // Do not include payout info, different scope
+        }))
     };
-    ScopeTest::new(&test_env).with_user_id(ADMIN_USER_ID_PARSED).test(req_gen, write_user).await.unwrap();
-    
+    ScopeTest::new(&test_env)
+        .with_user_id(ADMIN_USER_ID_PARSED)
+        .test(req_gen, write_user)
+        .await
+        .unwrap();
+
     // User payout info writing
     let failure_write_user_payout = Scopes::ALL ^ Scopes::PAYOUTS_WRITE; // Failure case should include USER_WRITE
     let write_user_payout = Scopes::USER_WRITE | Scopes::PAYOUTS_WRITE;
     let req_gen = || {
-        TestRequest::patch()
-            .uri("/v2/user/user")
-            .set_json(json!( {
-                "payout_data": {
-                    "payout_wallet": "paypal",
-                    "payout_wallet_type": "email",
-                    "payout_address": "test@modrinth.com"
-                }
-            }))
+        TestRequest::patch().uri("/v2/user/user").set_json(json!( {
+            "payout_data": {
+                "payout_wallet": "paypal",
+                "payout_wallet_type": "email",
+                "payout_address": "test@modrinth.com"
+            }
+        }))
     };
-    ScopeTest::new(&test_env).with_failure_scopes(failure_write_user_payout).test(req_gen, write_user_payout).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_failure_scopes(failure_write_user_payout)
+        .test(req_gen, write_user_payout)
+        .await
+        .unwrap();
 
     // User deletion
     // (The failure is first, and this is the last test for this test function, we can delete it and use the same PAT for both tests)
     let delete_user = Scopes::USER_DELETE;
     let req_gen = || TestRequest::delete().uri("/v2/user/enemy");
-    ScopeTest::new(&test_env).with_user_id(ENEMY_USER_ID_PARSED).test(req_gen, delete_user).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(ENEMY_USER_ID_PARSED)
+        .test(req_gen, delete_user)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -108,8 +124,13 @@ pub async fn notifications_scopes() {
 
     // Notification get
     let read_notifications = Scopes::NOTIFICATION_READ;
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/user/{FRIEND_USER_ID}/notifications"));
-    let (_, success) = ScopeTest::new(&test_env).with_user_id(FRIEND_USER_ID_PARSED).test(req_gen, read_notifications).await.unwrap();
+    let req_gen =
+        || test::TestRequest::get().uri(&format!("/v2/user/{FRIEND_USER_ID}/notifications"));
+    let (_, success) = ScopeTest::new(&test_env)
+        .with_user_id(FRIEND_USER_ID_PARSED)
+        .test(req_gen, read_notifications)
+        .await
+        .unwrap();
     let notification_id = success.as_array().unwrap()[0]["id"].as_str().unwrap();
 
     let req_gen = || {
@@ -118,10 +139,18 @@ pub async fn notifications_scopes() {
             uri = urlencoding::encode(&format!("\"{notification_id}\""))
         ))
     };
-    ScopeTest::new(&test_env).with_user_id(FRIEND_USER_ID_PARSED).test(req_gen, read_notifications).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(FRIEND_USER_ID_PARSED)
+        .test(req_gen, read_notifications)
+        .await
+        .unwrap();
 
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/notification/{notification_id}"));
-    ScopeTest::new(&test_env).with_user_id(FRIEND_USER_ID_PARSED).test(req_gen, read_notifications).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(FRIEND_USER_ID_PARSED)
+        .test(req_gen, read_notifications)
+        .await
+        .unwrap();
 
     // Notification mark as read
     let write_notifications = Scopes::NOTIFICATION_WRITE;
@@ -131,15 +160,27 @@ pub async fn notifications_scopes() {
             uri = urlencoding::encode(&format!("\"{notification_id}\""))
         ))
     };
-    ScopeTest::new(&test_env).with_user_id(FRIEND_USER_ID_PARSED).test(req_gen, write_notifications).await.unwrap();
-    
+    ScopeTest::new(&test_env)
+        .with_user_id(FRIEND_USER_ID_PARSED)
+        .test(req_gen, write_notifications)
+        .await
+        .unwrap();
+
     let req_gen = || test::TestRequest::patch().uri(&format!("/v2/notification/{notification_id}"));
-    ScopeTest::new(&test_env).with_user_id(FRIEND_USER_ID_PARSED).test(req_gen, write_notifications).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(FRIEND_USER_ID_PARSED)
+        .test(req_gen, write_notifications)
+        .await
+        .unwrap();
 
     // Notification delete
     let req_gen =
         || test::TestRequest::delete().uri(&format!("/v2/notification/{notification_id}"));
-    ScopeTest::new(&test_env).with_user_id(FRIEND_USER_ID_PARSED).test(req_gen, write_notifications).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(FRIEND_USER_ID_PARSED)
+        .test(req_gen, write_notifications)
+        .await
+        .unwrap();
 
     // Mass notification delete
     // We invite mod, get the notification ID, and do mass delete using that
@@ -154,7 +195,11 @@ pub async fn notifications_scopes() {
     assert_eq!(resp.status(), 204);
     let read_notifications = Scopes::NOTIFICATION_READ;
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/user/{MOD_USER_ID}/notifications"));
-    let (_, success) = ScopeTest::new(&test_env).with_user_id(MOD_USER_ID_PARSED).test(req_gen, read_notifications).await.unwrap();
+    let (_, success) = ScopeTest::new(&test_env)
+        .with_user_id(MOD_USER_ID_PARSED)
+        .test(req_gen, read_notifications)
+        .await
+        .unwrap();
     let notification_id = success.as_array().unwrap()[0]["id"].as_str().unwrap();
 
     let req_gen = || {
@@ -163,7 +208,11 @@ pub async fn notifications_scopes() {
             uri = urlencoding::encode(&format!("\"{notification_id}\""))
         ))
     };
-    ScopeTest::new(&test_env).with_user_id(MOD_USER_ID_PARSED).test(req_gen, write_notifications).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(MOD_USER_ID_PARSED)
+        .test(req_gen, write_notifications)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -173,7 +222,7 @@ pub async fn notifications_scopes() {
 #[actix_rt::test]
 pub async fn project_version_create_scopes() {
     let test_env = TestEnvironment::new().await;
-    
+
     // Create project
     let create_project = Scopes::PROJECT_CREATE;
     let json_data = json!(
@@ -215,10 +264,13 @@ pub async fn project_version_create_scopes() {
 
     let req_gen = || {
         test::TestRequest::post()
-            .uri(&format!("/v2/project"))
+            .uri("/v2/project")
             .set_multipart(vec![json_segment.clone(), file_segment.clone()])
     };
-    let (_, success) = ScopeTest::new(&test_env).test(req_gen, create_project).await.unwrap();
+    let (_, success) = ScopeTest::new(&test_env)
+        .test(req_gen, create_project)
+        .await
+        .unwrap();
     let project_id = success["id"].as_str().unwrap();
 
     // Add version to project
@@ -253,10 +305,13 @@ pub async fn project_version_create_scopes() {
 
     let req_gen = || {
         test::TestRequest::post()
-            .uri(&format!("/v2/version"))
+            .uri("/v2/version")
             .set_multipart(vec![json_segment.clone(), file_segment.clone()])
     };
-    ScopeTest::new(&test_env).test(req_gen, create_version).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, create_version)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -270,11 +325,24 @@ pub async fn project_version_reads_scopes() {
     // Project reading
     // Uses 404 as the expected failure code (or 200 and an empty list for mass reads)
     let read_project = Scopes::PROJECT_READ;
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}"));
-    ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, read_project).await.unwrap();
+    let req_gen =
+        || test::TestRequest::get().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}"));
+    ScopeTest::new(&test_env)
+        .with_failure_code(404)
+        .test(req_gen, read_project)
+        .await
+        .unwrap();
 
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/dependencies"));
-    ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, read_project).await.unwrap();
+    let req_gen = || {
+        test::TestRequest::get().uri(&format!(
+            "/v2/project/{PROJECT_BETA_PROJECT_ID}/dependencies"
+        ))
+    };
+    ScopeTest::new(&test_env)
+        .with_failure_code(404)
+        .test(req_gen, read_project)
+        .await
+        .unwrap();
 
     let req_gen = || {
         test::TestRequest::get().uri(&format!(
@@ -282,19 +350,33 @@ pub async fn project_version_reads_scopes() {
             uri = urlencoding::encode(&format!("\"{PROJECT_BETA_PROJECT_ID}\""))
         ))
     };
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, read_project).await.unwrap();
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, read_project)
+        .await
+        .unwrap();
     assert!(failure.as_array().unwrap().is_empty());
     assert!(!success.as_array().unwrap().is_empty());
 
     // Team project reading
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/members"));
-    ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, read_project).await.unwrap();
+    let req_gen =
+        || test::TestRequest::get().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/members"));
+    ScopeTest::new(&test_env)
+        .with_failure_code(404)
+        .test(req_gen, read_project)
+        .await
+        .unwrap();
 
     // Get team members
     // In this case, as these are public endpoints, logging in only is relevant to showing permissions
     // So for our test project (with 1 user, 'user') we will check the permissions before and after having the scope.
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/team/{PROJECT_ALPHA_TEAM_ID}/members"));
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, read_project).await.unwrap();
+    let req_gen =
+        || test::TestRequest::get().uri(&format!("/v2/team/{PROJECT_ALPHA_TEAM_ID}/members"));
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, read_project)
+        .await
+        .unwrap();
     assert!(!failure.as_array().unwrap()[0].as_object().unwrap()["permissions"].is_number());
     assert!(success.as_array().unwrap()[0].as_object().unwrap()["permissions"].is_number());
 
@@ -304,7 +386,11 @@ pub async fn project_version_reads_scopes() {
             uri = urlencoding::encode(&format!("\"{PROJECT_ALPHA_TEAM_ID}\""))
         ))
     };
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, read_project).await.unwrap();
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, read_project)
+        .await
+        .unwrap();
     assert!(!failure.as_array().unwrap()[0].as_array().unwrap()[0]
         .as_object()
         .unwrap()["permissions"]
@@ -317,23 +403,33 @@ pub async fn project_version_reads_scopes() {
     // User project reading
     // Test user has two projects, one public and one private
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/user/{USER_USER_ID}/projects"));
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, read_project).await.unwrap();
-    assert!(failure
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, read_project)
+        .await
+        .unwrap();
+    assert!(!failure
         .as_array()
         .unwrap()
         .iter()
-        .find(|x| x["status"] == "processing")
-        .is_none());
+        .any(|x| x["status"] == "processing"));
     assert!(success
         .as_array()
         .unwrap()
         .iter()
-        .find(|x| x["status"] == "processing")
-        .is_some());
+        .any(|x| x["status"] == "processing"));
 
     // Project metadata reading
-    let req_gen = || test::TestRequest::get().uri(&format!("/maven/maven/modrinth/{PROJECT_BETA_PROJECT_ID}/maven-metadata.xml"));
-    ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, read_project).await.unwrap();
+    let req_gen = || {
+        test::TestRequest::get().uri(&format!(
+            "/maven/maven/modrinth/{PROJECT_BETA_PROJECT_ID}/maven-metadata.xml"
+        ))
+    };
+    ScopeTest::new(&test_env)
+        .with_failure_code(404)
+        .test(req_gen, read_project)
+        .await
+        .unwrap();
 
     // Version reading
     // First, set version to hidden (which is when the scope is required to read it)
@@ -348,11 +444,25 @@ pub async fn project_version_reads_scopes() {
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/version_file/{PROJECT_BETA_THREAD_FILE_HASH}"));
-    ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, read_version).await.unwrap();
+    let req_gen = || {
+        test::TestRequest::get().uri(&format!("/v2/version_file/{PROJECT_BETA_THREAD_FILE_HASH}"))
+    };
+    ScopeTest::new(&test_env)
+        .with_failure_code(404)
+        .test(req_gen, read_version)
+        .await
+        .unwrap();
 
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/version_file/{PROJECT_BETA_THREAD_FILE_HASH}/download"));
-    ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, read_version).await.unwrap();
+    let req_gen = || {
+        test::TestRequest::get().uri(&format!(
+            "/v2/version_file/{PROJECT_BETA_THREAD_FILE_HASH}/download"
+        ))
+    };
+    ScopeTest::new(&test_env)
+        .with_failure_code(404)
+        .test(req_gen, read_version)
+        .await
+        .unwrap();
 
     // TODO: Should this be /POST? Looks like /GET
     // TODO: this scope doesn't actually affect anything, because the Project::get_id contained within disallows hidden versions, which is the point of this scope
@@ -371,9 +481,19 @@ pub async fn project_version_reads_scopes() {
                 "hashes": [PROJECT_BETA_THREAD_FILE_HASH]
             }))
     };
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, read_version).await.unwrap();
-    assert!(!failure.as_object().unwrap().contains_key(PROJECT_BETA_THREAD_FILE_HASH));
-    assert!(success.as_object().unwrap().contains_key(PROJECT_BETA_THREAD_FILE_HASH));
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, read_version)
+        .await
+        .unwrap();
+    assert!(!failure
+        .as_object()
+        .unwrap()
+        .contains_key(PROJECT_BETA_THREAD_FILE_HASH));
+    assert!(success
+        .as_object()
+        .unwrap()
+        .contains_key(PROJECT_BETA_THREAD_FILE_HASH));
 
     // Update version file
     // TODO: Should this be /POST? Looks like /GET
@@ -407,8 +527,13 @@ pub async fn project_version_reads_scopes() {
 
     // Both project and version reading
     let read_project_and_version = Scopes::PROJECT_READ | Scopes::VERSION_READ;
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/version"));
-    ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, read_project_and_version).await.unwrap();
+    let req_gen =
+        || test::TestRequest::get().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/version"));
+    ScopeTest::new(&test_env)
+        .with_failure_code(404)
+        .test(req_gen, read_project_and_version)
+        .await
+        .unwrap();
 
     // TODO: fails for the same reason as above
     // let req_gen = || {
@@ -437,7 +562,10 @@ pub async fn project_write_scopes() {
                 }
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     let req_gen = || {
         test::TestRequest::patch()
@@ -451,7 +579,10 @@ pub async fn project_write_scopes() {
                 }
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     let req_gen = || {
         test::TestRequest::post()
@@ -463,29 +594,46 @@ pub async fn project_write_scopes() {
                 }
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     // Icons and gallery images
     let req_gen = || {
         test::TestRequest::patch()
-            .uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/icon?ext=png"))
+            .uri(&format!(
+                "/v2/project/{PROJECT_BETA_PROJECT_ID}/icon?ext=png"
+            ))
             .set_payload(Bytes::from(
                 include_bytes!("../tests/files/200x200.png") as &[u8]
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
-    let req_gen = || test::TestRequest::delete().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/icon"));
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    let req_gen =
+        || test::TestRequest::delete().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/icon"));
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     let req_gen = || {
         test::TestRequest::post()
-            .uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/gallery?ext=png&featured=true"))
+            .uri(&format!(
+                "/v2/project/{PROJECT_BETA_PROJECT_ID}/gallery?ext=png&featured=true"
+            ))
             .set_payload(Bytes::from(
                 include_bytes!("../tests/files/200x200.png") as &[u8]
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     // Get project, as we need the gallery image url
     let req_gen = test::TestRequest::get()
@@ -496,13 +644,25 @@ pub async fn project_write_scopes() {
     let project: serde_json::Value = test::read_body_json(resp).await;
     let gallery_url = project["gallery"][0]["url"].as_str().unwrap();
 
-    let req_gen =
-        || test::TestRequest::patch().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/gallery?url={gallery_url}"));
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    let req_gen = || {
+        test::TestRequest::patch().uri(&format!(
+            "/v2/project/{PROJECT_BETA_PROJECT_ID}/gallery?url={gallery_url}"
+        ))
+    };
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
-    let req_gen =
-        || test::TestRequest::delete().uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}/gallery?url={gallery_url}"));
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    let req_gen = || {
+        test::TestRequest::delete().uri(&format!(
+            "/v2/project/{PROJECT_BETA_PROJECT_ID}/gallery?url={gallery_url}"
+        ))
+    };
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     // Team scopes - add user 'friend'
     let req_gen = || {
@@ -512,21 +672,34 @@ pub async fn project_write_scopes() {
                 "user_id": FRIEND_USER_ID
             }))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     // Accept team invite as 'friend'
-    let req_gen = || test::TestRequest::post().uri(&format!("/v2/team/{PROJECT_ALPHA_TEAM_ID}/join"));
-    ScopeTest::new(&test_env).with_user_id(FRIEND_USER_ID_PARSED).test(req_gen, write_project).await.unwrap();
+    let req_gen =
+        || test::TestRequest::post().uri(&format!("/v2/team/{PROJECT_ALPHA_TEAM_ID}/join"));
+    ScopeTest::new(&test_env)
+        .with_user_id(FRIEND_USER_ID_PARSED)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     // Patch 'friend' user
     let req_gen = || {
         test::TestRequest::patch()
-            .uri(&format!("/v2/team/{PROJECT_ALPHA_TEAM_ID}/members/{FRIEND_USER_ID}"))
+            .uri(&format!(
+                "/v2/team/{PROJECT_ALPHA_TEAM_ID}/members/{FRIEND_USER_ID}"
+            ))
             .set_json(json!({
                 "permissions": 1
             }))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     // Transfer ownership to 'friend'
     let req_gen = || {
@@ -536,11 +709,22 @@ pub async fn project_write_scopes() {
                 "user_id": FRIEND_USER_ID
             }))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_project).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     // Now as 'friend', delete 'user'
-    let req_gen = || test::TestRequest::delete().uri(&format!("/v2/team/{PROJECT_ALPHA_TEAM_ID}/members/{USER_USER_ID}"));
-    ScopeTest::new(&test_env).with_user_id(FRIEND_USER_ID_PARSED).test(req_gen, write_project).await.unwrap();
+    let req_gen = || {
+        test::TestRequest::delete().uri(&format!(
+            "/v2/team/{PROJECT_ALPHA_TEAM_ID}/members/{USER_USER_ID}"
+        ))
+    };
+    ScopeTest::new(&test_env)
+        .with_user_id(FRIEND_USER_ID_PARSED)
+        .test(req_gen, write_project)
+        .await
+        .unwrap();
 
     // Delete project
     // TODO: this route is currently broken,
@@ -575,7 +759,10 @@ pub async fn version_write_scopes() {
                 }
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_version).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_version)
+        .await
+        .unwrap();
 
     // Patch version
     let req_gen = || {
@@ -587,7 +774,10 @@ pub async fn version_write_scopes() {
                 }
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, write_version).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_version)
+        .await
+        .unwrap();
 
     // Generate test project data.
     // Basic json
@@ -623,19 +813,31 @@ pub async fn version_write_scopes() {
             .uri(&format!("/v2/version/{PROJECT_ALPHA_VERSION_ID}/file"))
             .set_multipart(vec![json_segment.clone(), content_segment.clone()])
     };
-    ScopeTest::new(&test_env).test(req_gen, write_version).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_version)
+        .await
+        .unwrap();
 
     //  Delete version file
     // TODO: Should this scope be VERSION_DELETE?
     let req_gen = || {
-        test::TestRequest::delete().uri(&format!("/v2/version_file/{PROJECT_ALPHA_THREAD_FILE_HASH}")) // Delete from PROJECT_ALPHA_VERSION_ID, as we uploaded to PROJECT_ALPHA_VERSION_ID and it needs another file
+        test::TestRequest::delete().uri(&format!(
+            "/v2/version_file/{PROJECT_ALPHA_THREAD_FILE_HASH}"
+        )) // Delete from PROJECT_ALPHA_VERSION_ID, as we uploaded to PROJECT_ALPHA_VERSION_ID and it needs another file
     };
-    ScopeTest::new(&test_env).test(req_gen, write_version).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, write_version)
+        .await
+        .unwrap();
 
     // Delete version
     let delete_version = Scopes::VERSION_DELETE;
-    let req_gen = || test::TestRequest::delete().uri(&format!("/v2/version/{PROJECT_ALPHA_VERSION_ID}"));
-    ScopeTest::new(&test_env).test(req_gen, delete_version).await.unwrap();
+    let req_gen =
+        || test::TestRequest::delete().uri(&format!("/v2/version/{PROJECT_ALPHA_VERSION_ID}"));
+    ScopeTest::new(&test_env)
+        .test(req_gen, delete_version)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -649,25 +851,32 @@ pub async fn report_scopes() {
     // Create report
     let report_create = Scopes::REPORT_CREATE;
     let req_gen = || {
-        test::TestRequest::post()
-            .uri(&format!("/v2/report"))
-            .set_json(json!({
-                "report_type": "copyright",
-                "item_id": PROJECT_BETA_PROJECT_ID,
-                "item_type": "project",
-                "body": "This is a reupload of my mod, ",
-            }))
+        test::TestRequest::post().uri("/v2/report").set_json(json!({
+            "report_type": "copyright",
+            "item_id": PROJECT_BETA_PROJECT_ID,
+            "item_type": "project",
+            "body": "This is a reupload of my mod, ",
+        }))
     };
-    ScopeTest::new(&test_env).test(req_gen, report_create).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, report_create)
+        .await
+        .unwrap();
 
     // Get reports
     let report_read = Scopes::REPORT_READ;
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/report"));
-    let (_, success) = ScopeTest::new(&test_env).test(req_gen, report_read).await.unwrap();
+    let req_gen = || test::TestRequest::get().uri("/v2/report");
+    let (_, success) = ScopeTest::new(&test_env)
+        .test(req_gen, report_read)
+        .await
+        .unwrap();
     let report_id = success.as_array().unwrap()[0]["id"].as_str().unwrap();
 
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/report/{}", report_id));
-    ScopeTest::new(&test_env).test(req_gen, report_read).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, report_read)
+        .await
+        .unwrap();
 
     let req_gen = || {
         test::TestRequest::get().uri(&format!(
@@ -675,7 +884,10 @@ pub async fn report_scopes() {
             urlencoding::encode(&format!("\"{}\"", report_id))
         ))
     };
-    ScopeTest::new(&test_env).test(req_gen, report_read).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, report_read)
+        .await
+        .unwrap();
 
     // Edit report
     let report_edit = Scopes::REPORT_WRITE;
@@ -686,13 +898,20 @@ pub async fn report_scopes() {
                 "body": "This is a reupload of my mod, G8!",
             }))
     };
-    ScopeTest::new(&test_env).test(req_gen, report_edit).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, report_edit)
+        .await
+        .unwrap();
 
     // Delete report
     // We use a moderator PAT here, as only moderators can delete reports
     let report_delete = Scopes::REPORT_DELETE;
     let req_gen = || test::TestRequest::delete().uri(&format!("/v2/report/{}", report_id));
-    ScopeTest::new(&test_env).with_user_id(MOD_USER_ID_PARSED).test(req_gen, report_delete).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(MOD_USER_ID_PARSED)
+        .test(req_gen, report_delete)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -706,7 +925,10 @@ pub async fn thread_scopes() {
     // Thread read
     let thread_read = Scopes::THREAD_READ;
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/thread/{PROJECT_ALPHA_THREAD_ID}"));
-    ScopeTest::new(&test_env).test(req_gen, thread_read).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, thread_read)
+        .await
+        .unwrap();
 
     let req_gen = || {
         test::TestRequest::get().uri(&format!(
@@ -714,19 +936,30 @@ pub async fn thread_scopes() {
             urlencoding::encode(&format!("\"{}\"", "U"))
         ))
     };
-    ScopeTest::new(&test_env).test(req_gen, thread_read).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, thread_read)
+        .await
+        .unwrap();
 
     // Check moderation inbox
     // Uses moderator PAT, as only moderators can see the moderation inbox
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/thread/inbox"));
-    let (_, success) = ScopeTest::new(&test_env).with_user_id(MOD_USER_ID_PARSED).test(req_gen, thread_read).await.unwrap();
+    let req_gen = || test::TestRequest::get().uri("/v2/thread/inbox");
+    let (_, success) = ScopeTest::new(&test_env)
+        .with_user_id(MOD_USER_ID_PARSED)
+        .test(req_gen, thread_read)
+        .await
+        .unwrap();
     let thread = success.as_array().unwrap()[0].as_object().unwrap();
     let thread_id = thread["id"].as_str().unwrap();
 
     // Moderator 'read' thread
     // Uses moderator PAT, as only moderators can see the moderation inbox
     let req_gen = || test::TestRequest::post().uri(&format!("/v2/thread/{thread_id}/read"));
-    ScopeTest::new(&test_env).with_user_id(MOD_USER_ID_PARSED).test(req_gen, thread_read).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(MOD_USER_ID_PARSED)
+        .test(req_gen, thread_read)
+        .await
+        .unwrap();
 
     // Thread write
     let thread_write = Scopes::THREAD_WRITE;
@@ -740,7 +973,11 @@ pub async fn thread_scopes() {
                 }
             }))
     };
-    ScopeTest::new(&test_env).with_user_id(MOD_USER_ID_PARSED).test(req_gen, thread_write).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(MOD_USER_ID_PARSED)
+        .test(req_gen, thread_write)
+        .await
+        .unwrap();
 
     // Delete that message
     // First, get message id
@@ -755,7 +992,11 @@ pub async fn thread_scopes() {
         .as_str()
         .unwrap();
     let req_gen = || test::TestRequest::delete().uri(&format!("/v2/message/{thread_message_id}"));
-    ScopeTest::new(&test_env).with_user_id(MOD_USER_ID_PARSED).test(req_gen, thread_write).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_user_id(MOD_USER_ID_PARSED)
+        .test(req_gen, thread_write)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -769,15 +1010,16 @@ pub async fn pat_scopes() {
     // Pat create
     let pat_create = Scopes::PAT_CREATE;
     let req_gen = || {
-        test::TestRequest::post()
-            .uri(&format!("/v2/pat"))
-            .set_json(json!({
-                "scopes": 1,
-                "name": "test_pat_scopes Name",
-                "expires": Utc::now() + Duration::days(1),
-            }))
+        test::TestRequest::post().uri("/v2/pat").set_json(json!({
+            "scopes": 1,
+            "name": "test_pat_scopes Name",
+            "expires": Utc::now() + Duration::days(1),
+        }))
     };
-    let (_, success) = ScopeTest::new(&test_env).test(req_gen, pat_create).await.unwrap();
+    let (_, success) = ScopeTest::new(&test_env)
+        .test(req_gen, pat_create)
+        .await
+        .unwrap();
     let pat_id = success["id"].as_str().unwrap();
 
     // Pat write
@@ -787,17 +1029,26 @@ pub async fn pat_scopes() {
             .uri(&format!("/v2/pat/{pat_id}"))
             .set_json(json!({}))
     };
-    ScopeTest::new(&test_env).test(req_gen, pat_write).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, pat_write)
+        .await
+        .unwrap();
 
     // Pat read
     let pat_read = Scopes::PAT_READ;
-    let req_gen = || test::TestRequest::get().uri(&format!("/v2/pat"));
-    ScopeTest::new(&test_env).test(req_gen, pat_read).await.unwrap();
+    let req_gen = || test::TestRequest::get().uri("/v2/pat");
+    ScopeTest::new(&test_env)
+        .test(req_gen, pat_read)
+        .await
+        .unwrap();
 
     // Pat delete
     let pat_delete = Scopes::PAT_DELETE;
     let req_gen = || test::TestRequest::delete().uri(&format!("/v2/pat/{pat_id}"));
-    ScopeTest::new(&test_env).test(req_gen, pat_delete).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, pat_delete)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -812,14 +1063,17 @@ pub async fn collections_scopes() {
     let collection_create = Scopes::COLLECTION_CREATE;
     let req_gen = || {
         test::TestRequest::post()
-            .uri(&format!("/v2/collection"))
+            .uri("/v2/collection")
             .set_json(json!({
                 "title": "Test Collection",
                 "description": "Test Collection Description",
                 "projects": [PROJECT_ALPHA_PROJECT_ID]
             }))
     };
-    let (_, success) = ScopeTest::new(&test_env).test(req_gen, collection_create).await.unwrap();
+    let (_, success) = ScopeTest::new(&test_env)
+        .test(req_gen, collection_create)
+        .await
+        .unwrap();
     let collection_id = success["id"].as_str().unwrap();
 
     // Patch collection
@@ -833,12 +1087,19 @@ pub async fn collections_scopes() {
                 "status": "private",
             }))
     };
-    ScopeTest::new(&test_env).test(req_gen, collection_write).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, collection_write)
+        .await
+        .unwrap();
 
     // Read collection
     let collection_read = Scopes::COLLECTION_READ;
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/collection/{}", collection_id));
-    ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, collection_read).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_failure_code(404)
+        .test(req_gen, collection_read)
+        .await
+        .unwrap();
 
     let req_gen = || {
         test::TestRequest::get().uri(&format!(
@@ -846,12 +1107,20 @@ pub async fn collections_scopes() {
             urlencoding::encode(&format!("\"{}\"", collection_id))
         ))
     };
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, collection_read).await.unwrap();
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, collection_read)
+        .await
+        .unwrap();
     assert_eq!(failure.as_array().unwrap().len(), 0);
     assert_eq!(success.as_array().unwrap().len(), 1);
 
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/user/{USER_USER_ID}/collections"));
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, collection_read).await.unwrap();
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, collection_read)
+        .await
+        .unwrap();
     assert_eq!(failure.as_array().unwrap().len(), 0);
     assert_eq!(success.as_array().unwrap().len(), 1);
 
@@ -862,11 +1131,17 @@ pub async fn collections_scopes() {
                 include_bytes!("../tests/files/200x200.png") as &[u8]
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, collection_write).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, collection_write)
+        .await
+        .unwrap();
 
     let req_gen =
         || test::TestRequest::delete().uri(&format!("/v2/collection/{collection_id}/icon"));
-    ScopeTest::new(&test_env).test(req_gen, collection_write).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, collection_write)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -875,19 +1150,22 @@ pub async fn collections_scopes() {
 // Organization scopes (and a couple PROJECT_WRITE scopes that are only allowed for orgs)
 #[actix_rt::test]
 pub async fn organization_scopes() {
-       let test_env = TestEnvironment::new().await;
+    let test_env = TestEnvironment::new().await;
 
     // Create organization
     let organization_create = Scopes::ORGANIZATION_CREATE;
     let req_gen = || {
         test::TestRequest::post()
-            .uri(&format!("/v2/organization"))
+            .uri("/v2/organization")
             .set_json(json!({
                 "title": "TestOrg",
                 "description": "TestOrg Description",
             }))
     };
-    let (_, success) = ScopeTest::new(&test_env).test(req_gen, organization_create).await.unwrap();
+    let (_, success) = ScopeTest::new(&test_env)
+        .test(req_gen, organization_create)
+        .await
+        .unwrap();
     let organization_id = success["id"].as_str().unwrap();
 
     // Patch organization
@@ -899,7 +1177,10 @@ pub async fn organization_scopes() {
                 "description": "TestOrg Patch Description",
             }))
     };
-    ScopeTest::new(&test_env).test(req_gen, organization_edit).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, organization_edit)
+        .await
+        .unwrap();
 
     let req_gen = || {
         test::TestRequest::patch()
@@ -908,11 +1189,17 @@ pub async fn organization_scopes() {
                 include_bytes!("../tests/files/200x200.png") as &[u8]
             ))
     };
-    ScopeTest::new(&test_env).test(req_gen, organization_edit).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, organization_edit)
+        .await
+        .unwrap();
 
     let req_gen =
         || test::TestRequest::delete().uri(&format!("/v2/organization/{organization_id}/icon"));
-    ScopeTest::new(&test_env).test(req_gen, organization_edit).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, organization_edit)
+        .await
+        .unwrap();
 
     // add project
     let organization_project_edit = Scopes::PROJECT_WRITE | Scopes::ORGANIZATION_WRITE;
@@ -923,12 +1210,20 @@ pub async fn organization_scopes() {
                 "project_id": PROJECT_BETA_PROJECT_ID
             }))
     };
-    ScopeTest::new(&test_env).with_failure_scopes(Scopes::ALL ^ Scopes::ORGANIZATION_WRITE).test(req_gen, organization_project_edit).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_failure_scopes(Scopes::ALL ^ Scopes::ORGANIZATION_WRITE)
+        .test(req_gen, organization_project_edit)
+        .await
+        .unwrap();
 
     // Organization reads
     let organization_read = Scopes::ORGANIZATION_READ;
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/organization/{organization_id}"));
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, organization_read).await.unwrap();    
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, organization_read)
+        .await
+        .unwrap();
     assert!(
         failure.as_object().unwrap()["members"].as_array().unwrap()[0]
             .as_object()
@@ -948,8 +1243,12 @@ pub async fn organization_scopes() {
             urlencoding::encode(&format!("\"{}\"", organization_id))
         ))
     };
-    
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).test(req_gen, organization_read).await.unwrap();
+
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .test(req_gen, organization_read)
+        .await
+        .unwrap();
     assert!(
         failure.as_array().unwrap()[0].as_object().unwrap()["members"]
             .as_array()
@@ -970,21 +1269,35 @@ pub async fn organization_scopes() {
     let organization_project_read = Scopes::PROJECT_READ | Scopes::ORGANIZATION_READ;
     let req_gen =
         || test::TestRequest::get().uri(&format!("/v2/organization/{organization_id}/projects"));
-    let (failure, success) = ScopeTest::new(&test_env).with_failure_code(200).with_failure_scopes(Scopes::ALL ^ Scopes::ORGANIZATION_READ).test(req_gen, organization_project_read).await.unwrap();
-    assert!(failure.as_array().unwrap().len() == 0);
-    assert!(success.as_array().unwrap().len() == 1);
+    let (failure, success) = ScopeTest::new(&test_env)
+        .with_failure_code(200)
+        .with_failure_scopes(Scopes::ALL ^ Scopes::ORGANIZATION_READ)
+        .test(req_gen, organization_project_read)
+        .await
+        .unwrap();
+    assert!(failure.as_array().unwrap().is_empty());
+    assert!(!success.as_array().unwrap().is_empty());
 
     // remove project (now that we've checked)
     let req_gen = || {
-        test::TestRequest::delete().uri(&format!("/v2/organization/{organization_id}/projects/{PROJECT_BETA_PROJECT_ID}"))
+        test::TestRequest::delete().uri(&format!(
+            "/v2/organization/{organization_id}/projects/{PROJECT_BETA_PROJECT_ID}"
+        ))
     };
-    ScopeTest::new(&test_env).with_failure_scopes(Scopes::ALL ^ Scopes::ORGANIZATION_WRITE).test(req_gen, organization_project_edit).await.unwrap();
+    ScopeTest::new(&test_env)
+        .with_failure_scopes(Scopes::ALL ^ Scopes::ORGANIZATION_WRITE)
+        .test(req_gen, organization_project_edit)
+        .await
+        .unwrap();
 
     // Delete organization
     let organization_delete = Scopes::ORGANIZATION_DELETE;
     let req_gen =
         || test::TestRequest::delete().uri(&format!("/v2/organization/{organization_id}"));
-    ScopeTest::new(&test_env).test(req_gen, organization_delete).await.unwrap();
+    ScopeTest::new(&test_env)
+        .test(req_gen, organization_delete)
+        .await
+        .unwrap();
 
     // Cleanup test db
     test_env.cleanup().await;

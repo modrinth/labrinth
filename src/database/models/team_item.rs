@@ -1,5 +1,8 @@
 use super::{ids::*, Organization, Project};
-use crate::{database::redis::RedisPool, models::teams::{OrganizationPermissions, ProjectPermissions}};
+use crate::{
+    database::redis::RedisPool,
+    models::teams::{OrganizationPermissions, ProjectPermissions},
+};
 use itertools::Itertools;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
