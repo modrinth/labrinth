@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 
 use labrinth::database::redis::RedisPool;
-use sqlx::{postgres::PgPoolOptions, Executor, PgPool};
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::time::Duration;
 use url::Url;
 
 // The dummy test database adds a fair bit of 'dummy' data to test with.
-// These constants are used to refer to that data, and are described here.
+// Some constants are used to refer to that data, and are described here.
+// The rest can be accessed in the TestEnvironment 'dummy' field.
 
 // The user IDs are as follows:
 pub const ADMIN_USER_ID: &str = "1";
@@ -27,30 +28,6 @@ pub const MOD_USER_PAT: &str = "mrp_patmoderator";
 pub const USER_USER_PAT: &str = "mrp_patuser";
 pub const FRIEND_USER_PAT: &str = "mrp_patfriend";
 pub const ENEMY_USER_PAT: &str = "mrp_patenemy";
-
-// There are two test projects. They are both created by user 3 (USER_USER_ID).
-// They differ only in that 'ALPHA' is a public, approved project, and 'BETA' is a private, project in queue.
-// The same goes for their corresponding versions- one listed, one draft.
-// pub const PROJECT_ALPHA_TEAM_ID: &str = "1c";
-// pub const PROJECT_BETA_TEAM_ID: &str = "1d";
-
-// pub const PROJECT_ALPHA_PROJECT_ID: &str = "G8";
-// pub const PROJECT_BETA_PROJECT_ID: &str = "G9";
-
-// pub const PROJECT_ALPHA_PROJECT_SLUG: &str = "testslug";
-// pub const PROJECT_BETA_PROJECT_SLUG: &str = "testslug2";
-
-// pub const alpha_version_id: &str = "Hk";
-// pub const beta_version_id: &str = "Hl";
-
-// These are threads created alongside the projects.
-// pub const alpha_thread_id: &str = "U";
-// pub const PROJECT_BETA_THREAD_ID: &str = "V";
-
-// These are the hashes of the files attached to their versions: they do not reflect a 'real' hash of data.
-// This can be used for /version_file/ type endpoints which get a project's data from its hash.
-// pub const alpha_file_hash: &str = "000000000";
-// pub const beta_file_hash: &str = "111111111";
 
 pub struct TemporaryDatabase {
     pub pool: PgPool,
@@ -140,16 +117,6 @@ impl TemporaryDatabase {
             .execute(&self.pool)
             .await
             .expect("Database deletion failed");
-    }
-
-    pub async fn add_dummy_data(&self) {
-        // Adds basic dummy data to the database directly with sql (user, pats)
-        let pool = &self.pool.clone();
-        pool.execute(include_str!("../files/dummy_data.sql"))
-            .await
-            .unwrap();
-
-        // Adds dummy data to the database with sqlx (projects, versions, threads)
     }
 }
 
