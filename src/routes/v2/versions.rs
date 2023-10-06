@@ -3,6 +3,7 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
+use crate::database::models::version_item::DependencyBuilder;
 use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
@@ -450,11 +451,12 @@ pub async fn version_edit(
                             })
                             .collect::<Vec<database::models::version_item::DependencyBuilder>>();
 
-                        for dependency in builders {
-                            dependency
-                                .insert(version_item.inner.id, &mut transaction)
-                                .await?;
-                        }
+                        DependencyBuilder::insert_many(
+                            builders,
+                            version_item.inner.id,
+                            &mut transaction,
+                        )
+                        .await?;
                     }
                 }
             }
