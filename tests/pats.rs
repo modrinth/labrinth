@@ -18,7 +18,7 @@ mod common;
 // - ensure PATs can be deleted
 #[actix_rt::test]
 pub async fn pat_full_test() {
-    let test_env = TestEnvironment::new().await;
+    let test_env = TestEnvironment::build_with_dummy().await;
 
     // Create a PAT for a full test
     let req = test::TestRequest::post()
@@ -130,7 +130,7 @@ pub async fn pat_full_test() {
     // Similar to above with PAT creation, patching to a bad scope should fail
     for i in 0..64 {
         let scope = Scopes::from_bits_truncate(1 << i);
-        if !Scopes::ALL.contains(scope) {
+        if !Scopes::all().contains(scope) {
             continue;
         }
 
@@ -144,7 +144,7 @@ pub async fn pat_full_test() {
         let resp = test_env.call(req).await;
         assert_eq!(
             resp.status().as_u16(),
-            if scope.restricted() { 400 } else { 204 }
+            if scope.is_restricted() { 400 } else { 204 }
         );
     }
 
@@ -163,7 +163,7 @@ pub async fn pat_full_test() {
 // Test illegal PAT setting, both in POST and PATCH
 #[actix_rt::test]
 pub async fn bad_pats() {
-    let test_env = TestEnvironment::new().await;
+    let test_env = TestEnvironment::build_with_dummy().await;
 
     // Creating a PAT with no name should fail
     let req = test::TestRequest::post()
@@ -208,7 +208,7 @@ pub async fn bad_pats() {
     // Make a PAT with each scope, with the result varying by whether that scope is restricted
     for i in 0..64 {
         let scope = Scopes::from_bits_truncate(1 << i);
-        if !Scopes::ALL.contains(scope) {
+        if !Scopes::all().contains(scope) {
             continue;
         }
         let req = test::TestRequest::post()
@@ -223,7 +223,7 @@ pub async fn bad_pats() {
         let resp = test_env.call(req).await;
         assert_eq!(
             resp.status().as_u16(),
-            if scope.restricted() { 400 } else { 200 }
+            if scope.is_restricted() { 400 } else { 200 }
         );
     }
 
@@ -269,7 +269,7 @@ pub async fn bad_pats() {
     // Similar to above with PAT creation, patching to a bad scope should fail
     for i in 0..64 {
         let scope = Scopes::from_bits_truncate(1 << i);
-        if !Scopes::ALL.contains(scope) {
+        if !Scopes::all().contains(scope) {
             continue;
         }
 
@@ -283,7 +283,7 @@ pub async fn bad_pats() {
         let resp = test_env.call(req).await;
         assert_eq!(
             resp.status().as_u16(),
-            if scope.restricted() { 400 } else { 204 }
+            if scope.is_restricted() { 400 } else { 204 }
         );
     }
 

@@ -535,7 +535,6 @@ pub async fn moderation_inbox(
 
     let threads_data = database::models::Thread::get_many(&ids, &**pool).await?;
     let threads = filter_authorized_threads(threads_data, &user, &pool, &redis).await?;
-
     Ok(HttpResponse::Ok().json(threads))
 }
 

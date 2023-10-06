@@ -141,7 +141,7 @@ where
                 session_queue.add_session(session.id, metadata).await;
             }
 
-            user.map(|x| (Scopes::ALL, x))
+            user.map(|x| (Scopes::all(), x))
         }
         Some(("github", _)) | Some(("gho", _)) | Some(("ghp", _)) => {
             let user = AuthProvider::GitHub.get_user(token).await?;
@@ -154,7 +154,7 @@ where
             )
             .await?;
 
-            user.map(|x| (Scopes::NOT_RESTRICTED, x))
+            user.map(|x| ((Scopes::all() ^ Scopes::restricted()), x))
         }
         _ => return Err(AuthenticationError::InvalidAuthMethod),
     };

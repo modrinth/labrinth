@@ -1,5 +1,6 @@
 use actix_web::test;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
+use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
 
 use crate::common::database::*;
@@ -12,20 +13,15 @@ mod common;
 #[actix_rt::test]
 async fn test_get_project() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::new().await;
-
-    // Cache should default to unpopulated
-    assert!(test_env
-        .db
-        .redis_pool
-        .get::<String, _>(PROJECTS_NAMESPACE, 1000)
-        .await
-        .unwrap()
-        .is_none());
+    let test_env = TestEnvironment::build_with_dummy().await;
+    let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
+    let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id;
+    let alpha_project_slug = &test_env.dummy.as_ref().unwrap().alpha_project_slug;
+    let alpha_version_id = &test_env.dummy.as_ref().unwrap().alpha_version_id;
 
     // Perform request on dummy data
     let req = test::TestRequest::get()
-        .uri(&format!("/v2/project/{PROJECT_ALPHA_PROJECT_ID}"))
+        .uri(&format!("/v2/project/{alpha_project_id}"))
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
@@ -33,36 +29,36 @@ async fn test_get_project() {
     let body: serde_json::Value = test::read_body_json(resp).await;
 
     assert_eq!(status, 200);
-    assert_eq!(body["id"], json!(PROJECT_ALPHA_PROJECT_ID));
-    assert_eq!(body["slug"], json!("testslug"));
+    assert_eq!(body["id"], json!(alpha_project_id));
+    assert_eq!(body["slug"], json!(alpha_project_slug));
     let versions = body["versions"].as_array().unwrap();
     assert!(!versions.is_empty());
-    assert_eq!(versions[0], json!(PROJECT_ALPHA_VERSION_ID));
+    assert_eq!(versions[0], json!(alpha_version_id));
 
     // Confirm that the request was cached
     assert_eq!(
         test_env
             .db
             .redis_pool
-            .get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, "testslug")
+            .get::<i64, _>(PROJECTS_SLUGS_NAMESPACE, alpha_project_slug)
             .await
             .unwrap(),
-        Some(1000)
+        Some(parse_base62(alpha_project_id).unwrap() as i64)
     );
 
     let cached_project = test_env
         .db
         .redis_pool
-        .get::<String, _>(PROJECTS_NAMESPACE, 1000)
+        .get::<String, _>(PROJECTS_NAMESPACE, parse_base62(alpha_project_id).unwrap())
         .await
         .unwrap()
         .unwrap();
     let cached_project: serde_json::Value = serde_json::from_str(&cached_project).unwrap();
-    assert_eq!(cached_project["inner"]["slug"], json!("testslug"));
+    assert_eq!(cached_project["inner"]["slug"], json!(alpha_project_slug));
 
     // Make the request again, this time it should be cached
     let req = test::TestRequest::get()
-        .uri(&format!("/v2/project/{PROJECT_ALPHA_PROJECT_ID}"))
+        .uri(&format!("/v2/project/{alpha_project_id}"))
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
@@ -70,8 +66,8 @@ async fn test_get_project() {
     assert_eq!(status, 200);
 
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["id"], json!(PROJECT_ALPHA_PROJECT_ID));
-    assert_eq!(body["slug"], json!("testslug"));
+    assert_eq!(body["id"], json!(alpha_project_id));
+    assert_eq!(body["slug"], json!(alpha_project_slug));
 
     // Request should fail on non-existent project
     let req = test::TestRequest::get()
@@ -84,7 +80,7 @@ async fn test_get_project() {
 
     // Similarly, request should fail on non-authorized user, on a yet-to-be-approved or hidden project, with a 404 (hiding the existence of the project)
     let req = test::TestRequest::get()
-        .uri(&format!("/v2/project/{PROJECT_BETA_PROJECT_ID}"))
+        .uri(&format!("/v2/project/{beta_project_id}"))
         .append_header(("Authorization", ENEMY_USER_PAT))
         .to_request();
 
@@ -98,7 +94,7 @@ async fn test_get_project() {
 #[actix_rt::test]
 async fn test_add_remove_project() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::new().await;
+    let test_env = TestEnvironment::build_with_dummy().await;
 
     // Generate test project data.
     let mut json_data = json!(
@@ -310,12 +306,14 @@ async fn test_add_remove_project() {
 
 #[actix_rt::test]
 pub async fn test_patch_project() {
-    let test_env = TestEnvironment::new().await;
+    let test_env = TestEnvironment::build_with_dummy().await;
+    let alpha_project_slug = &test_env.dummy.as_ref().unwrap().alpha_project_slug;
+    let beta_project_slug = &test_env.dummy.as_ref().unwrap().beta_project_slug;
 
     // First, we do some patch requests that should fail.
     // Failure because the user is not authorized.
     let req = test::TestRequest::patch()
-        .uri("/v2/project/testslug")
+        .uri(&format!("/v2/project/{alpha_project_slug}"))
         .append_header(("Authorization", ENEMY_USER_PAT))
         .set_json(json!({
             "title": "Test_Add_Project project - test 1",
@@ -327,7 +325,7 @@ pub async fn test_patch_project() {
     // Failure because we are setting URL fields to invalid urls.
     for url_type in ["issues_url", "source_url", "wiki_url", "discord_url"] {
         let req = test::TestRequest::patch()
-            .uri("/v2/project/testslug")
+            .uri(&format!("/v2/project/{alpha_project_slug}"))
             .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 url_type: "w.fake.url",
@@ -340,7 +338,7 @@ pub async fn test_patch_project() {
     // Failure because these are illegal requested statuses for a normal user.
     for req in ["unknown", "processing", "withheld", "scheduled"] {
         let req = test::TestRequest::patch()
-            .uri("/v2/project/testslug")
+            .uri(&format!("/v2/project/{alpha_project_slug}"))
             .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 "requested_status": req,
@@ -353,7 +351,7 @@ pub async fn test_patch_project() {
     // Failure because these should not be able to be set by a non-mod
     for key in ["moderation_message", "moderation_message_body"] {
         let req = test::TestRequest::patch()
-            .uri("/v2/project/testslug")
+            .uri(&format!("/v2/project/{alpha_project_slug}"))
             .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 key: "test",
@@ -364,7 +362,7 @@ pub async fn test_patch_project() {
 
         // (should work for a mod, though)
         let req = test::TestRequest::patch()
-            .uri("/v2/project/testslug")
+            .uri(&format!("/v2/project/{alpha_project_slug}"))
             .append_header(("Authorization", MOD_USER_PAT))
             .set_json(json!({
                 key: "test",
@@ -376,18 +374,18 @@ pub async fn test_patch_project() {
 
     // Failure because the slug is already taken.
     let req = test::TestRequest::patch()
-        .uri("/v2/project/testslug")
+        .uri(&format!("/v2/project/{alpha_project_slug}"))
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
-            "slug": "testslug2", // the other dummy project has this slug
+            "slug": beta_project_slug, // the other dummy project has this slug
         }))
         .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 400);
 
-    // Not allowed to directly set status, as 'testslug2' (the other project) is "processing" and cannot have its status changed like this.
+    // Not allowed to directly set status, as 'beta_project_slug' (the other project) is "processing" and cannot have its status changed like this.
     let req = test::TestRequest::patch()
-        .uri("/v2/project/testslug2")
+        .uri(&format!("/v2/project/{beta_project_slug}"))
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "status": "private"
@@ -398,7 +396,7 @@ pub async fn test_patch_project() {
 
     // Sucessful request to patch many fields.
     let req = test::TestRequest::patch()
-        .uri("/v2/project/testslug")
+        .uri(&format!("/v2/project/{alpha_project_slug}"))
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "slug": "newslug",
@@ -424,7 +422,7 @@ pub async fn test_patch_project() {
 
     // Old slug no longer works
     let req = test::TestRequest::get()
-        .uri("/v2/project/testslug")
+        .uri(&format!("/v2/project/{alpha_project_slug}"))
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;

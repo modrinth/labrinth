@@ -153,10 +153,7 @@ impl User {
             &mut redis
                 .multi_get::<i64, _>(
                     USER_USERNAMES_NAMESPACE,
-                    users_strings
-                        .iter()
-                        .map(|x| x.to_string().to_lowercase())
-                        .collect(),
+                    users_strings.iter().map(|x| x.to_string().to_lowercase()),
                 )
                 .await?
                 .into_iter()

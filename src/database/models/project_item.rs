@@ -499,10 +499,7 @@ impl Project {
             &mut redis
                 .multi_get::<i64, _>(
                     PROJECTS_SLUGS_NAMESPACE,
-                    project_strings
-                        .iter()
-                        .map(|x| x.to_string().to_lowercase())
-                        .collect(),
+                    project_strings.iter().map(|x| x.to_string().to_lowercase()),
                 )
                 .await?
                 .into_iter()
@@ -795,16 +792,20 @@ impl Project {
         clear_dependencies: Option<bool>,
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        redis.delete(PROJECTS_NAMESPACE, id.0).await?;
-        if let Some(slug) = slug {
-            redis
-                .delete(PROJECTS_SLUGS_NAMESPACE, slug.to_lowercase())
-                .await?;
-        }
-        if clear_dependencies.unwrap_or(false) {
-            redis.delete(PROJECTS_DEPENDENCIES_NAMESPACE, id.0).await?;
-        }
-
+        redis
+            .delete_many([
+                (PROJECTS_NAMESPACE, Some(id.0.to_string())),
+                (PROJECTS_SLUGS_NAMESPACE, slug.map(|x| x.to_lowercase())),
+                (
+                    PROJECTS_DEPENDENCIES_NAMESPACE,
+                    if clear_dependencies.unwrap_or(false) {
+                        Some(id.0.to_string())
+                    } else {
+                        None
+                    },
+                ),
+            ])
+            .await?;
         Ok(())
     }
 }

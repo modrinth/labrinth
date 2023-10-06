@@ -108,7 +108,7 @@ impl PersonalAccessToken {
             &mut redis
                 .multi_get::<i64, _>(
                     PATS_TOKENS_NAMESPACE,
-                    pat_strings.iter().map(|x| x.to_string()).collect(),
+                    pat_strings.iter().map(|x| x.to_string()),
                 )
                 .await?
                 .into_iter()
@@ -238,15 +238,13 @@ impl PersonalAccessToken {
         }
 
         for (id, token, user_id) in clear_pats {
-            if let Some(id) = id {
-                redis.delete(PATS_NAMESPACE, id.0).await?;
-            }
-            if let Some(token) = token {
-                redis.delete(PATS_TOKENS_NAMESPACE, token).await?;
-            }
-            if let Some(user_id) = user_id {
-                redis.delete(PATS_USERS_NAMESPACE, user_id.0).await?;
-            }
+            redis
+                .delete_many([
+                    (PATS_NAMESPACE, id.map(|i| i.0.to_string())),
+                    (PATS_TOKENS_NAMESPACE, token),
+                    (PATS_USERS_NAMESPACE, user_id.map(|i| i.0.to_string())),
+                ])
+                .await?;
         }
 
         Ok(())

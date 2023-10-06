@@ -149,7 +149,7 @@ impl Session {
             &mut redis
                 .multi_get::<i64, _>(
                     SESSIONS_IDS_NAMESPACE,
-                    session_strings.iter().map(|x| x.to_string()).collect(),
+                    session_strings.iter().map(|x| x.to_string()),
                 )
                 .await?
                 .into_iter()
@@ -288,15 +288,13 @@ impl Session {
         }
 
         for (id, session, user_id) in clear_sessions {
-            if let Some(id) = id {
-                redis.delete(SESSIONS_NAMESPACE, id.0).await?;
-            }
-            if let Some(session) = session {
-                redis.delete(SESSIONS_IDS_NAMESPACE, session).await?;
-            }
-            if let Some(user_id) = user_id {
-                redis.delete(SESSIONS_USERS_NAMESPACE, user_id.0).await?;
-            }
+            redis
+                .delete_many([
+                    (SESSIONS_NAMESPACE, id.map(|i| i.0.to_string())),
+                    (SESSIONS_IDS_NAMESPACE, session),
+                    (SESSIONS_USERS_NAMESPACE, user_id.map(|i| i.0.to_string())),
+                ])
+                .await?;
         }
 
         Ok(())

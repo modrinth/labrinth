@@ -76,7 +76,7 @@ impl RedisPool {
     pub async fn multi_get<R, T1>(
         &self,
         namespace: &str,
-        ids: Vec<T1>,
+        ids: impl IntoIterator<Item = T1>,
     ) -> Result<Vec<Option<R>>, DatabaseError>
     where
         T1: Display,
@@ -85,7 +85,7 @@ impl RedisPool {
         let mut redis_connection = self.pool.get().await?;
         let res = cmd("MGET")
             .arg(
-                ids.iter()
+                ids.into_iter()
                     .map(|x| format!("{}_{}:{}", self.meta_namespace, namespace, x))
                     .collect::<Vec<_>>(),
             )
@@ -104,6 +104,24 @@ impl RedisPool {
             .arg(format!("{}_{}:{}", self.meta_namespace, namespace, id))
             .query_async::<_, ()>(&mut redis_connection)
             .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_many(
+        &self,
+        iter: impl IntoIterator<Item = (&str, Option<String>)>,
+    ) -> Result<(), DatabaseError>
+where {
+        let mut redis_connection = self.pool.get().await?;
+
+        let mut cmd = cmd("DEL");
+        for (namespace, id) in iter {
+            if let Some(id) = id {
+                cmd.arg(format!("{}_{}:{}", self.meta_namespace, namespace, id));
+            }
+        }
+        cmd.query_async::<_, ()>(&mut redis_connection).await?;
 
         Ok(())
     }

@@ -81,7 +81,7 @@ pub async fn create_pat(
         .validate()
         .map_err(|err| ApiError::InvalidInput(validation_errors_to_string(err, None)))?;
 
-    if info.scopes.restricted() {
+    if info.scopes.is_restricted() {
         return Err(ApiError::InvalidInput(
             "Invalid scopes requested!".to_string(),
         ));
@@ -181,7 +181,7 @@ pub async fn edit_pat(
             let mut transaction = pool.begin().await?;
 
             if let Some(scopes) = &info.scopes {
-                if scopes.restricted() {
+                if scopes.is_restricted() {
                     return Err(ApiError::InvalidInput(
                         "Invalid scopes requested!".to_string(),
                     ));

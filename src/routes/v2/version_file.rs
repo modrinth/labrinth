@@ -23,7 +23,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(get_version_from_hash)
             .service(download_version)
             .service(get_update_from_hash)
-            .service(get_projects_from_hashes), // TODO: confirm this should be added
+            .service(get_projects_from_hashes),
     );
 
     cfg.service(
@@ -34,7 +34,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct HashQuery {
     #[serde(default = "default_algorithm")]
     pub algorithm: String,
@@ -65,7 +65,6 @@ pub async fn get_version_from_hash(
     .await
     .map(|x| x.1)
     .ok();
-
     let hash = info.into_inner().0.to_lowercase();
     let file = database::models::Version::get_file_from_hash(
         hash_query.algorithm.clone(),
@@ -75,10 +74,8 @@ pub async fn get_version_from_hash(
         &redis,
     )
     .await?;
-
     if let Some(file) = file {
         let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
-
         if let Some(version) = version {
             if !is_authorized_version(&version.inner, &user_option, &pool).await? {
                 return Ok(HttpResponse::NotFound().body(""));

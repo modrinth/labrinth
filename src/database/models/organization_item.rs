@@ -124,8 +124,7 @@ impl Organization {
                     ORGANIZATIONS_TITLES_NAMESPACE,
                     organization_strings
                         .iter()
-                        .map(|x| x.to_string().to_lowercase())
-                        .collect(),
+                        .map(|x| x.to_string().to_lowercase()),
                 )
                 .await?
                 .into_iter()

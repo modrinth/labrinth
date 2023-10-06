@@ -19,7 +19,7 @@ INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (52, 
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (53, 4, 'friend-pat', 'mrp_patfriend', B'11111111111111111111111111111111111'::BIGINT, '2030-08-18 15:48:58.435729+00');
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (54, 5, 'enemy-pat', 'mrp_patenemy', B'11111111111111111111111111111111111'::BIGINT, '2030-08-18 15:48:58.435729+00');
 
--- Sample game versions, loaders, categories
+-- -- Sample game versions, loaders, categories
 INSERT INTO game_versions (id, version, type, created)
 VALUES (20000, '1.20.1', 'release', timezone('utc', now()));
 
@@ -35,53 +35,53 @@ INSERT INTO categories (id, category, project_type) VALUES (4, 'combat', 2);
 INSERT INTO categories (id, category, project_type) VALUES (5, 'decoration', 2);
 INSERT INTO categories (id, category, project_type) VALUES (6, 'economy', 2);
 
--- Inserts 2 dummy projects for testing, with slight differences
-------------------------------------------------------------
-INSERT INTO teams (id) VALUES (100); -- ID: 100, 1c
-INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering) VALUES (200, 100, 3, 'Owner', B'1111111111'::BIGINT, true, 100.0, 0);
+-- -- Inserts 2 dummy projects for testing, with slight differences
+-- ------------------------------------------------------------
+-- INSERT INTO teams (id) VALUES (100); -- ID: 100, 1c
+-- INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering) VALUES (200, 100, 3, 'Owner', B'1111111111'::BIGINT, true, 100.0, 0);
 
--- ID: 1000, G8
--- This project is approved, viewable
-INSERT INTO mods (id, team_id, title, description, body, published, downloads, status, requested_status, client_side, server_side, license, slug, project_type, monetization_status)
-VALUES (1000, 100, 'Test Mod', 'Test mod description', 'Test mod body', timezone('utc', now()), 0, 'approved', 'approved', 1, 2, 'MIT', 'testslug', 1, 'monetized');
+-- -- ID: 1000, G8
+-- -- This project is approved, viewable
+-- INSERT INTO mods (id, team_id, title, description, body, published, downloads, status, requested_status, client_side, server_side, license, slug, project_type, monetization_status)
+-- VALUES (1000, 100, 'Test Mod', 'Test mod description', 'Test mod body', timezone('utc', now()), 0, 'approved', 'approved', 1, 2, 'MIT', 'testslug', 1, 'monetized');
 
--- ID: 1100, Hk
--- This version is listed, viewable
-INSERT INTO versions ( id, mod_id, author_id, name, version_number, changelog, date_published, downloads, version_type, featured, status)
-VALUES (1100, 1000, 3, 'v1', 'v1.2.1', 'No changes', timezone('utc', now()), 0,'released', true, 'listed');
+-- -- ID: 1100, Hk
+-- -- This version is listed, viewable
+-- INSERT INTO versions ( id, mod_id, author_id, name, version_number, changelog, date_published, downloads, version_type, featured, status)
+-- VALUES (1100, 1000, 3, 'v1', 'v1.2.1', 'No changes', timezone('utc', now()), 0,'released', true, 'listed');
 
-INSERT INTO loaders_versions (loader_id, version_id) VALUES (1, 1100);
-INSERT INTO game_versions_versions (game_version_id, joining_version_id) VALUES (20000, 1100);
+-- INSERT INTO loaders_versions (loader_id, version_id) VALUES (1, 1100);
+-- INSERT INTO game_versions_versions (game_version_id, joining_version_id) VALUES (20000, 1100);
 
--- not real hash or file
-INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)
-VALUES (800, 1100, 'http://www.url.to/myfile.jar', 'myfile.jar', true, 1, 'required-resource-pack');
-INSERT INTO hashes (file_id, algorithm, hash) VALUES (800, 'sha1', '000000000');
+-- -- not real hash or file
+-- INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)
+-- VALUES (800, 1100, 'http://www.url.to/myfile.jar', 'myfile.jar', true, 1, 'required-resource-pack');
+-- INSERT INTO hashes (file_id, algorithm, hash) VALUES (800, 'sha1', '000000000');
 
--- ID: 30, U
-INSERT INTO threads (id, thread_type, mod_id, report_id) VALUES (30, 'project', 1000, null);
+-- -- ID: 30, U
+-- INSERT INTO threads (id, thread_type, mod_id, report_id) VALUES (30, 'project', 1000, null);
 
-------------------------------------------------------------
-INSERT INTO teams (id) VALUES (101);    -- ID: 101, 1d
-INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering) VALUES (201, 101, 3, 'Owner', B'1111111111'::BIGINT, true, 100.0, 0);
+-- ------------------------------------------------------------
+-- INSERT INTO teams (id) VALUES (101);    -- ID: 101, 1d
+-- INSERT INTO team_members (id, team_id, user_id, role, permissions, accepted, payouts_split, ordering) VALUES (201, 101, 3, 'Owner', B'1111111111'::BIGINT, true, 100.0, 0);
 
--- ID: 1001, G9
--- This project is processing, and therefore not publically viewable
-INSERT INTO mods (id, team_id, title, description, body, published, downloads, status, requested_status, client_side, server_side, license, slug, project_type, monetization_status)
-VALUES (1001, 101, 'Test Mod 2', 'Test mod description 2', 'Test mod body 2', timezone('utc', now()), 0, 'processing', 'approved', 1, 2, 'MIT', 'testslug2', 1, 'monetized');
+-- -- ID: 1001, G9
+-- -- This project is processing, and therefore not publically viewable
+-- INSERT INTO mods (id, team_id, title, description, body, published, downloads, status, requested_status, client_side, server_side, license, slug, project_type, monetization_status)
+-- VALUES (1001, 101, 'Test Mod 2', 'Test mod description 2', 'Test mod body 2', timezone('utc', now()), 0, 'processing', 'approved', 1, 2, 'MIT', 'testslug2', 1, 'monetized');
 
--- ID: 1101, Hl
--- This version is a draft, and therefore not publically viewable
-INSERT INTO versions (    id, mod_id, author_id, name, version_number, changelog, date_published, downloads, version_type, featured, status)
-VALUES (1101, 1001, 3, 'v1.0', 'v1.2.1', 'No changes', timezone('utc', now()), 0,'released', true, 'draft');
+-- -- ID: 1101, Hl
+-- -- This version is a draft, and therefore not publically viewable
+-- INSERT INTO versions (    id, mod_id, author_id, name, version_number, changelog, date_published, downloads, version_type, featured, status)
+-- VALUES (1101, 1001, 3, 'v1.0', 'v1.2.1', 'No changes', timezone('utc', now()), 0,'released', true, 'draft');
 
-INSERT INTO loaders_versions (loader_id, version_id) VALUES (1, 1101);
-INSERT INTO game_versions_versions (game_version_id, joining_version_id) VALUES (20000, 1101);
+-- INSERT INTO loaders_versions (loader_id, version_id) VALUES (1, 1101);
+-- INSERT INTO game_versions_versions (game_version_id, joining_version_id) VALUES (20000, 1101);
 
--- not real hash or file
-INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)
-VALUES (801, 1101, 'http://www.url.to/myfile2.jar', 'myfile2.jar', true, 1, 'required-resource-pack');
-INSERT INTO hashes (file_id, algorithm, hash) VALUES (801, 'sha1', '111111111');
+-- -- not real hash or file
+-- INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)
+-- VALUES (801, 1101, 'http://www.url.to/myfile2.jar', 'myfile2.jar', true, 1, 'required-resource-pack');
+-- INSERT INTO hashes (file_id, algorithm, hash) VALUES (801, 'sha1', '111111111');
 
--- ID: 31, V
-INSERT INTO threads (id, thread_type, mod_id, report_id, show_in_mod_inbox) VALUES (31, 'project', 1001, null, true);
+-- -- ID: 31, V
+-- INSERT INTO threads (id, thread_type, mod_id, report_id, show_in_mod_inbox) VALUES (31, 'project', 1001, null, true);

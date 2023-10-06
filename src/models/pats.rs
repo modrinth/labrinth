@@ -103,26 +103,26 @@ bitflags::bitflags! {
         // delete an organization
         const ORGANIZATION_DELETE = 1 << 38;
 
-        const ALL = 0b111111111111111111111111111111111111111;
-        const NOT_RESTRICTED = 0b1111111110000000111111111111111111100111;
         const NONE = 0b0;
     }
 }
 
 impl Scopes {
     // these scopes cannot be specified in a personal access token
-    pub fn restricted(&self) -> bool {
-        self.intersects(
-            Scopes::PAT_CREATE
-                | Scopes::PAT_READ
-                | Scopes::PAT_WRITE
-                | Scopes::PAT_DELETE
-                | Scopes::SESSION_READ
-                | Scopes::SESSION_DELETE
-                | Scopes::USER_AUTH_WRITE
-                | Scopes::USER_DELETE
-                | Scopes::PERFORM_ANALYTICS,
-        )
+    pub fn restricted() -> Scopes {
+        Scopes::PAT_CREATE
+            | Scopes::PAT_READ
+            | Scopes::PAT_WRITE
+            | Scopes::PAT_DELETE
+            | Scopes::SESSION_READ
+            | Scopes::SESSION_DELETE
+            | Scopes::USER_AUTH_WRITE
+            | Scopes::USER_DELETE
+            | Scopes::PERFORM_ANALYTICS
+    }
+
+    pub fn is_restricted(&self) -> bool {
+        self.intersects(Self::restricted())
     }
 }
 
@@ -157,29 +157,5 @@ impl PersonalAccessToken {
             expires: data.expires,
             last_used: data.last_used,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    pub fn pat_sanity() {
-        assert_eq!(Scopes::NONE, Scopes::empty());
-
-        // Ensure PATs add up and match
-        // (Such as NOT_RESTRICTED lining up with is_restricted())
-        let mut calculated_not_restricted = Scopes::NONE;
-        let mut calculated_all = Scopes::NONE;
-        for i in 0..64 {
-            let scope = Scopes::from_bits_truncate(1 << i);
-            if !scope.restricted() {
-                calculated_not_restricted |= scope;
-            }
-            calculated_all |= scope;
-        }
-        assert_eq!(Scopes::ALL | Scopes::NOT_RESTRICTED, calculated_all);
-        assert_eq!(Scopes::NOT_RESTRICTED, calculated_not_restricted);
     }
 }

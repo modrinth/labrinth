@@ -1,6 +1,5 @@
 use crate::auth::checks::{filter_authorized_collections, is_authorized_collection};
 use crate::auth::get_user_from_headers;
-use crate::database;
 use crate::database::models::{collection_item, generate_collection_id, project_item};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -12,6 +11,7 @@ use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
+use crate::{database, models};
 use actix_web::web::Data;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
@@ -231,7 +231,7 @@ pub async fn collection_edit(
     let result = database::models::Collection::get(id, &**pool, &redis).await?;
 
     if let Some(collection_item) = result {
-        if collection_item.user_id != user.id.into() && !user.role.is_mod() {
+        if !can_modify_collection(&collection_item, &user) {
             return Ok(HttpResponse::Unauthorized().body(""));
         }
 
@@ -371,7 +371,7 @@ pub async fn collection_icon_edit(
                 ApiError::InvalidInput("The specified collection does not exist!".to_string())
             })?;
 
-        if collection_item.user_id != user.id.into() && !user.role.is_mod() {
+        if !can_modify_collection(&collection_item, &user) {
             return Ok(HttpResponse::Unauthorized().body(""));
         }
 
@@ -452,7 +452,7 @@ pub async fn delete_collection_icon(
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified collection does not exist!".to_string())
         })?;
-    if collection_item.user_id != user.id.into() && !user.role.is_mod() {
+    if !can_modify_collection(&collection_item, &user) {
         return Ok(HttpResponse::Unauthorized().body(""));
     }
 
@@ -510,7 +510,7 @@ pub async fn collection_delete(
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified collection does not exist!".to_string())
         })?;
-    if collection.user_id != user.id.into() && !user.role.is_mod() {
+    if !can_modify_collection(&collection, &user) {
         return Ok(HttpResponse::Unauthorized().body(""));
     }
     let mut transaction = pool.begin().await?;
@@ -526,4 +526,11 @@ pub async fn collection_delete(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+fn can_modify_collection(
+    collection: &database::models::Collection,
+    user: &models::users::User,
+) -> bool {
+    collection.user_id == user.id.into() || user.role.is_mod()
 }
