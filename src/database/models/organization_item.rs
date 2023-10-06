@@ -318,13 +318,15 @@ impl Organization {
         title: Option<String>,
         redis: &RedisPool,
     ) -> Result<(), super::DatabaseError> {
-        redis.delete(ORGANIZATIONS_NAMESPACE, id.0).await?;
-        if let Some(title) = title {
-            redis
-                .delete(ORGANIZATIONS_TITLES_NAMESPACE, title.to_lowercase())
-                .await?;
-        }
-
+        redis
+            .delete_many([
+                (ORGANIZATIONS_NAMESPACE, Some(id.0.to_string())),
+                (
+                    ORGANIZATIONS_TITLES_NAMESPACE,
+                    title.map(|x| x.to_lowercase()),
+                ),
+            ])
+            .await?;
         Ok(())
     }
 }

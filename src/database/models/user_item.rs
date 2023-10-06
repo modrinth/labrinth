@@ -351,16 +351,17 @@ impl User {
         user_ids: &[(UserId, Option<String>)],
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        for (id, username) in user_ids {
-            redis.delete(USERS_NAMESPACE, id.0).await?;
-
-            if let Some(username) = username {
-                redis
-                    .delete(USER_USERNAMES_NAMESPACE, username.to_lowercase())
-                    .await?;
-            }
-        }
-
+        redis
+            .delete_many(user_ids.into_iter().flat_map(|(id, username)| {
+                [
+                    (USERS_NAMESPACE, Some(id.0.to_string())),
+                    (
+                        USER_USERNAMES_NAMESPACE,
+                        username.clone().map(|i| i.to_lowercase()),
+                    ),
+                ]
+            }))
+            .await?;
         Ok(())
     }
 

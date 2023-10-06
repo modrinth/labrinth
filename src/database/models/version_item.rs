@@ -7,6 +7,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::iter;
 
 const VERSIONS_NAMESPACE: &str = "versions";
 const VERSION_FILES_NAMESPACE: &str = "versions_files";
@@ -736,16 +737,17 @@ impl Version {
         version: &QueryVersion,
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        redis.delete(VERSIONS_NAMESPACE, version.inner.id.0).await?;
-
-        for file in &version.files {
-            for (algo, hash) in &file.hashes {
-                redis
-                    .delete(VERSION_FILES_NAMESPACE, format!("{}_{}", algo, hash))
-                    .await?;
-            }
-        }
-
+        redis
+            .delete_many(
+                iter::once((VERSIONS_NAMESPACE, Some(version.inner.id.0.to_string()))).chain(
+                    version.files.iter().flat_map(|file| {
+                        file.hashes.iter().map(|(algo, hash)| {
+                            (VERSION_FILES_NAMESPACE, Some(format!("{}_{}", algo, hash)))
+                        })
+                    }),
+                ),
+            )
+            .await?;
         Ok(())
     }
 }

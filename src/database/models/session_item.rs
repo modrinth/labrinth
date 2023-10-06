@@ -287,16 +287,19 @@ impl Session {
             return Ok(());
         }
 
-        for (id, session, user_id) in clear_sessions {
-            redis
-                .delete_many([
-                    (SESSIONS_NAMESPACE, id.map(|i| i.0.to_string())),
-                    (SESSIONS_IDS_NAMESPACE, session),
-                    (SESSIONS_USERS_NAMESPACE, user_id.map(|i| i.0.to_string())),
-                ])
-                .await?;
-        }
-
+        redis
+            .delete_many(
+                clear_sessions
+                    .into_iter()
+                    .flat_map(|(id, session, user_id)| {
+                        [
+                            (SESSIONS_NAMESPACE, id.map(|i| i.0.to_string())),
+                            (SESSIONS_IDS_NAMESPACE, session),
+                            (SESSIONS_USERS_NAMESPACE, user_id.map(|i| i.0.to_string())),
+                        ]
+                    }),
+            )
+            .await?;
         Ok(())
     }
 
