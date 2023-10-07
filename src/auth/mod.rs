@@ -1,6 +1,7 @@
 pub mod checks;
 pub mod email;
 pub mod flows;
+pub mod hydra;
 pub mod pats;
 pub mod session;
 mod templates;
