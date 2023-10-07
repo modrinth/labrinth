@@ -1,5 +1,5 @@
 use actix_web::test::{self, TestRequest};
-use labrinth::{models::projects::Project, models::projects::Version};
+use labrinth::{models::projects::Project, models::{projects::Version, pats::Scopes}};
 use serde_json::json;
 use sqlx::Executor;
 
@@ -36,7 +36,11 @@ pub struct DummyData {
 pub async fn add_dummy_data(test_env: &TestEnvironment) -> DummyData {
     // Adds basic dummy data to the database directly with sql (user, pats)
     let pool = &test_env.db.pool.clone();
-    pool.execute(include_str!("../files/dummy_data.sql"))
+
+    pool.execute(
+        include_str!("../files/dummy_data.sql")
+        .replace("$1", &Scopes::all().bits().to_string()).as_str()
+    )
         .await
         .unwrap();
 
@@ -227,3 +231,4 @@ pub async fn add_project_beta(test_env: &TestEnvironment) -> (Project, Version) 
 
     (project, version)
 }
+

@@ -44,7 +44,7 @@ impl TemporaryDatabase {
     // If a db is created with create_with_dummy, it must be cleaned up with cleanup.
     // This means that dbs will only 'remain' if a test fails (for examination of the db), and will be cleaned up otherwise.
     pub async fn create() -> Self {
-        let temp_database_name = generate_random_database_name();
+        let temp_database_name = generate_random_name("labrinth_tests_db_");
         println!("Creating temporary database: {}", &temp_database_name);
 
         let database_url = dotenvy::var("DATABASE_URL").expect("No database URL");
@@ -120,15 +120,9 @@ impl TemporaryDatabase {
     }
 }
 
-fn generate_random_database_name() -> String {
-    // Generate a random database name here
-    // You can use your logic to create a unique name
-    // For example, you can use a random string as you did before
-    // or append a timestamp, etc.
-
-    // We will use a random string starting with "labrinth_tests_db_"
-    // and append a 6-digit number to it.
-    let mut database_name = String::from("labrinth_tests_db_");
-    database_name.push_str(&rand::random::<u64>().to_string()[..6]);
-    database_name
+// Appends a random 8-digit number to the end of the str
+pub fn generate_random_name(str : &str) -> String {
+    let mut str = String::from(str);
+    str.push_str(&rand::random::<u64>().to_string()[..8]);
+    str
 }

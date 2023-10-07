@@ -9,6 +9,7 @@ pub mod database;
 pub mod dummy_data;
 pub mod environment;
 pub mod pats;
+pub mod permissions;
 pub mod scopes;
 
 // Testing equivalent to 'setup' function, producing a LabrinthConfig
@@ -38,3 +39,4 @@ pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
         maxmind_reader.clone(),
     )
 }
+
