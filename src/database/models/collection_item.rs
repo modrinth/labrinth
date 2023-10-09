@@ -1,12 +1,9 @@
-use std::iter;
-
 use super::ids::*;
 use crate::database::models;
 use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
 use crate::models::collections::CollectionStatus;
 use chrono::{DateTime, Utc};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 const COLLECTIONS_NAMESPACE: &str = "collections";

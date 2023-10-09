@@ -5,6 +5,7 @@ use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 pub const PROJECTS_NAMESPACE: &str = "projects";
@@ -20,23 +21,25 @@ pub struct DonationUrl {
 }
 
 impl DonationUrl {
-    pub async fn insert_project(
-        &self,
+    pub async fn insert_many_projects(
+        donation_urls: Vec<Self>,
         project_id: ProjectId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), sqlx::error::Error> {
+        let (project_ids, platform_ids, urls): (Vec<_>, Vec<_>, Vec<_>) = donation_urls
+            .into_iter()
+            .map(|url| (project_id.0, url.platform_id.0, url.url))
+            .multiunzip();
         sqlx::query!(
             "
             INSERT INTO mods_donations (
                 joining_mod_id, joining_platform_id, url
             )
-            VALUES (
-                $1, $2, $3
-            )
+            SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::varchar[])
             ",
-            project_id as ProjectId,
-            self.platform_id as DonationPlatformId,
-            self.url,
+            &project_ids[..],
+            &platform_ids[..],
+            &urls[..],
         )
         .execute(&mut *transaction)
         .await?;
@@ -56,26 +59,44 @@ pub struct GalleryItem {
 }
 
 impl GalleryItem {
-    pub async fn insert(
-        &self,
+    pub async fn insert_many(
+        items: Vec<Self>,
         project_id: ProjectId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), sqlx::error::Error> {
+        let (project_ids, image_urls, featureds, titles, descriptions, orderings): (
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+        ) = items
+            .into_iter()
+            .map(|gi| {
+                (
+                    project_id.0,
+                    gi.image_url,
+                    gi.featured,
+                    gi.title,
+                    gi.description,
+                    gi.ordering,
+                )
+            })
+            .multiunzip();
         sqlx::query!(
             "
             INSERT INTO mods_gallery (
                 mod_id, image_url, featured, title, description, ordering
             )
-            VALUES (
-                $1, $2, $3, $4, $5, $6
-            )
+            SELECT * FROM UNNEST ($1::bigint[], $2::varchar[], $3::bool[], $4::varchar[], $5::varchar[], $6::bigint[])
             ",
-            project_id as ProjectId,
-            self.image_url,
-            self.featured,
-            self.title,
-            self.description,
-            self.ordering
+            &project_ids[..],
+            &image_urls[..],
+            &featureds[..],
+            &titles[..] as &[Option<String>],
+            &descriptions[..] as &[Option<String>],
+            &orderings[..]
         )
         .execute(&mut *transaction)
         .await?;
@@ -160,46 +181,45 @@ impl ProjectBuilder {
         };
         project_struct.insert(&mut *transaction).await?;
 
+        let ProjectBuilder {
+            donation_urls,
+            gallery_items,
+            categories,
+            additional_categories,
+            ..
+        } = self;
+
         for mut version in self.initial_versions {
             version.project_id = self.project_id;
             version.insert(&mut *transaction).await?;
         }
 
-        for donation in self.donation_urls {
-            donation
-                .insert_project(self.project_id, &mut *transaction)
-                .await?;
-        }
-
-        for gallery in self.gallery_items {
-            gallery.insert(self.project_id, &mut *transaction).await?;
-        }
-
-        for category in self.categories {
-            sqlx::query!(
-                "
-                INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
-                VALUES ($1, $2, FALSE)
-                ",
-                self.project_id as ProjectId,
-                category as CategoryId,
-            )
-            .execute(&mut *transaction)
+        DonationUrl::insert_many_projects(donation_urls, self.project_id, &mut *transaction)
             .await?;
-        }
 
-        for category in self.additional_categories {
-            sqlx::query!(
-                "
-                INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
-                VALUES ($1, $2, TRUE)
-                ",
-                self.project_id as ProjectId,
-                category as CategoryId,
+        GalleryItem::insert_many(gallery_items, self.project_id, &mut *transaction).await?;
+
+        let project_id = self.project_id.0;
+        let (project_ids, category_ids, is_additionals): (Vec<_>, Vec<_>, Vec<_>) = categories
+            .into_iter()
+            .map(|c| (project_id, c.0, false))
+            .chain(
+                additional_categories
+                    .into_iter()
+                    .map(|c| (project_id, c.0, true)),
             )
-            .execute(&mut *transaction)
-            .await?;
-        }
+            .multiunzip();
+        sqlx::query!(
+            "
+            INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
+            SELECT * FROM UNNEST ($1::bigint[], $2::int[], $3::bool[])
+            ",
+            &project_ids[..],
+            &category_ids[..],
+            &is_additionals[..]
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         Project::update_game_versions(self.project_id, &mut *transaction).await?;
         Project::update_loaders(self.project_id, &mut *transaction).await?;

@@ -2,6 +2,7 @@ use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authoriz
 use crate::database;
 use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
+use crate::database::models::project_item::GalleryItem;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -2047,16 +2048,15 @@ pub async fn add_gallery_item(
             .await?;
         }
 
-        database::models::project_item::GalleryItem {
+        let gallery_item = vec![database::models::project_item::GalleryItem {
             image_url: file_url,
             featured: item.featured,
             title: item.title,
             description: item.description,
             created: Utc::now(),
             ordering: item.ordering.unwrap_or(0),
-        }
-        .insert(project_item.inner.id, &mut transaction)
-        .await?;
+        }];
+        GalleryItem::insert_many(gallery_item, project_item.inner.id, &mut transaction).await?;
 
         database::models::Project::clear_cache(
             project_item.inner.id,
