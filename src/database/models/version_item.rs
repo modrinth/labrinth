@@ -73,7 +73,7 @@ impl DependencyBuilder {
         sqlx::query!(
             "
             INSERT INTO dependencies (dependent_id, dependency_type, dependency_id, mod_dependency_id, dependency_file_name)
-            SELECT * FROM UNNEST ($1::bigint[], $2::varchar[255][], $3::bigint[], $4::bigint[], $5::varchar[1024][])
+            SELECT * FROM UNNEST ($1::bigint[], $2::varchar[], $3::bigint[], $4::bigint[], $5::varchar[])
             ",
             &version_ids[..],
             &dependency_types[..],
@@ -96,8 +96,8 @@ impl DependencyBuilder {
         } else if let Some(version_id) = self.version_id {
             sqlx::query!(
                 "
-                        SELECT mod_id FROM versions WHERE id = $1
-                        ",
+                SELECT mod_id FROM versions WHERE id = $1
+                ",
                 version_id as VersionId,
             )
             .fetch_optional(&mut *transaction)
@@ -152,7 +152,7 @@ impl VersionFileBuilder {
         sqlx::query!(
             "
             INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)
-            SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::varchar[2048], $4::varchar[2048], $5::bool[], $6::integer[], $7::varchar[128])
+            SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::varchar[], $4::varchar[], $5::bool[], $6::integer[], $7::varchar[])
             ",
             &file_ids[..],
             &version_ids[..],
@@ -176,7 +176,7 @@ impl VersionFileBuilder {
         sqlx::query!(
             "
             INSERT INTO hashes (file_id, algorithm, hash)
-            SELECT * FROM UNNEST($1::bigint[], $2::varchar[255], $3::bytea[])
+            SELECT * FROM UNNEST($1::bigint[], $2::varchar[], $3::bytea[])
             ",
             &file_ids[..],
             &algorithms[..],

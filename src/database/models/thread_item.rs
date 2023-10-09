@@ -94,11 +94,11 @@ impl ThreadBuilder {
             self.members.iter().map(|m| (thread_id.0, m.0)).unzip();
         sqlx::query!(
             "
-                INSERT INTO threads_members (
-                    thread_id, user_id
-                )
-                SELECT * FROM UNNEST ($1::int8[], $2::int8[])
-                ",
+            INSERT INTO threads_members (
+                thread_id, user_id
+            )
+            SELECT * FROM UNNEST ($1::int8[], $2::int8[])
+            ",
             &thread_ids[..],
             &members[..],
         )
