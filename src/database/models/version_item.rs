@@ -241,8 +241,37 @@ impl VersionBuilder {
 
         DependencyBuilder::insert_many(dependencies, self.version_id, transaction).await?;
 
-        let (loader_ids, version_ids): (Vec<_>, Vec<_>) =
-            loaders.iter().map(|l| (l.0, version_id.0)).unzip();
+        let loader_versions = loaders
+            .iter()
+            .map(|l| LoaderVersion::new(*l, version_id))
+            .collect_vec();
+        LoaderVersion::insert_many(loader_versions, &mut *transaction).await?;
+
+        let game_version_versions = game_versions
+            .iter()
+            .map(|v| VersionVersion::new(*v, version_id))
+            .collect_vec();
+        VersionVersion::insert_many(game_version_versions, &mut *transaction).await?;
+
+        Ok(self.version_id)
+    }
+}
+
+#[derive(derive_new::new)]
+pub struct LoaderVersion {
+    pub loader_id: LoaderId,
+    pub version_id: VersionId,
+}
+
+impl LoaderVersion {
+    pub async fn insert_many(
+        items: Vec<Self>,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        let (loader_ids, version_ids): (Vec<_>, Vec<_>) = items
+            .iter()
+            .map(|l| (l.loader_id.0, l.version_id.0))
+            .unzip();
         sqlx::query!(
             "
             INSERT INTO loaders_versions (loader_id, version_id)
@@ -254,8 +283,25 @@ impl VersionBuilder {
         .execute(&mut *transaction)
         .await?;
 
-        let (game_version_ids, version_ids): (Vec<_>, Vec<_>) =
-            game_versions.iter().map(|v| (v.0, version_id.0)).unzip();
+        Ok(())
+    }
+}
+
+#[derive(derive_new::new)]
+pub struct VersionVersion {
+    pub game_version_id: GameVersionId,
+    pub joining_version_id: VersionId,
+}
+
+impl VersionVersion {
+    pub async fn insert_many(
+        items: Vec<Self>,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        let (game_version_ids, version_ids): (Vec<_>, Vec<_>) = items
+            .into_iter()
+            .map(|i| (i.game_version_id.0, i.joining_version_id.0))
+            .unzip();
         sqlx::query!(
             "
             INSERT INTO game_versions_versions (game_version_id, joining_version_id)
@@ -267,7 +313,7 @@ impl VersionBuilder {
         .execute(&mut *transaction)
         .await?;
 
-        Ok(self.version_id)
+        Ok(())
     }
 }
 

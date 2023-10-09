@@ -2,7 +2,7 @@ use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authoriz
 use crate::database;
 use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
-use crate::database::models::project_item::GalleryItem;
+use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -31,6 +31,9 @@ use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
 use validator::Validate;
+
+use database::models as db_models;
+use db_models::ids as db_ids;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(project_search);
@@ -98,11 +101,11 @@ pub async fn random_projects_get(
             .collect::<Vec<String>>(),
     )
     .fetch_many(&**pool)
-    .try_filter_map(|e| async { Ok(e.right().map(|m| database::models::ids::ProjectId(m.id))) })
+    .try_filter_map(|e| async { Ok(e.right().map(|m| db_ids::ProjectId(m.id))) })
     .try_collect::<Vec<_>>()
     .await?;
 
-    let projects_data = database::models::Project::get_many_ids(&project_ids, &**pool, &redis)
+    let projects_data = db_models::Project::get_many_ids(&project_ids, &**pool, &redis)
         .await?
         .into_iter()
         .map(Project::from)
@@ -125,7 +128,7 @@ pub async fn projects_get(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
-    let projects_data = database::models::Project::get_many(&ids, &**pool, &redis).await?;
+    let projects_data = db_models::Project::get_many(&ids, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
         &req,
@@ -153,7 +156,7 @@ pub async fn project_get(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
-    let project_data = database::models::Project::get(&string, &**pool, &redis).await?;
+    let project_data = db_models::Project::get(&string, &**pool, &redis).await?;
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -182,7 +185,7 @@ pub async fn project_get_check(
 ) -> Result<HttpResponse, ApiError> {
     let slug = info.into_inner().0;
 
-    let project_data = database::models::Project::get(&slug, &**pool, &redis).await?;
+    let project_data = db_models::Project::get(&slug, &**pool, &redis).await?;
 
     if let Some(project) = project_data {
         Ok(HttpResponse::Ok().json(json! ({
@@ -209,7 +212,7 @@ pub async fn dependency_list(
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
-    let result = database::models::Project::get(&string, &**pool, &redis).await?;
+    let result = db_models::Project::get(&string, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
         &req,
@@ -248,7 +251,7 @@ pub async fn dependency_list(
         let dep_version_ids = dependencies
             .iter()
             .filter_map(|x| x.0)
-            .collect::<Vec<database::models::VersionId>>();
+            .collect::<Vec<db_models::VersionId>>();
         let (projects_result, versions_result) = futures::future::try_join(
             database::Project::get_many_ids(&project_ids, &**pool, &redis),
             database::Version::get_many(&dep_version_ids, &**pool, &redis),
@@ -400,13 +403,13 @@ pub async fn project_edit(
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
 
     let string = info.into_inner().0;
-    let result = database::models::Project::get(&string, &**pool, &redis).await?;
+    let result = db_models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 
         let (team_member, organization_team_member) =
-            database::models::TeamMember::get_for_project_permissions(
+            db_models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
                 &**pool,
@@ -437,7 +440,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     title.trim(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -458,7 +461,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     description,
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -495,7 +498,7 @@ pub async fn project_edit(
                         SET moderation_message = NULL, moderation_message_body = NULL, queued = NOW()
                         WHERE (id = $1)
                         ",
-                        id as database::models::ids::ProjectId,
+                        id as db_ids::ProjectId,
                     )
                     .execute(&mut *transaction)
                     .await?;
@@ -506,7 +509,7 @@ pub async fn project_edit(
                         SET show_in_mod_inbox = FALSE
                         WHERE id = $1
                         ",
-                        project_item.thread_id as database::models::ids::ThreadId,
+                        project_item.thread_id as db_ids::ThreadId,
                     )
                     .execute(&mut *transaction)
                     .await?;
@@ -519,7 +522,7 @@ pub async fn project_edit(
                         SET approved = NOW()
                         WHERE id = $1 AND approved IS NULL
                         ",
-                        id as database::models::ids::ProjectId,
+                        id as db_ids::ProjectId,
                     )
                     .execute(&mut *transaction)
                     .await?;
@@ -543,7 +546,7 @@ pub async fn project_edit(
                             SET webhook_sent = TRUE
                             WHERE id = $1
                             ",
-                            id as database::models::ids::ProjectId,
+                            id as db_ids::ProjectId,
                         )
                         .execute(&mut *transaction)
                         .await?;
@@ -581,12 +584,10 @@ pub async fn project_edit(
                         FROM team_members tm
                         WHERE tm.team_id = $1 AND tm.accepted
                         ",
-                        project_item.inner.team_id as database::models::ids::TeamId
+                        project_item.inner.team_id as db_ids::TeamId
                     )
                     .fetch_many(&mut *transaction)
-                    .try_filter_map(|e| async {
-                        Ok(e.right().map(|c| database::models::UserId(c.id)))
-                    })
+                    .try_filter_map(|e| async { Ok(e.right().map(|c| db_models::UserId(c.id))) })
                     .try_collect::<Vec<_>>()
                     .await?;
 
@@ -619,7 +620,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     status.as_str(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -653,7 +654,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     requested_status.map(|x| x.as_str()),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -666,7 +667,7 @@ pub async fn project_edit(
                         DELETE FROM mods_categories
                         WHERE joining_mod_id = $1 AND is_additional = FALSE
                         ",
-                        id as database::models::ids::ProjectId,
+                        id as db_ids::ProjectId,
                     )
                     .execute(&mut *transaction)
                     .await?;
@@ -678,7 +679,7 @@ pub async fn project_edit(
                         DELETE FROM mods_categories
                         WHERE joining_mod_id = $1 AND is_additional = TRUE
                         ",
-                        id as database::models::ids::ProjectId,
+                        id as db_ids::ProjectId,
                     )
                     .execute(&mut *transaction)
                     .await?;
@@ -686,67 +687,25 @@ pub async fn project_edit(
             }
 
             if let Some(categories) = &new_project.categories {
-                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the categories of this project!"
-                            .to_string(),
-                    ));
-                }
-
-                for category in categories {
-                    let category_id =
-                        database::models::categories::Category::get_id(category, &mut *transaction)
-                            .await?
-                            .ok_or_else(|| {
-                                ApiError::InvalidInput(format!(
-                                    "Category {} does not exist.",
-                                    category.clone()
-                                ))
-                            })?;
-
-                    sqlx::query!(
-                        "
-                        INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
-                        VALUES ($1, $2, FALSE)
-                        ",
-                        id as database::models::ids::ProjectId,
-                        category_id as database::models::ids::CategoryId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-                }
+                edit_project_categories(
+                    categories,
+                    &perms,
+                    id as db_ids::ProjectId,
+                    false,
+                    &mut transaction,
+                )
+                .await?;
             }
 
             if let Some(categories) = &new_project.additional_categories {
-                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the additional categories of this project!"
-                            .to_string(),
-                    ));
-                }
-
-                for category in categories {
-                    let category_id =
-                        database::models::categories::Category::get_id(category, &mut *transaction)
-                            .await?
-                            .ok_or_else(|| {
-                                ApiError::InvalidInput(format!(
-                                    "Category {} does not exist.",
-                                    category.clone()
-                                ))
-                            })?;
-
-                    sqlx::query!(
-                        "
-                        INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
-                        VALUES ($1, $2, TRUE)
-                        ",
-                        id as database::models::ids::ProjectId,
-                        category_id as database::models::ids::CategoryId,
-                    )
-                        .execute(&mut *transaction)
-                        .await?;
-                }
+                edit_project_categories(
+                    categories,
+                    &perms,
+                    id as db_ids::ProjectId,
+                    true,
+                    &mut transaction,
+                )
+                .await?;
             }
 
             if let Some(issues_url) = &new_project.issues_url {
@@ -764,7 +723,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     issues_url.as_deref(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -785,7 +744,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     source_url.as_deref(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -806,7 +765,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     wiki_url.as_deref(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -827,7 +786,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     license_url.as_deref(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -848,7 +807,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     discord_url.as_deref(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -906,7 +865,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     Some(slug),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -920,12 +879,10 @@ pub async fn project_edit(
                     ));
                 }
 
-                let side_type_id = database::models::categories::SideType::get_id(
-                    new_side.as_str(),
-                    &mut *transaction,
-                )
-                .await?
-                .expect("No database entry found for side type");
+                let side_type_id =
+                    db_models::categories::SideType::get_id(new_side.as_str(), &mut *transaction)
+                        .await?
+                        .expect("No database entry found for side type");
 
                 sqlx::query!(
                     "
@@ -933,8 +890,8 @@ pub async fn project_edit(
                     SET client_side = $1
                     WHERE (id = $2)
                     ",
-                    side_type_id as database::models::SideTypeId,
-                    id as database::models::ids::ProjectId,
+                    side_type_id as db_models::SideTypeId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -948,12 +905,10 @@ pub async fn project_edit(
                     ));
                 }
 
-                let side_type_id = database::models::categories::SideType::get_id(
-                    new_side.as_str(),
-                    &mut *transaction,
-                )
-                .await?
-                .expect("No database entry found for side type");
+                let side_type_id =
+                    db_models::categories::SideType::get_id(new_side.as_str(), &mut *transaction)
+                        .await?
+                        .expect("No database entry found for side type");
 
                 sqlx::query!(
                     "
@@ -961,8 +916,8 @@ pub async fn project_edit(
                     SET server_side = $1
                     WHERE (id = $2)
                     ",
-                    side_type_id as database::models::SideTypeId,
-                    id as database::models::ids::ProjectId,
+                    side_type_id as db_models::SideTypeId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -993,7 +948,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     license,
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -1011,13 +966,13 @@ pub async fn project_edit(
                     DELETE FROM mods_donations
                     WHERE joining_mod_id = $1
                     ",
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
 
                 for donation in donations {
-                    let platform_id = database::models::categories::DonationPlatform::get_id(
+                    let platform_id = db_models::categories::DonationPlatform::get_id(
                         &donation.id,
                         &mut *transaction,
                     )
@@ -1034,8 +989,8 @@ pub async fn project_edit(
                         INSERT INTO mods_donations (joining_mod_id, joining_platform_id, url)
                         VALUES ($1, $2, $3)
                         ",
-                        id as database::models::ids::ProjectId,
-                        platform_id as database::models::ids::DonationPlatformId,
+                        id as db_ids::ProjectId,
+                        platform_id as db_ids::DonationPlatformId,
                         donation.url
                     )
                     .execute(&mut *transaction)
@@ -1060,7 +1015,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     moderation_message.as_deref(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -1084,7 +1039,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     moderation_message_body.as_deref(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -1105,7 +1060,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     body,
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -1137,7 +1092,7 @@ pub async fn project_edit(
                     WHERE (id = $2)
                     ",
                     monetization_status.as_str(),
-                    id as database::models::ids::ProjectId,
+                    id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -1155,7 +1110,7 @@ pub async fn project_edit(
             };
 
             img::delete_unused_images(context, checkable_strings, &mut transaction, &redis).await?;
-            database::models::Project::clear_cache(
+            db_models::Project::clear_cache(
                 project_item.inner.id,
                 project_item.inner.slug,
                 None,
@@ -1261,14 +1216,12 @@ pub async fn projects_edit(
         .validate()
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
 
-    let project_ids: Vec<database::models::ids::ProjectId> =
-        serde_json::from_str::<Vec<ProjectId>>(&ids.ids)?
-            .into_iter()
-            .map(|x| x.into())
-            .collect();
+    let project_ids: Vec<db_ids::ProjectId> = serde_json::from_str::<Vec<ProjectId>>(&ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect();
 
-    let projects_data =
-        database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
+    let projects_data = db_models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
 
     if let Some(id) = project_ids
         .iter()
@@ -1283,31 +1236,27 @@ pub async fn projects_edit(
     let team_ids = projects_data
         .iter()
         .map(|x| x.inner.team_id)
-        .collect::<Vec<database::models::TeamId>>();
+        .collect::<Vec<db_models::TeamId>>();
     let team_members =
-        database::models::TeamMember::get_from_team_full_many(&team_ids, &**pool, &redis).await?;
+        db_models::TeamMember::get_from_team_full_many(&team_ids, &**pool, &redis).await?;
 
     let organization_ids = projects_data
         .iter()
         .filter_map(|x| x.inner.organization_id)
-        .collect::<Vec<database::models::OrganizationId>>();
+        .collect::<Vec<db_models::OrganizationId>>();
     let organizations =
-        database::models::Organization::get_many_ids(&organization_ids, &**pool, &redis).await?;
+        db_models::Organization::get_many_ids(&organization_ids, &**pool, &redis).await?;
 
     let organization_team_ids = organizations
         .iter()
         .map(|x| x.team_id)
-        .collect::<Vec<database::models::TeamId>>();
-    let organization_team_members = database::models::TeamMember::get_from_team_full_many(
-        &organization_team_ids,
-        &**pool,
-        &redis,
-    )
-    .await?;
+        .collect::<Vec<db_models::TeamId>>();
+    let organization_team_members =
+        db_models::TeamMember::get_from_team_full_many(&organization_team_ids, &**pool, &redis)
+            .await?;
 
-    let categories = database::models::categories::Category::list(&**pool, &redis).await?;
-    let donation_platforms =
-        database::models::categories::DonationPlatform::list(&**pool, &redis).await?;
+    let categories = db_models::categories::Category::list(&**pool, &redis).await?;
+    let donation_platforms = db_models::categories::DonationPlatform::list(&**pool, &redis).await?;
 
     let mut transaction = pool.begin().await?;
 
@@ -1357,126 +1306,31 @@ pub async fn projects_edit(
             };
         }
 
-        let mut set_categories = if let Some(categories) = bulk_edit_project.categories.clone() {
-            categories
-        } else {
-            project.categories.clone()
-        };
+        bulk_edit_project_categories(
+            &categories,
+            &project.categories,
+            project.inner.id as db_ids::ProjectId,
+            &bulk_edit_project.categories,
+            &bulk_edit_project.remove_categories,
+            &bulk_edit_project.add_categories,
+            3,
+            false,
+            &mut transaction,
+        )
+        .await?;
 
-        if let Some(delete_categories) = &bulk_edit_project.remove_categories {
-            for category in delete_categories {
-                if let Some(pos) = set_categories.iter().position(|x| x == category) {
-                    set_categories.remove(pos);
-                }
-            }
-        }
-
-        if let Some(add_categories) = &bulk_edit_project.add_categories {
-            for category in add_categories {
-                if set_categories.len() < 3 {
-                    set_categories.push(category.clone());
-                } else {
-                    break;
-                }
-            }
-        }
-
-        if set_categories != project.categories {
-            sqlx::query!(
-                "
-                DELETE FROM mods_categories
-                WHERE joining_mod_id = $1 AND is_additional = FALSE
-                ",
-                project.inner.id as database::models::ids::ProjectId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            for category in set_categories {
-                let category_id = categories
-                    .iter()
-                    .find(|x| x.category == category)
-                    .ok_or_else(|| {
-                        ApiError::InvalidInput(format!(
-                            "Category {} does not exist.",
-                            category.clone()
-                        ))
-                    })?
-                    .id;
-
-                sqlx::query!(
-                    "
-                    INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
-                    VALUES ($1, $2, FALSE)
-                    ",
-                    project.inner.id as database::models::ids::ProjectId,
-                    category_id as database::models::ids::CategoryId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
-        }
-
-        let mut set_additional_categories =
-            if let Some(categories) = bulk_edit_project.additional_categories.clone() {
-                categories
-            } else {
-                project.additional_categories.clone()
-            };
-
-        if let Some(delete_categories) = &bulk_edit_project.remove_additional_categories {
-            for category in delete_categories {
-                if let Some(pos) = set_additional_categories.iter().position(|x| x == category) {
-                    set_additional_categories.remove(pos);
-                }
-            }
-        }
-
-        if let Some(add_categories) = &bulk_edit_project.add_additional_categories {
-            for category in add_categories {
-                if set_additional_categories.len() < 256 {
-                    set_additional_categories.push(category.clone());
-                } else {
-                    break;
-                }
-            }
-        }
-
-        if set_additional_categories != project.additional_categories {
-            sqlx::query!(
-                "
-                DELETE FROM mods_categories
-                WHERE joining_mod_id = $1 AND is_additional = TRUE
-                ",
-                project.inner.id as database::models::ids::ProjectId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            for category in set_additional_categories {
-                let category_id = categories
-                    .iter()
-                    .find(|x| x.category == category)
-                    .ok_or_else(|| {
-                        ApiError::InvalidInput(format!(
-                            "Category {} does not exist.",
-                            category.clone()
-                        ))
-                    })?
-                    .id;
-
-                sqlx::query!(
-                        "
-                        INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
-                        VALUES ($1, $2, TRUE)
-                        ",
-                        project.inner.id as database::models::ids::ProjectId,
-                        category_id as database::models::ids::CategoryId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-            }
-        }
+        bulk_edit_project_categories(
+            &categories,
+            &project.additional_categories,
+            project.inner.id as db_ids::ProjectId,
+            &bulk_edit_project.additional_categories,
+            &bulk_edit_project.remove_additional_categories,
+            &bulk_edit_project.add_additional_categories,
+            256,
+            true,
+            &mut transaction,
+        )
+        .await?;
 
         let project_donations: Vec<DonationLink> = project
             .donation_urls
@@ -1515,7 +1369,7 @@ pub async fn projects_edit(
                 DELETE FROM mods_donations
                 WHERE joining_mod_id = $1
                 ",
-                project.inner.id as database::models::ids::ProjectId,
+                project.inner.id as db_ids::ProjectId,
             )
             .execute(&mut *transaction)
             .await?;
@@ -1537,8 +1391,8 @@ pub async fn projects_edit(
                     INSERT INTO mods_donations (joining_mod_id, joining_platform_id, url)
                     VALUES ($1, $2, $3)
                     ",
-                    project.inner.id as database::models::ids::ProjectId,
-                    platform_id as database::models::ids::DonationPlatformId,
+                    project.inner.id as db_ids::ProjectId,
+                    platform_id as db_ids::DonationPlatformId,
                     donation.url
                 )
                 .execute(&mut *transaction)
@@ -1554,7 +1408,7 @@ pub async fn projects_edit(
                 WHERE (id = $2)
                 ",
                 issues_url.as_deref(),
-                project.inner.id as database::models::ids::ProjectId,
+                project.inner.id as db_ids::ProjectId,
             )
             .execute(&mut *transaction)
             .await?;
@@ -1568,7 +1422,7 @@ pub async fn projects_edit(
                 WHERE (id = $2)
                 ",
                 source_url.as_deref(),
-                project.inner.id as database::models::ids::ProjectId,
+                project.inner.id as db_ids::ProjectId,
             )
             .execute(&mut *transaction)
             .await?;
@@ -1582,7 +1436,7 @@ pub async fn projects_edit(
                 WHERE (id = $2)
                 ",
                 wiki_url.as_deref(),
-                project.inner.id as database::models::ids::ProjectId,
+                project.inner.id as db_ids::ProjectId,
             )
             .execute(&mut *transaction)
             .await?;
@@ -1596,19 +1450,110 @@ pub async fn projects_edit(
                 WHERE (id = $2)
                 ",
                 discord_url.as_deref(),
-                project.inner.id as database::models::ids::ProjectId,
+                project.inner.id as db_ids::ProjectId,
             )
             .execute(&mut *transaction)
             .await?;
         }
 
-        database::models::Project::clear_cache(project.inner.id, project.inner.slug, None, &redis)
-            .await?;
+        db_models::Project::clear_cache(project.inner.id, project.inner.slug, None, &redis).await?;
     }
 
     transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
+}
+
+pub async fn bulk_edit_project_categories(
+    all_db_categories: &Vec<db_models::categories::Category>,
+    project_categories: &Vec<String>,
+    project_id: db_ids::ProjectId,
+    bulk_categories: &Option<Vec<String>>,
+    bulk_remove_categories: &Option<Vec<String>>,
+    bulk_add_categories: &Option<Vec<String>>,
+    max_num_categories: usize,
+    is_additional: bool,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), ApiError> {
+    let mut set_categories = if let Some(categories) = bulk_categories.clone() {
+        categories
+    } else {
+        project_categories.clone()
+    };
+
+    if let Some(delete_categories) = &bulk_remove_categories {
+        for category in delete_categories {
+            if let Some(pos) = set_categories.iter().position(|x| x == category) {
+                set_categories.remove(pos);
+            }
+        }
+    }
+
+    if let Some(add_categories) = &bulk_add_categories {
+        for category in add_categories {
+            if set_categories.len() < max_num_categories {
+                set_categories.push(category.clone());
+            } else {
+                break;
+            }
+        }
+    }
+
+    if &set_categories != project_categories {
+        sqlx::query!(
+            "
+            DELETE FROM mods_categories
+            WHERE joining_mod_id = $1 AND is_additional = $2
+            ",
+            project_id as db_ids::ProjectId,
+            is_additional
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        let mut mod_categories = Vec::new();
+        for category in set_categories {
+            let category_id = all_db_categories
+                .iter()
+                .find(|x| x.category == category)
+                .ok_or_else(|| {
+                    ApiError::InvalidInput(format!("Category {} does not exist.", category.clone()))
+                })?
+                .id;
+            mod_categories.push(ModCategory::new(project_id, category_id, is_additional));
+        }
+        ModCategory::insert_many(mod_categories, &mut *transaction).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn edit_project_categories(
+    categories: &Vec<String>,
+    perms: &ProjectPermissions,
+    project_id: db_ids::ProjectId,
+    additional: bool,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), ApiError> {
+    if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
+        let additional_str = if additional { "additional " } else { "" };
+        return Err(ApiError::CustomAuthentication(format!(
+            "You do not have the permissions to edit the {additional_str}categories of this project!"
+        )));
+    }
+
+    let mut mod_categories = Vec::new();
+    for category in categories {
+        let category_id = db_models::categories::Category::get_id(category, &mut *transaction)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput(format!("Category {} does not exist.", category.clone()))
+            })?;
+        mod_categories.push(ModCategory::new(project_id, category_id, additional));
+    }
+    ModCategory::insert_many(mod_categories, &mut *transaction).await?;
+
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -1649,11 +1594,11 @@ pub async fn project_schedule(
     }
 
     let string = info.into_inner().0;
-    let result = database::models::Project::get(&string, &**pool, &redis).await?;
+    let result = db_models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project_item) = result {
         let (team_member, organization_team_member) =
-            database::models::TeamMember::get_for_project_permissions(
+            db_models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
                 &**pool,
@@ -1693,12 +1638,12 @@ pub async fn project_schedule(
             ",
             ProjectStatus::Scheduled.as_str(),
             scheduling_data.time,
-            project_item.inner.id as database::models::ids::ProjectId,
+            project_item.inner.id as db_ids::ProjectId,
         )
         .execute(&**pool)
         .await?;
 
-        database::models::Project::clear_cache(
+        db_models::Project::clear_cache(
             project_item.inner.id,
             project_item.inner.slug,
             None,
@@ -1742,7 +1687,7 @@ pub async fn project_icon_edit(
         .1;
         let string = info.into_inner().0;
 
-        let project_item = database::models::Project::get(&string, &**pool, &redis)
+        let project_item = db_models::Project::get(&string, &**pool, &redis)
             .await?
             .ok_or_else(|| {
                 ApiError::InvalidInput("The specified project does not exist!".to_string())
@@ -1750,7 +1695,7 @@ pub async fn project_icon_edit(
 
         if !user.role.is_mod() {
             let (team_member, organization_team_member) =
-                database::models::TeamMember::get_for_project_permissions(
+                db_models::TeamMember::get_for_project_permissions(
                     &project_item.inner,
                     user.id.into(),
                     &**pool,
@@ -1811,12 +1756,12 @@ pub async fn project_icon_edit(
             ",
             format!("{}/{}", cdn_url, upload_data.file_name),
             color.map(|x| x as i32),
-            project_item.inner.id as database::models::ids::ProjectId,
+            project_item.inner.id as db_ids::ProjectId,
         )
         .execute(&mut *transaction)
         .await?;
 
-        database::models::Project::clear_cache(
+        db_models::Project::clear_cache(
             project_item.inner.id,
             project_item.inner.slug,
             None,
@@ -1855,7 +1800,7 @@ pub async fn delete_project_icon(
     .1;
     let string = info.into_inner().0;
 
-    let project_item = database::models::Project::get(&string, &**pool, &redis)
+    let project_item = db_models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified project does not exist!".to_string())
@@ -1863,7 +1808,7 @@ pub async fn delete_project_icon(
 
     if !user.role.is_mod() {
         let (team_member, organization_team_member) =
-            database::models::TeamMember::get_for_project_permissions(
+            db_models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
                 &**pool,
@@ -1907,18 +1852,13 @@ pub async fn delete_project_icon(
         SET icon_url = NULL, color = NULL
         WHERE (id = $1)
         ",
-        project_item.inner.id as database::models::ids::ProjectId,
+        project_item.inner.id as db_ids::ProjectId,
     )
     .execute(&mut *transaction)
     .await?;
 
-    database::models::Project::clear_cache(
-        project_item.inner.id,
-        project_item.inner.slug,
-        None,
-        &redis,
-    )
-    .await?;
+    db_models::Project::clear_cache(project_item.inner.id, project_item.inner.slug, None, &redis)
+        .await?;
 
     transaction.commit().await?;
 
@@ -1964,7 +1904,7 @@ pub async fn add_gallery_item(
         .1;
         let string = info.into_inner().0;
 
-        let project_item = database::models::Project::get(&string, &**pool, &redis)
+        let project_item = db_models::Project::get(&string, &**pool, &redis)
             .await?
             .ok_or_else(|| {
                 ApiError::InvalidInput("The specified project does not exist!".to_string())
@@ -1978,7 +1918,7 @@ pub async fn add_gallery_item(
 
         if !user.role.is_admin() {
             let (team_member, organization_team_member) =
-                database::models::TeamMember::get_for_project_permissions(
+                db_models::TeamMember::get_for_project_permissions(
                     &project_item.inner,
                     user.id.into(),
                     &**pool,
@@ -2041,14 +1981,14 @@ pub async fn add_gallery_item(
                 SET featured = $2
                 WHERE mod_id = $1
                 ",
-                project_item.inner.id as database::models::ids::ProjectId,
+                project_item.inner.id as db_ids::ProjectId,
                 false,
             )
             .execute(&mut *transaction)
             .await?;
         }
 
-        let gallery_item = vec![database::models::project_item::GalleryItem {
+        let gallery_item = vec![db_models::project_item::GalleryItem {
             image_url: file_url,
             featured: item.featured,
             title: item.title,
@@ -2058,7 +1998,7 @@ pub async fn add_gallery_item(
         }];
         GalleryItem::insert_many(gallery_item, project_item.inner.id, &mut transaction).await?;
 
-        database::models::Project::clear_cache(
+        db_models::Project::clear_cache(
             project_item.inner.id,
             project_item.inner.slug,
             None,
@@ -2122,7 +2062,7 @@ pub async fn edit_gallery_item(
     item.validate()
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
 
-    let project_item = database::models::Project::get(&string, &**pool, &redis)
+    let project_item = db_models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified project does not exist!".to_string())
@@ -2130,7 +2070,7 @@ pub async fn edit_gallery_item(
 
     if !user.role.is_mod() {
         let (team_member, organization_team_member) =
-            database::models::TeamMember::get_for_project_permissions(
+            db_models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
                 &**pool,
@@ -2185,7 +2125,7 @@ pub async fn edit_gallery_item(
                 SET featured = $2
                 WHERE mod_id = $1
                 ",
-                project_item.inner.id as database::models::ids::ProjectId,
+                project_item.inner.id as db_ids::ProjectId,
                 false,
             )
             .execute(&mut *transaction)
@@ -2244,13 +2184,8 @@ pub async fn edit_gallery_item(
         .await?;
     }
 
-    database::models::Project::clear_cache(
-        project_item.inner.id,
-        project_item.inner.slug,
-        None,
-        &redis,
-    )
-    .await?;
+    db_models::Project::clear_cache(project_item.inner.id, project_item.inner.slug, None, &redis)
+        .await?;
 
     transaction.commit().await?;
 
@@ -2283,7 +2218,7 @@ pub async fn delete_gallery_item(
     .1;
     let string = info.into_inner().0;
 
-    let project_item = database::models::Project::get(&string, &**pool, &redis)
+    let project_item = db_models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified project does not exist!".to_string())
@@ -2291,7 +2226,7 @@ pub async fn delete_gallery_item(
 
     if !user.role.is_mod() {
         let (team_member, organization_team_member) =
-            database::models::TeamMember::get_for_project_permissions(
+            db_models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
                 user.id.into(),
                 &**pool,
@@ -2356,13 +2291,8 @@ pub async fn delete_gallery_item(
     .execute(&mut *transaction)
     .await?;
 
-    database::models::Project::clear_cache(
-        project_item.inner.id,
-        project_item.inner.slug,
-        None,
-        &redis,
-    )
-    .await?;
+    db_models::Project::clear_cache(project_item.inner.id, project_item.inner.slug, None, &redis)
+        .await?;
 
     transaction.commit().await?;
 
@@ -2389,7 +2319,7 @@ pub async fn project_delete(
     .1;
     let string = info.into_inner().0;
 
-    let project = database::models::Project::get(&string, &**pool, &redis)
+    let project = db_models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified project does not exist!".to_string())
@@ -2397,7 +2327,7 @@ pub async fn project_delete(
 
     if !user.role.is_admin() {
         let (team_member, organization_team_member) =
-            database::models::TeamMember::get_for_project_permissions(
+            db_models::TeamMember::get_for_project_permissions(
                 &project.inner,
                 user.id.into(),
                 &**pool,
@@ -2429,8 +2359,7 @@ pub async fn project_delete(
     let context = ImageContext::Project {
         project_id: Some(project.inner.id.into()),
     };
-    let uploaded_images =
-        database::models::Image::get_many_contexted(context, &mut transaction).await?;
+    let uploaded_images = db_models::Image::get_many_contexted(context, &mut transaction).await?;
     for image in uploaded_images {
         image_item::Image::remove(image.id, &mut transaction, &redis).await?;
     }
@@ -2440,13 +2369,12 @@ pub async fn project_delete(
         DELETE FROM collections_mods
         WHERE mod_id = $1
         ",
-        project.inner.id as database::models::ids::ProjectId,
+        project.inner.id as db_ids::ProjectId,
     )
     .execute(&mut *transaction)
     .await?;
 
-    let result =
-        database::models::Project::remove(project.inner.id, &mut transaction, &redis).await?;
+    let result = db_models::Project::remove(project.inner.id, &mut transaction, &redis).await?;
 
     transaction.commit().await?;
 
@@ -2478,14 +2406,14 @@ pub async fn project_follow(
     .1;
     let string = info.into_inner().0;
 
-    let result = database::models::Project::get(&string, &**pool, &redis)
+    let result = db_models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
-    let user_id: database::models::ids::UserId = user.id.into();
-    let project_id: database::models::ids::ProjectId = result.inner.id;
+    let user_id: db_ids::UserId = user.id.into();
+    let project_id: db_ids::ProjectId = result.inner.id;
 
     if !is_authorized(&result.inner, &Some(user), &pool).await? {
         return Ok(HttpResponse::NotFound().body(""));
@@ -2495,8 +2423,8 @@ pub async fn project_follow(
         "
         SELECT EXISTS(SELECT 1 FROM mod_follows mf WHERE mf.follower_id = $1 AND mf.mod_id = $2)
         ",
-        user_id as database::models::ids::UserId,
-        project_id as database::models::ids::ProjectId
+        user_id as db_ids::UserId,
+        project_id as db_ids::ProjectId
     )
     .fetch_one(&**pool)
     .await?
@@ -2512,7 +2440,7 @@ pub async fn project_follow(
             SET follows = follows + 1
             WHERE id = $1
             ",
-            project_id as database::models::ids::ProjectId,
+            project_id as db_ids::ProjectId,
         )
         .execute(&mut *transaction)
         .await?;
@@ -2522,8 +2450,8 @@ pub async fn project_follow(
             INSERT INTO mod_follows (follower_id, mod_id)
             VALUES ($1, $2)
             ",
-            user_id as database::models::ids::UserId,
-            project_id as database::models::ids::ProjectId
+            user_id as db_ids::UserId,
+            project_id as db_ids::ProjectId
         )
         .execute(&mut *transaction)
         .await?;
@@ -2557,21 +2485,21 @@ pub async fn project_unfollow(
     .1;
     let string = info.into_inner().0;
 
-    let result = database::models::Project::get(&string, &**pool, &redis)
+    let result = db_models::Project::get(&string, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
-    let user_id: database::models::ids::UserId = user.id.into();
+    let user_id: db_ids::UserId = user.id.into();
     let project_id = result.inner.id;
 
     let following = sqlx::query!(
         "
         SELECT EXISTS(SELECT 1 FROM mod_follows mf WHERE mf.follower_id = $1 AND mf.mod_id = $2)
         ",
-        user_id as database::models::ids::UserId,
-        project_id as database::models::ids::ProjectId
+        user_id as db_ids::UserId,
+        project_id as db_ids::ProjectId
     )
     .fetch_one(&**pool)
     .await?
@@ -2587,7 +2515,7 @@ pub async fn project_unfollow(
             SET follows = follows - 1
             WHERE id = $1
             ",
-            project_id as database::models::ids::ProjectId,
+            project_id as db_ids::ProjectId,
         )
         .execute(&mut *transaction)
         .await?;
@@ -2597,8 +2525,8 @@ pub async fn project_unfollow(
             DELETE FROM mod_follows
             WHERE follower_id = $1 AND mod_id = $2
             ",
-            user_id as database::models::ids::UserId,
-            project_id as database::models::ids::ProjectId
+            user_id as db_ids::UserId,
+            project_id as db_ids::ProjectId
         )
         .execute(&mut *transaction)
         .await?;

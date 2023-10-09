@@ -1,5 +1,3 @@
-use std::os::unix::thread;
-
 use super::ids::*;
 use crate::database::models::DatabaseError;
 use crate::models::threads::{MessageBody, ThreadType};

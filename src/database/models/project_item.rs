@@ -105,6 +105,38 @@ impl GalleryItem {
     }
 }
 
+#[derive(derive_new::new)]
+pub struct ModCategory {
+    project_id: ProjectId,
+    category_id: CategoryId,
+    is_additional: bool,
+}
+
+impl ModCategory {
+    pub async fn insert_many(
+        items: Vec<Self>,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        let (project_ids, category_ids, is_additionals): (Vec<_>, Vec<_>, Vec<_>) = items
+            .into_iter()
+            .map(|mc| (mc.project_id.0, mc.category_id.0, mc.is_additional))
+            .multiunzip();
+        sqlx::query!(
+            "
+            INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
+            SELECT * FROM UNNEST ($1::bigint[], $2::int[], $3::bool[])
+            ",
+            &project_ids[..],
+            &category_ids[..],
+            &is_additionals[..]
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 pub struct ProjectBuilder {
     pub project_id: ProjectId,
@@ -199,27 +231,17 @@ impl ProjectBuilder {
 
         GalleryItem::insert_many(gallery_items, self.project_id, &mut *transaction).await?;
 
-        let project_id = self.project_id.0;
-        let (project_ids, category_ids, is_additionals): (Vec<_>, Vec<_>, Vec<_>) = categories
+        let project_id = self.project_id;
+        let mod_categories = categories
             .into_iter()
-            .map(|c| (project_id, c.0, false))
+            .map(|c| ModCategory::new(project_id, c, false))
             .chain(
                 additional_categories
                     .into_iter()
-                    .map(|c| (project_id, c.0, true)),
+                    .map(|c| ModCategory::new(project_id, c, true)),
             )
-            .multiunzip();
-        sqlx::query!(
-            "
-            INSERT INTO mods_categories (joining_mod_id, joining_category_id, is_additional)
-            SELECT * FROM UNNEST ($1::bigint[], $2::int[], $3::bool[])
-            ",
-            &project_ids[..],
-            &category_ids[..],
-            &is_additionals[..]
-        )
-        .execute(&mut *transaction)
-        .await?;
+            .collect_vec();
+        ModCategory::insert_many(mod_categories, &mut *transaction).await?;
 
         Project::update_game_versions(self.project_id, &mut *transaction).await?;
         Project::update_loaders(self.project_id, &mut *transaction).await?;
