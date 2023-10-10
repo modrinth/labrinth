@@ -1,5 +1,6 @@
 use super::ids::Base62Id;
 use crate::auth::flows::AuthProvider;
+use crate::bitflags_serde_impl;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -28,17 +29,7 @@ bitflags::bitflags! {
     }
 }
 
-impl serde::Serialize for Badges {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        bitflags_serde_legacy::serialize(self, "Flags", serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Badges {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        bitflags_serde_legacy::deserialize("Flags", deserializer)
-    }
-}
+bitflags_serde_impl!(Badges, u64);
 
 impl Default for Badges {
     fn default() -> Badges {

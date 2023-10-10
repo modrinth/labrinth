@@ -1,4 +1,5 @@
 use super::ids::Base62Id;
+use crate::bitflags_serde_impl;
 use crate::models::users::User;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -39,17 +40,7 @@ bitflags::bitflags! {
     }
 }
 
-impl serde::Serialize for ProjectPermissions {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        bitflags_serde_legacy::serialize(self, "Flags", serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for ProjectPermissions {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        bitflags_serde_legacy::deserialize("Flags", deserializer)
-    }
-}
+bitflags_serde_impl!(ProjectPermissions, u64);
 
 impl Default for ProjectPermissions {
     fn default() -> ProjectPermissions {
@@ -104,17 +95,7 @@ bitflags::bitflags! {
     }
 }
 
-impl serde::Serialize for OrganizationPermissions {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        bitflags_serde_legacy::serialize(self, "Flags", serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for OrganizationPermissions {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        bitflags_serde_legacy::deserialize("Flags", deserializer)
-    }
-}
+bitflags_serde_impl!(OrganizationPermissions, u64);
 
 impl Default for OrganizationPermissions {
     fn default() -> OrganizationPermissions {

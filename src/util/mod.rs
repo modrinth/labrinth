@@ -1,3 +1,4 @@
+pub mod bitflag;
 pub mod captcha;
 pub mod cors;
 pub mod env;

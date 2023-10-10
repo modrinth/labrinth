@@ -1,4 +1,5 @@
 use super::ids::Base62Id;
+use crate::bitflags_serde_impl;
 use crate::models::ids::UserId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -106,6 +107,8 @@ bitflags::bitflags! {
     }
 }
 
+bitflags_serde_impl!(Scopes, u64);
+
 impl Scopes {
     // these scopes cannot be specified in a personal access token
     pub fn restricted() -> Scopes {
@@ -122,18 +125,6 @@ impl Scopes {
 
     pub fn is_restricted(&self) -> bool {
         self.intersects(Self::restricted())
-    }
-}
-
-impl serde::Serialize for Scopes {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        bitflags_serde_legacy::serialize(self, "Flags", serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Scopes {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 
