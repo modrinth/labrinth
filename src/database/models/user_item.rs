@@ -1,7 +1,7 @@
 use super::ids::{ProjectId, UserId};
 use crate::database::models::DatabaseError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
-use crate::models::users::Badges;
+use crate::models::users::{Badges, RecipientStatus};
 use chrono::{DateTime, Utc};
 use redis::cmd;
 use rust_decimal::Decimal;
@@ -35,7 +35,10 @@ pub struct User {
     pub created: DateTime<Utc>,
     pub role: String,
     pub badges: Badges,
+
     pub balance: Decimal,
+    pub trolley_id: Option<String>,
+    pub trolley_account_status: Option<RecipientStatus>,
 }
 
 impl User {
@@ -205,7 +208,7 @@ impl User {
                     created, role, badges,
                     balance,
                     github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,
-                    email_verified, password, totp_secret
+                    email_verified, password, totp_secret, trolley_id, trolley_account_status
                 FROM users
                 WHERE id = ANY($1) OR LOWER(username) = ANY($2)
                 ",
@@ -237,6 +240,11 @@ impl User {
                     balance: u.balance,
                     password: u.password,
                     totp_secret: u.totp_secret,
+                    trolley_id: u.trolley_id,
+                    trolley_account_status: u
+                        .trolley_account_status
+                        .as_ref()
+                        .map(|x| RecipientStatus::from_string(x)),
                 }))
             })
             .try_collect::<Vec<User>>()

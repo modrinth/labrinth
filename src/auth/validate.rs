@@ -3,7 +3,7 @@ use crate::auth::session::get_session_metadata;
 use crate::auth::AuthenticationError;
 use crate::database::models::user_item;
 use crate::models::pats::Scopes;
-use crate::models::users::{Role, User, UserId};
+use crate::models::users::{Role, User, UserId, UserPayoutData};
 use crate::queue::session::AuthQueue;
 use actix_web::HttpRequest;
 use chrono::Utc;
@@ -60,7 +60,11 @@ where
         has_password: Some(db_user.password.is_some()),
         has_totp: Some(db_user.totp_secret.is_some()),
         github_id: None,
-        payout_data: None,
+        payout_data: Some(UserPayoutData {
+            balance: db_user.balance,
+            trolley_id: db_user.trolley_id,
+            trolley_status: db_user.trolley_account_status,
+        }),
     };
 
     if let Some(required_scopes) = required_scopes {

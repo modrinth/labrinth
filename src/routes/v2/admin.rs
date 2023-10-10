@@ -1,7 +1,9 @@
 use crate::auth::validate::get_user_record_from_bearer_token;
+use crate::database::models::User;
 use crate::models::analytics::Download;
 use crate::models::ids::ProjectId;
 use crate::models::pats::Scopes;
+use crate::models::users::{PayoutStatus, RecipientStatus};
 use crate::queue::analytics::AnalyticsQueue;
 use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
@@ -171,7 +173,7 @@ pub async fn trolley_webhook(
     if let Some(signature) = req.headers().get("X-PaymentRails-Signature") {
         let payload = read_from_payload(
             &mut payload,
-            1 * (1 << 20),
+            1 << 20,
             "Webhook payload exceeds the maximum of 1MiB.",
         )
         .await?;
@@ -179,11 +181,11 @@ pub async fn trolley_webhook(
         let mut signature = signature.to_str().ok().unwrap_or_default().split(',');
         let timestamp = signature
             .next()
-            .and_then(|x| x.split('=').skip(1).next())
+            .and_then(|x| x.split('=').nth(1))
             .unwrap_or_default();
         let v1 = signature
             .next()
-            .and_then(|x| x.split('=').skip(1).next())
+            .and_then(|x| x.split('=').nth(1))
             .unwrap_or_default();
 
         let mut mac: Hmac<Sha256> =
@@ -196,19 +198,132 @@ pub async fn trolley_webhook(
         if &*request_signature == v1 {
             let webhook = serde_json::from_slice::<TrolleyWebhook>(&payload)?;
 
-            if webhook.model == "recipient" {
-                // todo: update email + recipient status
-            }
-
-            if webhook.model == "payment" {
-                // todo: update payment status
-                // if new payment status is failed/returned, return money to modrinth balance
-            }
-
             println!(
                 "webhook: {} {} {:?}",
                 webhook.action, webhook.model, webhook.body
             );
+
+            println!("{}", serde_json::to_string(&webhook.body)?);
+
+            if webhook.model == "recipient" {
+                #[derive(Deserialize)]
+                struct Recipient {
+                    pub id: String,
+                    pub email: Option<String>,
+                    pub status: Option<RecipientStatus>,
+                }
+
+                if let Some(body) = webhook.body.get("recipient") {
+                    if let Ok(recipient) = serde_json::from_value::<Recipient>(body.clone()) {
+                        let value = sqlx::query!(
+                            "SELECT id FROM users WHERE trolley_id = $1",
+                            recipient.id
+                        )
+                        .fetch_optional(&**pool)
+                        .await?;
+
+                        if let Some(user) = value {
+                            let user = User::get_id(
+                                crate::database::models::UserId(user.id),
+                                &**pool,
+                                &redis,
+                            )
+                            .await?;
+
+                            if let Some(user) = user {
+                                let mut transaction = pool.begin().await?;
+
+                                if webhook.action == "deleted" {
+                                    sqlx::query!(
+                                        "
+                                        UPDATE users
+                                        SET trolley_account_status = NULL, trolley_id = NULL
+                                        WHERE id = $1
+                                        ",
+                                        user.id.0
+                                    )
+                                    .execute(&mut transaction)
+                                    .await?;
+                                } else {
+                                    sqlx::query!(
+                                        "
+                                        UPDATE users
+                                        SET email = $1, email_verified = $2, trolley_account_status = $3
+                                        WHERE id = $4
+                                        ",
+                                        recipient.email.clone(),
+                                        user.email_verified && recipient.email == user.email,
+                                        recipient.status.map(|x| x.as_str()),
+                                        user.id.0
+                                    )
+                                        .execute(&mut transaction).await?;
+                                }
+
+                                transaction.commit().await?;
+                                User::clear_caches(&[(user.id, None)], &redis).await?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if webhook.model == "payment" {
+                #[derive(Deserialize)]
+                struct Payment {
+                    pub id: String,
+                    pub status: PayoutStatus,
+                }
+
+                if let Some(body) = webhook.body.get("payment") {
+                    if let Ok(payment) = serde_json::from_value::<Payment>(body.clone()) {
+                        let value = sqlx::query!(
+                            "SELECT id, amount, user_id, status FROM historical_payouts WHERE payment_id = $1",
+                            payment.id
+                        )
+                            .fetch_optional(&**pool)
+                            .await?;
+
+                        if let Some(payout) = value {
+                            let mut transaction = pool.begin().await?;
+
+                            if payment.status.is_failed()
+                                && !PayoutStatus::from_string(&payout.status).is_failed()
+                            {
+                                sqlx::query!(
+                                    "
+                                    UPDATE users
+                                    SET balance = balance + $1
+                                    WHERE id = $2
+                                    ",
+                                    payout.amount,
+                                    payout.user_id,
+                                )
+                                .execute(&mut transaction)
+                                .await?;
+                            }
+
+                            sqlx::query!(
+                                "
+                                UPDATE historical_payouts
+                                SET status = $1
+                                WHERE payment_id = $2
+                                ",
+                                payment.status.as_str(),
+                                payment.id,
+                            )
+                            .execute(&mut transaction)
+                            .await?;
+
+                            transaction.commit().await?;
+                            User::clear_caches(
+                                &[(crate::database::models::UserId(payout.user_id), None)],
+                                &redis,
+                            )
+                            .await?;
+                        }
+                    }
+                }
+            }
         }
     }
 

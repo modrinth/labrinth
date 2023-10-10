@@ -1,17 +1,16 @@
-use crate::auth::{get_user_from_headers, AuthenticationError};
+use crate::auth::get_user_from_headers;
 use crate::database::models::User;
 use crate::file_hosting::FileHost;
 use crate::models::notifications::Notification;
 use crate::models::pats::Scopes;
 use crate::models::projects::Project;
-use crate::models::users::{Badges, Role, UserId};
+use crate::models::users::{Badges, Payout, PayoutStatus, RecipientStatus, Role, UserId};
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rust_decimal::Decimal;
@@ -192,7 +191,7 @@ pub async fn user_edit(
     redis: web::Data<deadpool_redis::Pool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let (scopes, user) = get_user_from_headers(
+    let (_scopes, user) = get_user_from_headers(
         &req,
         &**pool,
         &redis,
@@ -566,13 +565,6 @@ pub async fn user_notifications(
     }
 }
 
-#[derive(Serialize)]
-pub struct Payout {
-    pub created: DateTime<Utc>,
-    pub amount: Decimal,
-    pub status: String,
-}
-
 #[get("{id}/payouts")]
 pub async fn user_payouts(
     req: HttpRequest,
@@ -632,7 +624,7 @@ pub async fn user_payouts(
                 Ok(e.right().map(|row| Payout {
                     created: row.created,
                     amount: row.amount,
-                    status: row.status,
+                    status: PayoutStatus::from_string(&row.status),
                 }))
             })
             .try_collect::<Vec<Payout>>(),
@@ -689,27 +681,38 @@ pub async fn user_payouts_request(
         if let Some(payouts_data) = user.payout_data {
             if let Some(trolley_id) = payouts_data.trolley_id {
                 if let Some(trolley_status) = payouts_data.trolley_status {
-                    if trolley_status == "active" {
+                    if trolley_status == RecipientStatus::Active {
                         return if data.amount < payouts_data.balance {
                             let mut transaction = pool.begin().await?;
 
-                            let (batch_id, payment_id) = payouts_queue
-                                .send_payout(&trolley_id, data.amount)
+                            let (batch_id, payment_id) =
+                                payouts_queue.send_payout(&trolley_id, data.amount).await?;
+
+                            sqlx::query!(
+                                "
+                                INSERT INTO historical_payouts (user_id, amount, status, batch_id, payment_id)
+                                VALUES ($1, $2, $3, $4, $5)
+                                ",
+                                id as crate::database::models::ids::UserId,
+                                data.amount,
+                                "processing",
+                                batch_id,
+                                payment_id,
+                            )
+                                .execute(&mut *transaction)
                                 .await?;
 
                             sqlx::query!(
-                            "
-                            INSERT INTO historical_payouts (user_id, amount, status, batch_id, payment_id)
-                            VALUES ($1, $2, $3, $4, $5)
-                            ",
-                            id as crate::database::models::ids::UserId,
-                            data.amount,
-                            "processing",
-                            batch_id,
-                            payment_id,
-                        )
-                                .execute(&mut *transaction)
-                                .await?;
+                                "
+                                UPDATE users
+                                SET balance = balance - $1
+                                WHERE id = $2
+                                ",
+                                data.amount,
+                                id as crate::database::models::ids::UserId
+                            )
+                            .execute(&mut *transaction)
+                            .await?;
 
                             User::clear_caches(&[(id, None)], &redis).await?;
 
@@ -723,8 +726,9 @@ pub async fn user_payouts_request(
                         };
                     } else {
                         return Err(ApiError::InvalidInput(
-                            "Please complete payout information via the trolley dashboard!".to_string(),
-                        ))
+                            "Please complete payout information via the trolley dashboard!"
+                                .to_string(),
+                        ));
                     }
                 }
             }

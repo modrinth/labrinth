@@ -11,3 +11,6 @@ ALTER TABLE users
 ALTER TABLE historical_payouts
     ADD COLUMN batch_id text NULL,
     ADD COLUMN payment_id text NULL;
+
+UPDATE historical_payouts
+SET status = 'processed'

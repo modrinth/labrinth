@@ -1,14 +1,11 @@
 use crate::models::projects::MonetizationStatus;
 use crate::routes::ApiError;
 use crate::util::env::parse_var;
-use actix::Recipient;
-use base64::Engine;
 use chrono::{DateTime, Datelike, Duration, Utc, Weekday};
 use hex::ToHex;
 use hmac::{Hmac, Mac, NewMac};
 use reqwest::Method;
 use rust_decimal::Decimal;
-use s3::creds::time::macros::time;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -21,6 +18,8 @@ pub struct PayoutsQueue {
     secret_key: String,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum AccountUser {
     Business { name: String },
     Individual { first: String, last: String },
@@ -84,8 +83,10 @@ impl PayoutsQueue {
             ApiError::Payments("could not retrieve Trolley response body".to_string())
         })?;
 
+        println!("{}", serde_json::to_string(&value)?);
+
         if let Some(obj) = value.as_object() {
-            if !obj.get("ok").map(|x| x.as_bool()).flatten().unwrap_or(true) {
+            if !obj.get("ok").and_then(|x| x.as_bool()).unwrap_or(true) {
                 #[derive(Deserialize)]
                 struct TrolleyError {
                     field: Option<String>,
@@ -109,11 +110,11 @@ impl PayoutsQueue {
                         }));
                     }
                 }
-            }
 
-            return Err(ApiError::Payments(
-                "could not retrieve Trolley error body".to_string(),
-            ));
+                return Err(ApiError::Payments(
+                    "could not retrieve Trolley error body".to_string(),
+                ));
+            }
         }
 
         Ok(serde_json::from_value(value)?)
