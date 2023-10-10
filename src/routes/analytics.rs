@@ -108,7 +108,8 @@ pub async fn page_view_ingest(
 
     let mut view = PageView {
         id: Uuid::new_v4(),
-        recorded: Utc::now().timestamp_nanos() / 100_000,
+        // safe unwrap, can only panic after 2225
+        recorded: Utc::now().timestamp_nanos_opt().unwrap() / 100_000,
         domain: domain.to_string(),
         site_path: url.path().to_string(),
         user_id: 0,
@@ -205,7 +206,8 @@ pub async fn playtime_ingest(
             analytics_queue
                 .add_playtime(Playtime {
                     id: Default::default(),
-                    recorded: Utc::now().timestamp_nanos() / 100_000,
+                    // safe unwrap, can only panic after 2225
+                    recorded: Utc::now().timestamp_nanos_opt().unwrap() / 100_000,
                     seconds: playtime.seconds as u64,
                     user_id: user.id.0,
                     project_id: version.inner.project_id.0 as u64,

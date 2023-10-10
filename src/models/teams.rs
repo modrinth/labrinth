@@ -22,8 +22,7 @@ pub struct Team {
 }
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
-    #[serde(transparent)]
+    #[derive(Copy, Clone, Debug)]
     pub struct ProjectPermissions: u64 {
         const UPLOAD_VERSION = 1 << 0;
         const DELETE_VERSION = 1 << 1;
@@ -37,6 +36,18 @@ bitflags::bitflags! {
         const VIEW_PAYOUTS = 1 << 9;
 
         const ALL = 0b1111111111;
+    }
+}
+
+impl serde::Serialize for ProjectPermissions {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        bitflags_serde_legacy::serialize(self, "Flags", serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ProjectPermissions {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 
@@ -77,8 +88,7 @@ impl ProjectPermissions {
 }
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
-    #[serde(transparent)]
+    #[derive(Copy, Clone, Debug)]
     pub struct OrganizationPermissions: u64 {
         const EDIT_DETAILS = 1 << 0;
         const EDIT_BODY = 1 << 1;
@@ -91,6 +101,18 @@ bitflags::bitflags! {
         const EDIT_MEMBER_DEFAULT_PERMISSIONS = 1 << 9; // Separate from EDIT_MEMBER
         const ALL = 0b1111111111;
         const NONE = 0b0;
+    }
+}
+
+impl serde::Serialize for OrganizationPermissions {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        bitflags_serde_legacy::serialize(self, "Flags", serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for OrganizationPermissions {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 

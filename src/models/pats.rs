@@ -10,8 +10,7 @@ use serde::{Deserialize, Serialize};
 pub struct PatId(pub u64);
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
-    #[serde(transparent)]
+    #[derive(Copy, Clone, Debug)]
     pub struct Scopes: u64 {
         // read a user's email
         const USER_READ_EMAIL = 1 << 0;
@@ -123,6 +122,18 @@ impl Scopes {
 
     pub fn is_restricted(&self) -> bool {
         self.intersects(Self::restricted())
+    }
+}
+
+impl serde::Serialize for Scopes {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        bitflags_serde_legacy::serialize(self, "Flags", serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Scopes {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 

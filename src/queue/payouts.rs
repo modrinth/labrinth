@@ -239,7 +239,7 @@ pub async fn process_payout(
     redis: &RedisPool,
     client: &clickhouse::Client,
 ) -> Result<(), ApiError> {
-    let start: DateTime<Utc> = DateTime::from_utc(
+    let start: DateTime<Utc> = DateTime::from_naive_utc_and_offset(
         (Utc::now() - Duration::days(1))
             .date_naive()
             .and_hms_nano_opt(0, 0, 0, 0)

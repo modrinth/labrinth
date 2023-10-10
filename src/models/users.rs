@@ -12,8 +12,7 @@ pub struct UserId(pub u64);
 pub const DELETED_USER: UserId = UserId(127155982985829);
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
-    #[serde(transparent)]
+    #[derive(Copy, Clone, Debug)]
     pub struct Badges: u64 {
         // 1 << 0 unused - ignore + replace with something later
         const MIDAS = 1 << 0;
@@ -26,6 +25,18 @@ bitflags::bitflags! {
 
         const ALL = 0b1111111;
         const NONE = 0b0;
+    }
+}
+
+impl serde::Serialize for Badges {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        bitflags_serde_legacy::serialize(self, "Flags", serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Badges {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 

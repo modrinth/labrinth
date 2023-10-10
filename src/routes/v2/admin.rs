@@ -121,7 +121,8 @@ pub async fn count_download(
     analytics_queue
         .add_download(Download {
             id: Uuid::new_v4(),
-            recorded: Utc::now().timestamp_nanos() / 100_000,
+            // safe unwrap, can only panic after 2225
+            recorded: Utc::now().timestamp_nanos_opt().unwrap() / 100_000,
             domain: url.host_str().unwrap_or_default().to_string(),
             site_path: url.path().to_string(),
             user_id: user
