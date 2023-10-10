@@ -83,8 +83,6 @@ impl PayoutsQueue {
             ApiError::Payments("could not retrieve Trolley response body".to_string())
         })?;
 
-        println!("{}", serde_json::to_string(&value)?);
-
         if let Some(obj) = value.as_object() {
             if !obj.get("ok").and_then(|x| x.as_bool()).unwrap_or(true) {
                 #[derive(Deserialize)]

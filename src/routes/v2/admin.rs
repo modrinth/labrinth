@@ -198,13 +198,6 @@ pub async fn trolley_webhook(
         if &*request_signature == v1 {
             let webhook = serde_json::from_slice::<TrolleyWebhook>(&payload)?;
 
-            println!(
-                "webhook: {} {} {:?}",
-                webhook.action, webhook.model, webhook.body
-            );
-
-            println!("{}", serde_json::to_string(&webhook.body)?);
-
             if webhook.model == "recipient" {
                 #[derive(Deserialize)]
                 struct Recipient {
