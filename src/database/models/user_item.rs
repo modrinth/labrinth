@@ -352,7 +352,7 @@ impl User {
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
         redis
-            .delete_many(user_ids.into_iter().flat_map(|(id, username)| {
+            .delete_many(user_ids.iter().flat_map(|(id, username)| {
                 [
                     (USERS_NAMESPACE, Some(id.0.to_string())),
                     (

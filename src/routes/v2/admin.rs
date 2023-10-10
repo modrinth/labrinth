@@ -12,7 +12,6 @@ use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::guards::admin_key_guard;
 use crate::util::routes::read_from_payload;
-use crate::DownloadQueue;
 use actix_web::{patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use hex::ToHex;
@@ -169,7 +168,7 @@ pub struct TrolleyWebhook {
 pub async fn trolley_webhook(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     mut payload: web::Payload,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(signature) = req.headers().get("X-PaymentRails-Signature") {

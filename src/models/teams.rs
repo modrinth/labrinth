@@ -22,7 +22,7 @@ pub struct Team {
 }
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize, Copy, Clone)]
+    #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
     #[serde(transparent)]
     pub struct ProjectPermissions: u64 {
         const UPLOAD_VERSION = 1 << 0;
@@ -77,7 +77,7 @@ impl ProjectPermissions {
 }
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
     #[serde(transparent)]
     pub struct OrganizationPermissions: u64 {
         const EDIT_DETAILS = 1 << 0;

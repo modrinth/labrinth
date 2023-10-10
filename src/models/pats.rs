@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub struct PatId(pub u64);
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize, Copy, Clone)]
+    #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
     #[serde(transparent)]
     pub struct Scopes: u64 {
         // read a user's email

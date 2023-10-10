@@ -9,7 +9,6 @@ use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::random_base62_rng;
 use crate::models::pats::Scopes;
 use crate::models::users::{Badges, RecipientStatus, Role};
-use crate::parse_strings_from_var;
 use crate::queue::payouts::{AccountUser, PayoutsQueue};
 use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
@@ -2222,7 +2221,7 @@ fn send_email_verify(
 pub async fn link_trolley(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
     payouts_queue: Data<Mutex<PayoutsQueue>>,
     body: web::Json<AccountUser>,

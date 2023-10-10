@@ -1,7 +1,6 @@
 use crate::routes::ApiError;
 use crate::util::env::parse_var;
 use crate::{database::redis::RedisPool, models::projects::MonetizationStatus};
-use base64::Engine;
 use chrono::{DateTime, Datelike, Duration, Utc, Weekday};
 use hex::ToHex;
 use hmac::{Hmac, Mac, NewMac};
@@ -24,6 +23,12 @@ pub struct PayoutsQueue {
 pub enum AccountUser {
     Business { name: String },
     Individual { first: String, last: String },
+}
+
+impl Default for PayoutsQueue {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // Batches payouts and handles token refresh
