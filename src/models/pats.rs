@@ -51,7 +51,7 @@ bitflags::bitflags! {
         const VERSION_READ = 1 << 15;
         // write to a version's data (metadata, files, etc)
         const VERSION_WRITE = 1 << 16;
-        // delete a project
+        // delete a version
         const VERSION_DELETE = 1 << 17;
 
         // create a report
@@ -85,26 +85,44 @@ bitflags::bitflags! {
         // perform analytics action
         const PERFORM_ANALYTICS = 1 << 30;
 
-        const ALL = 0b1111111111111111111111111111111;
-        const NOT_RESTRICTED = 0b00000011111111111111100111;
+        // create a collection
+        const COLLECTION_CREATE = 1 << 31;
+        // read a user's collections
+        const COLLECTION_READ = 1 << 32;
+        // write to a collection
+        const COLLECTION_WRITE = 1 << 33;
+        // delete a collection
+        const COLLECTION_DELETE = 1 << 34;
+
+        // create an organization
+        const ORGANIZATION_CREATE = 1 << 35;
+        // read a user's organizations
+        const ORGANIZATION_READ = 1 << 36;
+        // write to an organization
+        const ORGANIZATION_WRITE = 1 << 37;
+        // delete an organization
+        const ORGANIZATION_DELETE = 1 << 38;
+
         const NONE = 0b0;
     }
 }
 
 impl Scopes {
     // these scopes cannot be specified in a personal access token
-    pub fn restricted(&self) -> bool {
-        self.contains(
-            Scopes::PAT_CREATE
-                | Scopes::PAT_READ
-                | Scopes::PAT_WRITE
-                | Scopes::PAT_DELETE
-                | Scopes::SESSION_READ
-                | Scopes::SESSION_DELETE
-                | Scopes::USER_AUTH_WRITE
-                | Scopes::USER_DELETE
-                | Scopes::PERFORM_ANALYTICS,
-        )
+    pub fn restricted() -> Scopes {
+        Scopes::PAT_CREATE
+            | Scopes::PAT_READ
+            | Scopes::PAT_WRITE
+            | Scopes::PAT_DELETE
+            | Scopes::SESSION_READ
+            | Scopes::SESSION_DELETE
+            | Scopes::USER_AUTH_WRITE
+            | Scopes::USER_DELETE
+            | Scopes::PERFORM_ANALYTICS
+    }
+
+    pub fn is_restricted(&self) -> bool {
+        self.intersects(Self::restricted())
     }
 }
 

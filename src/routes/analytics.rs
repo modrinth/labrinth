@@ -1,11 +1,12 @@
 use crate::auth::get_user_from_headers;
+use crate::database::redis::RedisPool;
 use crate::models::analytics::{PageView, Playtime};
 use crate::models::pats::Scopes;
+use crate::queue::analytics::AnalyticsQueue;
 use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::env::parse_strings_from_var;
-use crate::AnalyticsQueue;
 use actix_web::{post, web};
 use actix_web::{HttpRequest, HttpResponse};
 use chrono::Utc;
@@ -63,7 +64,7 @@ pub async fn page_view_ingest(
     session_queue: web::Data<AuthQueue>,
     url_input: web::Json<UrlInput>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, None)
         .await
@@ -154,7 +155,7 @@ pub async fn page_view_ingest(
     Ok(HttpResponse::NoContent().body(""))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct PlaytimeInput {
     seconds: u16,
     loader: String,
@@ -169,7 +170,7 @@ pub async fn playtime_ingest(
     session_queue: web::Data<AuthQueue>,
     playtime_input: web::Json<HashMap<crate::models::ids::VersionId, PlaytimeInput>>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let (_, user) = get_user_from_headers(
         &req,
@@ -205,10 +206,10 @@ pub async fn playtime_ingest(
                 .add_playtime(Playtime {
                     id: Default::default(),
                     recorded: Utc::now().timestamp_nanos() / 100_000,
-                    seconds: playtime.seconds,
+                    seconds: playtime.seconds as u64,
                     user_id: user.id.0,
-                    project_id: version.inner.id.0 as u64,
-                    version_id: version.inner.project_id.0 as u64,
+                    project_id: version.inner.project_id.0 as u64,
+                    version_id: version.inner.id.0 as u64,
                     loader: playtime.loader,
                     game_version: playtime.game_version,
                     parent: playtime.parent.map(|x| x.0).unwrap_or(0),

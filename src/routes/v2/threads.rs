@@ -1,8 +1,14 @@
+use std::sync::Arc;
+
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
 use crate::database;
+use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
+use crate::database::redis::RedisPool;
+use crate::file_hosting::FileHost;
 use crate::models::ids::ThreadMessageId;
+use crate::models::images::{Image, ImageContext};
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
 use crate::models::projects::ProjectStatus;
@@ -78,7 +84,7 @@ pub async fn filter_authorized_threads(
     threads: Vec<database::models::Thread>,
     user: &User,
     pool: &web::Data<PgPool>,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
 ) -> Result<Vec<Thread>, ApiError> {
     let user_id: database::models::UserId = user.id.into();
 
@@ -220,7 +226,7 @@ pub async fn thread_get(
     req: HttpRequest,
     info: web::Path<(ThreadId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0.into();
@@ -271,7 +277,7 @@ pub async fn threads_get(
     req: HttpRequest,
     web::Query(ids): web::Query<ThreadIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -308,7 +314,7 @@ pub async fn thread_send_message(
     info: web::Path<(ThreadId,)>,
     pool: web::Data<PgPool>,
     new_message: web::Json<NewThreadMessage>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -327,6 +333,7 @@ pub async fn thread_send_message(
         body,
         replying_to,
         private,
+        ..
     } = &new_message.body
     {
         if body.len() > 65536 {
@@ -406,11 +413,9 @@ pub async fn thread_send_message(
                     )
                     .await?;
                 }
-
-                project.inner.status == ProjectStatus::Processing && !user.role.is_mod()
-            } else {
-                !user.role.is_mod()
             }
+
+            !user.role.is_mod()
         } else if let Some(report_id) = thread.report_id {
             let report = database::models::report_item::Report::get(report_id, &**pool).await?;
 
@@ -452,6 +457,46 @@ pub async fn thread_send_message(
         .execute(&mut *transaction)
         .await?;
 
+        if let MessageBody::Text {
+            associated_images, ..
+        } = &new_message.body
+        {
+            for image_id in associated_images {
+                if let Some(db_image) =
+                    image_item::Image::get((*image_id).into(), &mut *transaction, &redis).await?
+                {
+                    let image: Image = db_image.into();
+                    if !matches!(image.context, ImageContext::ThreadMessage { .. })
+                        || image.context.inner_id().is_some()
+                    {
+                        return Err(ApiError::InvalidInput(format!(
+                            "Image {} is not unused and in the 'thread_message' context",
+                            image_id
+                        )));
+                    }
+
+                    sqlx::query!(
+                        "
+                        UPDATE uploaded_images
+                        SET thread_message_id = $1
+                        WHERE id = $2
+                        ",
+                        thread.id.0,
+                        image_id.0 as i64
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+
+                    image_item::Image::clear_cache(image.id.into(), &redis).await?;
+                } else {
+                    return Err(ApiError::InvalidInput(format!(
+                        "Image {} does not exist",
+                        image_id
+                    )));
+                }
+            }
+        }
+
         transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
@@ -464,10 +509,17 @@ pub async fn thread_send_message(
 pub async fn moderation_inbox(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    let user = check_is_moderator_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::THREAD_READ]),
+    )
+    .await?;
 
     let ids = sqlx::query!(
         "
@@ -483,7 +535,6 @@ pub async fn moderation_inbox(
 
     let threads_data = database::models::Thread::get_many(&ids, &**pool).await?;
     let threads = filter_authorized_threads(threads_data, &user, &pool, &redis).await?;
-
     Ok(HttpResponse::Ok().json(threads))
 }
 
@@ -492,10 +543,17 @@ pub async fn thread_read(
     req: HttpRequest,
     info: web::Path<(ThreadId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
+    check_is_moderator_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::THREAD_READ]),
+    )
+    .await?;
 
     let id = info.into_inner().0;
     let mut transaction = pool.begin().await?;
@@ -521,8 +579,9 @@ pub async fn message_delete(
     req: HttpRequest,
     info: web::Path<(ThreadMessageId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
+    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
         &req,
@@ -544,6 +603,20 @@ pub async fn message_delete(
         }
 
         let mut transaction = pool.begin().await?;
+
+        let context = ImageContext::ThreadMessage {
+            thread_message_id: Some(thread.id.into()),
+        };
+        let images = database::Image::get_many_contexted(context, &mut transaction).await?;
+        let cdn_url = dotenvy::var("CDN_URL")?;
+        for image in images {
+            let name = image.url.split(&format!("{cdn_url}/")).nth(1);
+            if let Some(icon_path) = name {
+                file_host.delete_file_version("", icon_path).await?;
+            }
+            database::Image::remove(image.id, &mut transaction, &redis).await?;
+        }
+
         database::models::ThreadMessage::remove_full(thread.id, &mut transaction).await?;
         transaction.commit().await?;
 

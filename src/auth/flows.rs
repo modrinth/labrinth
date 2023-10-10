@@ -3,6 +3,7 @@ use crate::auth::session::issue_session;
 use crate::auth::validate::get_user_record_from_bearer_token;
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::flow_item::Flow;
+use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::random_base62_rng;
@@ -14,6 +15,7 @@ use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
 use crate::routes::ApiError;
 use crate::util::captcha::check_turnstile_captcha;
+use crate::util::env::parse_strings_from_var;
 use crate::util::ext::{get_image_content_type, get_image_ext};
 use crate::util::validate::{validation_errors_to_string, RE_URL_SAFE};
 use actix_web::web::{scope, Data, Payload, Query, ServiceConfig};
@@ -56,7 +58,7 @@ pub fn config(cfg: &mut ServiceConfig) {
     );
 }
 
-#[derive(Serialize, Deserialize, Default, Eq, PartialEq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Default, Eq, PartialEq, Clone, Copy, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthProvider {
     #[default]
@@ -86,7 +88,7 @@ impl TempUser {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         client: &PgPool,
         file_host: &Arc<dyn FileHost + Send + Sync>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<crate::database::models::UserId, AuthenticationError> {
         if let Some(email) = &self.email {
             if crate::database::models::User::get_email(email, client)
@@ -908,7 +910,7 @@ pub async fn init(
     req: HttpRequest,
     Query(info): Query<AuthorizationInit>, // callback url
     client: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, AuthenticationError> {
     let url = url::Url::parse(&info.url).map_err(|_| AuthenticationError::Url)?;
@@ -960,7 +962,7 @@ pub async fn ws_init(
     Query(info): Query<WsInit>,
     body: Payload,
     db: Data<RwLock<ActiveSockets>>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let (res, session, _msg_stream) = actix_ws::handle(&req, body)?;
 
@@ -968,7 +970,7 @@ pub async fn ws_init(
         mut ws_stream: actix_ws::Session,
         info: WsInit,
         db: Data<RwLock<ActiveSockets>>,
-        redis: Data<deadpool_redis::Pool>,
+        redis: Data<RedisPool>,
     ) -> Result<(), Closed> {
         let flow = Flow::OAuth {
             user_id: None,
@@ -1004,7 +1006,7 @@ pub async fn auth_callback(
     active_sockets: Data<RwLock<ActiveSockets>>,
     client: Data<PgPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
 ) -> Result<HttpResponse, super::templates::ErrorPage> {
     let state_string = query
         .get("state")
@@ -1211,7 +1213,7 @@ pub struct DeleteAuthProvider {
 pub async fn delete_auth_provider(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     delete_provider: web::Json<DeleteAuthProvider>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -1298,7 +1300,7 @@ pub struct NewAccount {
 pub async fn create_account_with_password(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     new_account: web::Json<NewAccount>,
 ) -> Result<HttpResponse, ApiError> {
     new_account
@@ -1414,7 +1416,7 @@ pub struct Login {
 pub async fn login_password(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     login: web::Json<Login>,
 ) -> Result<HttpResponse, ApiError> {
     if !check_turnstile_captcha(&req, &login.challenge).await? {
@@ -1478,7 +1480,7 @@ async fn validate_2fa_code(
     secret: String,
     allow_backup: bool,
     user_id: crate::database::models::UserId,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
     pool: &PgPool,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<bool, AuthenticationError> {
@@ -1530,7 +1532,7 @@ async fn validate_2fa_code(
 pub async fn login_2fa(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     login: web::Json<Login2FA>,
 ) -> Result<HttpResponse, ApiError> {
     let flow = Flow::get(&login.flow, &redis)
@@ -1577,7 +1579,7 @@ pub async fn login_2fa(
 pub async fn begin_2fa_flow(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -1616,7 +1618,7 @@ pub async fn begin_2fa_flow(
 pub async fn finish_2fa_flow(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     login: web::Json<Login2FA>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -1739,7 +1741,7 @@ pub struct Remove2FA {
 pub async fn remove_2fa(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     login: web::Json<Remove2FA>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -1821,7 +1823,7 @@ pub struct ResetPassword {
 pub async fn reset_password_begin(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     reset_password: web::Json<ResetPassword>,
 ) -> Result<HttpResponse, ApiError> {
     if !check_turnstile_captcha(&req, &reset_password.challenge).await? {
@@ -1866,7 +1868,7 @@ pub struct ChangePassword {
 pub async fn change_password(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     change_password: web::Json<ChangePassword>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -2007,7 +2009,7 @@ pub struct SetEmail {
 pub async fn set_email(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     email: web::Json<SetEmail>,
     session_queue: Data<AuthQueue>,
     payouts_queue: Data<Mutex<PayoutsQueue>>,
@@ -2083,7 +2085,7 @@ pub async fn set_email(
 pub async fn resend_verify_email(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -2128,7 +2130,7 @@ pub struct VerifyEmail {
 #[post("email/verify")]
 pub async fn verify_email(
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     email: web::Json<VerifyEmail>,
 ) -> Result<HttpResponse, ApiError> {
     let flow = Flow::get(&email.flow, &redis).await?;
@@ -2178,7 +2180,7 @@ pub async fn verify_email(
 pub async fn subscribe_newsletter(
     req: HttpRequest,
     pool: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(

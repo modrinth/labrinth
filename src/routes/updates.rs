@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use actix_web::{get, web, HttpRequest, HttpResponse};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 use crate::auth::{filter_authorized_versions, get_user_from_headers, is_authorized};
 use crate::database;
+use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
 use crate::queue::session::AuthQueue;
@@ -16,12 +17,23 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(forge_updates);
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct NeoForge {
+    #[serde(default = "default_neoforge")]
+    pub neoforge: String,
+}
+
+fn default_neoforge() -> String {
+    "none".into()
+}
+
 #[get("{id}/forge_updates.json")]
 pub async fn forge_updates(
     req: HttpRequest,
+    web::Query(neo): web::Query<NeoForge>,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     const ERROR: &str = "The specified project does not exist!";
@@ -49,10 +61,16 @@ pub async fn forge_updates(
 
     let versions = database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
 
+    let loaders = match &*neo.neoforge {
+        "only" => |x: &String| *x == "neoforge",
+        "include" => |x: &String| *x == "forge" || *x == "neoforge",
+        _ => |x: &String| *x == "forge",
+    };
+
     let mut versions = filter_authorized_versions(
         versions
             .into_iter()
-            .filter(|x| x.loaders.iter().any(|y| *y == "forge"))
+            .filter(|x| x.loaders.iter().any(loaders))
             .collect(),
         &user_option,
         &pool,

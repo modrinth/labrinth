@@ -3,12 +3,16 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
+use crate::database::models::{image_item, Organization};
+use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
+use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
-use crate::models::teams::Permissions;
+use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::util::img;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -46,7 +50,7 @@ pub async fn version_list(
     info: web::Path<(String,)>,
     web::Query(filters): web::Query<VersionListFilters>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
@@ -167,7 +171,7 @@ pub async fn version_project_get(
     req: HttpRequest,
     info: web::Path<(String, String)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner();
@@ -218,7 +222,7 @@ pub async fn versions_get(
     req: HttpRequest,
     web::Query(ids): web::Query<VersionIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let version_ids = serde_json::from_str::<Vec<models::ids::VersionId>>(&ids.ids)?
@@ -248,7 +252,7 @@ pub async fn version_get(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
@@ -315,7 +319,7 @@ pub async fn version_edit(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     new_version: web::Json<EditVersion>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -349,20 +353,32 @@ pub async fn version_edit(
             &**pool,
         )
         .await?;
-        let permissions;
 
-        if user.role.is_admin() {
-            permissions = Some(Permissions::ALL)
-        } else if let Some(member) = team_member {
-            permissions = Some(member.permissions)
-        } else if user.role.is_mod() {
-            permissions = Some(Permissions::EDIT_DETAILS | Permissions::EDIT_BODY)
+        let organization = Organization::get_associated_organization_project_id(
+            version_item.inner.project_id,
+            &**pool,
+        )
+        .await?;
+
+        let organization_team_member = if let Some(organization) = &organization {
+            database::models::TeamMember::get_from_user_id(
+                organization.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await?
         } else {
-            permissions = None
-        }
+            None
+        };
+
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        );
 
         if let Some(perms) = permissions {
-            if !perms.contains(Permissions::UPLOAD_VERSION) {
+            if !perms.contains(ProjectPermissions::UPLOAD_VERSION) {
                 return Err(ApiError::CustomAuthentication(
                     "You do not have the permissions to edit this version!".to_string(),
                 ));
@@ -681,6 +697,17 @@ pub async fn version_edit(
                 }
             }
 
+            // delete any images no longer in the changelog
+            let checkable_strings: Vec<&str> = vec![&new_version.changelog]
+                .into_iter()
+                .filter_map(|x| x.as_ref().map(|y| y.as_str()))
+                .collect();
+            let context = ImageContext::Version {
+                version_id: Some(version_item.inner.id.into()),
+            };
+
+            img::delete_unused_images(context, checkable_strings, &mut transaction, &redis).await?;
+
             database::models::Version::clear_cache(&version_item, &redis).await?;
             database::models::Project::clear_cache(
                 version_item.inner.project_id,
@@ -712,7 +739,7 @@ pub async fn version_schedule(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     scheduling_data: web::Json<SchedulingData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -749,11 +776,33 @@ pub async fn version_schedule(
         )
         .await?;
 
-        if !user.role.is_mod()
-            && !team_member
-                .map(|x| x.permissions.contains(Permissions::EDIT_DETAILS))
-                .unwrap_or(false)
-        {
+        let organization_item =
+            database::models::Organization::get_associated_organization_project_id(
+                version_item.inner.project_id,
+                &**pool,
+            )
+            .await
+            .map_err(ApiError::Database)?;
+
+        let organization_team_member = if let Some(organization) = &organization_item {
+            database::models::TeamMember::get_from_user_id(
+                organization.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await?
+        } else {
+            None
+        };
+
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        )
+        .unwrap_or_default();
+
+        if !user.role.is_mod() && !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to edit this version's scheduling data!".to_string(),
             ));
@@ -787,7 +836,7 @@ pub async fn version_delete(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -814,17 +863,30 @@ pub async fn version_delete(
             &**pool,
         )
         .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| {
-            ApiError::InvalidInput(
-                "You do not have permission to delete versions in this team".to_string(),
-            )
-        })?;
+        .map_err(ApiError::Database)?;
 
-        if !team_member
-            .permissions
-            .contains(Permissions::DELETE_VERSION)
-        {
+        let organization =
+            Organization::get_associated_organization_project_id(version.inner.project_id, &**pool)
+                .await?;
+
+        let organization_team_member = if let Some(organization) = &organization {
+            database::models::TeamMember::get_from_user_id(
+                organization.team_id,
+                user.id.into(),
+                &**pool,
+            )
+            .await?
+        } else {
+            None
+        };
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        )
+        .unwrap_or_default();
+
+        if !permissions.contains(ProjectPermissions::DELETE_VERSION) {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to delete versions in this team".to_string(),
             ));
@@ -832,6 +894,14 @@ pub async fn version_delete(
     }
 
     let mut transaction = pool.begin().await?;
+    let context = ImageContext::Version {
+        version_id: Some(version.inner.id.into()),
+    };
+    let uploaded_images =
+        database::models::Image::get_many_contexted(context, &mut transaction).await?;
+    for image in uploaded_images {
+        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
+    }
 
     let result =
         database::models::Version::remove_full(version.inner.id, &redis, &mut transaction).await?;

@@ -1,5 +1,4 @@
-use crate::models::projects::SideType;
-use crate::parse_strings_from_var;
+use crate::{models::projects::SideType, util::env::parse_strings_from_var};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -84,6 +83,7 @@ pub enum EnvType {
 #[serde(rename_all = "kebab-case")]
 pub enum PackDependency {
     Forge,
+    Neoforge,
     FabricLoader,
     QuiltLoader,
     Minecraft,
@@ -100,6 +100,7 @@ impl PackDependency {
     pub fn as_str(&self) -> &'static str {
         match self {
             PackDependency::Forge => "forge",
+            PackDependency::Neoforge => "neoforge",
             PackDependency::FabricLoader => "fabric-loader",
             PackDependency::Minecraft => "minecraft",
             PackDependency::QuiltLoader => "quilt-loader",

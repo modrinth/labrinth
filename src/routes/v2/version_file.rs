@@ -3,10 +3,11 @@ use crate::auth::{
     filter_authorized_projects, filter_authorized_versions, get_user_from_headers,
     is_authorized_version,
 };
+use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
-use crate::models::teams::Permissions;
+use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::{database, models};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
@@ -21,7 +22,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(delete_file)
             .service(get_version_from_hash)
             .service(download_version)
-            .service(get_update_from_hash),
+            .service(get_update_from_hash)
+            .service(get_projects_from_hashes),
     );
 
     cfg.service(
@@ -32,7 +34,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct HashQuery {
     #[serde(default = "default_algorithm")]
     pub algorithm: String,
@@ -49,7 +51,7 @@ pub async fn get_version_from_hash(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -63,7 +65,6 @@ pub async fn get_version_from_hash(
     .await
     .map(|x| x.1)
     .ok();
-
     let hash = info.into_inner().0.to_lowercase();
     let file = database::models::Version::get_file_from_hash(
         hash_query.algorithm.clone(),
@@ -73,10 +74,8 @@ pub async fn get_version_from_hash(
         &redis,
     )
     .await?;
-
     if let Some(file) = file {
         let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
-
         if let Some(version) = version {
             if !is_authorized_version(&version.inner, &user_option, &pool).await? {
                 return Ok(HttpResponse::NotFound().body(""));
@@ -102,7 +101,7 @@ pub async fn download_version(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -152,7 +151,7 @@ pub async fn delete_file(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -185,17 +184,36 @@ pub async fn delete_file(
                 &**pool,
             )
             .await
-            .map_err(ApiError::Database)?
-            .ok_or_else(|| {
-                ApiError::CustomAuthentication(
-                    "You don't have permission to delete this file!".to_string(),
-                )
-            })?;
+            .map_err(ApiError::Database)?;
 
-            if !team_member
-                .permissions
-                .contains(Permissions::DELETE_VERSION)
-            {
+            let organization =
+                database::models::Organization::get_associated_organization_project_id(
+                    row.project_id,
+                    &**pool,
+                )
+                .await
+                .map_err(ApiError::Database)?;
+
+            let organization_team_member = if let Some(organization) = &organization {
+                database::models::TeamMember::get_from_user_id_organization(
+                    organization.id,
+                    user.id.into(),
+                    &**pool,
+                )
+                .await
+                .map_err(ApiError::Database)?
+            } else {
+                None
+            };
+
+            let permissions = ProjectPermissions::get_permissions_by_role(
+                &user.role,
+                &team_member,
+                &organization_team_member,
+            )
+            .unwrap_or_default();
+
+            if !permissions.contains(ProjectPermissions::DELETE_VERSION) {
                 return Err(ApiError::CustomAuthentication(
                     "You don't have permission to delete this file!".to_string(),
                 ));
@@ -255,7 +273,7 @@ pub async fn get_update_from_hash(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     hash_query: web::Query<HashQuery>,
     update_data: web::Json<UpdateData>,
     session_queue: web::Data<AuthQueue>,
@@ -324,6 +342,7 @@ pub async fn get_update_from_hash(
 // Requests above with multiple versions below
 #[derive(Deserialize)]
 pub struct FileHashes {
+    #[serde(default = "default_algorithm")]
     pub algorithm: String,
     pub hashes: Vec<String>,
 }
@@ -333,7 +352,7 @@ pub struct FileHashes {
 pub async fn get_versions_from_hashes(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_data: web::Json<FileHashes>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -381,7 +400,7 @@ pub async fn get_versions_from_hashes(
 pub async fn get_projects_from_hashes(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_data: web::Json<FileHashes>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -390,7 +409,7 @@ pub async fn get_projects_from_hashes(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::VERSION_READ]),
+        Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
     )
     .await
     .map(|x| x.1)
@@ -428,6 +447,7 @@ pub async fn get_projects_from_hashes(
 
 #[derive(Deserialize)]
 pub struct ManyUpdateData {
+    #[serde(default = "default_algorithm")]
     pub algorithm: String,
     pub hashes: Vec<String>,
     pub loaders: Option<Vec<String>>,
@@ -439,7 +459,7 @@ pub struct ManyUpdateData {
 pub async fn update_files(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     update_data: web::Json<ManyUpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -531,6 +551,7 @@ pub struct FileUpdateData {
 
 #[derive(Deserialize)]
 pub struct ManyFileUpdateData {
+    #[serde(default = "default_algorithm")]
     pub algorithm: String,
     pub hashes: Vec<FileUpdateData>,
 }
@@ -539,7 +560,7 @@ pub struct ManyFileUpdateData {
 pub async fn update_individual_files(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     update_data: web::Json<ManyFileUpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {

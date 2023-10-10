@@ -1,11 +1,13 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
-use crate::database::models;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
     DependencyBuilder, VersionBuilder, VersionFileBuilder,
 };
+use crate::database::models::{self, image_item, Organization};
+use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
+use crate::models::images::{Image, ImageContext, ImageId};
 use crate::models::notifications::NotificationBody;
 use crate::models::pack::PackFileHash;
 use crate::models::pats::Scopes;
@@ -13,7 +15,7 @@ use crate::models::projects::{
     Dependency, DependencyType, FileType, GameVersion, Loader, ProjectId, Version, VersionFile,
     VersionId, VersionStatus, VersionType,
 };
-use crate::models::teams::Permissions;
+use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
@@ -70,6 +72,10 @@ pub struct InitialVersionData {
     pub status: VersionStatus,
     #[serde(default = "HashMap::new")]
     pub file_types: HashMap<String, Option<FileType>>,
+    // Associations to uploaded images in changelog
+    #[validate(length(max = 10))]
+    #[serde(default)]
+    pub uploaded_images: Vec<ImageId>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -84,7 +90,7 @@ pub async fn version_create(
     req: HttpRequest,
     mut payload: Multipart,
     client: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
@@ -124,7 +130,7 @@ async fn version_create_inner(
     req: HttpRequest,
     payload: &mut Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     pool: &PgPool,
@@ -210,17 +216,34 @@ async fn version_create_inner(
                     user.id.into(),
                     &mut *transaction,
                 )
-                .await?
-                .ok_or_else(|| {
-                    CreateError::CustomAuthenticationError(
-                        "You don't have permission to upload this version!".to_string(),
-                    )
-                })?;
+                .await?;
 
-                if !team_member
-                    .permissions
-                    .contains(Permissions::UPLOAD_VERSION)
-                {
+                // Get organization attached, if exists, and the member project permissions
+                let organization = models::Organization::get_associated_organization_project_id(
+                    project_id,
+                    &mut *transaction,
+                )
+                .await?;
+
+                let organization_team_member = if let Some(organization) = &organization {
+                    models::TeamMember::get_from_user_id(
+                        organization.team_id,
+                        user.id.into(),
+                        &mut *transaction,
+                    )
+                    .await?
+                } else {
+                    None
+                };
+
+                let permissions = ProjectPermissions::get_permissions_by_role(
+                    &user.role,
+                    &team_member,
+                    &organization_team_member,
+                )
+                .unwrap_or_default();
+
+                if !permissions.contains(ProjectPermissions::UPLOAD_VERSION) {
                     return Err(CreateError::CustomAuthenticationError(
                         "You don't have permission to upload this version!".to_string(),
                     ));
@@ -436,6 +459,41 @@ async fn version_create_inner(
     let project_id = builder.project_id;
     builder.insert(transaction).await?;
 
+    for image_id in version_data.uploaded_images {
+        if let Some(db_image) =
+            image_item::Image::get(image_id.into(), &mut *transaction, redis).await?
+        {
+            let image: Image = db_image.into();
+            if !matches!(image.context, ImageContext::Report { .. })
+                || image.context.inner_id().is_some()
+            {
+                return Err(CreateError::InvalidInput(format!(
+                    "Image {} is not unused and in the 'version' context",
+                    image_id
+                )));
+            }
+
+            sqlx::query!(
+                "
+                UPDATE uploaded_images
+                SET version_id = $1
+                WHERE id = $2
+                ",
+                version_id.0 as i64,
+                image_id.0 as i64
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            image_item::Image::clear_cache(image.id.into(), redis).await?;
+        } else {
+            return Err(CreateError::InvalidInput(format!(
+                "Image {} does not exist",
+                image_id
+            )));
+        }
+    }
+
     models::Project::update_game_versions(project_id, &mut *transaction).await?;
     models::Project::update_loaders(project_id, &mut *transaction).await?;
     models::Project::clear_cache(project_id, None, Some(true), redis).await?;
@@ -450,7 +508,7 @@ pub async fn upload_file_to_version(
     url_data: web::Path<(VersionId,)>,
     mut payload: Multipart,
     client: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
@@ -494,7 +552,7 @@ async fn upload_file_to_version_inner(
     payload: &mut Multipart,
     client: Data<PgPool>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     version_id: models::VersionId,
@@ -532,17 +590,33 @@ async fn upload_file_to_version_inner(
             user.id.into(),
             &mut *transaction,
         )
-        .await?
-        .ok_or_else(|| {
-            CreateError::CustomAuthenticationError(
-                "You don't have permission to upload files to this version!".to_string(),
-            )
-        })?;
+        .await?;
 
-        if !team_member
-            .permissions
-            .contains(Permissions::UPLOAD_VERSION)
-        {
+        let organization = Organization::get_associated_organization_project_id(
+            version.inner.project_id,
+            &**client,
+        )
+        .await?;
+
+        let organization_team_member = if let Some(organization) = &organization {
+            models::TeamMember::get_from_user_id(
+                organization.team_id,
+                user.id.into(),
+                &mut *transaction,
+            )
+            .await?
+        } else {
+            None
+        };
+
+        let permissions = ProjectPermissions::get_permissions_by_role(
+            &user.role,
+            &team_member,
+            &organization_team_member,
+        )
+        .unwrap_or_default();
+
+        if !permissions.contains(ProjectPermissions::UPLOAD_VERSION) {
             return Err(CreateError::CustomAuthenticationError(
                 "You don't have permission to upload files to this version!".to_string(),
             ));
@@ -655,6 +729,9 @@ async fn upload_file_to_version_inner(
             file_builder.insert(version_id, &mut *transaction).await?;
         }
     }
+
+    // Clear version cache
+    models::Version::clear_cache(&version, &redis).await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }

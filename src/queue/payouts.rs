@@ -1,6 +1,7 @@
-use crate::models::projects::MonetizationStatus;
 use crate::routes::ApiError;
 use crate::util::env::parse_var;
+use crate::{database::redis::RedisPool, models::projects::MonetizationStatus};
+use base64::Engine;
 use chrono::{DateTime, Datelike, Duration, Utc, Weekday};
 use hex::ToHex;
 use hmac::{Hmac, Mac, NewMac};
@@ -230,7 +231,7 @@ impl PayoutsQueue {
 
 pub async fn process_payout(
     pool: &PgPool,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
     client: &clickhouse::Client,
 ) -> Result<(), ApiError> {
     let start: DateTime<Utc> = DateTime::from_utc(

@@ -1,16 +1,15 @@
 use super::ids::*;
 use crate::database::models;
 use crate::database::models::DatabaseError;
+use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
-const PROJECTS_NAMESPACE: &str = "projects";
-const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
+pub const PROJECTS_NAMESPACE: &str = "projects";
+pub const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
 const PROJECTS_DEPENDENCIES_NAMESPACE: &str = "projects_dependencies";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DonationUrl {
@@ -21,7 +20,7 @@ pub struct DonationUrl {
 }
 
 impl DonationUrl {
-    pub async fn insert(
+    pub async fn insert_project(
         &self,
         project_id: ProjectId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -90,6 +89,7 @@ pub struct ProjectBuilder {
     pub project_id: ProjectId,
     pub project_type_id: ProjectTypeId,
     pub team_id: TeamId,
+    pub organization_id: Option<OrganizationId>,
     pub title: String,
     pub description: String,
     pub body: String,
@@ -123,6 +123,7 @@ impl ProjectBuilder {
             id: self.project_id,
             project_type: self.project_type_id,
             team_id: self.team_id,
+            organization_id: self.organization_id,
             title: self.title,
             description: self.description,
             body: self.body,
@@ -165,7 +166,9 @@ impl ProjectBuilder {
         }
 
         for donation in self.donation_urls {
-            donation.insert(self.project_id, &mut *transaction).await?;
+            donation
+                .insert_project(self.project_id, &mut *transaction)
+                .await?;
         }
 
         for gallery in self.gallery_items {
@@ -209,6 +212,7 @@ pub struct Project {
     pub id: ProjectId,
     pub project_type: ProjectTypeId,
     pub team_id: TeamId,
+    pub organization_id: Option<OrganizationId>,
     pub title: String,
     pub description: String,
     pub body: String,
@@ -294,7 +298,7 @@ impl Project {
     pub async fn remove(
         id: ProjectId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         let project = Self::get_id(id, &mut *transaction, redis).await?;
 
@@ -428,7 +432,7 @@ impl Project {
     pub async fn get<'a, 'b, E>(
         string: &str,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -441,7 +445,7 @@ impl Project {
     pub async fn get_id<'a, 'b, E>(
         id: ProjectId,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -454,7 +458,7 @@ impl Project {
     pub async fn get_many_ids<'a, E>(
         project_ids: &[ProjectId],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -469,7 +473,7 @@ impl Project {
     pub async fn get_many<'a, E, T: ToString>(
         project_strings: &[T],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -479,8 +483,6 @@ impl Project {
         if project_strings.is_empty() {
             return Ok(Vec::new());
         }
-
-        let mut redis = redis.get().await?;
 
         let mut found_projects = Vec::new();
         let mut remaining_strings = project_strings
@@ -494,20 +496,11 @@ impl Project {
             .collect::<Vec<_>>();
 
         project_ids.append(
-            &mut cmd("MGET")
-                .arg(
-                    project_strings
-                        .iter()
-                        .map(|x| {
-                            format!(
-                                "{}:{}",
-                                PROJECTS_SLUGS_NAMESPACE,
-                                x.to_string().to_lowercase()
-                            )
-                        })
-                        .collect::<Vec<_>>(),
+            &mut redis
+                .multi_get::<i64, _>(
+                    PROJECTS_SLUGS_NAMESPACE,
+                    project_strings.iter().map(|x| x.to_string().to_lowercase()),
                 )
-                .query_async::<_, Vec<Option<i64>>>(&mut redis)
                 .await?
                 .into_iter()
                 .flatten()
@@ -515,16 +508,9 @@ impl Project {
         );
 
         if !project_ids.is_empty() {
-            let projects = cmd("MGET")
-                .arg(
-                    project_ids
-                        .iter()
-                        .map(|x| format!("{}:{}", PROJECTS_NAMESPACE, x))
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<String>>>(&mut redis)
+            let projects = redis
+                .multi_get::<String, _>(PROJECTS_NAMESPACE, project_ids)
                 .await?;
-
             for project in projects {
                 if let Some(project) =
                     project.and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
@@ -552,7 +538,7 @@ impl Project {
                 m.icon_url icon_url, m.body body, m.published published,
                 m.updated updated, m.approved approved, m.queued, m.status status, m.requested_status requested_status,
                 m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
-                m.team_id team_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
+                m.team_id team_id, m.organization_id organization_id, m.client_side client_side, m.server_side server_side, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
                 cs.name client_side_type, ss.name server_side_type, pt.name project_type_name, m.webhook_sent, m.color,
                 t.id thread_id, m.monetization_status monetization_status, m.loaders loaders, m.game_versions game_versions,
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,
@@ -588,6 +574,7 @@ impl Project {
                             id: ProjectId(id),
                             project_type: ProjectTypeId(m.project_type),
                             team_id: TeamId(m.team_id),
+                            organization_id: m.organization_id.map(OrganizationId),
                             title: m.title.clone(),
                             description: m.description.clone(),
                             downloads: m.downloads,
@@ -665,25 +652,22 @@ impl Project {
                 .await?;
 
             for project in db_projects {
-                cmd("SET")
-                    .arg(format!("{}:{}", PROJECTS_NAMESPACE, project.inner.id.0))
-                    .arg(serde_json::to_string(&project)?)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
+                redis
+                    .set(
+                        PROJECTS_NAMESPACE,
+                        project.inner.id.0,
+                        serde_json::to_string(&project)?,
+                        None,
+                    )
                     .await?;
-
                 if let Some(slug) = &project.inner.slug {
-                    cmd("SET")
-                        .arg(format!(
-                            "{}:{}",
+                    redis
+                        .set(
                             PROJECTS_SLUGS_NAMESPACE,
-                            slug.to_lowercase()
-                        ))
-                        .arg(project.inner.id.0)
-                        .arg("EX")
-                        .arg(DEFAULT_EXPIRY)
-                        .query_async::<_, ()>(&mut redis)
+                            slug.to_lowercase(),
+                            project.inner.id.0,
+                            None,
+                        )
                         .await?;
                 }
                 found_projects.push(project);
@@ -696,7 +680,7 @@ impl Project {
     pub async fn get_dependencies<'a, E>(
         id: ProjectId,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -705,13 +689,9 @@ impl Project {
 
         use futures::stream::TryStreamExt;
 
-        let mut redis = redis.get().await?;
-
-        let dependencies = cmd("GET")
-            .arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0))
-            .query_async::<_, Option<String>>(&mut redis)
+        let dependencies = redis
+            .get::<String, _>(PROJECTS_DEPENDENCIES_NAMESPACE, id.0)
             .await?;
-
         if let Some(dependencies) =
             dependencies.and_then(|x| serde_json::from_str::<Dependencies>(&x).ok())
         {
@@ -745,14 +725,14 @@ impl Project {
         .try_collect::<Dependencies>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0))
-            .arg(serde_json::to_string(&dependencies)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
+        redis
+            .set(
+                PROJECTS_DEPENDENCIES_NAMESPACE,
+                id.0,
+                serde_json::to_string(&dependencies)?,
+                None,
+            )
             .await?;
-
         Ok(dependencies)
     }
 
@@ -810,25 +790,22 @@ impl Project {
         id: ProjectId,
         slug: Option<String>,
         clear_dependencies: Option<bool>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
-
-        cmd.arg(format!("{}:{}", PROJECTS_NAMESPACE, id.0));
-        if let Some(slug) = slug {
-            cmd.arg(format!(
-                "{}:{}",
-                PROJECTS_SLUGS_NAMESPACE,
-                slug.to_lowercase()
-            ));
-        }
-        if clear_dependencies.unwrap_or(false) {
-            cmd.arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0));
-        }
-
-        cmd.query_async::<_, ()>(&mut redis).await?;
-
+        redis
+            .delete_many([
+                (PROJECTS_NAMESPACE, Some(id.0.to_string())),
+                (PROJECTS_SLUGS_NAMESPACE, slug.map(|x| x.to_lowercase())),
+                (
+                    PROJECTS_DEPENDENCIES_NAMESPACE,
+                    if clear_dependencies.unwrap_or(false) {
+                        Some(id.0.to_string())
+                    } else {
+                        None
+                    },
+                ),
+            ])
+            .await?;
         Ok(())
     }
 }

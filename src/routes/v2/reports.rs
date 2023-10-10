@@ -1,11 +1,17 @@
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
+use crate::database;
+use crate::database::models::image_item;
 use crate::database::models::thread_item::{ThreadBuilder, ThreadMessageBuilder};
+use crate::database::redis::RedisPool;
+use crate::models::ids::ImageId;
 use crate::models::ids::{base62_impl::parse_base62, ProjectId, UserId, VersionId};
+use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
 use crate::models::reports::{ItemType, Report};
 use crate::models::threads::{MessageBody, ThreadType};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::img;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::StreamExt;
@@ -22,12 +28,16 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(report_get);
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct CreateReport {
     pub report_type: String,
     pub item_id: String,
     pub item_type: ItemType,
     pub body: String,
+    // Associations to uploaded images
+    #[validate(length(max = 10))]
+    #[serde(default)]
+    pub uploaded_images: Vec<ImageId>,
 }
 
 #[post("report")]
@@ -35,7 +45,7 @@ pub async fn report_create(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     mut body: web::Payload,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let mut transaction = pool.begin().await?;
@@ -147,6 +157,42 @@ pub async fn report_create(
     }
 
     report.insert(&mut transaction).await?;
+
+    for image_id in new_report.uploaded_images {
+        if let Some(db_image) =
+            image_item::Image::get(image_id.into(), &mut *transaction, &redis).await?
+        {
+            let image: Image = db_image.into();
+            if !matches!(image.context, ImageContext::Report { .. })
+                || image.context.inner_id().is_some()
+            {
+                return Err(ApiError::InvalidInput(format!(
+                    "Image {} is not unused and in the 'report' context",
+                    image_id
+                )));
+            }
+
+            sqlx::query!(
+                "
+                UPDATE uploaded_images
+                SET report_id = $1
+                WHERE id = $2
+                ",
+                id.0 as i64,
+                image_id.0 as i64
+            )
+            .execute(&mut *transaction)
+            .await?;
+
+            image_item::Image::clear_cache(image.id.into(), &redis).await?;
+        } else {
+            return Err(ApiError::InvalidInput(format!(
+                "Image {} could not be found",
+                image_id
+            )));
+        }
+    }
+
     let thread_id = ThreadBuilder {
         type_: ThreadType::Report,
         members: vec![],
@@ -190,7 +236,7 @@ fn default_all() -> bool {
 pub async fn reports(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     count: web::Query<ReportsRequestOptions>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -265,7 +311,7 @@ pub async fn reports_get(
     req: HttpRequest,
     web::Query(ids): web::Query<ReportIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let report_ids: Vec<crate::database::models::ids::ReportId> =
@@ -300,7 +346,7 @@ pub async fn reports_get(
 pub async fn report_get(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -340,7 +386,7 @@ pub struct EditReport {
 pub async fn report_edit(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
     session_queue: web::Data<AuthQueue>,
     edit_report: web::Json<EditReport>,
@@ -359,7 +405,7 @@ pub async fn report_edit(
     let report = crate::database::models::report_item::Report::get(id, &**pool).await?;
 
     if let Some(report) = report {
-        if !user.role.is_mod() && report.user_id != Some(user.id.into()) {
+        if !user.role.is_mod() && report.reporter != user.id.into() {
             return Ok(HttpResponse::NotFound().body(""));
         }
 
@@ -423,6 +469,17 @@ pub async fn report_edit(
             .await?;
         }
 
+        // delete any images no longer in the body
+        let checkable_strings: Vec<&str> = vec![&edit_report.body]
+            .into_iter()
+            .filter_map(|x: &Option<String>| x.as_ref().map(|y| y.as_str()))
+            .collect();
+        let image_context = ImageContext::Report {
+            report_id: Some(id.into()),
+        };
+        img::delete_unused_images(image_context, checkable_strings, &mut transaction, &redis)
+            .await?;
+
         transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
@@ -436,17 +493,33 @@ pub async fn report_delete(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    check_is_moderator_from_headers(&req, &**pool, &redis, &session_queue).await?;
-
-    let mut transaction = pool.begin().await?;
-    let result = crate::database::models::report_item::Report::remove_full(
-        info.into_inner().0.into(),
-        &mut transaction,
+    check_is_moderator_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::REPORT_DELETE]),
     )
     .await?;
+
+    let mut transaction = pool.begin().await?;
+
+    let id = info.into_inner().0;
+    let context = ImageContext::Report {
+        report_id: Some(id),
+    };
+    let uploaded_images =
+        database::models::Image::get_many_contexted(context, &mut transaction).await?;
+    for image in uploaded_images {
+        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
+    }
+
+    let result =
+        crate::database::models::report_item::Report::remove_full(id.into(), &mut transaction)
+            .await?;
     transaction.commit().await?;
 
     if result.is_some() {
