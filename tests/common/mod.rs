@@ -5,6 +5,7 @@ use std::sync::Arc;
 use self::database::TemporaryDatabase;
 
 pub mod actix;
+pub mod asserts;
 pub mod database;
 pub mod dummy_data;
 pub mod environment;
