@@ -37,10 +37,10 @@ INSERT INTO categories (id, category, project_type) VALUES
     (7, 'optimization', 1);
 
 INSERT INTO categories (id, category, project_type) VALUES
-    (8, 'combat', 2),
-    (9, 'decoration', 2),
-    (10, 'economy', 2),
-    (11, 'food', 2),
-    (12, 'magic', 2),
-    (13, 'mobs', 2),
-    (14, 'optimization', 2);
+    (101, 'combat', 2),
+    (102, 'decoration', 2),
+    (103, 'economy', 2),
+    (104, 'food', 2),
+    (105, 'magic', 2),
+    (106, 'mobs', 2),
+    (107, 'optimization', 2);
