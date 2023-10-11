@@ -163,7 +163,7 @@ impl PayoutsQueue {
 
         if fee.estimated_fees > amount || fee.route_minimum > amount {
             return Err(ApiError::Payments(
-                "Account balance is to low to withdraw funds".to_string(),
+                "Account balance is too low to withdraw funds".to_string(),
             ));
         }
 
