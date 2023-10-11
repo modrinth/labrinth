@@ -1,6 +1,7 @@
 use super::{ids::*, User};
 use crate::database::models;
 use crate::database::models::DatabaseError;
+use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
@@ -8,10 +9,9 @@ use futures::TryStreamExt;
 use redis::cmd;
 use serde::{Deserialize, Serialize};
 
-const PROJECTS_NAMESPACE: &str = "projects";
-const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
+pub const PROJECTS_NAMESPACE: &str = "projects";
+pub const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
 const PROJECTS_DEPENDENCIES_NAMESPACE: &str = "projects_dependencies";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DonationUrl {
@@ -300,7 +300,7 @@ impl Project {
     pub async fn remove(
         id: ProjectId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         let project = Self::get_id(id, &mut *transaction, redis).await?;
 
@@ -439,7 +439,7 @@ impl Project {
     pub async fn get<'a, 'b, E>(
         string: &str,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -452,7 +452,7 @@ impl Project {
     pub async fn get_id<'a, 'b, E>(
         id: ProjectId,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -465,7 +465,7 @@ impl Project {
     pub async fn get_many_ids<'a, E>(
         project_ids: &[ProjectId],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -480,7 +480,7 @@ impl Project {
     pub async fn get_many<'a, E, T: ToString>(
         project_strings: &[T],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<QueryProject>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -488,8 +488,6 @@ impl Project {
         if project_strings.is_empty() {
             return Ok(Vec::new());
         }
-
-        let mut redis = redis.get().await?;
 
         let mut found_projects = Vec::new();
         let mut remaining_strings = project_strings
@@ -503,20 +501,11 @@ impl Project {
             .collect::<Vec<_>>();
 
         project_ids.append(
-            &mut cmd("MGET")
-                .arg(
-                    project_strings
-                        .iter()
-                        .map(|x| {
-                            format!(
-                                "{}:{}",
-                                PROJECTS_SLUGS_NAMESPACE,
-                                x.to_string().to_lowercase()
-                            )
-                        })
-                        .collect::<Vec<_>>(),
+            &mut redis
+                .multi_get::<i64, _>(
+                    PROJECTS_SLUGS_NAMESPACE,
+                    project_strings.iter().map(|x| x.to_string().to_lowercase()),
                 )
-                .query_async::<_, Vec<Option<i64>>>(&mut redis)
                 .await?
                 .into_iter()
                 .flatten()
@@ -524,16 +513,9 @@ impl Project {
         );
 
         if !project_ids.is_empty() {
-            let projects = cmd("MGET")
-                .arg(
-                    project_ids
-                        .iter()
-                        .map(|x| format!("{}:{}", PROJECTS_NAMESPACE, x))
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<String>>>(&mut redis)
+            let projects = redis
+                .multi_get::<String, _>(PROJECTS_NAMESPACE, project_ids)
                 .await?;
-
             for project in projects {
                 if let Some(project) =
                     project.and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
@@ -555,7 +537,6 @@ impl Project {
                 .flat_map(|x| parse_base62(&x.to_string()).ok())
                 .map(|x| x as i64)
                 .collect();
-
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
                 SELECT m.id id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
@@ -676,25 +657,22 @@ impl Project {
                 .await?;
 
             for project in db_projects {
-                cmd("SET")
-                    .arg(format!("{}:{}", PROJECTS_NAMESPACE, project.inner.id.0))
-                    .arg(serde_json::to_string(&project)?)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
+                redis
+                    .set(
+                        PROJECTS_NAMESPACE,
+                        project.inner.id.0,
+                        serde_json::to_string(&project)?,
+                        None,
+                    )
                     .await?;
-
                 if let Some(slug) = &project.inner.slug {
-                    cmd("SET")
-                        .arg(format!(
-                            "{}:{}",
+                    redis
+                        .set(
                             PROJECTS_SLUGS_NAMESPACE,
-                            slug.to_lowercase()
-                        ))
-                        .arg(project.inner.id.0)
-                        .arg("EX")
-                        .arg(DEFAULT_EXPIRY)
-                        .query_async::<_, ()>(&mut redis)
+                            slug.to_lowercase(),
+                            project.inner.id.0,
+                            None,
+                        )
                         .await?;
                 }
                 found_projects.push(project);
@@ -707,20 +685,18 @@ impl Project {
     pub async fn get_dependencies<'a, E>(
         id: ProjectId,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         type Dependencies = Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>;
 
-        let mut redis = redis.get().await?;
+        use futures::stream::TryStreamExt;
 
-        let dependencies = cmd("GET")
-            .arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0))
-            .query_async::<_, Option<String>>(&mut redis)
+        let dependencies = redis
+            .get::<String, _>(PROJECTS_DEPENDENCIES_NAMESPACE, id.0)
             .await?;
-
         if let Some(dependencies) =
             dependencies.and_then(|x| serde_json::from_str::<Dependencies>(&x).ok())
         {
@@ -754,14 +730,14 @@ impl Project {
         .try_collect::<Dependencies>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0))
-            .arg(serde_json::to_string(&dependencies)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
+        redis
+            .set(
+                PROJECTS_DEPENDENCIES_NAMESPACE,
+                id.0,
+                serde_json::to_string(&dependencies)?,
+                None,
+            )
             .await?;
-
         Ok(dependencies)
     }
 
@@ -819,25 +795,22 @@ impl Project {
         id: ProjectId,
         slug: Option<String>,
         clear_dependencies: Option<bool>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
-
-        cmd.arg(format!("{}:{}", PROJECTS_NAMESPACE, id.0));
-        if let Some(slug) = slug {
-            cmd.arg(format!(
-                "{}:{}",
-                PROJECTS_SLUGS_NAMESPACE,
-                slug.to_lowercase()
-            ));
-        }
-        if clear_dependencies.unwrap_or(false) {
-            cmd.arg(format!("{}:{}", PROJECTS_DEPENDENCIES_NAMESPACE, id.0));
-        }
-
-        cmd.query_async::<_, ()>(&mut redis).await?;
-
+        redis
+            .delete_many([
+                (PROJECTS_NAMESPACE, Some(id.0.to_string())),
+                (PROJECTS_SLUGS_NAMESPACE, slug.map(|x| x.to_lowercase())),
+                (
+                    PROJECTS_DEPENDENCIES_NAMESPACE,
+                    if clear_dependencies.unwrap_or(false) {
+                        Some(id.0.to_string())
+                    } else {
+                        None
+                    },
+                ),
+            ])
+            .await?;
         Ok(())
     }
 }

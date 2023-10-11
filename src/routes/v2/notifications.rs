@@ -1,5 +1,6 @@
 use crate::auth::get_user_from_headers;
 use crate::database;
+use crate::database::redis::RedisPool;
 use crate::models::ids::NotificationId;
 use crate::models::notifications::Notification;
 use crate::models::pats::Scopes;
@@ -17,7 +18,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("notification")
             .service(notification_get)
-            .service(notifications_read)
+            .service(notification_read)
             .service(notification_delete),
     );
 }
@@ -32,7 +33,7 @@ pub async fn notifications_get(
     req: HttpRequest,
     web::Query(ids): web::Query<NotificationIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -72,7 +73,7 @@ pub async fn notification_get(
     req: HttpRequest,
     info: web::Path<(NotificationId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -106,7 +107,7 @@ pub async fn notification_read(
     req: HttpRequest,
     info: web::Path<(NotificationId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -153,7 +154,7 @@ pub async fn notification_delete(
     req: HttpRequest,
     info: web::Path<(NotificationId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -200,7 +201,7 @@ pub async fn notifications_read(
     req: HttpRequest,
     web::Query(ids): web::Query<NotificationIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -249,7 +250,7 @@ pub async fn notifications_delete(
     req: HttpRequest,
     web::Query(ids): web::Query<NotificationIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
