@@ -27,10 +27,20 @@ INSERT INTO loaders (id, loader) VALUES (1, 'fabric');
 INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,1);
 INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,2); 
 
-INSERT INTO categories (id, category, project_type) VALUES (1, 'combat', 1);
-INSERT INTO categories (id, category, project_type) VALUES (2, 'decoration', 1);
-INSERT INTO categories (id, category, project_type) VALUES (3, 'economy', 1);
+INSERT INTO categories (id, category, project_type) VALUES
+    (1, 'combat', 1),
+    (2, 'decoration', 1),
+    (3, 'economy', 1),
+    (4, 'food', 1),
+    (5, 'magic', 1),
+    (6, 'mobs', 1),
+    (7, 'optimization', 1);
 
-INSERT INTO categories (id, category, project_type) VALUES (4, 'combat', 2);
-INSERT INTO categories (id, category, project_type) VALUES (5, 'decoration', 2);
-INSERT INTO categories (id, category, project_type) VALUES (6, 'economy', 2);
+INSERT INTO categories (id, category, project_type) VALUES
+    (8, 'combat', 2),
+    (9, 'decoration', 2),
+    (10, 'economy', 2),
+    (11, 'food', 2),
+    (12, 'magic', 2),
+    (13, 'mobs', 2),
+    (14, 'optimization', 2);
