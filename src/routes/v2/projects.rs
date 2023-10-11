@@ -1130,6 +1130,13 @@ pub async fn project_edit(
     }
 }
 
+#[derive(derive_new::new)]
+pub struct CategoryChanges<'a> {
+    pub categories: &'a Option<Vec<String>>,
+    pub add_categories: &'a Option<Vec<String>>,
+    pub remove_categories: &'a Option<Vec<String>>,
+}
+
 #[derive(Deserialize, Validate)]
 pub struct BulkEditProject {
     #[validate(length(max = 3))]
@@ -1310,9 +1317,11 @@ pub async fn projects_edit(
             &categories,
             &project.categories,
             project.inner.id as db_ids::ProjectId,
-            &bulk_edit_project.categories,
-            &bulk_edit_project.remove_categories,
-            &bulk_edit_project.add_categories,
+            CategoryChanges::new(
+                &bulk_edit_project.categories,
+                &bulk_edit_project.add_categories,
+                &bulk_edit_project.remove_categories,
+            ),
             3,
             false,
             &mut transaction,
@@ -1323,9 +1332,11 @@ pub async fn projects_edit(
             &categories,
             &project.additional_categories,
             project.inner.id as db_ids::ProjectId,
-            &bulk_edit_project.additional_categories,
-            &bulk_edit_project.remove_additional_categories,
-            &bulk_edit_project.add_additional_categories,
+            CategoryChanges::new(
+                &bulk_edit_project.additional_categories,
+                &bulk_edit_project.remove_additional_categories,
+                &bulk_edit_project.add_additional_categories,
+            ),
             256,
             true,
             &mut transaction,
@@ -1465,23 +1476,21 @@ pub async fn projects_edit(
 }
 
 pub async fn bulk_edit_project_categories(
-    all_db_categories: &Vec<db_models::categories::Category>,
+    all_db_categories: &[db_models::categories::Category],
     project_categories: &Vec<String>,
     project_id: db_ids::ProjectId,
-    bulk_categories: &Option<Vec<String>>,
-    bulk_remove_categories: &Option<Vec<String>>,
-    bulk_add_categories: &Option<Vec<String>>,
+    bulk_changes: CategoryChanges<'_>,
     max_num_categories: usize,
     is_additional: bool,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<(), ApiError> {
-    let mut set_categories = if let Some(categories) = bulk_categories.clone() {
+    let mut set_categories = if let Some(categories) = bulk_changes.categories.clone() {
         categories
     } else {
         project_categories.clone()
     };
 
-    if let Some(delete_categories) = &bulk_remove_categories {
+    if let Some(delete_categories) = &bulk_changes.remove_categories {
         for category in delete_categories {
             if let Some(pos) = set_categories.iter().position(|x| x == category) {
                 set_categories.remove(pos);
@@ -1489,7 +1498,7 @@ pub async fn bulk_edit_project_categories(
         }
     }
 
-    if let Some(add_categories) = &bulk_add_categories {
+    if let Some(add_categories) = &bulk_changes.add_categories {
         for category in add_categories {
             if set_categories.len() < max_num_categories {
                 set_categories.push(category.clone());
