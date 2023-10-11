@@ -1334,8 +1334,8 @@ pub async fn projects_edit(
             project.inner.id as db_ids::ProjectId,
             CategoryChanges::new(
                 &bulk_edit_project.additional_categories,
-                &bulk_edit_project.remove_additional_categories,
                 &bulk_edit_project.add_additional_categories,
+                &bulk_edit_project.remove_additional_categories,
             ),
             256,
             true,
