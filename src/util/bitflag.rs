@@ -11,7 +11,6 @@ macro_rules! bitflags_serde_impl {
             fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
                 let v: i64 = Deserialize::deserialize(deserializer)?;
 
-                println!("{}", v);
                 Ok($type::from_bits_truncate(v as $int_type))
             }
         }

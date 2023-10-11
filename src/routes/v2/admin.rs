@@ -10,10 +10,10 @@ use crate::queue::download::DownloadQueue;
 use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::date::get_current_tenths_of_ms;
 use crate::util::guards::admin_key_guard;
 use crate::util::routes::read_from_payload;
 use actix_web::{patch, post, web, HttpRequest, HttpResponse};
-use chrono::Utc;
 use hex::ToHex;
 use hmac::{Hmac, Mac, NewMac};
 use serde::Deserialize;
@@ -121,8 +121,7 @@ pub async fn count_download(
     analytics_queue
         .add_download(Download {
             id: Uuid::new_v4(),
-            // safe unwrap, can only panic after 2225
-            recorded: Utc::now().timestamp_nanos_opt().unwrap() / 100_000,
+            recorded: get_current_tenths_of_ms(),
             domain: url.host_str().unwrap_or_default().to_string(),
             site_path: url.path().to_string(),
             user_id: user

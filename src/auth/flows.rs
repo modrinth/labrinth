@@ -8,7 +8,7 @@ use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::ids::random_base62_rng;
 use crate::models::pats::Scopes;
-use crate::models::users::{Badges, RecipientStatus, Role};
+use crate::models::users::{Badges, RecipientStatus, Role, UserPayoutData};
 use crate::queue::payouts::{AccountUser, PayoutsQueue};
 use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
@@ -2065,13 +2065,15 @@ pub async fn set_email(
         "We need to verify your email address.",
     )?;
 
-    if let Some(payout_data) = user.payout_data {
-        if let Some(trolley_id) = payout_data.trolley_id {
-            let queue = payouts_queue.lock().await;
-            queue
-                .update_recipient_email(&trolley_id, &email.email)
-                .await?;
-        }
+    if let Some(UserPayoutData {
+        trolley_id: Some(trolley_id),
+        ..
+    }) = user.payout_data
+    {
+        let queue = payouts_queue.lock().await;
+        queue
+            .update_recipient_email(&trolley_id, &email.email)
+            .await?;
     }
 
     crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;

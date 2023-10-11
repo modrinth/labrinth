@@ -18,6 +18,12 @@ pub struct PayoutsQueue {
     secret_key: String,
 }
 
+impl Default for PayoutsQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AccountUser {
@@ -25,10 +31,13 @@ pub enum AccountUser {
     Individual { first: String, last: String },
 }
 
-impl Default for PayoutsQueue {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Serialize)]
+pub struct PaymentInfo {
+    country: String,
+    payout_method: String,
+    route_minimum: Decimal,
+    estimated_fees: Decimal,
+    deduct_fees: Decimal,
 }
 
 // Batches payouts and handles token refresh
@@ -130,7 +139,7 @@ impl PayoutsQueue {
         amount: Decimal,
     ) -> Result<(String, Option<String>), ApiError> {
         #[derive(Deserialize)]
-        struct TrolleyReq {
+        struct TrolleyRes {
             batch: Batch,
         }
 
@@ -150,8 +159,18 @@ impl PayoutsQueue {
             payments: Vec<Payment>,
         }
 
+        let fee = self.get_estimated_fees(recipient, amount).await?;
+
+        if fee.estimated_fees > amount || fee.route_minimum > amount {
+            return Err(ApiError::Payments(
+                "Account balance is to low to withdraw funds".to_string(),
+            ));
+        }
+
+        let send_amount = amount - fee.deduct_fees;
+
         let res = self
-            .make_trolley_request::<_, TrolleyReq>(
+            .make_trolley_request::<_, TrolleyRes>(
                 Method::POST,
                 "/v1/batches/",
                 Some(json!({
@@ -161,7 +180,7 @@ impl PayoutsQueue {
                         "recipient": {
                             "id": recipient
                         },
-                        "amount": amount.to_string(),
+                        "amount": send_amount.to_string(),
                         "currency": "USD",
                         "memo": "Modrinth ad revenue payout"
                     }],
@@ -181,14 +200,13 @@ impl PayoutsQueue {
         Ok((res.batch.id, payment_id))
     }
 
-    // listen to webhooks for batch status, account status
     pub async fn register_recipient(
         &self,
         email: &str,
         user: AccountUser,
     ) -> Result<String, ApiError> {
         #[derive(Deserialize)]
-        struct TrolleyReq {
+        struct TrolleyRes {
             recipient: Recipient,
         }
 
@@ -198,7 +216,7 @@ impl PayoutsQueue {
         }
 
         let id = self
-            .make_trolley_request::<_, TrolleyReq>(
+            .make_trolley_request::<_, TrolleyRes>(
                 Method::POST,
                 "/v1/recipients/",
                 Some(match user {
@@ -218,6 +236,84 @@ impl PayoutsQueue {
             .await?;
 
         Ok(id.recipient.id)
+    }
+
+    // lhs minimum, rhs estimate
+    pub async fn get_estimated_fees(
+        &self,
+        id: &str,
+        amount: Decimal,
+    ) -> Result<PaymentInfo, ApiError> {
+        #[derive(Deserialize)]
+        struct TrolleyRes {
+            recipient: Recipient,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Recipient {
+            route_minimum: Option<Decimal>,
+            estimated_fees: Option<Decimal>,
+            address: RecipientAddress,
+            payout_method: String,
+        }
+
+        #[derive(Deserialize)]
+        struct RecipientAddress {
+            country: String,
+        }
+
+        let id = self
+            .make_trolley_request::<Value, TrolleyRes>(
+                Method::GET,
+                &format!("/v1/recipients/{id}"),
+                None,
+            )
+            .await?;
+
+        if &id.recipient.payout_method == "paypal" {
+            // based on https://www.paypal.com/us/webapps/mpp/merchant-fees. see paypal payouts section
+            let fee = if &id.recipient.address.country == "US" {
+                std::cmp::min(
+                    std::cmp::max(
+                        Decimal::ONE / Decimal::from(4),
+                        (Decimal::from(2) / Decimal::ONE_HUNDRED) * amount,
+                    ),
+                    Decimal::from(1),
+                )
+            } else {
+                std::cmp::min(
+                    (Decimal::from(2) / Decimal::ONE_HUNDRED) * amount,
+                    Decimal::from(20),
+                )
+            };
+
+            Ok(PaymentInfo {
+                country: id.recipient.address.country,
+                payout_method: id.recipient.payout_method,
+                route_minimum: fee,
+                estimated_fees: fee,
+                deduct_fees: fee,
+            })
+        } else if &id.recipient.payout_method == "venmo" {
+            let venmo_fee = Decimal::ONE / Decimal::from(4);
+
+            Ok(PaymentInfo {
+                country: id.recipient.address.country,
+                payout_method: id.recipient.payout_method,
+                route_minimum: id.recipient.route_minimum.unwrap_or(Decimal::ZERO) + venmo_fee,
+                estimated_fees: id.recipient.estimated_fees.unwrap_or(Decimal::ZERO) + venmo_fee,
+                deduct_fees: venmo_fee,
+            })
+        } else {
+            Ok(PaymentInfo {
+                country: id.recipient.address.country,
+                payout_method: id.recipient.payout_method,
+                route_minimum: id.recipient.route_minimum.unwrap_or(Decimal::ZERO),
+                estimated_fees: id.recipient.estimated_fees.unwrap_or(Decimal::ZERO),
+                deduct_fees: Decimal::ZERO,
+            })
+        }
     }
 
     pub async fn update_recipient_email(&self, id: &str, email: &str) -> Result<(), ApiError> {

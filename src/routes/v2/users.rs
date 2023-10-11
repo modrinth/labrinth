@@ -6,7 +6,9 @@ use crate::models::collections::{Collection, CollectionStatus};
 use crate::models::notifications::Notification;
 use crate::models::pats::Scopes;
 use crate::models::projects::Project;
-use crate::models::users::{Badges, Payout, PayoutStatus, RecipientStatus, Role, UserId};
+use crate::models::users::{
+    Badges, Payout, PayoutStatus, RecipientStatus, Role, UserId, UserPayoutData,
+};
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
@@ -38,6 +40,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(user_notifications)
             .service(user_follows)
             .service(user_payouts)
+            .service(user_payouts_fees)
             .service(user_payouts_request),
     );
 }
@@ -681,6 +684,61 @@ pub async fn user_payouts(
 }
 
 #[derive(Deserialize)]
+pub struct FeeEstimateAmount {
+    amount: Decimal,
+}
+
+#[get("{id}/payouts_fees")]
+pub async fn user_payouts_fees(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    web::Query(amount): web::Query<FeeEstimateAmount>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+    payouts_queue: web::Data<Mutex<PayoutsQueue>>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PAYOUTS_READ]),
+    )
+    .await?
+    .1;
+    let actual_user = User::get(&info.into_inner().0, &**pool, &redis).await?;
+
+    if let Some(actual_user) = actual_user {
+        if !user.role.is_admin() && user.id != actual_user.id.into() {
+            return Err(ApiError::CustomAuthentication(
+                "You do not have permission to request payouts of this user!".to_string(),
+            ));
+        }
+
+        if let Some(UserPayoutData {
+            trolley_id: Some(trolley_id),
+            ..
+        }) = user.payout_data
+        {
+            let payouts = payouts_queue
+                .lock()
+                .await
+                .get_estimated_fees(&trolley_id, amount.amount)
+                .await?;
+
+            Ok(HttpResponse::Ok().json(payouts))
+        } else {
+            Err(ApiError::InvalidInput(
+                "You must set up your trolley account first!".to_string(),
+            ))
+        }
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[derive(Deserialize)]
 pub struct PayoutData {
     amount: Decimal,
 }
@@ -715,17 +773,21 @@ pub async fn user_payouts_request(
             ));
         }
 
-        if let Some(payouts_data) = user.payout_data {
-            if let Some(trolley_id) = payouts_data.trolley_id {
-                if let Some(trolley_status) = payouts_data.trolley_status {
-                    if trolley_status == RecipientStatus::Active {
-                        return if data.amount < payouts_data.balance {
-                            let mut transaction = pool.begin().await?;
+        if let Some(UserPayoutData {
+            trolley_id: Some(trolley_id),
+            trolley_status: Some(trolley_status),
+            balance,
+            ..
+        }) = user.payout_data
+        {
+            if trolley_status == RecipientStatus::Active {
+                return if data.amount < balance {
+                    let mut transaction = pool.begin().await?;
 
-                            let (batch_id, payment_id) =
-                                payouts_queue.send_payout(&trolley_id, data.amount).await?;
+                    let (batch_id, payment_id) =
+                        payouts_queue.send_payout(&trolley_id, data.amount).await?;
 
-                            sqlx::query!(
+                    sqlx::query!(
                                 "
                                 INSERT INTO historical_payouts (user_id, amount, status, batch_id, payment_id)
                                 VALUES ($1, $2, $3, $4, $5)
@@ -739,35 +801,32 @@ pub async fn user_payouts_request(
                                 .execute(&mut *transaction)
                                 .await?;
 
-                            sqlx::query!(
-                                "
+                    sqlx::query!(
+                        "
                                 UPDATE users
                                 SET balance = balance - $1
                                 WHERE id = $2
                                 ",
-                                data.amount,
-                                id as crate::database::models::ids::UserId
-                            )
-                            .execute(&mut *transaction)
-                            .await?;
+                        data.amount,
+                        id as crate::database::models::ids::UserId
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
 
-                            User::clear_caches(&[(id, None)], &redis).await?;
+                    User::clear_caches(&[(id, None)], &redis).await?;
 
-                            transaction.commit().await?;
+                    transaction.commit().await?;
 
-                            Ok(HttpResponse::NoContent().body(""))
-                        } else {
-                            Err(ApiError::InvalidInput(
-                                "You do not have enough funds to make this payout!".to_string(),
-                            ))
-                        };
-                    } else {
-                        return Err(ApiError::InvalidInput(
-                            "Please complete payout information via the trolley dashboard!"
-                                .to_string(),
-                        ));
-                    }
-                }
+                    Ok(HttpResponse::NoContent().body(""))
+                } else {
+                    Err(ApiError::InvalidInput(
+                        "You do not have enough funds to make this payout!".to_string(),
+                    ))
+                };
+            } else {
+                return Err(ApiError::InvalidInput(
+                    "Please complete payout information via the trolley dashboard!".to_string(),
+                ));
             }
         }
 
