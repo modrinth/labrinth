@@ -6,7 +6,6 @@ use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 pub const PROJECTS_NAMESPACE: &str = "projects";
@@ -658,12 +657,7 @@ impl Project {
 
             for project in db_projects {
                 redis
-                    .set(
-                        PROJECTS_NAMESPACE,
-                        project.inner.id.0,
-                        serde_json::to_string(&project)?,
-                        None,
-                    )
+                    .set_serialized_to_json(PROJECTS_NAMESPACE, project.inner.id.0, &project, None)
                     .await?;
                 if let Some(slug) = &project.inner.slug {
                     redis
@@ -692,14 +686,10 @@ impl Project {
     {
         type Dependencies = Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>;
 
-        use futures::stream::TryStreamExt;
-
         let dependencies = redis
-            .get::<String, _>(PROJECTS_DEPENDENCIES_NAMESPACE, id.0)
+            .get_deserialized_from_json::<Dependencies, _>(PROJECTS_DEPENDENCIES_NAMESPACE, id.0)
             .await?;
-        if let Some(dependencies) =
-            dependencies.and_then(|x| serde_json::from_str::<Dependencies>(&x).ok())
-        {
+        if let Some(dependencies) = dependencies {
             return Ok(dependencies);
         }
 
@@ -731,12 +721,7 @@ impl Project {
         .await?;
 
         redis
-            .set(
-                PROJECTS_DEPENDENCIES_NAMESPACE,
-                id.0,
-                serde_json::to_string(&dependencies)?,
-                None,
-            )
+            .set_serialized_to_json(PROJECTS_DEPENDENCIES_NAMESPACE, id.0, &dependencies, None)
             .await?;
         Ok(dependencies)
     }

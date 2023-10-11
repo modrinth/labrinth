@@ -234,12 +234,7 @@ impl User {
 
             for user in db_users {
                 redis
-                    .set(
-                        USERS_NAMESPACE,
-                        user.id.0,
-                        serde_json::to_string(&user)?,
-                        None,
-                    )
+                    .set_serialized_to_json(USERS_NAMESPACE, user.id.0, &user, None)
                     .await?;
                 redis
                     .set(
@@ -276,20 +271,16 @@ impl User {
     pub async fn get_projects<'a, E>(
         user_id: UserId,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<ProjectId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
-        let mut redis = redis.get().await?;
-
-        let cached_projects = cmd("GET")
-            .arg(format!("{}:{}", USERS_PROJECTS_NAMESPACE, user_id.0))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
-            .and_then(|x| serde_json::from_str::<Vec<ProjectId>>(&x).ok());
+        let cached_projects = redis
+            .get_deserialized_from_json::<Vec<ProjectId>, _>(USERS_PROJECTS_NAMESPACE, user_id.0)
+            .await?;
 
         if let Some(projects) = cached_projects {
             return Ok(projects);
@@ -309,12 +300,8 @@ impl User {
         .try_collect::<Vec<ProjectId>>()
         .await?;
 
-        cmd("SET")
-            .arg(format!("{}:{}", USERS_PROJECTS_NAMESPACE, user_id.0))
-            .arg(serde_json::to_string(&db_projects)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
+        redis
+            .set_serialized_to_json(USERS_PROJECTS_NAMESPACE, user_id.0, &db_projects, None)
             .await?;
 
         Ok(db_projects)
@@ -388,16 +375,15 @@ impl User {
 
     pub async fn clear_project_cache(
         user_ids: &[UserId],
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
-
-        for user_id in user_ids {
-            cmd.arg(format!("{}:{}", USERS_PROJECTS_NAMESPACE, user_id.0));
-        }
-
-        cmd.query_async(&mut redis).await?;
+        redis
+            .delete_many(
+                user_ids
+                    .into_iter()
+                    .map(|id| (USERS_PROJECTS_NAMESPACE, Some(id.0.to_string()))),
+            )
+            .await?;
 
         Ok(())
     }

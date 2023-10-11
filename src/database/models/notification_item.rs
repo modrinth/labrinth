@@ -1,14 +1,12 @@
 use super::ids::*;
-use crate::database::models::DatabaseError;
+use crate::database::{models::DatabaseError, redis::RedisPool};
 use crate::models::notifications::NotificationBody;
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
 use itertools::Itertools;
-use redis::cmd;
 use serde::{Deserialize, Serialize};
 
 const USER_NOTIFICATIONS_NAMESPACE: &str = "user_notifications";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
 pub struct NotificationBuilder {
     pub body: NotificationBody,
@@ -37,7 +35,7 @@ impl NotificationBuilder {
         &self,
         user: UserId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
         self.insert_many(vec![user], transaction, redis).await
     }
@@ -46,7 +44,7 @@ impl NotificationBuilder {
         &self,
         users: Vec<UserId>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
         let mut notifications = Vec::new();
         for user in users {
@@ -71,7 +69,7 @@ impl Notification {
     pub async fn insert_many(
         notifications: &[Notification],
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
         let notification_ids = notifications.iter().map(|n| n.id.0).collect_vec();
         let user_ids = notifications.iter().map(|n| n.user_id.0).collect_vec();
@@ -171,18 +169,14 @@ impl Notification {
     pub async fn get_many_user<'a, E>(
         user_id: UserId,
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<Notification>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let mut redis = redis.get().await?;
-
-        let cached_notifications = cmd("GET")
-            .arg(format!("{}:{}", USER_NOTIFICATIONS_NAMESPACE, user_id.0))
-            .query_async::<_, Option<String>>(&mut redis)
-            .await?
-            .and_then(|x| serde_json::from_str::<Vec<Notification>>(&x).ok());
+        let cached_notifications: Option<Vec<Notification>> = redis
+            .get_deserialized_from_json(USER_NOTIFICATIONS_NAMESPACE, user_id.0)
+            .await?;
 
         if let Some(notifications) = cached_notifications {
             return Ok(notifications);
@@ -232,12 +226,13 @@ impl Notification {
             .try_collect::<Vec<Notification>>()
             .await?;
 
-        cmd("SET")
-            .arg(format!("{}:{}", USER_NOTIFICATIONS_NAMESPACE, user_id.0))
-            .arg(serde_json::to_string(&db_notifications)?)
-            .arg("EX")
-            .arg(DEFAULT_EXPIRY)
-            .query_async::<_, ()>(&mut redis)
+        redis
+            .set_serialized_to_json(
+                USER_NOTIFICATIONS_NAMESPACE,
+                user_id.0,
+                &db_notifications,
+                None,
+            )
             .await?;
 
         Ok(db_notifications)
@@ -246,7 +241,7 @@ impl Notification {
     pub async fn read(
         id: NotificationId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         Self::read_many(&[id], transaction, redis).await
     }
@@ -254,7 +249,7 @@ impl Notification {
     pub async fn read_many(
         notification_ids: &[NotificationId],
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         let notification_ids_parsed: Vec<i64> = notification_ids.iter().map(|x| x.0).collect();
 
@@ -280,7 +275,7 @@ impl Notification {
     pub async fn remove(
         id: NotificationId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         Self::remove_many(&[id], transaction, redis).await
     }
@@ -288,7 +283,7 @@ impl Notification {
     pub async fn remove_many(
         notification_ids: &[NotificationId],
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         let notification_ids_parsed: Vec<i64> = notification_ids.iter().map(|x| x.0).collect();
 
@@ -322,16 +317,15 @@ impl Notification {
 
     pub async fn clear_user_notifications_cache(
         user_ids: impl IntoIterator<Item = &UserId>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
-
-        for user_id in user_ids {
-            cmd.arg(format!("{}:{}", USER_NOTIFICATIONS_NAMESPACE, user_id.0));
-        }
-
-        cmd.query_async(&mut redis).await?;
+        redis
+            .delete_many(
+                user_ids
+                    .into_iter()
+                    .map(|id| (USER_NOTIFICATIONS_NAMESPACE, Some(id.0.to_string()))),
+            )
+            .await?;
 
         Ok(())
     }
