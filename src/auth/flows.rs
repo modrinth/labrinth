@@ -2247,8 +2247,7 @@ pub async fn link_trolley(
     }
 
     if let Some(email) = user.email {
-        let payouts = payouts_queue.lock().await;
-        let id = payouts.register_recipient(&email, body.0).await?;
+        let id = payouts_queue.lock().await.register_recipient(&email, body.0).await?;
 
         let mut transaction = pool.begin().await?;
 
