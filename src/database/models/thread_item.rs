@@ -90,22 +90,20 @@ impl ThreadBuilder {
         .execute(&mut *transaction)
         .await?;
 
-        for member in &self.members {
-            sqlx::query!(
-                "
-                INSERT INTO threads_members (
-                    thread_id, user_id
-                )
-                VALUES (
-                    $1, $2
-                )
-                ",
-                thread_id as ThreadId,
-                *member as UserId,
+        let (thread_ids, members): (Vec<_>, Vec<_>) =
+            self.members.iter().map(|m| (thread_id.0, m.0)).unzip();
+        sqlx::query!(
+            "
+            INSERT INTO threads_members (
+                thread_id, user_id
             )
-            .execute(&mut *transaction)
-            .await?;
-        }
+            SELECT * FROM UNNEST ($1::int8[], $2::int8[])
+            ",
+            &thread_ids[..],
+            &members[..],
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         Ok(thread_id)
     }
@@ -150,7 +148,7 @@ impl Thread {
                 id: ThreadId(x.id),
                 project_id: x.mod_id.map(ProjectId),
                 report_id: x.report_id.map(ReportId),
-                type_: ThreadType::from_str(&x.thread_type),
+                type_: ThreadType::from_string(&x.thread_type),
                 messages: {
                     let mut messages: Vec<ThreadMessage> = serde_json::from_value(
                         x.messages.unwrap_or_default(),

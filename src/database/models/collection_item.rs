@@ -81,19 +81,19 @@ impl Collection {
         .execute(&mut *transaction)
         .await?;
 
-        for project_id in self.projects.iter() {
-            sqlx::query!(
-                "
-                    INSERT INTO collections_mods (collection_id, mod_id)
-                    VALUES ($1, $2)
-                    ON CONFLICT DO NOTHING
-                ",
-                self.id as CollectionId,
-                *project_id as ProjectId,
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
+        let (collection_ids, project_ids): (Vec<_>, Vec<_>) =
+            self.projects.iter().map(|p| (self.id.0, p.0)).unzip();
+        sqlx::query!(
+            "
+                INSERT INTO collections_mods (collection_id, mod_id)
+                SELECT * FROM UNNEST($1::bigint[], $2::bigint[])
+                ON CONFLICT DO NOTHING
+            ",
+            &collection_ids[..],
+            &project_ids[..],
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         Ok(())
     }
@@ -210,7 +210,7 @@ impl Collection {
                         color: m.color.map(|x| x as u32),
                         created: m.created,
                         updated: m.updated,
-                        status: CollectionStatus::from_str(&m.status),
+                        status: CollectionStatus::from_string(&m.status),
                         projects: m
                             .mods
                             .unwrap_or_default()

@@ -16,6 +16,16 @@ use super::{
     environment::TestEnvironment,
 };
 
+pub const DUMMY_CATEGORIES: &'static [&str] = &[
+    "combat",
+    "decoration",
+    "economy",
+    "food",
+    "magic",
+    "mobs",
+    "optimization",
+];
+
 #[derive(Clone)]
 pub struct DummyData {
     // Alpha project:
