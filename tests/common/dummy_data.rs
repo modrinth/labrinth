@@ -1,5 +1,5 @@
 use actix_web::test::{self, TestRequest};
-use labrinth::{models::projects::Project, models::{projects::Version, pats::Scopes}};
+use labrinth::{models::projects::Project, models::{projects::Version, pats::Scopes, organizations::Organization}};
 use serde_json::json;
 use sqlx::Executor;
 
@@ -14,23 +14,32 @@ use super::{
 };
 
 pub struct DummyData {
+    // Alpha project: 
+    // This is a dummy project created by USER user.
+    // It's approved, listed, and visible to the public.
+    pub alpha_project_id: String,
+    pub alpha_project_slug: String,
+    pub alpha_version_id: String,
+    pub alpha_thread_id: String,
+    pub alpha_file_hash: String,
     pub alpha_team_id: String,
+
+    // Beta project:
+    // This is a dummy project created by USER user.
+    // It's not approved, unlisted, and not visible to the public.
+    pub beta_project_id: String,
+    pub beta_project_slug: String,
+    pub beta_version_id: String,
+    pub beta_thread_id: String,
+    pub beta_file_hash: String,
     pub beta_team_id: String,
 
-    pub alpha_project_id: String,
-    pub beta_project_id: String,
-
-    pub alpha_project_slug: String,
-    pub beta_project_slug: String,
-
-    pub alpha_version_id: String,
-    pub beta_version_id: String,
-
-    pub alpha_thread_id: String,
-    pub beta_thread_id: String,
-
-    pub alpha_file_hash: String,
-    pub beta_file_hash: String,
+    // Zeta organization:
+    // This is a dummy organization created by USER user.
+    // There are no projects in it.
+    pub zeta_organization_id: String,
+    pub zeta_organization_title: String,
+    pub zeta_team_id: String,
 }
 
 pub async fn add_dummy_data(test_env: &TestEnvironment) -> DummyData {
@@ -46,6 +55,8 @@ pub async fn add_dummy_data(test_env: &TestEnvironment) -> DummyData {
 
     let (alpha_project, alpha_version) = add_project_alpha(test_env).await;
     let (beta_project, beta_version) = add_project_beta(test_env).await;
+
+    let zeta_organization = add_organization_zeta(test_env).await;
 
     DummyData {
         alpha_team_id: alpha_project.team.to_string(),
@@ -65,6 +76,41 @@ pub async fn add_dummy_data(test_env: &TestEnvironment) -> DummyData {
 
         alpha_file_hash: alpha_version.files[0].hashes["sha1"].clone(),
         beta_file_hash: beta_version.files[0].hashes["sha1"].clone(),
+
+        zeta_organization_id: zeta_organization.id.to_string(),
+        zeta_team_id: zeta_organization.team_id.to_string(),
+        zeta_organization_title: zeta_organization.title,
+    }
+}
+
+pub async fn get_dummy_data(test_env: &TestEnvironment) -> DummyData {
+    let (alpha_project, alpha_version) = get_project_alpha(test_env).await;
+    let (beta_project, beta_version) = get_project_beta(test_env).await;
+
+    let zeta_organization = get_organization_zeta(test_env).await;
+    DummyData {
+
+        alpha_team_id: alpha_project.team.to_string(),
+        beta_team_id: beta_project.team.to_string(),
+
+        alpha_project_id: alpha_project.id.to_string(),
+        beta_project_id: beta_project.id.to_string(),
+
+        alpha_project_slug: alpha_project.slug.unwrap(),
+        beta_project_slug: beta_project.slug.unwrap(),
+
+        alpha_version_id: alpha_version.id.to_string(),
+        beta_version_id: beta_version.id.to_string(),
+
+        alpha_thread_id: alpha_project.thread_id.to_string(),
+        beta_thread_id: beta_project.thread_id.to_string(),
+
+        alpha_file_hash: alpha_version.files[0].hashes["sha1"].clone(),
+        beta_file_hash: beta_version.files[0].hashes["sha1"].clone(),
+
+        zeta_organization_id: zeta_organization.id.to_string(),
+        zeta_team_id: zeta_organization.team_id.to_string(),
+        zeta_organization_title: zeta_organization.title,
     }
 }
 
@@ -134,24 +180,7 @@ pub async fn add_project_alpha(test_env: &TestEnvironment) -> (Project, Version)
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
-    // Get project
-    let req = TestRequest::get()
-        .uri("/v2/project/alpha")
-        .append_header(("Authorization", USER_USER_PAT))
-        .to_request();
-    let resp = test_env.call(req).await;
-    let project: Project = test::read_body_json(resp).await;
-
-    // Get project's versions
-    let req = TestRequest::get()
-        .uri("/v2/project/alpha/version")
-        .append_header(("Authorization", USER_USER_PAT))
-        .to_request();
-    let resp = test_env.call(req).await;
-    let versions: Vec<Version> = test::read_body_json(resp).await;
-    let version = versions.into_iter().next().unwrap();
-
-    (project, version)
+    get_project_alpha(test_env).await
 }
 
 pub async fn add_project_beta(test_env: &TestEnvironment) -> (Project, Version) {
@@ -212,6 +241,49 @@ pub async fn add_project_beta(test_env: &TestEnvironment) -> (Project, Version) 
 
     assert_eq!(resp.status(), 200);
 
+    get_project_beta(test_env).await
+}
+
+pub async fn add_organization_zeta(test_env: &TestEnvironment) -> Organization {
+    // Add an organzation.
+    let req = TestRequest::post()
+        .uri("/v2/organization")
+        .append_header(("Authorization", USER_USER_PAT))
+        .set_json(json!({
+            "title": "zeta",
+            "description": "A dummy organization for testing with."
+        }))
+        .to_request();
+    let resp = test_env.call(req).await;
+
+    assert_eq!(resp.status(), 200);
+
+    get_organization_zeta(test_env).await
+}
+
+
+pub async fn get_project_alpha(test_env: &TestEnvironment) -> (Project, Version) {
+    // Get project
+    let req = TestRequest::get()
+        .uri("/v2/project/alpha")
+        .append_header(("Authorization", USER_USER_PAT))
+        .to_request();
+    let resp = test_env.call(req).await;
+    let project: Project = test::read_body_json(resp).await;
+
+    // Get project's versions
+    let req = TestRequest::get()
+        .uri("/v2/project/alpha/version")
+        .append_header(("Authorization", USER_USER_PAT))
+        .to_request();
+    let resp = test_env.call(req).await;
+    let versions: Vec<Version> = test::read_body_json(resp).await;
+    let version = versions.into_iter().next().unwrap();
+
+    (project, version)
+}
+
+pub async fn get_project_beta(test_env: &TestEnvironment) -> (Project, Version) {
     // Get project
     let req = TestRequest::get()
         .uri("/v2/project/beta")
@@ -232,3 +304,14 @@ pub async fn add_project_beta(test_env: &TestEnvironment) -> (Project, Version) 
     (project, version)
 }
 
+pub async fn get_organization_zeta(test_env: &TestEnvironment) -> Organization {
+    // Get organization
+    let req = TestRequest::get()
+        .uri("/v2/organization/zeta")
+        .append_header(("Authorization", USER_USER_PAT))
+        .to_request();
+    let resp = test_env.call(req).await;
+    let organization: Organization = test::read_body_json(resp).await;
+
+    organization
+}

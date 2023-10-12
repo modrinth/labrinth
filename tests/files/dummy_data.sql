@@ -34,3 +34,6 @@ INSERT INTO categories (id, category, project_type) VALUES (3, 'economy', 1);
 INSERT INTO categories (id, category, project_type) VALUES (4, 'combat', 2);
 INSERT INTO categories (id, category, project_type) VALUES (5, 'decoration', 2);
 INSERT INTO categories (id, category, project_type) VALUES (6, 'economy', 2);
+
+-- Create dummy data table to mark that this file has been run
+CREATE TABLE dummy_data ( /* ... */ );

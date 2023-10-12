@@ -57,11 +57,16 @@ impl ProjectPermissions {
         }
 
         if let Some(member) = project_team_member {
+            if member.accepted {
+                return Some(member.permissions);
+            }
             return Some(member.permissions);
         }
 
         if let Some(member) = organization_team_member {
-            return Some(member.permissions); // Use default project permissions for the organization team member
+            if member.accepted {
+                return Some(member.permissions);
+            }
         }
 
         if role.is_mod() {
@@ -81,7 +86,7 @@ bitflags::bitflags! {
     #[serde(transparent)]
     pub struct OrganizationPermissions: u64 {
         const EDIT_DETAILS = 1 << 0;
-        const EDIT_BODY = 1 << 1;
+        const UNUSED = 1 << 1; // a currently unused permission, formerly EDIT_BODY
         const MANAGE_INVITES = 1 << 2;
         const REMOVE_MEMBER = 1 << 3;
         const EDIT_MEMBER = 1 << 4;
@@ -110,12 +115,13 @@ impl OrganizationPermissions {
         }
 
         if let Some(member) = team_member {
-            return member.organization_permissions;
+            if member.accepted {
+                return member.organization_permissions;
+            }
         }
         if role.is_mod() {
             return Some(
                 OrganizationPermissions::EDIT_DETAILS
-                    | OrganizationPermissions::EDIT_BODY
                     | OrganizationPermissions::ADD_PROJECT,
             );
         }

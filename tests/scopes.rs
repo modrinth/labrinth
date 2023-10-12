@@ -20,7 +20,7 @@ mod common;
 #[actix_rt::test]
 async fn user_scopes() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
 
     // User reading
     let read_user = Scopes::USER_READ;
@@ -105,7 +105,7 @@ async fn user_scopes() {
 // Notifications
 #[actix_rt::test]
 pub async fn notifications_scopes() {
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id.clone();
 
     // We will invite user 'friend' to project team, and use that as a notification
@@ -129,7 +129,7 @@ pub async fn notifications_scopes() {
         .test(req_gen, read_notifications)
         .await
         .unwrap();
-    let notification_id = success.as_array().unwrap()[0]["id"].as_str().unwrap();
+    let notification_id = success[0]["id"].as_str().unwrap();
 
     let req_gen = || {
         test::TestRequest::get().uri(&format!(
@@ -198,7 +198,7 @@ pub async fn notifications_scopes() {
         .test(req_gen, read_notifications)
         .await
         .unwrap();
-    let notification_id = success.as_array().unwrap()[0]["id"].as_str().unwrap();
+    let notification_id = success[0]["id"].as_str().unwrap();
 
     let req_gen = || {
         test::TestRequest::delete().uri(&format!(
@@ -219,7 +219,7 @@ pub async fn notifications_scopes() {
 // Project version creation scopes
 #[actix_rt::test]
 pub async fn project_version_create_scopes() {
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
 
     // Create project
     let create_project = Scopes::PROJECT_CREATE;
@@ -318,7 +318,7 @@ pub async fn project_version_create_scopes() {
 // Project management scopes
 #[actix_rt::test]
 pub async fn project_version_reads_scopes() {
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id.clone();
     let beta_version_id = &test_env.dummy.as_ref().unwrap().beta_version_id.clone();
     let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id.clone();
@@ -374,8 +374,8 @@ pub async fn project_version_reads_scopes() {
         .test(req_gen, read_project)
         .await
         .unwrap();
-    assert!(!failure.as_array().unwrap()[0].as_object().unwrap()["permissions"].is_number());
-    assert!(success.as_array().unwrap()[0].as_object().unwrap()["permissions"].is_number());
+    assert!(!failure[0]["permissions"].is_number());
+    assert!(success[0]["permissions"].is_number());
 
     let req_gen = || {
         test::TestRequest::get().uri(&format!(
@@ -388,13 +388,9 @@ pub async fn project_version_reads_scopes() {
         .test(req_gen, read_project)
         .await
         .unwrap();
-    assert!(!failure.as_array().unwrap()[0].as_array().unwrap()[0]
-        .as_object()
-        .unwrap()["permissions"]
+    assert!(!failure[0][0]["permissions"]
         .is_number());
-    assert!(success.as_array().unwrap()[0].as_array().unwrap()[0]
-        .as_object()
-        .unwrap()["permissions"]
+    assert!(success[0][0]["permissions"]
         .is_number());
 
     // User project reading
@@ -536,7 +532,7 @@ pub async fn project_version_reads_scopes() {
 #[actix_rt::test]
 pub async fn project_write_scopes() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id.clone();
     let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id.clone();
 
@@ -740,7 +736,7 @@ pub async fn project_write_scopes() {
 #[actix_rt::test]
 pub async fn version_write_scopes() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let alpha_version_id = &test_env.dummy.as_ref().unwrap().beta_version_id.clone();
     let beta_version_id = &test_env.dummy.as_ref().unwrap().beta_version_id.clone();
     let alpha_file_hash = &test_env.dummy.as_ref().unwrap().beta_file_hash.clone();
@@ -855,7 +851,7 @@ pub async fn version_write_scopes() {
 #[actix_rt::test]
 pub async fn report_scopes() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id.clone();
 
     // Create report
@@ -880,7 +876,7 @@ pub async fn report_scopes() {
         .test(req_gen, report_read)
         .await
         .unwrap();
-    let report_id = success.as_array().unwrap()[0]["id"].as_str().unwrap();
+    let report_id = success[0]["id"].as_str().unwrap();
 
     let req_gen = || test::TestRequest::get().uri(&format!("/v2/report/{}", report_id));
     ScopeTest::new(&test_env)
@@ -931,7 +927,7 @@ pub async fn report_scopes() {
 #[actix_rt::test]
 pub async fn thread_scopes() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let alpha_thread_id = &test_env.dummy.as_ref().unwrap().alpha_thread_id.clone();
     let beta_thread_id = &test_env.dummy.as_ref().unwrap().beta_thread_id.clone();
 
@@ -980,8 +976,7 @@ pub async fn thread_scopes() {
         .test(req_gen, thread_read)
         .await
         .unwrap();
-    let thread = success.as_array().unwrap()[0].as_object().unwrap();
-    let thread_id = thread["id"].as_str().unwrap();
+    let thread_id = success[0]["id"].as_str().unwrap();
 
     // Moderator 'read' thread
     // Uses moderator PAT, as only moderators can see the moderation inbox
@@ -1000,10 +995,8 @@ pub async fn thread_scopes() {
         .to_request();
     let resp = test_env.call(req_gen).await;
     let success: serde_json::Value = test::read_body_json(resp).await;
-    let thread_messages = success.as_object().unwrap()["messages"].as_array().unwrap();
-    let thread_message_id = thread_messages[0].as_object().unwrap()["id"]
-        .as_str()
-        .unwrap();
+    let thread_message_id = success["messages"][0]["id"].as_str().unwrap();
+
     let req_gen = || test::TestRequest::delete().uri(&format!("/v2/message/{thread_message_id}"));
     ScopeTest::new(&test_env)
         .with_user_id(MOD_USER_ID_PARSED)
@@ -1018,7 +1011,7 @@ pub async fn thread_scopes() {
 // Pat scopes
 #[actix_rt::test]
 pub async fn pat_scopes() {
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
 
     // Pat create
     let pat_create = Scopes::PAT_CREATE;
@@ -1071,7 +1064,7 @@ pub async fn pat_scopes() {
 #[actix_rt::test]
 pub async fn collections_scopes() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id.clone();
 
     // Create collection
@@ -1166,7 +1159,7 @@ pub async fn collections_scopes() {
 #[actix_rt::test]
 pub async fn organization_scopes() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id.clone();
 
     // Create organization
@@ -1242,15 +1235,11 @@ pub async fn organization_scopes() {
         .await
         .unwrap();
     assert!(
-        failure.as_object().unwrap()["members"].as_array().unwrap()[0]
-            .as_object()
-            .unwrap()["permissions"]
+        failure["members"][0]["permissions"]
             .is_null()
     );
     assert!(
-        !success.as_object().unwrap()["members"].as_array().unwrap()[0]
-            .as_object()
-            .unwrap()["permissions"]
+        !success["members"][0]["permissions"]
             .is_null()
     );
 
@@ -1267,19 +1256,11 @@ pub async fn organization_scopes() {
         .await
         .unwrap();
     assert!(
-        failure.as_array().unwrap()[0].as_object().unwrap()["members"]
-            .as_array()
-            .unwrap()[0]
-            .as_object()
-            .unwrap()["permissions"]
+        failure[0]["members"][0]["permissions"]
             .is_null()
     );
     assert!(
-        !success.as_array().unwrap()[0].as_object().unwrap()["members"]
-            .as_array()
-            .unwrap()[0]
-            .as_object()
-            .unwrap()["permissions"]
+        !success[0]["members"][0]["permissions"]
             .is_null()
     );
 

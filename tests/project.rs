@@ -13,7 +13,7 @@ mod common;
 #[actix_rt::test]
 async fn test_get_project() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
     let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id;
     let alpha_project_slug = &test_env.dummy.as_ref().unwrap().alpha_project_slug;
@@ -32,7 +32,6 @@ async fn test_get_project() {
     assert_eq!(body["id"], json!(alpha_project_id));
     assert_eq!(body["slug"], json!(alpha_project_slug));
     let versions = body["versions"].as_array().unwrap();
-    assert!(!versions.is_empty());
     assert_eq!(versions[0], json!(alpha_version_id));
 
     // Confirm that the request was cached
@@ -94,7 +93,7 @@ async fn test_get_project() {
 #[actix_rt::test]
 async fn test_add_remove_project() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
 
     // Generate test project data.
     let mut json_data = json!(
@@ -306,7 +305,7 @@ async fn test_add_remove_project() {
 
 #[actix_rt::test]
 pub async fn test_patch_project() {
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(None).await;
     let alpha_project_slug = &test_env.dummy.as_ref().unwrap().alpha_project_slug;
     let beta_project_slug = &test_env.dummy.as_ref().unwrap().beta_project_slug;
 
@@ -372,16 +371,24 @@ pub async fn test_patch_project() {
         assert_eq!(resp.status(), 204);
     }
 
-    // Failure because the slug is already taken.
-    let req = test::TestRequest::patch()
+    // Failed patch to alpha slug:
+    // - slug collision with beta
+    // - too short slug
+    // - too long slug
+    // - not url safe slug
+    // - not url safe slug
+    for slug in [beta_project_slug, "a", &"a".repeat(100), "not url safe%&^!#$##!@#$%^&*()"] {
+        let req = test::TestRequest::patch()
         .uri(&format!("/v2/project/{alpha_project_slug}"))
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
-            "slug": beta_project_slug, // the other dummy project has this slug
+            "slug": slug, // the other dummy project has this slug
         }))
         .to_request();
-    let resp = test_env.call(req).await;
-    assert_eq!(resp.status(), 400);
+        let resp = test_env.call(req).await;
+        assert_eq!(resp.status(), 400);
+    }
+
 
     // Not allowed to directly set status, as 'beta_project_slug' (the other project) is "processing" and cannot have its status changed like this.
     let req = test::TestRequest::patch()

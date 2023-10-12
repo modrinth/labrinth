@@ -16,15 +16,16 @@ pub struct TestEnvironment {
 }
 
 impl TestEnvironment {
-    pub async fn build_with_dummy() -> Self {
-        let mut test_env = Self::build().await;
-        let dummy = dummy_data::add_dummy_data(&test_env).await;
+    pub async fn build(max_connections : Option<u32>) -> Self {
+        let db = TemporaryDatabase::create(max_connections).await;
+        let mut test_env = Self::build_with_db(db).await;
+
+        let dummy = dummy_data::get_dummy_data(&test_env).await;
         test_env.dummy = Some(dummy);
         test_env
     }
 
-    pub async fn build() -> Self {
-        let db = TemporaryDatabase::create().await;
+    pub async fn build_with_db(db : TemporaryDatabase) -> Self {
         let labrinth_config = setup(&db).await;
         let app = App::new().configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()));
         let test_app = test::init_service(app).await;
@@ -34,6 +35,7 @@ impl TestEnvironment {
             dummy: None,
         }
     }
+
     pub async fn cleanup(self) {
         self.db.cleanup().await;
     }
