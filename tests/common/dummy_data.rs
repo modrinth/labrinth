@@ -1,5 +1,8 @@
 use actix_web::test::{self, TestRequest};
-use labrinth::{models::projects::Project, models::{projects::Version, pats::Scopes, organizations::Organization}};
+use labrinth::{
+    models::projects::Project,
+    models::{organizations::Organization, pats::Scopes, projects::Version},
+};
 use serde_json::json;
 use sqlx::Executor;
 
@@ -13,8 +16,9 @@ use super::{
     environment::TestEnvironment,
 };
 
+#[derive(Clone)]
 pub struct DummyData {
-    // Alpha project: 
+    // Alpha project:
     // This is a dummy project created by USER user.
     // It's approved, listed, and visible to the public.
     pub alpha_project_id: String,
@@ -48,10 +52,11 @@ pub async fn add_dummy_data(test_env: &TestEnvironment) -> DummyData {
 
     pool.execute(
         include_str!("../files/dummy_data.sql")
-        .replace("$1", &Scopes::all().bits().to_string()).as_str()
+            .replace("$1", &Scopes::all().bits().to_string())
+            .as_str(),
     )
-        .await
-        .unwrap();
+    .await
+    .unwrap();
 
     let (alpha_project, alpha_version) = add_project_alpha(test_env).await;
     let (beta_project, beta_version) = add_project_beta(test_env).await;
@@ -89,7 +94,6 @@ pub async fn get_dummy_data(test_env: &TestEnvironment) -> DummyData {
 
     let zeta_organization = get_organization_zeta(test_env).await;
     DummyData {
-
         alpha_team_id: alpha_project.team.to_string(),
         beta_team_id: beta_project.team.to_string(),
 
@@ -260,7 +264,6 @@ pub async fn add_organization_zeta(test_env: &TestEnvironment) -> Organization {
 
     get_organization_zeta(test_env).await
 }
-
 
 pub async fn get_project_alpha(test_env: &TestEnvironment) -> (Project, Version) {
     // Get project

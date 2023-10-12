@@ -39,4 +39,3 @@ pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
         maxmind_reader.clone(),
     )
 }
-

@@ -377,18 +377,22 @@ pub async fn test_patch_project() {
     // - too long slug
     // - not url safe slug
     // - not url safe slug
-    for slug in [beta_project_slug, "a", &"a".repeat(100), "not url safe%&^!#$##!@#$%^&*()"] {
+    for slug in [
+        beta_project_slug,
+        "a",
+        &"a".repeat(100),
+        "not url safe%&^!#$##!@#$%^&*()",
+    ] {
         let req = test::TestRequest::patch()
-        .uri(&format!("/v2/project/{alpha_project_slug}"))
-        .append_header(("Authorization", USER_USER_PAT))
-        .set_json(json!({
-            "slug": slug, // the other dummy project has this slug
-        }))
-        .to_request();
+            .uri(&format!("/v2/project/{alpha_project_slug}"))
+            .append_header(("Authorization", USER_USER_PAT))
+            .set_json(json!({
+                "slug": slug, // the other dummy project has this slug
+            }))
+            .to_request();
         let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 400);
     }
-
 
     // Not allowed to directly set status, as 'beta_project_slug' (the other project) is "processing" and cannot have its status changed like this.
     let req = test::TestRequest::patch()

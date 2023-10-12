@@ -388,10 +388,8 @@ pub async fn project_version_reads_scopes() {
         .test(req_gen, read_project)
         .await
         .unwrap();
-    assert!(!failure[0][0]["permissions"]
-        .is_number());
-    assert!(success[0][0]["permissions"]
-        .is_number());
+    assert!(!failure[0][0]["permissions"].is_number());
+    assert!(success[0][0]["permissions"].is_number());
 
     // User project reading
     // Test user has two projects, one public and one private
@@ -1234,14 +1232,8 @@ pub async fn organization_scopes() {
         .test(req_gen, organization_read)
         .await
         .unwrap();
-    assert!(
-        failure["members"][0]["permissions"]
-            .is_null()
-    );
-    assert!(
-        !success["members"][0]["permissions"]
-            .is_null()
-    );
+    assert!(failure["members"][0]["permissions"].is_null());
+    assert!(!success["members"][0]["permissions"].is_null());
 
     let req_gen = || {
         test::TestRequest::get().uri(&format!(
@@ -1255,14 +1247,8 @@ pub async fn organization_scopes() {
         .test(req_gen, organization_read)
         .await
         .unwrap();
-    assert!(
-        failure[0]["members"][0]["permissions"]
-            .is_null()
-    );
-    assert!(
-        !success[0]["members"][0]["permissions"]
-            .is_null()
-    );
+    assert!(failure[0]["members"][0]["permissions"].is_null());
+    assert!(!success[0]["members"][0]["permissions"].is_null());
 
     let organization_project_read = Scopes::PROJECT_READ | Scopes::ORGANIZATION_READ;
     let req_gen =
