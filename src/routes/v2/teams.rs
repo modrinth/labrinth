@@ -406,12 +406,10 @@ pub async fn add_team_member(
     )
     .await?
     .1;
-
     let team_association = Team::get_association(team_id, &**pool)
         .await?
         .ok_or_else(|| ApiError::InvalidInput("The team specified does not exist".to_string()))?;
     let member = TeamMember::get_from_user_id(team_id, current_user.id.into(), &**pool).await?;
-
     match team_association {
         // If team is associated with a project, check if they have permissions to invite users to that project
         TeamAssociationId::Project(pid) => {
