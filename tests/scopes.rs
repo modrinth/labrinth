@@ -111,6 +111,7 @@ pub async fn notifications_scopes() {
     // We will invite user 'friend' to project team, and use that as a notification
     // Get notifications
     let resp = test_env
+        .v2
         .add_user_to_team(alpha_team_id, FRIEND_USER_ID, USER_USER_PAT)
         .await;
     assert_eq!(resp.status(), 204);
@@ -178,6 +179,7 @@ pub async fn notifications_scopes() {
     // Mass notification delete
     // We invite mod, get the notification ID, and do mass delete using that
     let resp = test_env
+        .v2
         .add_user_to_team(alpha_team_id, MOD_USER_ID, USER_USER_PAT)
         .await;
     assert_eq!(resp.status(), 204);
