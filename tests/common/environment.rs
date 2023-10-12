@@ -4,6 +4,7 @@ use std::{rc::Rc, sync::Arc};
 
 use super::{database::TemporaryDatabase, dummy_data};
 use crate::common::setup;
+use actix_http::StatusCode;
 use actix_web::{dev::ServiceResponse, test, App};
 use futures::Future;
 
@@ -25,8 +26,9 @@ where
 // Use .call(req) on it directly to make a test call as if test::call_service(req) were being used.
 #[derive(Clone)]
 pub struct TestEnvironment {
-    test_app: Rc<dyn LocalService>, // Rc as it's not Send
+    test_app: Rc<Rc<dyn LocalService>>, // Rc as it's not Send
     pub db: TemporaryDatabase,
+    pub v2: ApiV2,
 
     pub dummy: Option<Arc<dummy_data::DummyData>>,
 }
@@ -44,9 +46,12 @@ impl TestEnvironment {
     pub async fn build_with_db(db: TemporaryDatabase) -> Self {
         let labrinth_config = setup(&db).await;
         let app = App::new().configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()));
-        let test_app = test::init_service(app).await;
+        let test_app: Rc<Box<dyn LocalService>> = Rc::new(Box::new(test::init_service(app).await));
         Self {
-            test_app: Rc::new(test_app),
+            v2: ApiV2 {
+                test_app: test_app.clone(),
+            },
+            test_app,
             db,
             dummy: None,
         }
@@ -59,9 +64,21 @@ impl TestEnvironment {
     pub async fn call(&self, req: actix_http::Request) -> ServiceResponse {
         self.test_app.call(req).await.unwrap()
     }
+
+    pub async fn generate_friend_user_notification(&self) {
+        let resp = self
+            .v2
+            .add_user_to_team(
+                &self.dummy.as_ref().unwrap().alpha_team_id,
+                FRIEND_USER_ID,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status(resp, StatusCode::NO_CONTENT);
+    }
 }
 
-trait LocalService {
+pub trait LocalService {
     fn call(
         &self,
         req: actix_http::Request,
