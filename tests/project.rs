@@ -496,14 +496,14 @@ pub async fn test_bulk_edit_categories() {
         let resp = test_env.call(req).await;
         assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-        let alpha_body = get_project_body(&test_env, &alpha_project_id, ADMIN_USER_PAT).await;
+        let alpha_body = get_project_body(&test_env, alpha_project_id, ADMIN_USER_PAT).await;
         assert_eq!(alpha_body["categories"], json!(DUMMY_CATEGORIES[0..=2]));
         assert_eq!(
             alpha_body["additional_categories"],
             json!(DUMMY_CATEGORIES[4..=5])
         );
 
-        let beta_body = get_project_body(&test_env, &beta_project_id, ADMIN_USER_PAT).await;
+        let beta_body = get_project_body(&test_env, beta_project_id, ADMIN_USER_PAT).await;
         assert_eq!(beta_body["categories"], alpha_body["categories"]);
         assert_eq!(
             beta_body["additional_categories"],

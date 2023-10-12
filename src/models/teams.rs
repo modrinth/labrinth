@@ -23,7 +23,7 @@ pub struct Team {
 }
 
 bitflags::bitflags! {
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub struct ProjectPermissions: u64 {
         const UPLOAD_VERSION = 1 << 0;
         const DELETE_VERSION = 1 << 1;
@@ -84,7 +84,7 @@ impl ProjectPermissions {
 }
 
 bitflags::bitflags! {
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub struct OrganizationPermissions: u64 {
         const EDIT_DETAILS = 1 << 0;
         const UNUSED = 1 << 1; // a currently unused permission, formerly EDIT_BODY

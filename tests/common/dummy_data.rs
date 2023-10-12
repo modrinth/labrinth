@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use actix_web::test::{self, TestRequest};
 use labrinth::{
     models::projects::Project,
@@ -16,7 +17,7 @@ use super::{
     environment::TestEnvironment,
 };
 
-pub const DUMMY_CATEGORIES: &'static [&str] = &[
+pub const DUMMY_CATEGORIES: &[&str] = &[
     "combat",
     "decoration",
     "economy",
