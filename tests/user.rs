@@ -7,6 +7,15 @@ use crate::common::{dummy_data::DummyJarFile, request_data::get_public_project_c
 
 mod common;
 
+// user GET (permissions, different users)
+// users GET
+// user auth
+// user projects get
+// user collections get
+// patch user
+// patch user icon
+// user follows
+
 #[actix_rt::test]
 pub async fn get_user_projects_after_creating_project_returns_new_project() {
     with_test_environment(|test_env| async move {

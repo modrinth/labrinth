@@ -1267,6 +1267,4 @@ pub async fn organization_scopes() {
 
 // TODO: Some hash/version files functions
 
-// TODO: Meta pat stuff
-
 // TODO: Image scopes

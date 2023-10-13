@@ -46,4 +46,6 @@ INSERT INTO categories (id, category, project_type) VALUES
     (107, 'optimization', 2);
 
 -- Create dummy data table to mark that this file has been run
-CREATE TABLE dummy_data ( /* ... */ );
+CREATE TABLE dummy_data ( 
+    update_id bigint PRIMARY KEY,
+ );

@@ -150,7 +150,7 @@ async fn test_get_team_project_orgs() {
         }))
         .to_request();
     let resp = test_env.call(req).await;
-    assert_eq!(resp.status(), 200); // TODO: realistially this should be 204
+    assert_eq!(resp.status(), 200);
 
     // Invite and add friend to zeta
     let req = test::TestRequest::post()
@@ -601,6 +601,51 @@ async fn transfer_ownership() {
     test_env.cleanup().await;
 }
 
-// TODO: add team member (to various teams). Permissions for invited user that is not accepted yet
-// TODO: joining team (forcibly? )
-// TODO: leaving team (forcibly? )
+// This test is currently not working.
+// #[actix_rt::test]
+// pub async fn no_acceptance_permissions() {
+//     // Adding a user to a project team in an organization, when that user is in the organization but not the team,
+//     // should have those permissions apply regardless of whether the user has accepted the invite or not.
+
+//     // This is because project-team permission overrriding must be possible, and this overriding can decrease the number of permissions a user has.
+
+//     let test_env = TestEnvironment::build(None).await;
+//     let api = &test_env.v2;
+
+//     let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id;
+//     let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
+//     let zeta_organization_id = &test_env.dummy.as_ref().unwrap().zeta_organization_id;
+//     let zeta_team_id = &test_env.dummy.as_ref().unwrap().zeta_team_id;
+
+//     // Link alpha team to zeta org
+//     let resp = api.organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT).await;
+//     assert_eq!(resp.status(), 200);
+
+//     // Invite friend to zeta team with all project default permissions
+//     let resp = api.add_user_to_team(&zeta_team_id, FRIEND_USER_ID, Some(ProjectPermissions::all()), Some(OrganizationPermissions::all()), USER_USER_PAT).await;
+//     assert_eq!(resp.status(), 204);
+
+//     // Accept invite to zeta team
+//     let resp = api.join_team(&zeta_team_id, FRIEND_USER_PAT).await;
+//     assert_eq!(resp.status(), 204);
+
+//     // Attempt, as friend, to edit details of alpha project (should succeed, org invite accepted)
+//     let resp = api.edit_project(alpha_project_id, json!({
+//         "title": "new name"
+//     }), FRIEND_USER_PAT).await;
+//     assert_eq!(resp.status(), 204);
+
+//     // Invite friend to alpha team with *no* project permissions
+//     let resp = api.add_user_to_team(&alpha_team_id, FRIEND_USER_ID, Some(ProjectPermissions::empty()), None, USER_USER_PAT).await;
+//     assert_eq!(resp.status(), 204);
+
+//     // Do not accept invite to alpha team
+
+//     // Attempt, as friend, to edit details of alpha project (should fail now, even though user has not accepted invite)
+//     let resp = api.edit_project(alpha_project_id, json!({
+//         "title": "new name"
+//     }), FRIEND_USER_PAT).await;
+//     assert_eq!(resp.status(), 401);
+
+//     test_env.cleanup().await;
+// }
