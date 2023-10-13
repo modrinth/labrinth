@@ -156,7 +156,9 @@ async fn manage_invites() {
         .unwrap();
 
     // re-add member for testing
-    let resp = api.add_user_to_team(zeta_team_id, MOD_USER_ID, None, None, ADMIN_USER_PAT).await;
+    let resp = api
+        .add_user_to_team(zeta_team_id, MOD_USER_ID, None, None, ADMIN_USER_PAT)
+        .await;
     assert_eq!(resp.status(), 204);
     let resp = api.join_team(zeta_team_id, MOD_USER_PAT).await;
     assert_eq!(resp.status(), 204);
@@ -194,11 +196,15 @@ async fn add_remove_project() {
 
     // First, we add FRIEND_USER_ID to the alpha project and transfer ownership to them
     // This is because the ownership of a project is needed to add it to an organization
-    let resp = api.add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT).await;
+    let resp = api
+        .add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
+        .await;
     assert_eq!(resp.status(), 204);
     let resp = api.join_team(alpha_team_id, FRIEND_USER_PAT).await;
     assert_eq!(resp.status(), 204);
-    let resp = api.transfer_team_ownership(alpha_team_id, FRIEND_USER_ID, USER_USER_PAT).await;
+    let resp = api
+        .transfer_team_ownership(alpha_team_id, FRIEND_USER_ID, USER_USER_PAT)
+        .await;
     assert_eq!(resp.status(), 204);
 
     // Now, FRIEND_USER_ID owns the alpha project

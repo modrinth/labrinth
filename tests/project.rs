@@ -196,7 +196,9 @@ async fn test_add_remove_project() {
     let hash = sha1::Sha1::from(include_bytes!("../tests/files/basic-mod.jar"))
         .digest()
         .to_string();
-    let version = api.get_version_from_hash_deserialized(&hash, "sha1", USER_USER_PAT).await;
+    let version = api
+        .get_version_from_hash_deserialized(&hash, "sha1", USER_USER_PAT)
+        .await;
     assert_eq!(version.id, uploaded_version_id);
 
     // Reusing with a different slug and the same file should fail
@@ -299,54 +301,54 @@ pub async fn test_patch_project() {
     // Failure because we are setting URL fields to invalid urls.
     for url_type in ["issues_url", "source_url", "wiki_url", "discord_url"] {
         let resp = api
-        .edit_project(
-            alpha_project_slug,
-            json!({
-                url_type: "w.fake.url",
-            }),
-            USER_USER_PAT,
-        )
-        .await;
+            .edit_project(
+                alpha_project_slug,
+                json!({
+                    url_type: "w.fake.url",
+                }),
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 400);
     }
 
     // Failure because these are illegal requested statuses for a normal user.
     for req in ["unknown", "processing", "withheld", "scheduled"] {
         let resp = api
-        .edit_project(
-            alpha_project_slug,
-            json!({
-                "requested_status": req,
-            }),
-            USER_USER_PAT,
-        )
-        .await;
+            .edit_project(
+                alpha_project_slug,
+                json!({
+                    "requested_status": req,
+                }),
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 400);
     }
 
     // Failure because these should not be able to be set by a non-mod
     for key in ["moderation_message", "moderation_message_body"] {
         let resp = api
-        .edit_project(
-            alpha_project_slug,
-            json!({
-                key: "test",
-            }),
-            USER_USER_PAT,
-        )
-        .await;
+            .edit_project(
+                alpha_project_slug,
+                json!({
+                    key: "test",
+                }),
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 401);
 
         // (should work for a mod, though)
         let resp = api
-        .edit_project(
-            alpha_project_slug,
-            json!({
-                key: "test",
-            }),
-            MOD_USER_PAT,
-        )
-        .await;
+            .edit_project(
+                alpha_project_slug,
+                json!({
+                    key: "test",
+                }),
+                MOD_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 204);
     }
 
@@ -363,54 +365,54 @@ pub async fn test_patch_project() {
         "not url safe%&^!#$##!@#$%^&*()",
     ] {
         let resp = api
-        .edit_project(
-            alpha_project_slug,
-            json!({
-                "slug": slug, // the other dummy project has this slug
-            }),
-            USER_USER_PAT,
-        )
-        .await;
+            .edit_project(
+                alpha_project_slug,
+                json!({
+                    "slug": slug, // the other dummy project has this slug
+                }),
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 400);
     }
 
     // Not allowed to directly set status, as 'beta_project_slug' (the other project) is "processing" and cannot have its status changed like this.
     let resp = api
-    .edit_project(
-        beta_project_slug,
-        json!({
-            "status": "private"
-        }),
-        USER_USER_PAT,
-    )
-    .await;
+        .edit_project(
+            beta_project_slug,
+            json!({
+                "status": "private"
+            }),
+            USER_USER_PAT,
+        )
+        .await;
     assert_eq!(resp.status(), 401);
 
     // Sucessful request to patch many fields.
     let resp = api
-    .edit_project(
-        alpha_project_slug,
-        json!({
-            "slug": "newslug",
-            "title": "New successful title",
-            "description": "New successful description",
-            "body": "New successful body",
-            "categories": [DUMMY_CATEGORIES[0]],
-            "license_id": "MIT",
-            "issues_url": "https://github.com",
-            "discord_url": "https://discord.gg",
-            "wiki_url": "https://wiki.com",
-            "client_side": "optional",
-            "server_side": "required",
-            "donation_urls": [{
-                "id": "patreon",
-                "platform": "Patreon",
-                "url": "https://patreon.com"
-            }]
-        }),
-        USER_USER_PAT,
-    )
-    .await;
+        .edit_project(
+            alpha_project_slug,
+            json!({
+                "slug": "newslug",
+                "title": "New successful title",
+                "description": "New successful description",
+                "body": "New successful body",
+                "categories": [DUMMY_CATEGORIES[0]],
+                "license_id": "MIT",
+                "issues_url": "https://github.com",
+                "discord_url": "https://discord.gg",
+                "wiki_url": "https://wiki.com",
+                "client_side": "optional",
+                "server_side": "required",
+                "donation_urls": [{
+                    "id": "patreon",
+                    "platform": "Patreon",
+                    "url": "https://patreon.com"
+                }]
+            }),
+            USER_USER_PAT,
+        )
+        .await;
     assert_eq!(resp.status(), 204);
 
     // Old slug no longer works
@@ -440,29 +442,34 @@ pub async fn test_patch_project() {
 pub async fn test_bulk_edit_categories() {
     with_test_environment(|test_env| async move {
         let api = &test_env.v2;
-        let alpha_project_id : &str = &test_env.dummy.as_ref().unwrap().alpha_project_id;
-        let beta_project_id : &str = &test_env.dummy.as_ref().unwrap().beta_project_id;
+        let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().alpha_project_id;
+        let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().beta_project_id;
 
-        let resp = api.edit_project_bulk([alpha_project_id, beta_project_id], 
-            json!({
-                "categories": [DUMMY_CATEGORIES[0], DUMMY_CATEGORIES[3]],
-                "add_categories": [DUMMY_CATEGORIES[1], DUMMY_CATEGORIES[2]],
-                "remove_categories": [DUMMY_CATEGORIES[3]],
-                "additional_categories": [DUMMY_CATEGORIES[4], DUMMY_CATEGORIES[6]],
-                "add_additional_categories": [DUMMY_CATEGORIES[5]],
-                "remove_additional_categories": [DUMMY_CATEGORIES[6]],
-            })
-            , ADMIN_USER_PAT).await;
+        let resp = api
+            .edit_project_bulk(
+                [alpha_project_id, beta_project_id],
+                json!({
+                    "categories": [DUMMY_CATEGORIES[0], DUMMY_CATEGORIES[3]],
+                    "add_categories": [DUMMY_CATEGORIES[1], DUMMY_CATEGORIES[2]],
+                    "remove_categories": [DUMMY_CATEGORIES[3]],
+                    "additional_categories": [DUMMY_CATEGORIES[4], DUMMY_CATEGORIES[6]],
+                    "add_additional_categories": [DUMMY_CATEGORIES[5]],
+                    "remove_additional_categories": [DUMMY_CATEGORIES[6]],
+                }),
+                ADMIN_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-        let alpha_body = api.get_project_deserialized(alpha_project_id, ADMIN_USER_PAT).await;
+        let alpha_body = api
+            .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
+            .await;
         assert_eq!(alpha_body.categories, DUMMY_CATEGORIES[0..=2]);
-        assert_eq!(
-            alpha_body.additional_categories,
-            DUMMY_CATEGORIES[4..=5]
-        );
+        assert_eq!(alpha_body.additional_categories, DUMMY_CATEGORIES[4..=5]);
 
-        let beta_body = api.get_project_deserialized(beta_project_id, ADMIN_USER_PAT).await;
+        let beta_body = api
+            .get_project_deserialized(beta_project_id, ADMIN_USER_PAT)
+            .await;
         assert_eq!(beta_body.categories, alpha_body.categories);
         assert_eq!(
             beta_body.additional_categories,

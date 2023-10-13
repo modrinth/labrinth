@@ -2,7 +2,12 @@
 
 use std::{rc::Rc, sync::Arc};
 
-use super::{database::{TemporaryDatabase, FRIEND_USER_ID, USER_USER_PAT}, dummy_data, api_v2::ApiV2, asserts::assert_status};
+use super::{
+    api_v2::ApiV2,
+    asserts::assert_status,
+    database::{TemporaryDatabase, FRIEND_USER_ID, USER_USER_PAT},
+    dummy_data,
+};
 use crate::common::setup;
 use actix_http::StatusCode;
 use actix_web::{dev::ServiceResponse, test, App};

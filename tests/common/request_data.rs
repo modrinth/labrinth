@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 use serde_json::json;
 
-use super::{actix::MultipartSegment, dummy_data::{DummyJarFile, DummyImage}};
+use super::{
+    actix::MultipartSegment,
+    dummy_data::{DummyImage, DummyJarFile},
+};
 use crate::common::actix::MultipartSegmentData;
 
 pub struct ProjectCreationRequestData {
@@ -20,7 +23,6 @@ pub fn get_public_project_creation_data(
     slug: &str,
     version_jar: Option<DummyJarFile>,
 ) -> ProjectCreationRequestData {
-
     let initial_versions = if let Some(ref jar) = version_jar {
         json!([{
             "file_parts": [jar.filename()],
@@ -82,7 +84,7 @@ pub fn get_public_project_creation_data(
     }
 }
 
-pub fn get_icon_data(dummy_icon : DummyImage) -> ImageData {
+pub fn get_icon_data(dummy_icon: DummyImage) -> ImageData {
     ImageData {
         filename: dummy_icon.filename(),
         extension: dummy_icon.extension(),

@@ -939,7 +939,7 @@ pub async fn remove_team_member(
         }
 
         TeamMember::clear_cache(id, &redis).await?;
-        User::clear_project_cache(&[delete_member.user_id.into()], &redis).await?;
+        User::clear_project_cache(&[delete_member.user_id], &redis).await?;
 
         transaction.commit().await?;
         Ok(HttpResponse::NoContent().body(""))

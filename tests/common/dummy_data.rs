@@ -144,12 +144,10 @@ pub async fn get_dummy_data(test_env: &TestEnvironment) -> DummyData {
 pub async fn add_project_alpha(test_env: &TestEnvironment) -> (Project, Version) {
     let (project, versions) = test_env
         .v2
-        .add_public_project(get_public_project_creation_data(
-            "alpha",
-            Some(DummyJarFile::DummyProjectAlpha),
-        ),
-        USER_USER_PAT
-    )
+        .add_public_project(
+            get_public_project_creation_data("alpha", Some(DummyJarFile::DummyProjectAlpha)),
+            USER_USER_PAT,
+        )
         .await;
     (project, versions.into_iter().next().unwrap())
 }
@@ -329,9 +327,7 @@ impl DummyImage {
 
     pub fn bytes(&self) -> Vec<u8> {
         match self {
-            DummyImage::SmallIcon => {
-                include_bytes!("../../tests/files/200x200.png").to_vec()
-            }
+            DummyImage::SmallIcon => include_bytes!("../../tests/files/200x200.png").to_vec(),
         }
     }
 }

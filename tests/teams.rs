@@ -1,10 +1,10 @@
 use actix_web::test;
-use labrinth::models::teams::{ProjectPermissions, OrganizationPermissions};
+use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
 use crate::common::database::*;
 
-use crate::common:: environment::TestEnvironment;
+use crate::common::environment::TestEnvironment;
 
 // importing common module.
 mod common;
@@ -19,92 +19,115 @@ async fn test_get_team() {
     let zeta_team_id = &test_env.dummy.as_ref().unwrap().zeta_team_id;
 
     // Perform tests for an organization team and a project team
-    for (team_association_id, team_association, team_id) in [(alpha_project_id, "project", alpha_team_id), (zeta_organization_id, "organization", zeta_team_id)] {
+    for (team_association_id, team_association, team_id) in [
+        (alpha_project_id, "project", alpha_team_id),
+        (zeta_organization_id, "organization", zeta_team_id),
+    ] {
         // A non-member of the team should get basic info but not be able to see private data
-        for uri in [format!("/v2/team/{team_id}/members"), format!("/v2/{team_association}/{team_association_id}/members")]
-        {
+        for uri in [
+            format!("/v2/team/{team_id}/members"),
+            format!("/v2/{team_association}/{team_association_id}/members"),
+        ] {
             let req = test::TestRequest::get()
-            .uri(&uri)
-            .append_header(("Authorization", FRIEND_USER_PAT))
-            .to_request();
+                .uri(&uri)
+                .append_header(("Authorization", FRIEND_USER_PAT))
+                .to_request();
 
             let resp = test_env.call(req).await;
             assert_eq!(resp.status(), 200);
-            let value : serde_json::Value = test::read_body_json(resp).await;
+            let value: serde_json::Value = test::read_body_json(resp).await;
             assert_eq!(value[0]["user"]["id"], USER_USER_ID);
-            assert_eq!(value[0]["permissions"].is_null(), true);
+            assert!(value[0]["permissions"].is_null());
         }
 
         // A non-accepted member of the team should:
         // - not be able to see private data about the team, but see all members including themselves
         // - should not appear in the team members list to enemy users
         let req = test::TestRequest::post()
-        .uri(&format!("/v2/team/{team_id}/members"))
-        .append_header(("Authorization", USER_USER_PAT))
-        .set_json(&json!({
-            "user_id": FRIEND_USER_ID,
-        })).to_request();
+            .uri(&format!("/v2/team/{team_id}/members"))
+            .append_header(("Authorization", USER_USER_PAT))
+            .set_json(&json!({
+                "user_id": FRIEND_USER_ID,
+            }))
+            .to_request();
         let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 204);
 
-        for uri in [format!("/v2/team/{team_id}/members"), format!("/v2/{team_association}/{team_association_id}/members")]
-        {
+        for uri in [
+            format!("/v2/team/{team_id}/members"),
+            format!("/v2/{team_association}/{team_association_id}/members"),
+        ] {
             let req = test::TestRequest::get()
-            .uri(&uri)
-            .append_header(("Authorization", FRIEND_USER_PAT))
-            .to_request();
+                .uri(&uri)
+                .append_header(("Authorization", FRIEND_USER_PAT))
+                .to_request();
             let resp = test_env.call(req).await;
             assert_eq!(resp.status(), 200);
-            let value : serde_json::Value = test::read_body_json(resp).await;
+            let value: serde_json::Value = test::read_body_json(resp).await;
             let members = value.as_array().unwrap();
             assert!(members.len() == 2); // USER_USER_ID and FRIEND_USER_ID should be in the team
-            let user_user = members.iter().find(|x| x["user"]["id"] == USER_USER_ID).unwrap();
-            let friend_user = members.iter().find(|x| x["user"]["id"] == FRIEND_USER_ID).unwrap();
+            let user_user = members
+                .iter()
+                .find(|x| x["user"]["id"] == USER_USER_ID)
+                .unwrap();
+            let friend_user = members
+                .iter()
+                .find(|x| x["user"]["id"] == FRIEND_USER_ID)
+                .unwrap();
             assert_eq!(user_user["user"]["id"], USER_USER_ID);
             assert!(user_user["permissions"].is_null()); // Should not see private data of the team
             assert_eq!(friend_user["user"]["id"], FRIEND_USER_ID);
             assert!(friend_user["permissions"].is_null());
 
             let req = test::TestRequest::get()
-            .uri(&uri)
-            .append_header(("Authorization", ENEMY_USER_PAT))
-            .to_request();
+                .uri(&uri)
+                .append_header(("Authorization", ENEMY_USER_PAT))
+                .to_request();
             let resp = test_env.call(req).await;
             assert_eq!(resp.status(), 200);
-            let value : serde_json::Value = test::read_body_json(resp).await;
+            let value: serde_json::Value = test::read_body_json(resp).await;
             let members = value.as_array().unwrap();
             assert_eq!(members.len(), 1); // Only USER_USER_ID should be in the team
             assert_eq!(members[0]["user"]["id"], USER_USER_ID);
-            assert_eq!(members[0]["permissions"].is_null(), true);
+            assert!(members[0]["permissions"].is_null());
         }
         // An accepted member of the team should appear in the team members list
         // and should be able to see private data about the team
         let req = test::TestRequest::post()
-        .uri(&format!("/v2/team/{team_id}/join"))
-        .append_header(("Authorization", FRIEND_USER_PAT)).to_request();
+            .uri(&format!("/v2/team/{team_id}/join"))
+            .append_header(("Authorization", FRIEND_USER_PAT))
+            .to_request();
         let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 204);
 
-        for uri in [format!("/v2/team/{team_id}/members"), format!("/v2/{team_association}/{team_association_id}/members")]
-        {
+        for uri in [
+            format!("/v2/team/{team_id}/members"),
+            format!("/v2/{team_association}/{team_association_id}/members"),
+        ] {
             let req = test::TestRequest::get()
-            .uri(&uri)
-            .append_header(("Authorization", FRIEND_USER_PAT))
-            .to_request();
+                .uri(&uri)
+                .append_header(("Authorization", FRIEND_USER_PAT))
+                .to_request();
             let resp = test_env.call(req).await;
             assert_eq!(resp.status(), 200);
-            let value : serde_json::Value = test::read_body_json(resp).await;
+            let value: serde_json::Value = test::read_body_json(resp).await;
             let members = value.as_array().unwrap();
             assert!(members.len() == 2); // USER_USER_ID and FRIEND_USER_ID should be in the team
-            let user_user = members.iter().find(|x| x["user"]["id"] == USER_USER_ID).unwrap();
-            let friend_user = members.iter().find(|x| x["user"]["id"] == FRIEND_USER_ID).unwrap();
+            let user_user = members
+                .iter()
+                .find(|x| x["user"]["id"] == USER_USER_ID)
+                .unwrap();
+            let friend_user = members
+                .iter()
+                .find(|x| x["user"]["id"] == FRIEND_USER_ID)
+                .unwrap();
             assert_eq!(user_user["user"]["id"], USER_USER_ID);
             assert!(!user_user["permissions"].is_null()); // SHOULD see private data of the team
             assert_eq!(friend_user["user"]["id"], FRIEND_USER_ID);
             assert!(!friend_user["permissions"].is_null());
         }
     }
-    
+
     // Cleanup test db
     test_env.cleanup().await;
 }
@@ -122,9 +145,10 @@ async fn test_get_team_project_orgs() {
     let req = test::TestRequest::post()
         .uri(&format!("/v2/organization/{zeta_organization_id}/projects"))
         .append_header(("Authorization", USER_USER_PAT))
-        .set_json(&json!({
+        .set_json(json!({
             "project_id": alpha_project_id,
-        })).to_request();
+        }))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200); // TODO: realistially this should be 204
 
@@ -132,15 +156,17 @@ async fn test_get_team_project_orgs() {
     let req = test::TestRequest::post()
         .uri(&format!("/v2/team/{zeta_team_id}/members"))
         .append_header(("Authorization", USER_USER_PAT))
-        .set_json(&json!({
+        .set_json(json!({
             "user_id": FRIEND_USER_ID,
-        })).to_request();
+        }))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     let req = test::TestRequest::post()
         .uri(&format!("/v2/team/{zeta_team_id}/join"))
-        .append_header(("Authorization", FRIEND_USER_PAT)).to_request();
+        .append_header(("Authorization", FRIEND_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
@@ -153,7 +179,7 @@ async fn test_get_team_project_orgs() {
         .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
-    let value : serde_json::Value = test::read_body_json(resp).await;
+    let value: serde_json::Value = test::read_body_json(resp).await;
     let members = value.as_array().unwrap();
     assert_eq!(members.len(), 1);
 
@@ -165,7 +191,7 @@ async fn test_get_team_project_orgs() {
         .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
-    let value : serde_json::Value = test::read_body_json(resp).await;
+    let value: serde_json::Value = test::read_body_json(resp).await;
     let members = value.as_array().unwrap();
     assert_eq!(members.len(), 2);
 
@@ -182,17 +208,17 @@ async fn test_patch_project_team_member() {
 
     // Edit team as admin/mod but not a part of the team should be OK
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/members/{USER_USER_ID}"))
-    .set_json(json!({}))
-    .append_header(("Authorization", ADMIN_USER_PAT))
-    .to_request();
+        .uri(&format!("/v2/team/{alpha_team_id}/members/{USER_USER_ID}"))
+        .set_json(json!({}))
+        .append_header(("Authorization", ADMIN_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     // As a non-owner with full permissions, attempt to edit the owner's permissions/roles
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/members/{USER_USER_ID}"))
-    .append_header(("Authorization", ADMIN_USER_PAT))
+        .uri(&format!("/v2/team/{alpha_team_id}/members/{USER_USER_ID}"))
+        .append_header(("Authorization", ADMIN_USER_PAT))
         .set_json(json!({
             "role": "member"
         }))
@@ -201,8 +227,8 @@ async fn test_patch_project_team_member() {
     assert_eq!(resp.status(), 400);
 
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/members/{USER_USER_ID}"))
-    .append_header(("Authorization", ADMIN_USER_PAT))
+        .uri(&format!("/v2/team/{alpha_team_id}/members/{USER_USER_ID}"))
+        .append_header(("Authorization", ADMIN_USER_PAT))
         .set_json(json!({
             "permissions": 0
         }))
@@ -213,8 +239,8 @@ async fn test_patch_project_team_member() {
 
     // Should not be able to edit organization permissions of a project team
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/members/{USER_USER_ID}"))
-    .append_header(("Authorization", USER_USER_PAT))
+        .uri(&format!("/v2/team/{alpha_team_id}/members/{USER_USER_ID}"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "organization_permissions": 0
         }))
@@ -222,7 +248,6 @@ async fn test_patch_project_team_member() {
     let resp = test_env.call(req).await;
 
     assert_eq!(resp.status(), 400);
-
 
     // Should not be able to add permissions to a user that the adding-user does not have
     // (true for both project and org)
@@ -234,14 +259,16 @@ async fn test_patch_project_team_member() {
         .set_json(&json!({
             "user_id": FRIEND_USER_ID,
             "permissions": (ProjectPermissions::EDIT_MEMBER | ProjectPermissions::EDIT_BODY).bits(),
-        })).to_request();
+        }))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     // accept
     let req = test::TestRequest::post()
         .uri(&format!("/v2/team/{alpha_team_id}/join"))
-        .append_header(("Authorization", FRIEND_USER_PAT)).to_request();
+        .append_header(("Authorization", FRIEND_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
@@ -254,24 +281,28 @@ async fn test_patch_project_team_member() {
         }))
         .to_request();
     let resp = test_env.call(req).await;
-  assert_eq!(resp.status(), 400);
+    assert_eq!(resp.status(), 400);
 
     // Cannot set a user to Owner
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/members/{FRIEND_USER_ID}"))
-    .append_header(("Authorization", USER_USER_PAT))
+        .uri(&format!(
+            "/v2/team/{alpha_team_id}/members/{FRIEND_USER_ID}"
+        ))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "role": "Owner"
         }))
         .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 400);
-    
+
     // Cannot set payouts outside of 0 and 5000
     for payout in [-1, 5001] {
         let req = test::TestRequest::patch()
-        .uri(&format!("/v2/team/{alpha_team_id}/members/{FRIEND_USER_ID}"))
-        .append_header(("Authorization", USER_USER_PAT))
+            .uri(&format!(
+                "/v2/team/{alpha_team_id}/members/{FRIEND_USER_ID}"
+            ))
+            .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 "payouts_split": payout
             }))
@@ -283,8 +314,10 @@ async fn test_patch_project_team_member() {
 
     // Successful patch
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/members/{FRIEND_USER_ID}"))
-    .append_header(("Authorization", FRIEND_USER_PAT))
+        .uri(&format!(
+            "/v2/team/{alpha_team_id}/members/{FRIEND_USER_ID}"
+        ))
+        .append_header(("Authorization", FRIEND_USER_PAT))
         .set_json(json!({
             "payouts_split": 51,
             "permissions": ProjectPermissions::EDIT_MEMBER.bits(), // reduces permissions
@@ -297,15 +330,23 @@ async fn test_patch_project_team_member() {
 
     // Check results
     let req = test::TestRequest::get()
-    .uri(&format!("/v2/team/{alpha_team_id}/members"))
-    .append_header(("Authorization", FRIEND_USER_PAT))
-    .to_request();
+        .uri(&format!("/v2/team/{alpha_team_id}/members"))
+        .append_header(("Authorization", FRIEND_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
-    let value : serde_json::Value = test::read_body_json(resp).await;
-    let member = value.as_array().unwrap().iter().find(|x| x["user"]["id"] == FRIEND_USER_ID).unwrap();
+    let value: serde_json::Value = test::read_body_json(resp).await;
+    let member = value
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["user"]["id"] == FRIEND_USER_ID)
+        .unwrap();
     assert_eq!(member["payouts_split"], 51.0);
-    assert_eq!(member["permissions"], ProjectPermissions::EDIT_MEMBER.bits());
+    assert_eq!(
+        member["permissions"],
+        ProjectPermissions::EDIT_MEMBER.bits()
+    );
     assert_eq!(member["role"], "member");
     assert_eq!(member["ordering"], 5);
 
@@ -322,17 +363,17 @@ async fn test_patch_organization_team_member() {
 
     // Edit team as admin/mod but not a part of the team should be OK
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{zeta_team_id}/members/{USER_USER_ID}"))
-    .set_json(json!({}))
-    .append_header(("Authorization", ADMIN_USER_PAT))
-    .to_request();
+        .uri(&format!("/v2/team/{zeta_team_id}/members/{USER_USER_ID}"))
+        .set_json(json!({}))
+        .append_header(("Authorization", ADMIN_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     // As a non-owner with full permissions, attempt to edit the owner's permissions/roles
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{zeta_team_id}/members/{USER_USER_ID}"))
-    .append_header(("Authorization", ADMIN_USER_PAT))
+        .uri(&format!("/v2/team/{zeta_team_id}/members/{USER_USER_ID}"))
+        .append_header(("Authorization", ADMIN_USER_PAT))
         .set_json(json!({
             "role": "member"
         }))
@@ -341,8 +382,8 @@ async fn test_patch_organization_team_member() {
     assert_eq!(resp.status(), 400);
 
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{zeta_team_id}/members/{USER_USER_ID}"))
-    .append_header(("Authorization", ADMIN_USER_PAT))
+        .uri(&format!("/v2/team/{zeta_team_id}/members/{USER_USER_ID}"))
+        .append_header(("Authorization", ADMIN_USER_PAT))
         .set_json(json!({
             "permissions": 0
         }))
@@ -367,7 +408,8 @@ async fn test_patch_organization_team_member() {
     // accept
     let req = test::TestRequest::post()
         .uri(&format!("/v2/team/{zeta_team_id}/join"))
-        .append_header(("Authorization", FRIEND_USER_PAT)).to_request();
+        .append_header(("Authorization", FRIEND_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
@@ -385,8 +427,8 @@ async fn test_patch_organization_team_member() {
 
     // Cannot set a user to Owner
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{zeta_team_id}/members/{FRIEND_USER_ID}"))
-    .append_header(("Authorization", USER_USER_PAT))
+        .uri(&format!("/v2/team/{zeta_team_id}/members/{FRIEND_USER_ID}"))
+        .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "role": "Owner"
         }))
@@ -394,12 +436,12 @@ async fn test_patch_organization_team_member() {
     let resp = test_env.call(req).await;
 
     assert_eq!(resp.status(), 400);
-    
+
     // Cannot set payouts outside of 0 and 5000
     for payout in [-1, 5001] {
         let req = test::TestRequest::patch()
-        .uri(&format!("/v2/team/{zeta_team_id}/members/{FRIEND_USER_ID}"))
-        .append_header(("Authorization", USER_USER_PAT))
+            .uri(&format!("/v2/team/{zeta_team_id}/members/{FRIEND_USER_ID}"))
+            .append_header(("Authorization", USER_USER_PAT))
             .set_json(json!({
                 "payouts_split": payout
             }))
@@ -410,8 +452,8 @@ async fn test_patch_organization_team_member() {
 
     // Successful patch
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{zeta_team_id}/members/{FRIEND_USER_ID}"))
-    .append_header(("Authorization", FRIEND_USER_PAT))
+        .uri(&format!("/v2/team/{zeta_team_id}/members/{FRIEND_USER_ID}"))
+        .append_header(("Authorization", FRIEND_USER_PAT))
         .set_json(json!({
             "payouts_split": 51,
             "organization_permissions": (OrganizationPermissions::EDIT_MEMBER).bits(), // reduces permissions
@@ -426,16 +468,27 @@ async fn test_patch_organization_team_member() {
 
     // Check results
     let req = test::TestRequest::get()
-    .uri(&format!("/v2/team/{zeta_team_id}/members"))
-    .append_header(("Authorization", FRIEND_USER_PAT))
-    .to_request();
+        .uri(&format!("/v2/team/{zeta_team_id}/members"))
+        .append_header(("Authorization", FRIEND_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
-    let value : serde_json::Value = test::read_body_json(resp).await;
-    let member = value.as_array().unwrap().iter().find(|x| x["user"]["id"] == FRIEND_USER_ID).unwrap();
+    let value: serde_json::Value = test::read_body_json(resp).await;
+    let member = value
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["user"]["id"] == FRIEND_USER_ID)
+        .unwrap();
     assert_eq!(member["payouts_split"], 51.0);
-    assert_eq!(member["organization_permissions"], OrganizationPermissions::EDIT_MEMBER.bits());
-    assert_eq!(member["permissions"], ProjectPermissions::EDIT_MEMBER.bits());
+    assert_eq!(
+        member["organization_permissions"],
+        OrganizationPermissions::EDIT_MEMBER.bits()
+    );
+    assert_eq!(
+        member["permissions"],
+        ProjectPermissions::EDIT_MEMBER.bits()
+    );
     assert_eq!(member["role"], "member");
     assert_eq!(member["ordering"], 5);
 
@@ -452,12 +505,12 @@ async fn transfer_ownership() {
 
     // Cannot set friend as owner (not a member)
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/owner"))
-    .set_json(json!({
-        "user_id": FRIEND_USER_ID
-    }))
-    .append_header(("Authorization", USER_USER_ID))
-    .to_request();
+        .uri(&format!("/v2/team/{alpha_team_id}/owner"))
+        .set_json(json!({
+            "user_id": FRIEND_USER_ID
+        }))
+        .append_header(("Authorization", USER_USER_ID))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 401);
 
@@ -465,64 +518,81 @@ async fn transfer_ownership() {
     let req = test::TestRequest::post()
         .uri(&format!("/v2/team/{alpha_team_id}/members"))
         .append_header(("Authorization", USER_USER_PAT))
-        .set_json(&json!({
+        .set_json(json!({
             "user_id": FRIEND_USER_ID,
-        })).to_request();
+        }))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     // accept
     let req = test::TestRequest::post()
         .uri(&format!("/v2/team/{alpha_team_id}/join"))
-        .append_header(("Authorization", FRIEND_USER_PAT)).to_request();
+        .append_header(("Authorization", FRIEND_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     // Cannot set ourselves as owner
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/owner"))
-    .set_json(json!({
-        "user_id": FRIEND_USER_ID
-    }))
-    .append_header(("Authorization", FRIEND_USER_PAT))
-    .to_request();
+        .uri(&format!("/v2/team/{alpha_team_id}/owner"))
+        .set_json(json!({
+            "user_id": FRIEND_USER_ID
+        }))
+        .append_header(("Authorization", FRIEND_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 401);
 
     // Can set friend as owner
     let req = test::TestRequest::patch()
-    .uri(&format!("/v2/team/{alpha_team_id}/owner"))
-    .set_json(json!({
-        "user_id": FRIEND_USER_ID
-    }))
-    .append_header(("Authorization", USER_USER_PAT))
-    .to_request();
+        .uri(&format!("/v2/team/{alpha_team_id}/owner"))
+        .set_json(json!({
+            "user_id": FRIEND_USER_ID
+        }))
+        .append_header(("Authorization", USER_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 204);
 
     // Check
     let req = test::TestRequest::get()
-    .uri(&format!("/v2/team/{alpha_team_id}/members"))
-    .set_json(json!({
-        "user_id": FRIEND_USER_ID
-    }))
-    .append_header(("Authorization", USER_USER_PAT))
-    .to_request();
+        .uri(&format!("/v2/team/{alpha_team_id}/members"))
+        .set_json(json!({
+            "user_id": FRIEND_USER_ID
+        }))
+        .append_header(("Authorization", USER_USER_PAT))
+        .to_request();
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 200);
-    let value : serde_json::Value = test::read_body_json(resp).await;
-    let friend_member = value.as_array().unwrap().iter().find(|x| x["user"]["id"] == FRIEND_USER_ID).unwrap();
+    let value: serde_json::Value = test::read_body_json(resp).await;
+    let friend_member = value
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["user"]["id"] == FRIEND_USER_ID)
+        .unwrap();
     assert_eq!(friend_member["role"], "Owner");
-    assert_eq!(friend_member["permissions"], ProjectPermissions::all().bits());
-    let user_member = value.as_array().unwrap().iter().find(|x| x["user"]["id"] == USER_USER_ID).unwrap();
+    assert_eq!(
+        friend_member["permissions"],
+        ProjectPermissions::all().bits()
+    );
+    let user_member = value
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["user"]["id"] == USER_USER_ID)
+        .unwrap();
     assert_eq!(user_member["role"], "Member");
     assert_eq!(user_member["permissions"], ProjectPermissions::all().bits());
 
     // Confirm that user, a user who still has full permissions, cannot then remove the owner
     let req = test::TestRequest::delete()
-    .uri(&format!("/v2/team/{alpha_team_id}/members/{FRIEND_USER_ID}"))
-    .append_header(("Authorization", USER_USER_PAT))
-    .to_request();
+        .uri(&format!(
+            "/v2/team/{alpha_team_id}/members/{FRIEND_USER_ID}"
+        ))
+        .append_header(("Authorization", USER_USER_PAT))
+        .to_request();
 
     let resp = test_env.call(req).await;
     assert_eq!(resp.status(), 401);
@@ -531,7 +601,6 @@ async fn transfer_ownership() {
     test_env.cleanup().await;
 }
 
-
 // TODO: add team member (to various teams). Permissions for invited user that is not accepted yet
 // TODO: joining team (forcibly? )
-// TODO: leaving team (forcibly? ) 
+// TODO: leaving team (forcibly? )

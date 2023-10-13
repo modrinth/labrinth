@@ -4,10 +4,12 @@ use itertools::Itertools;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::common::{database::{generate_random_name, ADMIN_USER_PAT}, request_data};
+use crate::common::{
+    database::{generate_random_name, ADMIN_USER_PAT},
+    request_data,
+};
 
 use super::{
-    actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData},
     database::{USER_USER_ID, USER_USER_PAT},
     environment::TestEnvironment,
 };
@@ -865,7 +867,9 @@ async fn create_dummy_org(test_env: &TestEnvironment) -> (String, String) {
         .await;
     assert!(resp.status().is_success());
 
-    let organization = api.get_organization_deserialized(&name, ADMIN_USER_PAT).await;
+    let organization = api
+        .get_organization_deserialized(&name, ADMIN_USER_PAT)
+        .await;
     let organizaion_id = organization.id.to_string();
     let team_id = organization.team_id.to_string();
 
@@ -874,7 +878,9 @@ async fn create_dummy_org(test_env: &TestEnvironment) -> (String, String) {
 
 async fn add_project_to_org(test_env: &TestEnvironment, project_id: &str, organization_id: &str) {
     let api = &test_env.v2;
-    let resp = api.organization_add_project(organization_id, project_id, ADMIN_USER_PAT).await;
+    let resp = api
+        .organization_add_project(organization_id, project_id, ADMIN_USER_PAT)
+        .await;
     assert!(resp.status().is_success());
 }
 
@@ -889,7 +895,15 @@ async fn add_user_to_team(
     let api = &test_env.v2;
 
     // Invite user
-    let resp = api.add_user_to_team(team_id, user_id, project_permissions, organization_permissions, ADMIN_USER_PAT).await;
+    let resp = api
+        .add_user_to_team(
+            team_id,
+            user_id,
+            project_permissions,
+            organization_permissions,
+            ADMIN_USER_PAT,
+        )
+        .await;
     assert!(resp.status().is_success());
 
     // Accept invitation
@@ -907,10 +921,17 @@ async fn modify_user_team_permissions(
     let api = &test_env.v2;
 
     // Send invitation to user
-    let resp = api.edit_team_member(team_id, user_id, json!({
-        "permissions" : permissions.map(|p| p.bits()),
-        "organization_permissions" : organization_permissions.map(|p| p.bits()),
-    }), ADMIN_USER_PAT).await;
+    let resp = api
+        .edit_team_member(
+            team_id,
+            user_id,
+            json!({
+                "permissions" : permissions.map(|p| p.bits()),
+                "organization_permissions" : organization_permissions.map(|p| p.bits()),
+            }),
+            ADMIN_USER_PAT,
+        )
+        .await;
     assert!(resp.status().is_success());
 }
 
@@ -927,11 +948,7 @@ async fn get_project_permissions(
     project_id: &str,
     test_env: &TestEnvironment,
 ) -> ProjectPermissions {
-
-    let resp = test_env
-        .v2
-        .get_project_members(project_id, user_pat)
-        .await;
+    let resp = test_env.v2.get_project_members(project_id, user_pat).await;
     let permissions = if resp.status().as_u16() == 200 {
         let value: serde_json::Value = test::read_body_json(resp).await;
         value
