@@ -1,8 +1,11 @@
 use crate::auth::email::send_email;
 use crate::auth::session::issue_session;
 use crate::auth::validate::get_user_record_from_bearer_token;
-use crate::auth::{get_user_from_headers, AuthenticationError};
+use crate::auth::{get_user_from_headers, AuthenticationError, OAuthError, OAuthErrorType};
 use crate::database::models::flow_item::Flow;
+use crate::database::models::oauth_client_authorization_item::OAuthClientAuthorization;
+use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
+use crate::database::models::OAuthClientId;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
@@ -53,7 +56,8 @@ pub fn config(cfg: &mut ServiceConfig) {
             .service(set_email)
             .service(verify_email)
             .service(subscribe_newsletter)
-            .service(link_trolley),
+            .service(link_trolley)
+            .service(init_oauth),
     );
 }
 
@@ -2247,7 +2251,11 @@ pub async fn link_trolley(
     }
 
     if let Some(email) = user.email {
-        let id = payouts_queue.lock().await.register_recipient(&email, body.0).await?;
+        let id = payouts_queue
+            .lock()
+            .await
+            .register_recipient(&email, body.0)
+            .await?;
 
         let mut transaction = pool.begin().await?;
 
@@ -2273,4 +2281,126 @@ pub async fn link_trolley(
             "User needs to have an email set on account.".to_string(),
         ))
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct OAuthInit {
+    pub client_id: OAuthClientId,
+    pub redirect_uri: Option<String>,
+    pub scope: Option<String>,
+    pub state: Option<String>,
+}
+
+#[get("oauth/authorize")]
+pub async fn init_oauth(
+    req: HttpRequest,
+    Query(oauth_info): Query<OAuthInit>, // callback url
+    pool: Data<PgPool>,
+    redis: Data<RedisPool>,
+    session_queue: Data<AuthQueue>,
+) -> Result<HttpResponse, OAuthError> {
+    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, None)
+        .await
+        .map_err(|e| OAuthError::error(e))?
+        .1;
+
+    let client = DBOAuthClient::get(oauth_info.client_id.0, &**pool, &redis)
+        .await
+        .map_err(|e| OAuthError::error(e))?;
+
+    if let Some(client) = client {
+        let redirect_uri = ValidatedRedirectUri::validate(&oauth_info.redirect_uri, &client)?;
+
+        let requested_scopes = oauth_info
+            .scope
+            .as_ref()
+            .map_or(Ok(client.max_scopes), |s| {
+                Scopes::parse_from_oauth_scopes(s).map_err(|e| {
+                    OAuthError::redirect(
+                        OAuthErrorType::FailedScopeParse(e),
+                        &oauth_info,
+                        &redirect_uri,
+                    )
+                })
+            })?;
+
+        if !client.max_scopes.contains(requested_scopes) {
+            return Err(OAuthError::redirect(
+                OAuthErrorType::ScopesTooBroad,
+                &oauth_info,
+                &redirect_uri,
+            ));
+        }
+
+        let existing_authorization =
+            OAuthClientAuthorization::get(client.id, user.id.into(), &**pool, &redis)
+                .await
+                .map_err(|e| OAuthError::redirect(e, &oauth_info, &redirect_uri))?;
+        let has_already_accepted =
+            existing_authorization.is_some_and(|auth| auth.scopes.contains(requested_scopes));
+        if has_already_accepted {
+            Flow::OAuthAuthorizationCodeSupplied {
+                user_id: user.id.into(),
+                client_id: client.id,
+                scopes: requested_scopes,
+                original_redirect_uri: oauth_info.redirect_uri.clone(),
+            }
+            .insert(Duration::minutes(10), &redis)
+            .await
+            .map_err(|e| OAuthError::redirect(e, &oauth_info, &redirect_uri))?;
+        } else {
+            let flow_id = Flow::InitOAuthAppApproval {
+                user_id: user.id.into(),
+                client_id: client.id,
+                scopes: requested_scopes,
+                redirect_uri: todo!(),
+                state: oauth_info.state,
+            }
+            .insert(Duration::minutes(30), &redis)
+            .await
+            .map_err(|e| OAuthError::redirect(e, &oauth_info, &redirect_uri))?;
+        }
+    } else {
+        return Err(OAuthError::error(OAuthErrorType::UnrecognizedClient {
+            client_id: oauth_info.client_id,
+        }));
+    }
+
+    todo!()
+}
+
+#[derive(Clone, Debug)]
+pub struct ValidatedRedirectUri(pub String);
+
+impl ValidatedRedirectUri {
+    pub fn validate(
+        to_validate: &Option<String>,
+        client: &DBOAuthClient,
+    ) -> Result<Self, OAuthError> {
+        if let Some(first_client_redirect_uri) = client.redirect_uris.first() {
+            if let Some(to_validate) = to_validate {
+                if client.redirect_uris.iter().any(|uri| {
+                    same_uri_except_query_components(&first_client_redirect_uri.uri, to_validate)
+                }) {
+                    return Ok(ValidatedRedirectUri(to_validate.clone()));
+                } else {
+                    return Err(OAuthError::error(OAuthErrorType::InvalidRedirectUri(
+                        to_validate.clone(),
+                    )));
+                }
+            } else {
+                return Ok(ValidatedRedirectUri(first_client_redirect_uri.uri.clone()));
+            }
+        } else {
+            return Err(OAuthError::error(
+                OAuthErrorType::ClientMissingRedirectURI {
+                    client_id: client.id,
+                },
+            ));
+        }
+    }
+}
+
+fn same_uri_except_query_components(a: &str, b: &str) -> bool {
+    true
 }

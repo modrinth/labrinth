@@ -3,6 +3,7 @@ use crate::models::ids::base62_impl::to_base62;
 use crate::models::ids::random_base62_rng;
 use censor::Censor;
 use serde::{Deserialize, Serialize};
+use serde_with::SerializeDisplay;
 use sqlx::sqlx_macros::Type;
 
 const ID_RETRY_COUNT: usize = 20;
@@ -237,6 +238,18 @@ pub struct SessionId(pub i64);
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[sqlx(transparent)]
 pub struct ImageId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct OAuthClientId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct OAuthClientAuthorizationId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct OAuthRedirectUriId(pub i64);
 
 use crate::models::ids;
 

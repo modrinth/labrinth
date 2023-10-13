@@ -1,7 +1,7 @@
 use super::ids::*;
-use crate::auth::flows::AuthProvider;
 use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
+use crate::{auth::flows::AuthProvider, models::pats::Scopes};
 use chrono::Duration;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
@@ -34,6 +34,19 @@ pub enum Flow {
         confirm_email: String,
     },
     MinecraftAuth,
+    InitOAuthAppApproval {
+        user_id: UserId,
+        client_id: OAuthClientId,
+        scopes: Scopes,
+        redirect_uri: String,
+        state: Option<String>,
+    },
+    OAuthAuthorizationCodeSupplied {
+        user_id: UserId,
+        client_id: OAuthClientId,
+        scopes: Scopes,
+        original_redirect_uri: Option<String>,
+    },
 }
 
 impl Flow {
