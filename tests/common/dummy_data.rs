@@ -15,6 +15,8 @@ use super::{
     request_data::get_public_project_creation_data,
 };
 
+pub const DUMMY_DATA_UPDATE: i64 = 1;
+
 #[allow(dead_code)]
 pub const DUMMY_CATEGORIES: &[&str] = &[
     "combat",
@@ -85,6 +87,12 @@ pub async fn add_dummy_data(test_env: &TestEnvironment) -> DummyData {
     let (beta_project, beta_version) = add_project_beta(test_env).await;
 
     let zeta_organization = add_organization_zeta(test_env).await;
+
+    sqlx::query("INSERT INTO dummy_data (version) VALUES ($1)")
+        .bind(DUMMY_DATA_UPDATE)
+        .execute(pool)
+        .await
+        .unwrap();
 
     DummyData {
         alpha_team_id: alpha_project.team.to_string(),

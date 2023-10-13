@@ -388,7 +388,6 @@ pub async fn project_edit(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("project_edit");
     let user = get_user_from_headers(
         &req,
         &**pool,
@@ -398,7 +397,6 @@ pub async fn project_edit(
     )
     .await?
     .1;
-    println!("project_edit user: {:?}", serde_json::to_string(&user));
 
     new_project
         .validate()
@@ -407,7 +405,6 @@ pub async fn project_edit(
     let string = info.into_inner().0;
     let result = db_models::Project::get(&string, &**pool, &redis).await?;
 
-    println!("project_edit result: {:?}", serde_json::to_string(&result));
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 
@@ -419,19 +416,11 @@ pub async fn project_edit(
             )
             .await?;
 
-        println!("Team member: {:?}", serde_json::to_string(&team_member));
-        println!(
-            "Organization team member: {:?}",
-            serde_json::to_string(&organization_team_member)
-        );
-
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member,
             &organization_team_member,
         );
-
-        println!("Permissions: {:?}", serde_json::to_string(&permissions));
 
         if let Some(perms) = permissions {
             let mut transaction = pool.begin().await?;
