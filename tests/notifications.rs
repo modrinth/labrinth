@@ -13,7 +13,7 @@ pub async fn get_user_notifications_after_team_invitation_returns_notification()
         api.get_user_notifications_deserialized(FRIEND_USER_ID, FRIEND_USER_PAT)
             .await;
 
-        api.add_user_to_team(&alpha_team_id, FRIEND_USER_ID, USER_USER_PAT)
+        api.add_user_to_team(&alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
 
         let notifications = api

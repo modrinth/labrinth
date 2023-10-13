@@ -97,6 +97,7 @@ async fn edit_details() {
 async fn manage_invites() {
     // Add member, remove member, edit member
     let test_env = TestEnvironment::build(None).await;
+    let api = &test_env.v2;
 
     let zeta_organization_id = &test_env.dummy.as_ref().unwrap().zeta_organization_id;
     let zeta_team_id = &test_env.dummy.as_ref().unwrap().zeta_team_id;
@@ -155,22 +156,9 @@ async fn manage_invites() {
         .unwrap();
 
     // re-add member for testing
-    let req = test::TestRequest::post()
-        .uri(&format!("/v2/team/{}/members", zeta_team_id))
-        .append_header(("Authorization", ADMIN_USER_PAT))
-        .set_json(json!({
-            "user_id": MOD_USER_ID,
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.add_user_to_team(zeta_team_id, MOD_USER_ID, None, None, ADMIN_USER_PAT).await;
     assert_eq!(resp.status(), 204);
-
-    // Accept invite
-    let req = test::TestRequest::post()
-        .uri(&format!("/v2/team/{}/join", zeta_team_id))
-        .append_header(("Authorization", MOD_USER_PAT))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.join_team(zeta_team_id, MOD_USER_PAT).await;
     assert_eq!(resp.status(), 204);
 
     // remove existing member (requires remove_member)
@@ -195,6 +183,7 @@ async fn manage_invites() {
 #[actix_rt::test]
 async fn add_remove_project() {
     let test_env = TestEnvironment::build(None).await;
+    let api = &test_env.v2;
 
     let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
     let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id;
@@ -205,31 +194,11 @@ async fn add_remove_project() {
 
     // First, we add FRIEND_USER_ID to the alpha project and transfer ownership to them
     // This is because the ownership of a project is needed to add it to an organization
-    let req = test::TestRequest::post()
-        .uri(&format!("/v2/team/{alpha_team_id}/members"))
-        .append_header(("Authorization", USER_USER_PAT))
-        .set_json(json!({
-            "user_id": FRIEND_USER_ID,
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT).await;
     assert_eq!(resp.status(), 204);
-
-    let req = test::TestRequest::post()
-        .uri(&format!("/v2/team/{alpha_team_id}/join"))
-        .append_header(("Authorization", FRIEND_USER_PAT))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.join_team(alpha_team_id, FRIEND_USER_PAT).await;
     assert_eq!(resp.status(), 204);
-
-    let req = test::TestRequest::patch()
-        .uri(&format!("/v2/team/{alpha_team_id}/owner"))
-        .append_header(("Authorization", USER_USER_PAT))
-        .set_json(json!({
-            "user_id": FRIEND_USER_ID,
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.transfer_team_ownership(alpha_team_id, FRIEND_USER_ID, USER_USER_PAT).await;
     assert_eq!(resp.status(), 204);
 
     // Now, FRIEND_USER_ID owns the alpha project

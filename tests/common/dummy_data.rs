@@ -35,11 +35,8 @@ pub enum DummyJarFile {
 }
 
 #[allow(dead_code)]
-pub enum DummyJarFile {
-    DummyProjectAlpha,
-    DummyProjectBeta,
-    BasicMod,
-    BasicModDifferent,
+pub enum DummyImage {
+    SmallIcon, // 200x200
 }
 
 #[derive(Clone)]
@@ -145,13 +142,16 @@ pub async fn get_dummy_data(test_env: &TestEnvironment) -> DummyData {
 }
 
 pub async fn add_project_alpha(test_env: &TestEnvironment) -> (Project, Version) {
-    test_env
+    let (project, versions) = test_env
         .v2
         .add_public_project(get_public_project_creation_data(
             "alpha",
-            DummyJarFile::DummyProjectAlpha,
-        ))
-        .await
+            Some(DummyJarFile::DummyProjectAlpha),
+        ),
+        USER_USER_PAT
+    )
+        .await;
+    (project, versions.into_iter().next().unwrap())
 }
 
 pub async fn add_project_beta(test_env: &TestEnvironment) -> (Project, Version) {
@@ -307,6 +307,30 @@ impl DummyJarFile {
             DummyJarFile::BasicMod => include_bytes!("../../tests/files/basic-mod.jar").to_vec(),
             DummyJarFile::BasicModDifferent => {
                 include_bytes!("../../tests/files/basic-mod-different.jar").to_vec()
+            }
+        }
+    }
+}
+
+impl DummyImage {
+    pub fn filename(&self) -> String {
+        match self {
+            DummyImage::SmallIcon => "200x200.png",
+        }
+        .to_string()
+    }
+
+    pub fn extension(&self) -> String {
+        match self {
+            DummyImage::SmallIcon => "png",
+        }
+        .to_string()
+    }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        match self {
+            DummyImage::SmallIcon => {
+                include_bytes!("../../tests/files/200x200.png").to_vec()
             }
         }
     }

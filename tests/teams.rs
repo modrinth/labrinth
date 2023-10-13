@@ -1,16 +1,10 @@
-use actix_http::StatusCode;
-use actix_web::dev::ServiceResponse;
 use actix_web::test;
-use common::environment::with_test_environment;
-use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
-use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::teams::{ProjectPermissions, OrganizationPermissions};
 use serde_json::json;
 
 use crate::common::database::*;
 
-use crate::common::dummy_data::DUMMY_CATEGORIES;
-use crate::common::{actix::AppendsMultipart, environment::TestEnvironment};
+use crate::common:: environment::TestEnvironment;
 
 // importing common module.
 mod common;
@@ -324,7 +318,6 @@ async fn test_patch_project_team_member() {
 async fn test_patch_organization_team_member() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
-    let zeta_organization_id = &test_env.dummy.as_ref().unwrap().zeta_organization_id;
     let zeta_team_id = &test_env.dummy.as_ref().unwrap().zeta_team_id;
 
     // Edit team as admin/mod but not a part of the team should be OK
@@ -455,7 +448,6 @@ async fn test_patch_organization_team_member() {
 async fn transfer_ownership() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
-    let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
     let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id;
 
     // Cannot set friend as owner (not a member)

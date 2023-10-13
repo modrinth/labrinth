@@ -17,8 +17,9 @@ pub async fn get_user_projects_after_creating_project_returns_new_project() {
         let (project, _) = api
             .add_public_project(get_public_project_creation_data(
                 "slug",
-                DummyJarFile::BasicMod,
-            ))
+                Some(DummyJarFile::BasicMod),
+            ),
+            USER_USER_PAT)
             .await;
 
         let resp_projects = api
@@ -36,8 +37,10 @@ pub async fn get_user_projects_after_deleting_project_shows_removal() {
         let (project, _) = api
             .add_public_project(get_public_project_creation_data(
                 "iota",
-                DummyJarFile::BasicMod,
-            ))
+                Some(DummyJarFile::BasicMod),
+            ),
+            USER_USER_PAT
+            )
             .await;
         api.get_user_projects_deserialized(USER_USER_ID, USER_USER_PAT)
             .await;
@@ -62,7 +65,7 @@ pub async fn get_user_projects_after_joining_team_shows_team_projects() {
         api.get_user_projects_deserialized(FRIEND_USER_ID, FRIEND_USER_PAT)
             .await;
 
-        api.add_user_to_team(alpha_team_id, FRIEND_USER_ID, USER_USER_PAT)
+        api.add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
         api.join_team(&alpha_team_id, FRIEND_USER_PAT).await;
 
@@ -82,7 +85,7 @@ pub async fn get_user_projects_after_leaving_team_shows_no_team_projects() {
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id;
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
         let api = test_env.v2;
-        api.add_user_to_team(alpha_team_id, FRIEND_USER_ID, USER_USER_PAT)
+        api.add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
         api.join_team(&alpha_team_id, FRIEND_USER_PAT).await;
         api.get_user_projects_deserialized(FRIEND_USER_ID, FRIEND_USER_PAT)

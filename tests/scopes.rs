@@ -94,7 +94,7 @@ pub async fn notifications_scopes() {
     // Get notifications
     let resp = test_env
         .v2
-        .add_user_to_team(alpha_team_id, FRIEND_USER_ID, USER_USER_PAT)
+        .add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
         .await;
     assert_eq!(resp.status(), 204);
 
@@ -162,7 +162,7 @@ pub async fn notifications_scopes() {
     // We invite mod, get the notification ID, and do mass delete using that
     let resp = test_env
         .v2
-        .add_user_to_team(alpha_team_id, MOD_USER_ID, USER_USER_PAT)
+        .add_user_to_team(alpha_team_id, MOD_USER_ID, None, None, USER_USER_PAT)
         .await;
     assert_eq!(resp.status(), 204);
     let read_notifications = Scopes::NOTIFICATION_READ;

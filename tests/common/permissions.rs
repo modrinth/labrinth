@@ -4,7 +4,7 @@ use itertools::Itertools;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::common::database::{generate_random_name, ADMIN_USER_PAT};
+use crate::common::{database::{generate_random_name, ADMIN_USER_PAT}, request_data};
 
 use super::{
     actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData},
@@ -726,7 +726,7 @@ impl<'a> PermissionsTest<'a> {
             let p = get_organization_permissions(
                 self.user_id,
                 self.user_pat,
-                &organization_team_id,
+                &organization_id,
                 test_env,
             )
             .await;
@@ -776,7 +776,7 @@ impl<'a> PermissionsTest<'a> {
             let p = get_organization_permissions(
                 self.user_id,
                 self.user_pat,
-                &organization_team_id,
+                &organization_id,
                 test_env,
             )
             .await;
@@ -822,7 +822,7 @@ impl<'a> PermissionsTest<'a> {
             let p = get_organization_permissions(
                 self.user_id,
                 self.user_pat,
-                &organization_team_id,
+                &organization_id,
                 test_env,
             )
             .await;
@@ -842,46 +842,15 @@ impl<'a> PermissionsTest<'a> {
 }
 
 async fn create_dummy_project(test_env: &TestEnvironment) -> (String, String) {
+    let api = &test_env.v2;
+
     // Create a very simple project
     let slug = generate_random_name("test_project");
-    let json_data = json!(
-        {
-            "title": &slug,
-            "slug": &slug,
-            "description": "Example description.",
-            "body": "Example body.",
-            "client_side": "required",
-            "server_side": "optional",
-            "is_draft": true,
-            "initial_versions": [],
-            "categories": [],
-            "license_id": "MIT"
-        }
-    );
-    let json_segment = MultipartSegment {
-        name: "data".to_string(),
-        filename: None,
-        content_type: Some("application/json".to_string()),
-        data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
-    };
-    let req = test::TestRequest::post()
-        .uri("/v2/project")
-        .append_header(("Authorization", ADMIN_USER_PAT)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .set_multipart([json_segment])
-        .to_request();
-    let resp = test_env.call(req).await;
-    assert!(resp.status().is_success());
 
-    let req = test::TestRequest::get()
-        .uri(&format!("/v2/project/{}", &slug))
-        .append_header(("Authorization", ADMIN_USER_PAT)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .to_request();
-    let resp = test_env.call(req).await;
-    assert!(resp.status().is_success());
-    let success: serde_json::Value = test::read_body_json(resp).await;
-
-    let project_id = success["id"].as_str().unwrap().to_string();
-    let team_id = success["team"].as_str().unwrap().to_string();
+    let creation_data = request_data::get_public_project_creation_data(&slug, None);
+    let (project, _) = api.add_public_project(creation_data, ADMIN_USER_PAT).await;
+    let project_id = project.id.to_string();
+    let team_id = project.team.to_string();
 
     (project_id, team_id)
 }
@@ -889,41 +858,23 @@ async fn create_dummy_project(test_env: &TestEnvironment) -> (String, String) {
 async fn create_dummy_org(test_env: &TestEnvironment) -> (String, String) {
     // Create a very simple organization
     let name = generate_random_name("test_org");
-    let req = test::TestRequest::post()
-        .uri("/v2/organization")
-        .append_header(("Authorization", ADMIN_USER_PAT)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .set_json(json!({
-            "title": &name,
-            "slug": &name,
-            "description": "Example description.",
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let api = &test_env.v2;
+
+    let resp = api
+        .create_organization(&name, "Example description.", ADMIN_USER_PAT)
+        .await;
     assert!(resp.status().is_success());
 
-    let req = test::TestRequest::get()
-        .uri(&format!("/v2/organization/{}", &name))
-        .append_header(("Authorization", ADMIN_USER_PAT)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .to_request();
-    let resp = test_env.call(req).await;
-    assert!(resp.status().is_success());
-    let success: serde_json::Value = test::read_body_json(resp).await;
-
-    let organizaion_id = success["id"].as_str().unwrap().to_string();
-    let team_id = success["team_id"].as_str().unwrap().to_string();
+    let organization = api.get_organization_deserialized(&name, ADMIN_USER_PAT).await;
+    let organizaion_id = organization.id.to_string();
+    let team_id = organization.team_id.to_string();
 
     (organizaion_id, team_id)
 }
 
 async fn add_project_to_org(test_env: &TestEnvironment, project_id: &str, organization_id: &str) {
-    let req = test::TestRequest::post()
-        .uri(&format!("/v2/organization/{organization_id}/projects"))
-        .append_header(("Authorization", ADMIN_USER_PAT)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .set_json(json!({
-            "project_id" : project_id,
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let api = &test_env.v2;
+    let resp = api.organization_add_project(organization_id, project_id, ADMIN_USER_PAT).await;
     assert!(resp.status().is_success());
 }
 
@@ -931,29 +882,18 @@ async fn add_user_to_team(
     user_id: &str,
     user_pat: &str,
     team_id: &str,
-    permissions: Option<ProjectPermissions>,
+    project_permissions: Option<ProjectPermissions>,
     organization_permissions: Option<OrganizationPermissions>,
     test_env: &TestEnvironment,
 ) {
-    // Send invitation to user
-    let req = test::TestRequest::post()
-        .uri(&format!("/v2/team/{team_id}/members"))
-        .append_header(("Authorization", ADMIN_USER_PAT)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .set_json(json!({
-            "user_id" : user_id,
-            "permissions" : permissions.map(|p| p.bits()).unwrap_or_default(),
-            "organization_permissions" : organization_permissions.map(|p| p.bits()),
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let api = &test_env.v2;
+
+    // Invite user
+    let resp = api.add_user_to_team(team_id, user_id, project_permissions, organization_permissions, ADMIN_USER_PAT).await;
     assert!(resp.status().is_success());
 
     // Accept invitation
-    let req = test::TestRequest::post()
-        .uri(&format!("/v2/team/{team_id}/join"))
-        .append_header(("Authorization", user_pat))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.join_team(team_id, user_pat).await;
     assert!(resp.status().is_success());
 }
 
@@ -964,34 +904,20 @@ async fn modify_user_team_permissions(
     organization_permissions: Option<OrganizationPermissions>,
     test_env: &TestEnvironment,
 ) {
+    let api = &test_env.v2;
+
     // Send invitation to user
-    let req = test::TestRequest::patch()
-        .uri(&format!(
-            "/v2/team/{team_id}/members/{user_id}",
-            team_id = team_id,
-            user_id = user_id
-        ))
-        .append_header(("Authorization", ADMIN_USER_PAT)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .set_json(json!({
-            "permissions" : permissions.map(|p| p.bits()),
-            "organization_permissions" : organization_permissions.map(|p| p.bits()),
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.edit_team_member(team_id, user_id, json!({
+        "permissions" : permissions.map(|p| p.bits()),
+        "organization_permissions" : organization_permissions.map(|p| p.bits()),
+    }), ADMIN_USER_PAT).await;
     assert!(resp.status().is_success());
 }
 
 async fn remove_user_from_team(user_id: &str, team_id: &str, test_env: &TestEnvironment) {
     // Send invitation to user
-    let req = test::TestRequest::delete()
-        .uri(&format!(
-            "/v2/team/{team_id}/members/{user_id}",
-            team_id = team_id,
-            user_id = user_id
-        ))
-        .append_header(("Authorization", ADMIN_USER_PAT)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .to_request();
-    let resp = test_env.call(req).await;
+    let api = &test_env.v2;
+    let resp = api.remove_from_team(team_id, user_id, ADMIN_USER_PAT).await;
     assert!(resp.status().is_success());
 }
 
@@ -1001,15 +927,11 @@ async fn get_project_permissions(
     project_id: &str,
     test_env: &TestEnvironment,
 ) -> ProjectPermissions {
-    // Send invitation to user
-    let req = test::TestRequest::get()
-        .uri(&format!(
-            "/v2/project/{project_id}/members",
-            project_id = project_id
-        ))
-        .append_header(("Authorization", user_pat)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .to_request();
-    let resp = test_env.call(req).await;
+
+    let resp = test_env
+        .v2
+        .get_project_members(project_id, user_pat)
+        .await;
     let permissions = if resp.status().as_u16() == 200 {
         let value: serde_json::Value = test::read_body_json(resp).await;
         value
@@ -1029,18 +951,13 @@ async fn get_project_permissions(
 async fn get_organization_permissions(
     user_id: &str,
     user_pat: &str,
-    organization_team_id: &str,
+    organization_id: &str,
     test_env: &TestEnvironment,
 ) -> OrganizationPermissions {
-    // Send invitation to user
-    let req = test::TestRequest::get()
-        .uri(&format!(
-            "/v2/team/{organization_team_id}/members",
-            organization_team_id = organization_team_id
-        ))
-        .append_header(("Authorization", user_pat)) // Admin so that user can be added to the project, and friend/enemy is unused
-        .to_request();
-    let resp = test_env.call(req).await;
+    let api = &test_env.v2;
+    let resp = api
+        .get_organization_members(organization_id, user_pat)
+        .await;
     let permissions = if resp.status().as_u16() == 200 {
         let value: serde_json::Value = test::read_body_json(resp).await;
         value

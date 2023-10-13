@@ -1,5 +1,4 @@
 use actix_http::StatusCode;
-use actix_web::dev::ServiceResponse;
 use actix_web::test;
 use common::environment::with_test_environment;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
@@ -98,6 +97,7 @@ async fn test_get_project() {
 async fn test_add_remove_project() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
+    let api = &test_env.v2;
 
     // Generate test project data.
     let mut json_data = json!(
@@ -188,34 +188,16 @@ async fn test_add_remove_project() {
     assert_eq!(status, 200);
 
     // Get the project we just made, and confirm that it's correct
-    let req = test::TestRequest::get()
-        .uri("/v2/project/demo")
-        .append_header(("Authorization", USER_USER_PAT))
-        .to_request();
-
-    let resp = test_env.call(req).await;
-    assert_eq!(resp.status(), 200);
-
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    let versions = body["versions"].as_array().unwrap();
-    assert!(versions.len() == 1);
-    let uploaded_version_id = &versions[0];
+    let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
+    assert!(project.versions.len() == 1);
+    let uploaded_version_id = project.versions[0];
 
     // Checks files to ensure they were uploaded and correctly identify the file
     let hash = sha1::Sha1::from(include_bytes!("../tests/files/basic-mod.jar"))
         .digest()
         .to_string();
-    let req = test::TestRequest::get()
-        .uri(&format!("/v2/version_file/{hash}?algorithm=sha1"))
-        .append_header(("Authorization", USER_USER_PAT))
-        .to_request();
-
-    let resp = test_env.call(req).await;
-    assert_eq!(resp.status(), 200);
-
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    let file_version_id = &body["id"];
-    assert_eq!(&file_version_id, &uploaded_version_id);
+    let version = api.get_version_from_hash_deserialized(&hash, "sha1", USER_USER_PAT).await;
+    assert_eq!(version.id, uploaded_version_id);
 
     // Reusing with a different slug and the same file should fail
     // Even if that file is named differently
@@ -258,14 +240,8 @@ async fn test_add_remove_project() {
     assert_eq!(resp.status(), 200);
 
     // Get
-    let req = test::TestRequest::get()
-        .uri("/v2/project/demo")
-        .append_header(("Authorization", USER_USER_PAT))
-        .to_request();
-    let resp = test_env.call(req).await;
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    let id = body["id"].to_string();
+    let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
+    let id = project.id.to_string();
 
     // Remove the project
     let resp = test_env.v2.remove_project("demo", USER_USER_PAT).await;
@@ -292,11 +268,7 @@ async fn test_add_remove_project() {
     );
 
     // Old slug no longer works
-    let req = test::TestRequest::get()
-        .uri("/v2/project/demo")
-        .append_header(("Authorization", USER_USER_PAT))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.get_project("demo", USER_USER_PAT).await;
     assert_eq!(resp.status(), 404);
 
     // Cleanup test db
@@ -306,68 +278,75 @@ async fn test_add_remove_project() {
 #[actix_rt::test]
 pub async fn test_patch_project() {
     let test_env = TestEnvironment::build(None).await;
+    let api = &test_env.v2;
+
     let alpha_project_slug = &test_env.dummy.as_ref().unwrap().alpha_project_slug;
     let beta_project_slug = &test_env.dummy.as_ref().unwrap().beta_project_slug;
 
     // First, we do some patch requests that should fail.
     // Failure because the user is not authorized.
-    let req = test::TestRequest::patch()
-        .uri(&format!("/v2/project/{alpha_project_slug}"))
-        .append_header(("Authorization", ENEMY_USER_PAT))
-        .set_json(json!({
-            "title": "Test_Add_Project project - test 1",
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api
+        .edit_project(
+            alpha_project_slug,
+            json!({
+                "title": "Test_Add_Project project - test 1",
+            }),
+            ENEMY_USER_PAT,
+        )
+        .await;
     assert_eq!(resp.status(), 401);
 
     // Failure because we are setting URL fields to invalid urls.
     for url_type in ["issues_url", "source_url", "wiki_url", "discord_url"] {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v2/project/{alpha_project_slug}"))
-            .append_header(("Authorization", USER_USER_PAT))
-            .set_json(json!({
+        let resp = api
+        .edit_project(
+            alpha_project_slug,
+            json!({
                 url_type: "w.fake.url",
-            }))
-            .to_request();
-        let resp = test_env.call(req).await;
+            }),
+            USER_USER_PAT,
+        )
+        .await;
         assert_eq!(resp.status(), 400);
     }
 
     // Failure because these are illegal requested statuses for a normal user.
     for req in ["unknown", "processing", "withheld", "scheduled"] {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v2/project/{alpha_project_slug}"))
-            .append_header(("Authorization", USER_USER_PAT))
-            .set_json(json!({
+        let resp = api
+        .edit_project(
+            alpha_project_slug,
+            json!({
                 "requested_status": req,
-            }))
-            .to_request();
-        let resp = test_env.call(req).await;
+            }),
+            USER_USER_PAT,
+        )
+        .await;
         assert_eq!(resp.status(), 400);
     }
 
     // Failure because these should not be able to be set by a non-mod
     for key in ["moderation_message", "moderation_message_body"] {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v2/project/{alpha_project_slug}"))
-            .append_header(("Authorization", USER_USER_PAT))
-            .set_json(json!({
+        let resp = api
+        .edit_project(
+            alpha_project_slug,
+            json!({
                 key: "test",
-            }))
-            .to_request();
-        let resp = test_env.call(req).await;
+            }),
+            USER_USER_PAT,
+        )
+        .await;
         assert_eq!(resp.status(), 401);
 
         // (should work for a mod, though)
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v2/project/{alpha_project_slug}"))
-            .append_header(("Authorization", MOD_USER_PAT))
-            .set_json(json!({
+        let resp = api
+        .edit_project(
+            alpha_project_slug,
+            json!({
                 key: "test",
-            }))
-            .to_request();
-        let resp = test_env.call(req).await;
+            }),
+            MOD_USER_PAT,
+        )
+        .await;
         assert_eq!(resp.status(), 204);
     }
 
@@ -383,33 +362,35 @@ pub async fn test_patch_project() {
         &"a".repeat(100),
         "not url safe%&^!#$##!@#$%^&*()",
     ] {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v2/project/{alpha_project_slug}"))
-            .append_header(("Authorization", USER_USER_PAT))
-            .set_json(json!({
+        let resp = api
+        .edit_project(
+            alpha_project_slug,
+            json!({
                 "slug": slug, // the other dummy project has this slug
-            }))
-            .to_request();
-        let resp = test_env.call(req).await;
+            }),
+            USER_USER_PAT,
+        )
+        .await;
         assert_eq!(resp.status(), 400);
     }
 
     // Not allowed to directly set status, as 'beta_project_slug' (the other project) is "processing" and cannot have its status changed like this.
-    let req = test::TestRequest::patch()
-        .uri(&format!("/v2/project/{beta_project_slug}"))
-        .append_header(("Authorization", USER_USER_PAT))
-        .set_json(json!({
+    let resp = api
+    .edit_project(
+        beta_project_slug,
+        json!({
             "status": "private"
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+        }),
+        USER_USER_PAT,
+    )
+    .await;
     assert_eq!(resp.status(), 401);
 
     // Sucessful request to patch many fields.
-    let req = test::TestRequest::patch()
-        .uri(&format!("/v2/project/{alpha_project_slug}"))
-        .append_header(("Authorization", USER_USER_PAT))
-        .set_json(json!({
+    let resp = api
+    .edit_project(
+        alpha_project_slug,
+        json!({
             "slug": "newslug",
             "title": "New successful title",
             "description": "New successful description",
@@ -426,43 +407,30 @@ pub async fn test_patch_project() {
                 "platform": "Patreon",
                 "url": "https://patreon.com"
             }]
-        }))
-        .to_request();
-    let resp = test_env.call(req).await;
+        }),
+        USER_USER_PAT,
+    )
+    .await;
     assert_eq!(resp.status(), 204);
 
     // Old slug no longer works
-    let req = test::TestRequest::get()
-        .uri(&format!("/v2/project/{alpha_project_slug}"))
-        .append_header(("Authorization", USER_USER_PAT))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.get_project(alpha_project_slug, USER_USER_PAT).await;
     assert_eq!(resp.status(), 404);
 
-    // Old slug no longer works
-    let req = test::TestRequest::get()
-        .uri("/v2/project/newslug")
-        .append_header(("Authorization", USER_USER_PAT))
-        .to_request();
-    let resp = test_env.call(req).await;
-    assert_eq!(resp.status(), 200);
-
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["slug"], json!("newslug"));
-    assert_eq!(body["title"], json!("New successful title"));
-    assert_eq!(body["description"], json!("New successful description"));
-    assert_eq!(body["body"], json!("New successful body"));
-    assert_eq!(body["categories"], json!([DUMMY_CATEGORIES[0]]));
-    assert_eq!(body["license"]["id"], json!("MIT"));
-    assert_eq!(body["issues_url"], json!("https://github.com"));
-    assert_eq!(body["discord_url"], json!("https://discord.gg"));
-    assert_eq!(body["wiki_url"], json!("https://wiki.com"));
-    assert_eq!(body["client_side"], json!("optional"));
-    assert_eq!(body["server_side"], json!("required"));
-    assert_eq!(
-        body["donation_urls"][0]["url"],
-        json!("https://patreon.com")
-    );
+    // New slug does work
+    let project = api.get_project_deserialized("newslug", USER_USER_PAT).await;
+    assert_eq!(project.slug, Some("newslug".to_string()));
+    assert_eq!(project.title, "New successful title");
+    assert_eq!(project.description, "New successful description");
+    assert_eq!(project.body, "New successful body");
+    assert_eq!(project.categories, vec![DUMMY_CATEGORIES[0]]);
+    assert_eq!(project.license.id, "MIT");
+    assert_eq!(project.issues_url, Some("https://github.com".to_string()));
+    assert_eq!(project.discord_url, Some("https://discord.gg".to_string()));
+    assert_eq!(project.wiki_url, Some("https://wiki.com".to_string()));
+    assert_eq!(project.client_side.to_string(), "optional");
+    assert_eq!(project.server_side.to_string(), "required");
+    assert_eq!(project.donation_urls.unwrap()[0].url, "https://patreon.com");
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -471,64 +439,37 @@ pub async fn test_patch_project() {
 #[actix_rt::test]
 pub async fn test_bulk_edit_categories() {
     with_test_environment(|test_env| async move {
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
-        let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id;
+        let api = &test_env.v2;
+        let alpha_project_id : &str = &test_env.dummy.as_ref().unwrap().alpha_project_id;
+        let beta_project_id : &str = &test_env.dummy.as_ref().unwrap().beta_project_id;
 
-        let req = test::TestRequest::patch()
-            .uri(&format!(
-                "/v2/projects?ids={}",
-                urlencoding::encode(&format!("[\"{alpha_project_id}\",\"{beta_project_id}\"]"))
-            ))
-            .append_header(("Authorization", ADMIN_USER_PAT))
-            .set_json(json!({
+        let resp = api.edit_project_bulk([alpha_project_id, beta_project_id], 
+            json!({
                 "categories": [DUMMY_CATEGORIES[0], DUMMY_CATEGORIES[3]],
                 "add_categories": [DUMMY_CATEGORIES[1], DUMMY_CATEGORIES[2]],
                 "remove_categories": [DUMMY_CATEGORIES[3]],
                 "additional_categories": [DUMMY_CATEGORIES[4], DUMMY_CATEGORIES[6]],
                 "add_additional_categories": [DUMMY_CATEGORIES[5]],
                 "remove_additional_categories": [DUMMY_CATEGORIES[6]],
-            }))
-            .to_request();
-        let resp = test_env.call(req).await;
+            })
+            , ADMIN_USER_PAT).await;
         assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-        let alpha_body = get_project_body(&test_env, alpha_project_id, ADMIN_USER_PAT).await;
-        assert_eq!(alpha_body["categories"], json!(DUMMY_CATEGORIES[0..=2]));
+        let alpha_body = api.get_project_deserialized(alpha_project_id, ADMIN_USER_PAT).await;
+        assert_eq!(alpha_body.categories, DUMMY_CATEGORIES[0..=2]);
         assert_eq!(
-            alpha_body["additional_categories"],
-            json!(DUMMY_CATEGORIES[4..=5])
+            alpha_body.additional_categories,
+            DUMMY_CATEGORIES[4..=5]
         );
 
-        let beta_body = get_project_body(&test_env, beta_project_id, ADMIN_USER_PAT).await;
-        assert_eq!(beta_body["categories"], alpha_body["categories"]);
+        let beta_body = api.get_project_deserialized(beta_project_id, ADMIN_USER_PAT).await;
+        assert_eq!(beta_body.categories, alpha_body.categories);
         assert_eq!(
-            beta_body["additional_categories"],
-            alpha_body["additional_categories"],
+            beta_body.additional_categories,
+            alpha_body.additional_categories,
         );
     })
     .await;
-}
-
-async fn get_project(
-    test_env: &TestEnvironment,
-    project_slug: &str,
-    user_pat: &str,
-) -> ServiceResponse {
-    let req = test::TestRequest::get()
-        .uri(&format!("/v2/project/{project_slug}"))
-        .append_header(("Authorization", user_pat))
-        .to_request();
-    test_env.call(req).await
-}
-
-async fn get_project_body(
-    test_env: &TestEnvironment,
-    project_slug: &str,
-    user_pat: &str,
-) -> serde_json::Value {
-    let resp = get_project(test_env, project_slug, user_pat).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    test::read_body_json(resp).await
 }
 
 // TODO: Missing routes on projects
