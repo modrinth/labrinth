@@ -1,4 +1,5 @@
 use super::ids::*;
+use crate::auth::flows::ValidatedRedirectUri;
 use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
 use crate::{auth::flows::AuthProvider, models::pats::Scopes};
@@ -38,14 +39,16 @@ pub enum Flow {
         user_id: UserId,
         client_id: OAuthClientId,
         scopes: Scopes,
-        redirect_uri: String,
+        validated_redirect_uri: ValidatedRedirectUri,
+        original_redirect_uri: Option<String>,
         state: Option<String>,
     },
     OAuthAuthorizationCodeSupplied {
         user_id: UserId,
         client_id: OAuthClientId,
         scopes: Scopes,
-        original_redirect_uri: Option<String>,
+        validated_redirect_uri: ValidatedRedirectUri,
+        original_redirect_uri: Option<String>, // Needed for https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
     },
 }
 

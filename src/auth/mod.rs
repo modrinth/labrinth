@@ -130,12 +130,12 @@ impl OAuthError {
     /// See: IETF RFC 6749 4.1.2.1 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2.1)
     pub fn redirect(
         err: impl Into<OAuthErrorType>,
-        oauth_info: &OAuthInit,
+        state: &Option<String>,
         valid_redirect_uri: &ValidatedRedirectUri,
     ) -> Self {
         Self {
             error_type: err.into(),
-            state: oauth_info.state.clone(),
+            state: state.clone(),
             valid_redirect_uri: Some(valid_redirect_uri.clone()),
         }
     }
@@ -154,9 +154,9 @@ impl actix_web::ResponseError for OAuthError {
                     StatusCode::INTERNAL_SERVER_ERROR
                 }
             }
-            OAuthErrorType::InvalidUri
-            | OAuthErrorType::InvalidRedirectUri(_)
-            | OAuthErrorType::ClientMissingRedirectURI { client_id: _ } => StatusCode::BAD_REQUEST,
+            OAuthErrorType::InvalidRedirectUri(_)
+            | OAuthErrorType::ClientMissingRedirectURI { client_id: _ }
+            | OAuthErrorType::InvalidAcceptFlowId => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -188,8 +188,6 @@ impl actix_web::ResponseError for OAuthError {
 
 #[derive(thiserror::Error, Debug)]
 pub enum OAuthErrorType {
-    #[error("The provided URI was not valid")]
-    InvalidUri,
     #[error(transparent)]
     AuthenticationError(#[from] AuthenticationError),
     #[error("Client {} not recognized", .client_id.0)]
@@ -208,6 +206,8 @@ pub enum OAuthErrorType {
         "The provided scope requested scopes broader than the developer app is configured with"
     )]
     ScopesTooBroad,
+    #[error("The provided flow id was invalid")]
+    InvalidAcceptFlowId,
 }
 
 impl From<crate::database::models::DatabaseError> for OAuthErrorType {
@@ -216,14 +216,21 @@ impl From<crate::database::models::DatabaseError> for OAuthErrorType {
     }
 }
 
+impl From<sqlx::Error> for OAuthErrorType {
+    fn from(value: sqlx::Error) -> Self {
+        OAuthErrorType::AuthenticationError(value.into())
+    }
+}
+
 impl OAuthErrorType {
     pub fn error_name(&self) -> String {
         // IETF RFC 6749 4.1.2.1 (https://datatracker.ietf.org/doc/html/rfc6749#autoid-38)
         match self {
-            OAuthErrorType::InvalidUri
-            | OAuthErrorType::InvalidRedirectUri(_)
+            OAuthErrorType::InvalidRedirectUri(_)
             | OAuthErrorType::ClientMissingRedirectURI { client_id: _ } => "invalid_uri",
-            OAuthErrorType::AuthenticationError(_) => "server_error",
+            OAuthErrorType::AuthenticationError(_) | OAuthErrorType::InvalidAcceptFlowId => {
+                "server_error"
+            }
             OAuthErrorType::UnrecognizedClient { client_id: _ } => "invalid_request",
             OAuthErrorType::FailedScopeParse(_) | OAuthErrorType::ScopesTooBroad => "invalid_scope",
         }

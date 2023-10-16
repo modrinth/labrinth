@@ -3,7 +3,6 @@ use crate::models::ids::base62_impl::to_base62;
 use crate::models::ids::random_base62_rng;
 use censor::Censor;
 use serde::{Deserialize, Serialize};
-use serde_with::SerializeDisplay;
 use sqlx::sqlx_macros::Type;
 
 const ID_RETRY_COUNT: usize = 20;
@@ -151,6 +150,14 @@ generate_ids!(
     8,
     "SELECT EXISTS(SELECT 1 FROM uploaded_images WHERE id=$1)",
     ImageId
+);
+
+generate_ids!(
+    pub generate_oauth_client_authorization_id,
+    OAuthClientAuthorizationId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM oauth_client_authorizations WHERE id=$1)",
+    OAuthClientAuthorizationId
 );
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Hash, Serialize, Deserialize)]
