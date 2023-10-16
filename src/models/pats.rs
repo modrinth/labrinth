@@ -103,6 +103,13 @@ bitflags::bitflags! {
         // delete an organization
         const ORGANIZATION_DELETE = 1 << 38;
 
+        // create an OAuth client
+        const OAUTH_CLIENT_CREATE = 1 << 39;
+        // modify an OAuth client
+        const OAUTH_CLIENT_WRITE = 1 << 40;
+        // delete an OAuth client
+        const OAUTH_CLIENT_DELETE = 1 << 41;
+
         const NONE = 0b0;
     }
 }

@@ -2438,6 +2438,8 @@ pub async fn accept_client_scopes(
         .await
         .map_err(OAuthError::error)?;
 
+        transaction.commit().await.map_err(OAuthError::error)?;
+
         get_init_oauth_code_flow_response(
             user_id,
             client_id,
