@@ -74,7 +74,7 @@ impl TestEnvironment {
         let resp = self
             .v2
             .add_user_to_team(
-                &self.dummy.as_ref().unwrap().alpha_team_id,
+                &self.dummy.as_ref().unwrap().project_alpha.team_id,
                 FRIEND_USER_ID,
                 None,
                 None,

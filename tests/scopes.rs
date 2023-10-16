@@ -88,7 +88,13 @@ async fn user_scopes() {
 #[actix_rt::test]
 pub async fn notifications_scopes() {
     let test_env = TestEnvironment::build(None).await;
-    let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id.clone();
+    let alpha_team_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_alpha
+        .team_id
+        .clone();
 
     // We will invite user 'friend' to project team, and use that as a notification
     // Get notifications
@@ -293,10 +299,34 @@ pub async fn project_version_create_scopes() {
 #[actix_rt::test]
 pub async fn project_version_reads_scopes() {
     let test_env = TestEnvironment::build(None).await;
-    let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id.clone();
-    let beta_version_id = &test_env.dummy.as_ref().unwrap().beta_version_id.clone();
-    let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id.clone();
-    let beta_file_hash = &test_env.dummy.as_ref().unwrap().beta_file_hash.clone();
+    let beta_project_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_beta
+        .project_id
+        .clone();
+    let beta_version_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_beta
+        .version_id
+        .clone();
+    let alpha_team_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_alpha
+        .team_id
+        .clone();
+    let beta_file_hash = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_beta
+        .file_hash
+        .clone();
 
     // Project reading
     // Uses 404 as the expected failure code (or 200 and an empty list for mass reads)
@@ -505,8 +535,20 @@ pub async fn project_version_reads_scopes() {
 pub async fn project_write_scopes() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
-    let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id.clone();
-    let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id.clone();
+    let beta_project_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_beta
+        .project_id
+        .clone();
+    let alpha_team_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_alpha
+        .team_id
+        .clone();
 
     // Projects writing
     let write_project = Scopes::PROJECT_WRITE;
@@ -709,9 +751,27 @@ pub async fn project_write_scopes() {
 pub async fn version_write_scopes() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
-    let alpha_version_id = &test_env.dummy.as_ref().unwrap().beta_version_id.clone();
-    let beta_version_id = &test_env.dummy.as_ref().unwrap().beta_version_id.clone();
-    let alpha_file_hash = &test_env.dummy.as_ref().unwrap().beta_file_hash.clone();
+    let alpha_version_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_alpha
+        .version_id
+        .clone();
+    let beta_version_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_beta
+        .version_id
+        .clone();
+    let alpha_file_hash = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_alpha
+        .file_hash
+        .clone();
 
     let write_version = Scopes::VERSION_WRITE;
 
@@ -824,7 +884,13 @@ pub async fn version_write_scopes() {
 pub async fn report_scopes() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
-    let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id.clone();
+    let beta_project_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_beta
+        .project_id
+        .clone();
 
     // Create report
     let report_create = Scopes::REPORT_CREATE;
@@ -900,8 +966,20 @@ pub async fn report_scopes() {
 pub async fn thread_scopes() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
-    let alpha_thread_id = &test_env.dummy.as_ref().unwrap().alpha_thread_id.clone();
-    let beta_thread_id = &test_env.dummy.as_ref().unwrap().beta_thread_id.clone();
+    let alpha_thread_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_alpha
+        .thread_id
+        .clone();
+    let beta_thread_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_beta
+        .thread_id
+        .clone();
 
     // Thread read
     let thread_read = Scopes::THREAD_READ;
@@ -1037,7 +1115,13 @@ pub async fn pat_scopes() {
 pub async fn collections_scopes() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
-    let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id.clone();
+    let alpha_project_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_alpha
+        .project_id
+        .clone();
 
     // Create collection
     let collection_create = Scopes::COLLECTION_CREATE;
@@ -1132,7 +1216,13 @@ pub async fn collections_scopes() {
 pub async fn organization_scopes() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(None).await;
-    let beta_project_id = &test_env.dummy.as_ref().unwrap().beta_project_id.clone();
+    let beta_project_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .project_beta
+        .project_id
+        .clone();
 
     // Create organization
     let organization_create = Scopes::ORGANIZATION_CREATE;

@@ -47,5 +47,5 @@ INSERT INTO categories (id, category, project_type) VALUES
 
 -- Create dummy data table to mark that this file has been run
 CREATE TABLE dummy_data ( 
-    update_id bigint PRIMARY KEY,
+    update_id bigint PRIMARY KEY
  );

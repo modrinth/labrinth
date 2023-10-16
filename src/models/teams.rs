@@ -35,8 +35,6 @@ bitflags::bitflags! {
         const DELETE_PROJECT = 1 << 7;
         const VIEW_ANALYTICS = 1 << 8;
         const VIEW_PAYOUTS = 1 << 9;
-
-        const ALL = 0b1111111111;
     }
 }
 
@@ -55,14 +53,13 @@ impl ProjectPermissions {
         organization_team_member: &Option<crate::database::models::TeamMember>, // team member of the user in the organization
     ) -> Option<Self> {
         if role.is_admin() {
-            return Some(ProjectPermissions::ALL);
+            return Some(ProjectPermissions::all());
         }
 
         if let Some(member) = project_team_member {
             if member.accepted {
                 return Some(member.permissions);
             }
-            return Some(member.permissions);
         }
 
         if let Some(member) = organization_team_member {
@@ -87,15 +84,13 @@ bitflags::bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub struct OrganizationPermissions: u64 {
         const EDIT_DETAILS = 1 << 0;
-        const UNUSED = 1 << 1; // a currently unused permission, formerly EDIT_BODY
-        const MANAGE_INVITES = 1 << 2;
-        const REMOVE_MEMBER = 1 << 3;
-        const EDIT_MEMBER = 1 << 4;
-        const ADD_PROJECT = 1 << 5;
-        const REMOVE_PROJECT = 1 << 6;
-        const DELETE_ORGANIZATION = 1 << 8;
-        const EDIT_MEMBER_DEFAULT_PERMISSIONS = 1 << 9; // Separate from EDIT_MEMBER
-        const ALL = 0b1111111111;
+        const MANAGE_INVITES = 1 << 1;
+        const REMOVE_MEMBER = 1 << 2;
+        const EDIT_MEMBER = 1 << 3;
+        const ADD_PROJECT = 1 << 4;
+        const REMOVE_PROJECT = 1 << 5;
+        const DELETE_ORGANIZATION = 1 << 6;
+        const EDIT_MEMBER_DEFAULT_PERMISSIONS = 1 << 7; // Separate from EDIT_MEMBER
         const NONE = 0b0;
     }
 }
@@ -114,7 +109,7 @@ impl OrganizationPermissions {
         team_member: &Option<crate::database::models::TeamMember>,
     ) -> Option<Self> {
         if role.is_admin() {
-            return Some(OrganizationPermissions::ALL);
+            return Some(OrganizationPermissions::all());
         }
 
         if let Some(member) = team_member {

@@ -65,8 +65,8 @@ pub async fn get_user_projects_after_deleting_project_shows_removal() {
 #[actix_rt::test]
 pub async fn get_user_projects_after_joining_team_shows_team_projects() {
     with_test_environment(|test_env| async move {
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id;
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
+        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
+        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let api = test_env.v2;
         api.get_user_projects_deserialized(FRIEND_USER_ID, FRIEND_USER_PAT)
             .await;
@@ -88,8 +88,8 @@ pub async fn get_user_projects_after_joining_team_shows_team_projects() {
 #[actix_rt::test]
 pub async fn get_user_projects_after_leaving_team_shows_no_team_projects() {
     with_test_environment(|test_env| async move {
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().alpha_team_id;
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().alpha_project_id;
+        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
+        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let api = test_env.v2;
         api.add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
