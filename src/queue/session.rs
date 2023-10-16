@@ -2,6 +2,7 @@ use crate::auth::session::SessionMetadata;
 use crate::database::models::pat_item::PersonalAccessToken;
 use crate::database::models::session_item::Session;
 use crate::database::models::{DatabaseError, PatId, SessionId, UserId};
+use crate::database::redis::RedisPool;
 use chrono::Utc;
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
@@ -10,6 +11,12 @@ use tokio::sync::Mutex;
 pub struct AuthQueue {
     session_queue: Mutex<HashMap<SessionId, SessionMetadata>>,
     pat_queue: Mutex<HashSet<PatId>>,
+}
+
+impl Default for AuthQueue {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // Batches session accessing transactions every 30 seconds
@@ -42,11 +49,7 @@ impl AuthQueue {
         std::mem::replace(&mut queue, HashSet::with_capacity(len))
     }
 
-    pub async fn index(
-        &self,
-        pool: &PgPool,
-        redis: &deadpool_redis::Pool,
-    ) -> Result<(), DatabaseError> {
+    pub async fn index(&self, pool: &PgPool, redis: &RedisPool) -> Result<(), DatabaseError> {
         let session_queue = self.take_sessions().await;
         let pat_queue = self.take_pats().await;
 

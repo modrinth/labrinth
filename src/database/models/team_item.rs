@@ -1,12 +1,13 @@
 use super::{ids::*, Organization, Project};
-use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
+use crate::{
+    database::redis::RedisPool,
+    models::teams::{OrganizationPermissions, ProjectPermissions},
+};
 use itertools::Itertools;
-use redis::cmd;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 const TEAMS_NAMESPACE: &str = "teams";
-const DEFAULT_EXPIRY: i64 = 1800;
 
 pub struct TeamBuilder {
     pub members: Vec<TeamMemberBuilder>,
@@ -40,26 +41,61 @@ impl TeamBuilder {
         .execute(&mut *transaction)
         .await?;
 
-        for member in self.members {
-            let team_member_id = generate_team_member_id(&mut *transaction).await?;
-            sqlx::query!(
-                "
-                INSERT INTO team_members (id, team_id, user_id, role, permissions, organization_permissions, accepted, payouts_split, ordering)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                ",
-                team_member_id as TeamMemberId,
-                team.id as TeamId,
-                member.user_id as UserId,
-                member.role,
-                member.permissions.bits() as i64,
-                member.organization_permissions.map(|p| p.bits() as i64),
-                member.accepted,
-                member.payouts_split,
-                member.ordering,
-            )
-            .execute(&mut *transaction)
-            .await?;
+        let mut team_member_ids = Vec::new();
+        for _ in self.members.iter() {
+            team_member_ids.push(generate_team_member_id(&mut *transaction).await?.0);
         }
+        let TeamBuilder { members } = self;
+        let (
+            team_ids,
+            user_ids,
+            roles,
+            permissions,
+            organization_permissions,
+            accepteds,
+            payouts_splits,
+            orderings,
+        ): (
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+        ) = members
+            .into_iter()
+            .map(|m| {
+                (
+                    team.id.0,
+                    m.user_id.0,
+                    m.role,
+                    m.permissions.bits() as i64,
+                    m.organization_permissions.map(|p| p.bits() as i64),
+                    m.accepted,
+                    m.payouts_split,
+                    m.ordering,
+                )
+            })
+            .multiunzip();
+        sqlx::query!(
+            "
+            INSERT INTO team_members (id, team_id, user_id, role, permissions, organization_permissions, accepted, payouts_split, ordering)
+            SELECT * FROM UNNEST ($1::int8[], $2::int8[], $3::int8[], $4::varchar[], $5::int8[], $6::int8[], $7::bool[], $8::numeric[], $9::int8[])
+            ",
+            &team_member_ids[..],
+            &team_ids[..],
+            &user_ids[..],
+            &roles[..],
+            &permissions[..],
+            &organization_permissions[..] as &[Option<i64>],
+            &accepteds[..],
+            &payouts_splits[..],
+            &orderings[..],
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         Ok(team_id)
     }
@@ -145,7 +181,7 @@ impl TeamMember {
     pub async fn get_from_team_full<'a, 'b, E>(
         id: TeamId,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<TeamMember>, super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
@@ -156,7 +192,7 @@ impl TeamMember {
     pub async fn get_from_team_full_many<'a, E>(
         team_ids: &[TeamId],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<TeamMember>, super::DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
@@ -169,18 +205,10 @@ impl TeamMember {
 
         let mut team_ids_parsed: Vec<i64> = team_ids.iter().map(|x| x.0).collect();
 
-        let mut redis = redis.get().await?;
-
         let mut found_teams = Vec::new();
 
-        let teams = cmd("MGET")
-            .arg(
-                team_ids_parsed
-                    .iter()
-                    .map(|x| format!("{}:{}", TEAMS_NAMESPACE, x))
-                    .collect::<Vec<_>>(),
-            )
-            .query_async::<_, Vec<Option<String>>>(&mut redis)
+        let teams = redis
+            .multi_get::<String, _>(TEAMS_NAMESPACE, team_ids_parsed.clone())
             .await?;
 
         for team_raw in teams {
@@ -232,14 +260,9 @@ impl TeamMember {
             for (id, members) in &teams.into_iter().group_by(|x| x.team_id) {
                 let mut members = members.collect::<Vec<_>>();
 
-                cmd("SET")
-                    .arg(format!("{}:{}", TEAMS_NAMESPACE, id.0))
-                    .arg(serde_json::to_string(&members)?)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
+                redis
+                    .set_serialized_to_json(TEAMS_NAMESPACE, id.0, &members, None)
                     .await?;
-
                 found_teams.append(&mut members);
             }
         }
@@ -247,16 +270,8 @@ impl TeamMember {
         Ok(found_teams)
     }
 
-    pub async fn clear_cache(
-        id: TeamId,
-        redis: &deadpool_redis::Pool,
-    ) -> Result<(), super::DatabaseError> {
-        let mut redis = redis.get().await?;
-        cmd("DEL")
-            .arg(format!("{}:{}", TEAMS_NAMESPACE, id.0))
-            .query_async::<_, ()>(&mut redis)
-            .await?;
-
+    pub async fn clear_cache(id: TeamId, redis: &RedisPool) -> Result<(), super::DatabaseError> {
+        redis.delete(TEAMS_NAMESPACE, id.0).await?;
         Ok(())
     }
 

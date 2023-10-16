@@ -1,4 +1,5 @@
 use super::ids::Base62Id;
+use crate::bitflags_serde_impl;
 use crate::models::ids::UserId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -10,8 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct PatId(pub u64);
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize)]
-    #[serde(transparent)]
+    #[derive(Copy, Clone, Debug)]
     pub struct Scopes: u64 {
         // read a user's email
         const USER_READ_EMAIL = 1 << 0;
@@ -51,7 +51,7 @@ bitflags::bitflags! {
         const VERSION_READ = 1 << 15;
         // write to a version's data (metadata, files, etc)
         const VERSION_WRITE = 1 << 16;
-        // delete a project
+        // delete a version
         const VERSION_DELETE = 1 << 17;
 
         // create a report
@@ -103,26 +103,28 @@ bitflags::bitflags! {
         // delete an organization
         const ORGANIZATION_DELETE = 1 << 38;
 
-        const ALL = 0b111111111111111111111111111111111111111;
-        const NOT_RESTRICTED = 0b1111111100000011111111111111100111;
         const NONE = 0b0;
     }
 }
 
+bitflags_serde_impl!(Scopes, u64);
+
 impl Scopes {
     // these scopes cannot be specified in a personal access token
-    pub fn restricted(&self) -> bool {
-        self.contains(
-            Scopes::PAT_CREATE
-                | Scopes::PAT_READ
-                | Scopes::PAT_WRITE
-                | Scopes::PAT_DELETE
-                | Scopes::SESSION_READ
-                | Scopes::SESSION_DELETE
-                | Scopes::USER_AUTH_WRITE
-                | Scopes::USER_DELETE
-                | Scopes::PERFORM_ANALYTICS,
-        )
+    pub fn restricted() -> Scopes {
+        Scopes::PAT_CREATE
+            | Scopes::PAT_READ
+            | Scopes::PAT_WRITE
+            | Scopes::PAT_DELETE
+            | Scopes::SESSION_READ
+            | Scopes::SESSION_DELETE
+            | Scopes::USER_AUTH_WRITE
+            | Scopes::USER_DELETE
+            | Scopes::PERFORM_ANALYTICS
+    }
+
+    pub fn is_restricted(&self) -> bool {
+        self.intersects(Self::restricted())
     }
 }
 

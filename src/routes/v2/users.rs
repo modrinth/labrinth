@@ -1,18 +1,20 @@
-use crate::auth::{get_user_from_headers, AuthenticationError};
+use crate::auth::get_user_from_headers;
 use crate::database::models::User;
+use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::collections::{Collection, CollectionStatus};
 use crate::models::notifications::Notification;
 use crate::models::pats::Scopes;
 use crate::models::projects::Project;
-use crate::models::users::{Badges, RecipientType, RecipientWallet, Role, UserId};
-use crate::queue::payouts::{PayoutAmount, PayoutItem, PayoutsQueue};
+use crate::models::users::{
+    Badges, Payout, PayoutStatus, RecipientStatus, Role, UserId, UserPayoutData,
+};
+use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rust_decimal::Decimal;
@@ -38,6 +40,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(user_notifications)
             .service(user_follows)
             .service(user_payouts)
+            .service(user_payouts_fees)
             .service(user_payouts_request),
     );
 }
@@ -46,7 +49,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 pub async fn user_auth_get(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (scopes, mut user) = get_user_from_headers(
@@ -66,17 +69,7 @@ pub async fn user_auth_get(
         user.payout_data = None;
     }
 
-    Ok(HttpResponse::Ok().json(
-        get_user_from_headers(
-            &req,
-            &**pool,
-            &redis,
-            &session_queue,
-            Some(&[Scopes::USER_READ]),
-        )
-        .await?
-        .1,
-    ))
+    Ok(HttpResponse::Ok().json(user))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -88,7 +81,7 @@ pub struct UserIds {
 pub async fn users_get(
     web::Query(ids): web::Query<UserIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user_ids = serde_json::from_str::<Vec<String>>(&ids.ids)?;
 
@@ -103,7 +96,7 @@ pub async fn users_get(
 pub async fn user_get(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user_data = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
@@ -120,7 +113,7 @@ pub async fn projects_list(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -143,7 +136,7 @@ pub async fn projects_list(
             .map(|y| y.role.is_mod() || y.id == user_id)
             .unwrap_or(false);
 
-        let project_data = User::get_projects(id, &**pool).await?;
+        let project_data = User::get_projects(id, &**pool, &redis).await?;
 
         let response: Vec<_> =
             crate::database::Project::get_many_ids(&project_data, &**pool, &redis)
@@ -164,7 +157,7 @@ pub async fn collections_list(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -227,21 +220,6 @@ pub struct EditUser {
     pub bio: Option<Option<String>>,
     pub role: Option<Role>,
     pub badges: Option<Badges>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "::serde_with::rust::double_option"
-    )]
-    #[validate]
-    pub payout_data: Option<Option<EditPayoutData>>,
-}
-
-#[derive(Serialize, Deserialize, Validate)]
-pub struct EditPayoutData {
-    pub payout_wallet: RecipientWallet,
-    pub payout_wallet_type: RecipientType,
-    #[validate(length(max = 128))]
-    pub payout_address: String,
 }
 
 #[patch("{id}")]
@@ -250,10 +228,10 @@ pub async fn user_edit(
     info: web::Path<(String,)>,
     new_user: web::Json<EditUser>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let (scopes, user) = get_user_from_headers(
+    let (_scopes, user) = get_user_from_headers(
         &req,
         &**pool,
         &redis,
@@ -373,79 +351,6 @@ pub async fn user_edit(
                 .await?;
             }
 
-            if let Some(payout_data) = &new_user.payout_data {
-                if let Some(payout_data) = payout_data {
-                    if payout_data.payout_wallet_type == RecipientType::UserHandle
-                        && payout_data.payout_wallet == RecipientWallet::Paypal
-                    {
-                        return Err(ApiError::InvalidInput(
-                            "You cannot use a paypal wallet with a user handle!".to_string(),
-                        ));
-                    }
-
-                    if !scopes.contains(Scopes::PAYOUTS_WRITE) {
-                        return Err(ApiError::Authentication(
-                            AuthenticationError::InvalidCredentials,
-                        ));
-                    }
-
-                    if !match payout_data.payout_wallet_type {
-                        RecipientType::Email => {
-                            validator::validate_email(&payout_data.payout_address)
-                        }
-                        RecipientType::Phone => {
-                            validator::validate_phone(&payout_data.payout_address)
-                        }
-                        RecipientType::UserHandle => true,
-                    } {
-                        return Err(ApiError::InvalidInput(
-                            "Invalid wallet specified!".to_string(),
-                        ));
-                    }
-
-                    let results = sqlx::query!(
-                        "
-                        SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND email IS NULL)
-                        ",
-                        id as crate::database::models::ids::UserId,
-                    )
-                    .fetch_one(&mut *transaction)
-                    .await?;
-
-                    if results.exists.unwrap_or(false) {
-                        return Err(ApiError::InvalidInput(
-                            "You must have an email set on your Modrinth account to enroll in the monetization program!"
-                                .to_string(),
-                        ));
-                    }
-
-                    sqlx::query!(
-                        "
-                        UPDATE users
-                        SET payout_wallet = $1, payout_wallet_type = $2, payout_address = $3
-                        WHERE (id = $4)
-                        ",
-                        payout_data.payout_wallet.as_str(),
-                        payout_data.payout_wallet_type.as_str(),
-                        payout_data.payout_address,
-                        id as crate::database::models::ids::UserId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-                } else {
-                    sqlx::query!(
-                        "
-                        UPDATE users
-                        SET payout_wallet = NULL, payout_wallet_type = NULL, payout_address = NULL
-                        WHERE (id = $1)
-                        ",
-                        id as crate::database::models::ids::UserId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-                }
-            }
-
             User::clear_caches(&[(id, Some(actual_user.username))], &redis).await?;
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
@@ -471,7 +376,7 @@ pub async fn user_icon_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
@@ -560,7 +465,7 @@ pub async fn user_delete(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     removal_type: web::Query<RemovalType>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -608,7 +513,7 @@ pub async fn user_follows(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -664,7 +569,7 @@ pub async fn user_notifications(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -686,11 +591,13 @@ pub async fn user_notifications(
         }
 
         let mut notifications: Vec<Notification> =
-            crate::database::models::notification_item::Notification::get_many_user(id, &**pool)
-                .await?
-                .into_iter()
-                .map(Into::into)
-                .collect();
+            crate::database::models::notification_item::Notification::get_many_user(
+                id, &**pool, &redis,
+            )
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect();
 
         notifications.sort_by(|a, b| b.created.cmp(&a.created));
 
@@ -700,19 +607,12 @@ pub async fn user_notifications(
     }
 }
 
-#[derive(Serialize)]
-pub struct Payout {
-    pub created: DateTime<Utc>,
-    pub amount: Decimal,
-    pub status: String,
-}
-
 #[get("{id}/payouts")]
 pub async fn user_payouts(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -766,7 +666,7 @@ pub async fn user_payouts(
                 Ok(e.right().map(|row| Payout {
                     created: row.created,
                     amount: row.amount,
-                    status: row.status,
+                    status: PayoutStatus::from_string(&row.status),
                 }))
             })
             .try_collect::<Vec<Payout>>(),
@@ -786,6 +686,61 @@ pub async fn user_payouts(
 }
 
 #[derive(Deserialize)]
+pub struct FeeEstimateAmount {
+    amount: Decimal,
+}
+
+#[get("{id}/payouts_fees")]
+pub async fn user_payouts_fees(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    web::Query(amount): web::Query<FeeEstimateAmount>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+    payouts_queue: web::Data<Mutex<PayoutsQueue>>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PAYOUTS_READ]),
+    )
+    .await?
+    .1;
+    let actual_user = User::get(&info.into_inner().0, &**pool, &redis).await?;
+
+    if let Some(actual_user) = actual_user {
+        if !user.role.is_admin() && user.id != actual_user.id.into() {
+            return Err(ApiError::CustomAuthentication(
+                "You do not have permission to request payouts of this user!".to_string(),
+            ));
+        }
+
+        if let Some(UserPayoutData {
+            trolley_id: Some(trolley_id),
+            ..
+        }) = user.payout_data
+        {
+            let payouts = payouts_queue
+                .lock()
+                .await
+                .get_estimated_fees(&trolley_id, amount.amount)
+                .await?;
+
+            Ok(HttpResponse::Ok().json(payouts))
+        } else {
+            Err(ApiError::InvalidInput(
+                "You must set up your trolley account first!".to_string(),
+            ))
+        }
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[derive(Deserialize)]
 pub struct PayoutData {
     amount: Decimal,
 }
@@ -797,7 +752,7 @@ pub async fn user_payouts_request(
     pool: web::Data<PgPool>,
     data: web::Json<PayoutData>,
     payouts_queue: web::Data<Mutex<PayoutsQueue>>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let mut payouts_queue = payouts_queue.lock().await;
@@ -820,67 +775,60 @@ pub async fn user_payouts_request(
             ));
         }
 
-        if let Some(payouts_data) = user.payout_data {
-            if let Some(payout_address) = payouts_data.payout_address {
-                if let Some(payout_wallet_type) = payouts_data.payout_wallet_type {
-                    if let Some(payout_wallet) = payouts_data.payout_wallet {
-                        return if data.amount < payouts_data.balance {
-                            let mut transaction = pool.begin().await?;
+        if let Some(UserPayoutData {
+            trolley_id: Some(trolley_id),
+            trolley_status: Some(trolley_status),
+            balance,
+            ..
+        }) = user.payout_data
+        {
+            if trolley_status == RecipientStatus::Active {
+                return if data.amount < balance {
+                    let mut transaction = pool.begin().await?;
 
-                            let leftover = payouts_queue
-                                .send_payout(PayoutItem {
-                                    amount: PayoutAmount {
-                                        currency: "USD".to_string(),
-                                        value: data.amount,
-                                    },
-                                    receiver: payout_address,
-                                    note: "Payment from Modrinth creator monetization program"
-                                        .to_string(),
-                                    recipient_type: payout_wallet_type.to_string().to_uppercase(),
-                                    recipient_wallet: payout_wallet.as_str_api().to_string(),
-                                    sender_item_id: format!(
-                                        "{}-{}",
-                                        UserId::from(id),
-                                        Utc::now().timestamp()
-                                    ),
-                                })
-                                .await?;
+                    let (batch_id, payment_id) =
+                        payouts_queue.send_payout(&trolley_id, data.amount).await?;
 
-                            sqlx::query!(
+                    sqlx::query!(
                                 "
-                                INSERT INTO historical_payouts (user_id, amount, status)
-                                VALUES ($1, $2, $3)
+                                INSERT INTO historical_payouts (user_id, amount, status, batch_id, payment_id)
+                                VALUES ($1, $2, $3, $4, $5)
                                 ",
                                 id as crate::database::models::ids::UserId,
                                 data.amount,
-                                "success"
+                                "processing",
+                                batch_id,
+                                payment_id,
                             )
-                            .execute(&mut *transaction)
-                            .await?;
+                                .execute(&mut *transaction)
+                                .await?;
 
-                            sqlx::query!(
-                                "
+                    sqlx::query!(
+                        "
                                 UPDATE users
                                 SET balance = balance - $1
                                 WHERE id = $2
                                 ",
-                                data.amount - leftover,
-                                id as crate::database::models::ids::UserId
-                            )
-                            .execute(&mut *transaction)
-                            .await?;
-                            User::clear_caches(&[(id, None)], &redis).await?;
+                        data.amount,
+                        id as crate::database::models::ids::UserId
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
 
-                            transaction.commit().await?;
+                    User::clear_caches(&[(id, None)], &redis).await?;
 
-                            Ok(HttpResponse::NoContent().body(""))
-                        } else {
-                            Err(ApiError::InvalidInput(
-                                "You do not have enough funds to make this payout!".to_string(),
-                            ))
-                        };
-                    }
-                }
+                    transaction.commit().await?;
+
+                    Ok(HttpResponse::NoContent().body(""))
+                } else {
+                    Err(ApiError::InvalidInput(
+                        "You do not have enough funds to make this payout!".to_string(),
+                    ))
+                };
+            } else {
+                return Err(ApiError::InvalidInput(
+                    "Please complete payout information via the trolley dashboard!".to_string(),
+                ));
             }
         }
 

@@ -1,17 +1,16 @@
 use super::ids::{ProjectId, UserId};
 use super::CollectionId;
 use crate::database::models::DatabaseError;
+use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
-use crate::models::users::{Badges, RecipientType, RecipientWallet};
+use crate::models::users::{Badges, RecipientStatus};
 use chrono::{DateTime, Utc};
-use redis::cmd;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 const USERS_NAMESPACE: &str = "users";
 const USER_USERNAMES_NAMESPACE: &str = "users_usernames";
-// const USERS_PROJECTS_NAMESPACE: &str = "users_projects";
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
+const USERS_PROJECTS_NAMESPACE: &str = "users_projects";
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct User {
@@ -36,10 +35,10 @@ pub struct User {
     pub created: DateTime<Utc>,
     pub role: String,
     pub badges: Badges,
+
     pub balance: Decimal,
-    pub payout_wallet: Option<RecipientWallet>,
-    pub payout_wallet_type: Option<RecipientType>,
-    pub payout_address: Option<String>,
+    pub trolley_id: Option<String>,
+    pub trolley_account_status: Option<RecipientStatus>,
 }
 
 impl User {
@@ -87,7 +86,7 @@ impl User {
     pub async fn get<'a, 'b, E>(
         string: &str,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<User>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -100,7 +99,7 @@ impl User {
     pub async fn get_id<'a, 'b, E>(
         id: UserId,
         executor: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<User>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -113,7 +112,7 @@ impl User {
     pub async fn get_many_ids<'a, E>(
         user_ids: &[UserId],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<User>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -128,7 +127,7 @@ impl User {
     pub async fn get_many<'a, E, T: ToString>(
         users_strings: &[T],
         exec: E,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Vec<User>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
@@ -138,8 +137,6 @@ impl User {
         if users_strings.is_empty() {
             return Ok(Vec::new());
         }
-
-        let mut redis = redis.get().await?;
 
         let mut found_users = Vec::new();
         let mut remaining_strings = users_strings
@@ -153,20 +150,11 @@ impl User {
             .collect::<Vec<_>>();
 
         user_ids.append(
-            &mut cmd("MGET")
-                .arg(
-                    users_strings
-                        .iter()
-                        .map(|x| {
-                            format!(
-                                "{}:{}",
-                                USER_USERNAMES_NAMESPACE,
-                                x.to_string().to_lowercase()
-                            )
-                        })
-                        .collect::<Vec<_>>(),
+            &mut redis
+                .multi_get::<i64, _>(
+                    USER_USERNAMES_NAMESPACE,
+                    users_strings.iter().map(|x| x.to_string().to_lowercase()),
                 )
-                .query_async::<_, Vec<Option<i64>>>(&mut redis)
                 .await?
                 .into_iter()
                 .flatten()
@@ -174,16 +162,9 @@ impl User {
         );
 
         if !user_ids.is_empty() {
-            let users = cmd("MGET")
-                .arg(
-                    user_ids
-                        .iter()
-                        .map(|x| format!("{}:{}", USERS_NAMESPACE, x))
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<String>>>(&mut redis)
+            let users = redis
+                .multi_get::<String, _>(USERS_NAMESPACE, user_ids)
                 .await?;
-
             for user in users {
                 if let Some(user) = user.and_then(|x| serde_json::from_str::<User>(&x).ok()) {
                     remaining_strings.retain(|x| {
@@ -207,9 +188,9 @@ impl User {
                 SELECT id, name, email,
                     avatar_url, username, bio,
                     created, role, badges,
-                    balance, payout_wallet, payout_wallet_type, payout_address,
+                    balance,
                     github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,
-                    email_verified, password, totp_secret
+                    email_verified, password, totp_secret, trolley_id, trolley_account_status
                 FROM users
                 WHERE id = ANY($1) OR LOWER(username) = ANY($2)
                 ",
@@ -239,37 +220,29 @@ impl User {
                     role: u.role,
                     badges: Badges::from_bits(u.badges as u64).unwrap_or_default(),
                     balance: u.balance,
-                    payout_wallet: u.payout_wallet.map(|x| RecipientWallet::from_string(&x)),
-                    payout_wallet_type: u
-                        .payout_wallet_type
-                        .map(|x| RecipientType::from_string(&x)),
-                    payout_address: u.payout_address,
                     password: u.password,
                     totp_secret: u.totp_secret,
+                    trolley_id: u.trolley_id,
+                    trolley_account_status: u
+                        .trolley_account_status
+                        .as_ref()
+                        .map(|x| RecipientStatus::from_string(x)),
                 }))
             })
             .try_collect::<Vec<User>>()
             .await?;
 
             for user in db_users {
-                cmd("SET")
-                    .arg(format!("{}:{}", USERS_NAMESPACE, user.id.0))
-                    .arg(serde_json::to_string(&user)?)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
+                redis
+                    .set_serialized_to_json(USERS_NAMESPACE, user.id.0, &user, None)
                     .await?;
-
-                cmd("SET")
-                    .arg(format!(
-                        "{}:{}",
+                redis
+                    .set(
                         USER_USERNAMES_NAMESPACE,
-                        user.username.to_lowercase()
-                    ))
-                    .arg(user.id.0)
-                    .arg("EX")
-                    .arg(DEFAULT_EXPIRY)
-                    .query_async::<_, ()>(&mut redis)
+                        user.username.to_lowercase(),
+                        user.id.0,
+                        None,
+                    )
                     .await?;
                 found_users.push(user);
             }
@@ -298,13 +271,22 @@ impl User {
     pub async fn get_projects<'a, E>(
         user_id: UserId,
         exec: E,
-    ) -> Result<Vec<ProjectId>, sqlx::Error>
+        redis: &RedisPool,
+    ) -> Result<Vec<ProjectId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
         use futures::stream::TryStreamExt;
 
-        let projects = sqlx::query!(
+        let cached_projects = redis
+            .get_deserialized_from_json::<Vec<ProjectId>, _>(USERS_PROJECTS_NAMESPACE, user_id.0)
+            .await?;
+
+        if let Some(projects) = cached_projects {
+            return Ok(projects);
+        }
+
+        let db_projects = sqlx::query!(
             "
             SELECT m.id FROM mods m
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.accepted = TRUE
@@ -318,7 +300,11 @@ impl User {
         .try_collect::<Vec<ProjectId>>()
         .await?;
 
-        Ok(projects)
+        redis
+            .set_serialized_to_json(USERS_PROJECTS_NAMESPACE, user_id.0, &db_projects, None)
+            .await?;
+
+        Ok(db_projects)
     }
 
     pub async fn get_collections<'a, E>(
@@ -371,23 +357,33 @@ impl User {
 
     pub async fn clear_caches(
         user_ids: &[(UserId, Option<String>)],
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        let mut redis = redis.get().await?;
-        let mut cmd = cmd("DEL");
+        redis
+            .delete_many(user_ids.iter().flat_map(|(id, username)| {
+                [
+                    (USERS_NAMESPACE, Some(id.0.to_string())),
+                    (
+                        USER_USERNAMES_NAMESPACE,
+                        username.clone().map(|i| i.to_lowercase()),
+                    ),
+                ]
+            }))
+            .await?;
+        Ok(())
+    }
 
-        for (id, username) in user_ids {
-            cmd.arg(format!("{}:{}", USERS_NAMESPACE, id.0));
-            if let Some(username) = username {
-                cmd.arg(format!(
-                    "{}:{}",
-                    USER_USERNAMES_NAMESPACE,
-                    username.to_lowercase()
-                ));
-            }
-        }
-
-        cmd.query_async::<_, ()>(&mut redis).await?;
+    pub async fn clear_project_cache(
+        user_ids: &[UserId],
+        redis: &RedisPool,
+    ) -> Result<(), DatabaseError> {
+        redis
+            .delete_many(
+                user_ids
+                    .into_iter()
+                    .map(|id| (USERS_PROJECTS_NAMESPACE, Some(id.0.to_string()))),
+            )
+            .await?;
 
         Ok(())
     }
@@ -396,7 +392,7 @@ impl User {
         id: UserId,
         full: bool,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &deadpool_redis::Pool,
+        redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
         let user = Self::get_id(id, &mut *transaction, redis).await?;
 

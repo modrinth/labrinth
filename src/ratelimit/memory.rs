@@ -15,12 +15,18 @@ pub struct MemoryStore {
     inner: Arc<DashMap<String, (usize, Duration)>>,
 }
 
+impl Default for MemoryStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryStore {
     /// Create a new hashmap
     ///
     /// # Example
     /// ```rust
-    /// use actix_ratelimit::MemoryStore;
+    /// use labrinth::ratelimit::memory::MemoryStore;
     ///
     /// let store = MemoryStore::new();
     /// ```

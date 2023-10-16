@@ -5,6 +5,7 @@ use crate::database::models::version_item::{
     DependencyBuilder, VersionBuilder, VersionFileBuilder,
 };
 use crate::database::models::{self, image_item, Organization};
+use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::images::{Image, ImageContext, ImageId};
 use crate::models::notifications::NotificationBody;
@@ -89,7 +90,7 @@ pub async fn version_create(
     req: HttpRequest,
     mut payload: Multipart,
     client: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
@@ -129,7 +130,7 @@ async fn version_create_inner(
     req: HttpRequest,
     payload: &mut Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     pool: &PgPool,
@@ -408,7 +409,7 @@ async fn version_create_inner(
             version_id,
         },
     }
-    .insert_many(users, &mut *transaction)
+    .insert_many(users, &mut *transaction, redis)
     .await?;
 
     let response = Version {
@@ -507,7 +508,7 @@ pub async fn upload_file_to_version(
     url_data: web::Path<(VersionId,)>,
     mut payload: Multipart,
     client: Data<PgPool>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
@@ -551,7 +552,7 @@ async fn upload_file_to_version_inner(
     payload: &mut Multipart,
     client: Data<PgPool>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    redis: Data<deadpool_redis::Pool>,
+    redis: Data<RedisPool>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     version_id: models::VersionId,
@@ -724,10 +725,11 @@ async fn upload_file_to_version_inner(
             "At least one file must be specified".to_string(),
         ));
     } else {
-        for file_builder in file_builders {
-            file_builder.insert(version_id, &mut *transaction).await?;
-        }
+        VersionFileBuilder::insert_many(file_builders, version_id, &mut *transaction).await?;
     }
+
+    // Clear version cache
+    models::Version::clear_cache(&version, &redis).await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }

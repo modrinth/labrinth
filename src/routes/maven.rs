@@ -1,6 +1,7 @@
 use crate::database::models::categories::Loader;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::{QueryFile, QueryVersion};
+use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;
 use crate::models::projects::{ProjectId, VersionId};
 use crate::queue::session::AuthQueue;
@@ -71,7 +72,7 @@ pub async fn maven_metadata(
     req: HttpRequest,
     params: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let project_id = params.into_inner().0;
@@ -156,7 +157,7 @@ async fn find_version(
     project: &QueryProject,
     vcoords: &String,
     pool: &PgPool,
-    redis: &deadpool_redis::Pool,
+    redis: &RedisPool,
 ) -> Result<Option<QueryVersion>, ApiError> {
     let id_option = crate::models::ids::base62_impl::parse_base62(vcoords)
         .ok()
@@ -190,7 +191,7 @@ async fn find_version(
         .partition::<Vec<_>, _>(|el| db_loaders.contains(el));
 
     let matched = all_versions
-        .into_iter()
+        .iter()
         .filter(|x| {
             let mut bool = x.inner.version_number == vnumber;
 
@@ -205,7 +206,7 @@ async fn find_version(
         })
         .collect::<Vec<_>>();
 
-    Ok(matched.get(0).cloned())
+    Ok(matched.get(0).or_else(|| exact_matches.get(0)).copied().cloned())
 }
 
 fn find_file<'a>(
@@ -245,7 +246,7 @@ pub async fn version_file(
     req: HttpRequest,
     params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
@@ -306,7 +307,7 @@ pub async fn version_file_sha1(
     req: HttpRequest,
     params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
@@ -348,7 +349,7 @@ pub async fn version_file_sha512(
     req: HttpRequest,
     params: web::Path<(String, String, String)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();

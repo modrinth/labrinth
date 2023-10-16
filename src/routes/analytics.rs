@@ -1,14 +1,15 @@
 use crate::auth::get_user_from_headers;
+use crate::database::redis::RedisPool;
 use crate::models::analytics::{PageView, Playtime};
 use crate::models::pats::Scopes;
+use crate::queue::analytics::AnalyticsQueue;
 use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::date::get_current_tenths_of_ms;
 use crate::util::env::parse_strings_from_var;
-use crate::AnalyticsQueue;
 use actix_web::{post, web};
 use actix_web::{HttpRequest, HttpResponse};
-use chrono::Utc;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -63,7 +64,7 @@ pub async fn page_view_ingest(
     session_queue: web::Data<AuthQueue>,
     url_input: web::Json<UrlInput>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, None)
         .await
@@ -107,7 +108,7 @@ pub async fn page_view_ingest(
 
     let mut view = PageView {
         id: Uuid::new_v4(),
-        recorded: Utc::now().timestamp_nanos() / 100_000,
+        recorded: get_current_tenths_of_ms(),
         domain: domain.to_string(),
         site_path: url.path().to_string(),
         user_id: 0,
@@ -149,7 +150,7 @@ pub async fn page_view_ingest(
         view.user_id = user.id.0;
     }
 
-    analytics_queue.add_view(view).await;
+    analytics_queue.add_view(view);
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -169,7 +170,7 @@ pub async fn playtime_ingest(
     session_queue: web::Data<AuthQueue>,
     playtime_input: web::Json<HashMap<crate::models::ids::VersionId, PlaytimeInput>>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let (_, user) = get_user_from_headers(
         &req,
@@ -201,19 +202,17 @@ pub async fn playtime_ingest(
         }
 
         if let Some(version) = versions.iter().find(|x| id == x.inner.id.into()) {
-            analytics_queue
-                .add_playtime(Playtime {
-                    id: Default::default(),
-                    recorded: Utc::now().timestamp_nanos() / 100_000,
-                    seconds: playtime.seconds as u64,
-                    user_id: user.id.0,
-                    project_id: version.inner.project_id.0 as u64,
-                    version_id: version.inner.id.0 as u64,
-                    loader: playtime.loader,
-                    game_version: playtime.game_version,
-                    parent: playtime.parent.map(|x| x.0).unwrap_or(0),
-                })
-                .await;
+            analytics_queue.add_playtime(Playtime {
+                id: Default::default(),
+                recorded: get_current_tenths_of_ms(),
+                seconds: playtime.seconds as u64,
+                user_id: user.id.0,
+                project_id: version.inner.project_id.0 as u64,
+                version_id: version.inner.id.0 as u64,
+                loader: playtime.loader,
+                game_version: playtime.game_version,
+                parent: playtime.parent.map(|x| x.0).unwrap_or(0),
+            });
         }
     }
 

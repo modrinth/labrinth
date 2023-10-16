@@ -3,7 +3,9 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
+use crate::database::models::version_item::{DependencyBuilder, LoaderVersion, VersionVersion};
 use crate::database::models::{image_item, Organization};
+use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;
@@ -49,7 +51,7 @@ pub async fn version_list(
     info: web::Path<(String,)>,
     web::Query(filters): web::Query<VersionListFilters>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
@@ -170,7 +172,7 @@ pub async fn version_project_get(
     req: HttpRequest,
     info: web::Path<(String, String)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner();
@@ -221,7 +223,7 @@ pub async fn versions_get(
     req: HttpRequest,
     web::Query(ids): web::Query<VersionIds>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let version_ids = serde_json::from_str::<Vec<models::ids::VersionId>>(&ids.ids)?
@@ -251,7 +253,7 @@ pub async fn version_get(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
@@ -318,7 +320,7 @@ pub async fn version_edit(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     new_version: web::Json<EditVersion>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -449,11 +451,12 @@ pub async fn version_edit(
                             })
                             .collect::<Vec<database::models::version_item::DependencyBuilder>>();
 
-                        for dependency in builders {
-                            dependency
-                                .insert(version_item.inner.id, &mut transaction)
-                                .await?;
-                        }
+                        DependencyBuilder::insert_many(
+                            builders,
+                            version_item.inner.id,
+                            &mut transaction,
+                        )
+                        .await?;
                     }
                 }
             }
@@ -468,6 +471,7 @@ pub async fn version_edit(
                 .execute(&mut *transaction)
                 .await?;
 
+                let mut version_versions = Vec::new();
                 for game_version in game_versions {
                     let game_version_id = database::models::categories::GameVersion::get_id(
                         &game_version.0,
@@ -480,17 +484,9 @@ pub async fn version_edit(
                         )
                     })?;
 
-                    sqlx::query!(
-                        "
-                        INSERT INTO game_versions_versions (game_version_id, joining_version_id)
-                        VALUES ($1, $2)
-                        ",
-                        game_version_id as database::models::ids::GameVersionId,
-                        id as database::models::ids::VersionId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
+                    version_versions.push(VersionVersion::new(game_version_id, id));
                 }
+                VersionVersion::insert_many(version_versions, &mut transaction).await?;
 
                 database::models::Project::update_game_versions(
                     version_item.inner.project_id,
@@ -509,6 +505,7 @@ pub async fn version_edit(
                 .execute(&mut *transaction)
                 .await?;
 
+                let mut loader_versions = Vec::new();
                 for loader in loaders {
                     let loader_id =
                         database::models::categories::Loader::get_id(&loader.0, &mut *transaction)
@@ -518,18 +515,9 @@ pub async fn version_edit(
                                     "No database entry for loader provided.".to_string(),
                                 )
                             })?;
-
-                    sqlx::query!(
-                        "
-                        INSERT INTO loaders_versions (loader_id, version_id)
-                        VALUES ($1, $2)
-                        ",
-                        loader_id as database::models::ids::LoaderId,
-                        id as database::models::ids::VersionId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
+                    loader_versions.push(LoaderVersion::new(loader_id, id));
                 }
+                LoaderVersion::insert_many(loader_versions, &mut transaction).await?;
 
                 database::models::Project::update_loaders(
                     version_item.inner.project_id,
@@ -738,7 +726,7 @@ pub async fn version_schedule(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     scheduling_data: web::Json<SchedulingData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
@@ -835,7 +823,7 @@ pub async fn version_delete(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
     pool: web::Data<PgPool>,
-    redis: web::Data<deadpool_redis::Pool>,
+    redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
