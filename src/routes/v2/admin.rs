@@ -10,6 +10,7 @@ use crate::queue::download::DownloadQueue;
 use crate::queue::maxmind::MaxMindIndexer;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::search::SearchConfig;
 use crate::util::date::get_current_tenths_of_ms;
 use crate::util::guards::admin_key_guard;
 use crate::util::routes::read_from_payload;
@@ -28,7 +29,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("admin")
             .service(count_download)
-            .service(trolley_webhook),
+            .service(trolley_webhook)
+            .service(force_reindex)
     );
 }
 
@@ -317,5 +319,15 @@ pub async fn trolley_webhook(
         }
     }
 
+    Ok(HttpResponse::NoContent().finish())
+}
+
+#[post("/_force_reindex")]
+pub async fn force_reindex(
+    pool: web::Data<PgPool>,
+    config: web::Data<SearchConfig>,
+) -> Result<HttpResponse, ApiError> {
+    use crate::search::indexing::index_projects;
+    index_projects(pool.as_ref().clone(), &config).await?;    
     Ok(HttpResponse::NoContent().finish())
 }

@@ -3,7 +3,7 @@ use common::{
     environment::with_test_environment,
 };
 
-use crate::common::{dummy_data::DummyJarFile, request_data::get_public_project_creation_data};
+use crate::common::{dummy_data::TestFile, request_data::get_public_project_creation_data};
 
 mod common;
 
@@ -17,7 +17,7 @@ pub async fn get_user_projects_after_creating_project_returns_new_project() {
         let (project, _) = api
             .add_public_project(get_public_project_creation_data(
                 "slug",
-                DummyJarFile::BasicMod,
+                TestFile::BasicMod,
             ))
             .await;
 
@@ -36,7 +36,7 @@ pub async fn get_user_projects_after_deleting_project_shows_removal() {
         let (project, _) = api
             .add_public_project(get_public_project_creation_data(
                 "iota",
-                DummyJarFile::BasicMod,
+                TestFile::BasicMod,
             ))
             .await;
         api.get_user_projects_deserialized(USER_USER_ID, USER_USER_PAT)

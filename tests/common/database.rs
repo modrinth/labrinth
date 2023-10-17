@@ -70,7 +70,7 @@ impl TemporaryDatabase {
 
         let pool = PgPoolOptions::new()
             .min_connections(0)
-            .max_connections(4)
+            .max_connections(16)
             .max_lifetime(Some(Duration::from_secs(60 * 60)))
             .connect(&temp_db_url)
             .await

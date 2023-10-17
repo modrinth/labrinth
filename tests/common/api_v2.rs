@@ -19,6 +19,7 @@ use labrinth::models::{
 use serde_json::json;
 use std::rc::Rc;
 
+#[derive(Clone)]
 pub struct ApiV2 {
     pub test_app: Rc<Box<dyn LocalService>>,
 }

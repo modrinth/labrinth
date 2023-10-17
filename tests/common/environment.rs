@@ -29,6 +29,7 @@ where
 // Must be called in an #[actix_rt::test] context. It also simulates a
 // temporary sqlx db like #[sqlx::test] would.
 // Use .call(req) on it directly to make a test call as if test::call_service(req) were being used.
+#[derive(Clone)]
 pub struct TestEnvironment {
     test_app: Rc<Box<dyn LocalService>>,
     pub db: TemporaryDatabase,
