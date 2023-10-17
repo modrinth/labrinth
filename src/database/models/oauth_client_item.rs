@@ -96,6 +96,24 @@ impl OAuthClient {
         return Ok(clients.into_iter().map(|r| r.into()).collect());
     }
 
+    pub async fn remove<'a, E>(id: OAuthClientId, exec: E) -> Result<(), DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        // Cascades to oauth_client_redirect_uris, oauth_client_authorizations
+        sqlx::query!(
+            "
+            DELETE FROM oauth_clients
+            WHERE id = $1
+            ",
+            id.0
+        )
+        .execute(exec)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn insert(
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,

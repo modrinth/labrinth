@@ -1,5 +1,5 @@
 use actix_web::{
-    get, post,
+    delete, get, post,
     web::{self},
     HttpRequest, HttpResponse,
 };
@@ -19,11 +19,14 @@ use crate::{
         models::{
             generate_oauth_client_id, generate_oauth_redirect_id,
             oauth_client_item::{OAuthClient, OAuthRedirectUri},
-            User, UserId,
+            OAuthClientId, User, UserId,
         },
         redis::RedisPool,
     },
-    models::{self, oauth_clients::OAuthClientCreationResult, pats::Scopes},
+    models::{
+        self, ids::base62_impl::parse_base62, oauth_clients::OAuthClientCreationResult,
+        pats::Scopes,
+    },
     queue::session::AuthQueue,
     routes::v2::project_creation::CreateError,
     util::validate::validation_errors_to_string,
@@ -32,6 +35,7 @@ use crate::{
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(oauth_client_create);
     cfg.service(get_user_clients);
+    cfg.service(oauth_client_delete);
 }
 
 #[derive(Deserialize, Validate)]
@@ -57,7 +61,7 @@ pub struct NewOAuthApp {
 #[get("user/{user_id}/oauth_apps")]
 pub async fn get_user_clients(
     req: HttpRequest,
-    info: web::Path<(String,)>,
+    info: web::Path<String>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -72,12 +76,12 @@ pub async fn get_user_clients(
     .await?
     .1;
 
-    let target_user = User::get(&info.into_inner().0, &**pool, &redis).await?;
+    let target_user = User::get(&info.into_inner(), &**pool, &redis).await?;
 
     if let Some(target_user) = target_user {
         let target_user_id: models::ids::UserId = target_user.id.into();
 
-        if current_user.role.is_mod() || current_user.id == target_user_id {
+        if current_user.can_interact_with_oauth_client(target_user_id) {
             let clients = OAuthClient::get_all_user_clients(target_user.id, &**pool).await?;
 
             let response = clients
@@ -87,7 +91,9 @@ pub async fn get_user_clients(
 
             Ok(HttpResponse::Ok().json(response))
         } else {
-            todo!()
+            Err(ApiError::CustomAuthentication(
+                "You don't have permission to view this user's OAuth Applications".to_string(),
+            ))
         }
     } else {
         Ok(HttpResponse::NotFound().body(""))
@@ -154,6 +160,41 @@ pub async fn oauth_client_create<'a>(
         client,
         client_secret,
     }))
+}
+
+#[delete("oauth_app/{id}")]
+pub async fn oauth_client_delete<'a>(
+    req: HttpRequest,
+    client_id: web::Path<String>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::OAUTH_CLIENT_DELETE]),
+    )
+    .await?
+    .1;
+
+    let client_id = OAuthClientId(parse_base62(&client_id.into_inner())? as i64);
+    let client = OAuthClient::get(client_id, &**pool).await?;
+    if let Some(client) = client {
+        if current_user.can_interact_with_oauth_client(client.created_by.into()) {
+            OAuthClient::remove(client_id, &**pool).await?;
+
+            Ok(HttpResponse::NoContent().body(""))
+        } else {
+            Err(ApiError::CustomAuthentication(
+                "You don't have permission to delete this client".to_string(),
+            ))
+        }
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
 }
 
 fn generate_oauth_client_secret() -> String {

@@ -89,6 +89,12 @@ impl From<DBUser> for User {
     }
 }
 
+impl User {
+    pub fn can_interact_with_oauth_client(&self, client_owner_id: UserId) -> bool {
+        self.role.is_mod() || self.id == client_owner_id
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {

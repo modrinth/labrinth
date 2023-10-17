@@ -9,12 +9,12 @@ CREATE TABLE oauth_clients (
 );
 CREATE TABLE oauth_client_redirect_uris (
     id bigint PRIMARY KEY,
-    client_id bigint REFERENCES oauth_clients(id) NOT NULL,
+    client_id bigint REFERENCES oauth_clients(id) NOT NULL ON DELETE CASCADE,
     uri varchar(255)
 );
 CREATE TABLE oauth_client_authorizations (
     id bigint PRIMARY KEY,
-    client_id bigint NOT NULL REFERENCES oauth_clients(id),
+    client_id bigint NOT NULL REFERENCES oauth_clients(id) ON DELETE CASCADE,
     user_id bigint NOT NULL REFERENCES users(id),
     scopes bigint NOT NULL,
     created timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
