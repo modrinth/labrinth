@@ -105,10 +105,12 @@ bitflags::bitflags! {
 
         // create an OAuth client
         const OAUTH_CLIENT_CREATE = 1 << 39;
+        // get oauth clients
+        const OAUTH_CLIENT_READ = 1 << 40;
         // modify an OAuth client
-        const OAUTH_CLIENT_WRITE = 1 << 40;
+        const OAUTH_CLIENT_WRITE = 1 << 41;
         // delete an OAuth client
-        const OAUTH_CLIENT_DELETE = 1 << 41;
+        const OAUTH_CLIENT_DELETE = 1 << 42;
 
         const NONE = 0b0;
     }
@@ -128,6 +130,10 @@ impl Scopes {
             | Scopes::USER_AUTH_WRITE
             | Scopes::USER_DELETE
             | Scopes::PERFORM_ANALYTICS
+            | Scopes::OAUTH_CLIENT_CREATE
+            | Scopes::OAUTH_CLIENT_READ
+            | Scopes::OAUTH_CLIENT_WRITE
+            | Scopes::OAUTH_CLIENT_DELETE
     }
 
     pub fn is_restricted(&self) -> bool {

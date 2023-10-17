@@ -2304,15 +2304,21 @@ pub struct OAuthClientAccessRequest {
 #[get("oauth/authorize")]
 pub async fn init_oauth(
     req: HttpRequest,
-    Query(oauth_info): Query<OAuthInit>, // callback url
+    Query(oauth_info): Query<OAuthInit>,
     pool: Data<PgPool>,
     redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, OAuthError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, None)
-        .await
-        .map_err(OAuthError::error)?
-        .1;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_AUTH_WRITE]),
+    )
+    .await
+    .map_err(OAuthError::error)?
+    .1;
 
     let client = DBOAuthClient::get(oauth_info.client_id, &**pool)
         .await
@@ -2400,15 +2406,21 @@ pub struct AcceptOAuthClientScopes {
 #[get("oauth/accept")]
 pub async fn accept_client_scopes(
     req: HttpRequest,
-    accept_body: web::Json<AcceptOAuthClientScopes>, // callback url
+    accept_body: web::Json<AcceptOAuthClientScopes>,
     pool: Data<PgPool>,
     redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, OAuthError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, None)
-        .await
-        .map_err(|e| OAuthError::error(e))?
-        .1;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_AUTH_WRITE]),
+    )
+    .await
+    .map_err(|e| OAuthError::error(e))?
+    .1;
 
     let flow = Flow::get(&accept_body.flow, &redis)
         .await

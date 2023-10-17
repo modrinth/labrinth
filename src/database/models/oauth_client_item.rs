@@ -25,15 +25,22 @@ pub struct OAuthClient {
     pub created_by: UserId,
 }
 
-impl OAuthClient {
-    pub async fn get<'a, E>(
-        id: OAuthClientId,
-        exec: E,
-    ) -> Result<Option<OAuthClient>, DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
-        let value = sqlx::query!(
+struct ClientQueryResult {
+    id: i64,
+    name: String,
+    icon_url: Option<String>,
+    max_scopes: i64,
+    secret_hash: String,
+    created: DateTime<Utc>,
+    created_by: i64,
+    uri_ids: Option<Vec<i64>>,
+    uri_vals: Option<Vec<String>>,
+}
+
+macro_rules! select_clients_with_predicate {
+    ($predicate:tt, $param:ident) => {
+        sqlx::query_as!(
+            ClientQueryResult,
             "
             SELECT
                 clients.id,
@@ -51,39 +58,42 @@ impl OAuthClient {
                 FROM oauth_client_redirect_uris
                 GROUP BY client_id
             ) uris ON clients.id = uris.client_id
-            WHERE clients.id = $1
-            ",
-            id.0
+            "
+                + $predicate,
+            $param
         )
-        .fetch_optional(exec)
-        .await?;
+    };
+}
 
-        return Ok(value.map(|r| {
-            let redirects =
-                if let (Some(ids), Some(uris)) = (r.uri_ids.as_ref(), r.uri_vals.as_ref()) {
-                    ids.iter()
-                        .zip(uris.iter())
-                        .map(|(id, uri)| OAuthRedirectUri {
-                            id: OAuthRedirectUriId(*id),
-                            client_id: OAuthClientId(r.id.clone()),
-                            uri: uri.to_string(),
-                        })
-                        .collect()
-                } else {
-                    vec![]
-                };
+impl OAuthClient {
+    pub async fn get<'a, E>(
+        id: OAuthClientId,
+        exec: E,
+    ) -> Result<Option<OAuthClient>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let client_id_param = id.0;
+        let value = select_clients_with_predicate!("WHERE clients.id = $1", client_id_param)
+            .fetch_optional(exec)
+            .await?;
 
-            OAuthClient {
-                id: OAuthClientId(r.id),
-                name: r.name,
-                icon_url: r.icon_url,
-                max_scopes: Scopes::from_bits(r.max_scopes as u64).unwrap_or(Scopes::NONE),
-                secret_hash: r.secret_hash,
-                redirect_uris: redirects,
-                created: r.created,
-                created_by: UserId(r.created_by),
-            }
-        }));
+        return Ok(value.map(|r| r.into()));
+    }
+
+    pub async fn get_all_user_clients<'a, E>(
+        user_id: UserId,
+        exec: E,
+    ) -> Result<Vec<OAuthClient>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let user_id_param = user_id.0;
+        let clients = select_clients_with_predicate!("WHERE created_by = $1", user_id_param)
+            .fetch_all(exec)
+            .await?;
+
+        return Ok(clients.into_iter().map(|r| r.into()).collect());
     }
 
     pub async fn insert(
@@ -136,5 +146,33 @@ impl OAuthClient {
         .await?;
 
         Ok(())
+    }
+}
+
+impl From<ClientQueryResult> for OAuthClient {
+    fn from(r: ClientQueryResult) -> Self {
+        let redirects = if let (Some(ids), Some(uris)) = (r.uri_ids.as_ref(), r.uri_vals.as_ref()) {
+            ids.iter()
+                .zip(uris.iter())
+                .map(|(id, uri)| OAuthRedirectUri {
+                    id: OAuthRedirectUriId(*id),
+                    client_id: OAuthClientId(r.id.clone()),
+                    uri: uri.to_string(),
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+
+        OAuthClient {
+            id: OAuthClientId(r.id),
+            name: r.name,
+            icon_url: r.icon_url,
+            max_scopes: Scopes::from_bits(r.max_scopes as u64).unwrap_or(Scopes::NONE),
+            secret_hash: r.secret_hash,
+            redirect_uris: redirects,
+            created: r.created,
+            created_by: UserId(r.created_by),
+        }
     }
 }

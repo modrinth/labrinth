@@ -1,9 +1,10 @@
 use actix_web::{
-    post,
+    get, post,
     web::{self},
     HttpRequest, HttpResponse,
 };
 use chrono::Utc;
+use itertools::Itertools;
 use rand::{distributions::Alphanumeric, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use serde::Deserialize;
@@ -11,12 +12,14 @@ use sha2::Digest;
 use sqlx::PgPool;
 use validator::Validate;
 
+use super::ApiError;
 use crate::{
     auth::get_user_from_headers,
     database::{
         models::{
             generate_oauth_client_id, generate_oauth_redirect_id,
             oauth_client_item::{OAuthClient, OAuthRedirectUri},
+            User, UserId,
         },
         redis::RedisPool,
     },
@@ -28,6 +31,7 @@ use crate::{
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(oauth_client_create);
+    cfg.service(get_user_clients);
 }
 
 #[derive(Deserialize, Validate)]
@@ -50,6 +54,46 @@ pub struct NewOAuthApp {
     pub redirect_uris: Vec<String>,
 }
 
+#[get("user/{user_id}/oauth_apps")]
+pub async fn get_user_clients(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::OAUTH_CLIENT_READ]),
+    )
+    .await?
+    .1;
+
+    let target_user = User::get(&info.into_inner().0, &**pool, &redis).await?;
+
+    if let Some(target_user) = target_user {
+        let target_user_id: models::ids::UserId = target_user.id.into();
+
+        if current_user.role.is_mod() || current_user.id == target_user_id {
+            let clients = OAuthClient::get_all_user_clients(target_user.id, &**pool).await?;
+
+            let response = clients
+                .into_iter()
+                .map(|c| models::oauth_clients::OAuthClient::from(c))
+                .collect_vec();
+
+            Ok(HttpResponse::Ok().json(response))
+        } else {
+            todo!()
+        }
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
 #[post("oauth_app")]
 pub async fn oauth_client_create<'a>(
     req: HttpRequest,
@@ -64,7 +108,7 @@ pub async fn oauth_client_create<'a>(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::OAUTH_CLIENT_CREATE]),
+        Some(&[Scopes::OAUTH_CLIENT_WRITE]),
     )
     .await?
     .1;
