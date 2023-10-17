@@ -10,6 +10,7 @@ use serde_json::json;
 use futures::stream::StreamExt;
 use crate::common::database::*;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
+use crate::common::request_data::ProjectCreationRequestData;
 use crate::common::{actix::AppendsMultipart, environment::TestEnvironment};
 
 // importing common module.
@@ -18,13 +19,14 @@ mod common;
 #[actix_rt::test]
 async fn search_projects() {
     // Test setup and dummy data
-    let test_env = TestEnvironment::build_with_dummy().await;
+    let test_env = TestEnvironment::build(Some(8)).await;
+    let api = &test_env.v2;
     let test_name = test_env.db.database_name.clone();
+
     // Add dummy projects of various categories for searchability
     let mut project_creation_futures = vec![];
 
     let create_async_future = |id: u64,  pat: &'static str, is_modpack : bool, modify_json : Box<dyn Fn(&mut serde_json::Value)>| {
-        let test_env = test_env.clone();
         let slug = format!("{test_name}-searchable-project-{id}");
 
         let jar = if is_modpack { 
@@ -32,38 +34,29 @@ async fn search_projects() {
         } else { 
             TestFile::build_random_jar() 
         };
-        let mut basic_project_json = request_data::get_public_project_creation_data_json(&slug, &jar);
+        let mut basic_project_json = request_data::get_public_project_creation_data_json(&slug, Some(&jar));
         modify_json(&mut basic_project_json);
 
         let basic_project_multipart =
-            request_data::get_public_project_creation_data_multipart(&basic_project_json, &jar);
+            request_data::get_public_project_creation_data_multipart(&basic_project_json, Some(&jar));
         // Add a project- simple, should work.
-        let req = test::TestRequest::post()
-            .uri("/v2/project")
-            .append_header(("Authorization", pat))
-            .set_multipart(basic_project_multipart)
-            .to_request();
-
+        let req = api.add_public_project(ProjectCreationRequestData {
+            slug: slug.clone(),
+            jar: Some(jar),
+            segment_data: basic_project_multipart.clone(),
+        }, pat);
          async move {
-            let resp = test_env.call(req).await;
-            assert_eq!(resp.status(), 200);
-
-            let project : Project = test::read_body_json(resp).await;
+            let (project, _) = req.await;
 
             // Approve, so that the project is searchable
-            let req = test::TestRequest::patch()
-                .uri(&format!("/v2/project/{project_id}", project_id = project.id))
-                .append_header(("Authorization", MOD_USER_PAT))
-                .set_json(json!({
-                    "status": "approved"
-                }))
-                .to_request();
-
-            let resp = test_env.call(req).await;
+            let resp = api.edit_project(&project.id.to_string(), json!({
+                "status": "approved"
+            }), MOD_USER_PAT).await;
             assert_eq!(resp.status(), 204);
             (project.id.0, id)
         }};
 
+    // Test project 0
     let id = 0;
     let modify_json = | json : &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[4..6]);
@@ -72,6 +65,7 @@ async fn search_projects() {
     };
     project_creation_futures.push(create_async_future(id, USER_USER_PAT, false, Box::new(modify_json)));
 
+    // Test project 1
     let id = 1;
     let modify_json = | json : &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[0..2]);
@@ -79,6 +73,7 @@ async fn search_projects() {
     };
     project_creation_futures.push(create_async_future(id, USER_USER_PAT, false, Box::new(modify_json)));
 
+    // Test project 2
     let id = 2;
     let modify_json = | json : &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[0..2]);
@@ -87,33 +82,37 @@ async fn search_projects() {
     };
     project_creation_futures.push(create_async_future(id, USER_USER_PAT, false, Box::new(modify_json)));
 
+    // Test project 3
     let id = 3;
     let modify_json = | json : &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[0..3]);
         json["server_side"] = json!("required");
-        json["initial_versions"][0]["version_number"] = json!("1.2.4");
+        json["initial_versions"][0]["game_versions"] = json!(["1.20.4"]);
         json["title"] = json!("Mysterious Project");
         json["license_id"] = json!("LicenseRef-All-Rights-Reserved"); // closed source
     };
     project_creation_futures.push(create_async_future(id, FRIEND_USER_PAT, false, Box::new(modify_json)));
 
+    // Test project 4
     let id = 4;
     let modify_json = | json : &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[0..3]);
         json["client_side"] = json!("optional");
-        json["initial_versions"][0]["version_number"] = json!("1.2.5");
+        json["initial_versions"][0]["game_versions"] = json!(["1.20.5"]);
     };
     project_creation_futures.push(create_async_future(id, USER_USER_PAT, true, Box::new(modify_json)));
-
+    
+    // Test project 5
     let id = 5;
     let modify_json = | json : &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[5..6]);
         json["client_side"] = json!("optional");
-        json["initial_versions"][0]["version_number"] = json!("1.2.5");
+        json["initial_versions"][0]["game_versions"] = json!(["1.20.5"]);
         json["license_id"] = json!("LGPL-3.0-or-later");
     };
     project_creation_futures.push(create_async_future(id, USER_USER_PAT, false, Box::new(modify_json)));
 
+    // Test project 6
     let id = 6;
     let modify_json = | json : &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[5..6]);
@@ -170,10 +169,12 @@ async fn search_projects() {
             ]), vec![2,3]),
         (json!([
             ["author:user"]
-            ]), vec![0,1,2,4,5])
+            ]), vec![0,1,2,4,5]),
+        (json!([
+            ["versions:1.20.5"]
+            ]), vec![4,5]),
     ];
     // TODO: versions, game versions
-
     // Untested:
     // - downloads                      (not varied)
     // - color                          (not varied)
@@ -181,29 +182,16 @@ async fn search_projects() {
     // - modified_timestamp             (not varied)
 
     // Forcibly reset the search index
-    let req = test::TestRequest::post()
-        .uri("/v2/admin/_force_reindex")
-        .append_header(("Modrinth-Admin", dotenvy::var("LABRINTH_ADMIN_KEY").unwrap()))
-        .to_request();
-    let resp = test_env.call(req).await;
+    let resp = api.reset_search_index().await;
     assert_eq!(resp.status(), 204);
     
     // Test searches
     let stream = futures::stream::iter(pairs);
     stream.for_each_concurrent(10, |(facets, mut expected_project_ids)| {
-        let test_env = test_env.clone();
         let id_conversion = id_conversion.clone();
         let test_name = test_name.clone();
         async move {
-            let req = test::TestRequest::get()
-                .uri(&format!("/v2/search?query={test_name}&facets={facets}", facets=urlencoding::encode(&facets.to_string())))
-                .append_header(("Authorization", USER_USER_PAT))
-                .set_json(&facets)
-                .to_request();
-            let resp = test_env.call(req).await;
-            let status = resp.status();
-            assert_eq!(status, 200);
-            let projects : SearchResults = test::read_body_json(resp).await;
+            let projects = api.search_deserialized(Some(&test_name), Some(facets), USER_USER_PAT).await;
             let mut found_project_ids : Vec<u64> = projects.hits.into_iter().map(|p| id_conversion[&parse_base62(&p.project_id).unwrap()]).collect();
             expected_project_ids.sort();
             found_project_ids.sort();

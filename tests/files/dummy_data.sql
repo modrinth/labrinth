@@ -22,6 +22,14 @@ INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (54, 
 -- -- Sample game versions, loaders, categories
 INSERT INTO game_versions (id, version, type, created)
 VALUES (20000, '1.20.1', 'release', timezone('utc', now()));
+INSERT INTO game_versions (id, version, type, created)
+VALUES (20001, '1.20.2', 'release', timezone('utc', now()));
+INSERT INTO game_versions (id, version, type, created)
+VALUES (20002, '1.20.3', 'release', timezone('utc', now()));
+INSERT INTO game_versions (id, version, type, created)
+VALUES (20003, '1.20.4', 'release', timezone('utc', now()));
+INSERT INTO game_versions (id, version, type, created)
+VALUES (20004, '1.20.5', 'release', timezone('utc', now()));
 
 INSERT INTO loaders (id, loader) VALUES (1, 'fabric');
 INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,1);

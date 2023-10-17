@@ -408,7 +408,7 @@ pub async fn get_organization_zeta(test_env: &TestEnvironment) -> Organization {
     organization
 }
 
-impl DummyJarFile {
+impl TestFile {
     pub fn filename(&self) -> String {
         match self {
             TestFile::DummyProjectAlpha => "dummy-project-alpha.jar",
@@ -433,7 +433,21 @@ impl DummyJarFile {
             TestFile::BasicModDifferent => {
                 include_bytes!("../../tests/files/basic-mod-different.jar").to_vec()
             }
+            TestFile::BasicModRandom { bytes, .. } => bytes.clone(),
+            TestFile::BasicModpackRandom { bytes, .. } => bytes.clone(),
         }
+    }
+
+    pub fn project_type(&self) -> String {
+        match self {
+            TestFile::DummyProjectAlpha => "mod",
+            TestFile::DummyProjectBeta => "mod",
+            TestFile::BasicMod => "mod",
+            TestFile::BasicModDifferent => "mod",
+            TestFile::BasicModRandom { .. } => "mod",
+
+            TestFile::BasicModpackRandom { .. } => "modpack"
+        }.to_string()
     }
 }
 

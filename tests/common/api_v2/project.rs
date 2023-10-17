@@ -4,7 +4,7 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use bytes::Bytes;
-use labrinth::models::projects::{Project, Version};
+use labrinth::{models::projects::{Project, Version}, search::SearchResults};
 use serde_json::json;
 
 use crate::common::{
@@ -185,6 +185,30 @@ impl ApiV2 {
 
             self.call(req).await
         }
+    }
+
+    pub async fn search_deserialized(&self, query : Option<&str>, facets : Option<serde_json::Value>, pat : &str) -> SearchResults {
+
+        let query_field = if let Some(query) = query {
+            format!("&query={}", urlencoding::encode(query))
+        } else {
+            "".to_string()
+        };
+
+        let facets_field = if let Some(facets) = facets {
+            format!("&facets={}", urlencoding::encode(&facets.to_string()))
+        } else {
+            "".to_string()
+        };
+
+        let req = test::TestRequest::get()
+            .uri(&format!("/v2/search?{}{}", query_field, facets_field))
+            .append_header(("Authorization", pat))
+            .to_request();
+        let resp = self.call(req).await;
+        let status = resp.status();
+        assert_eq!(status, 200);
+        test::read_body_json(resp).await
     }
 }
 

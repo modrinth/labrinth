@@ -23,6 +23,19 @@ pub fn get_public_project_creation_data(
     slug: &str,
     version_jar: Option<TestFile>,
 ) -> ProjectCreationRequestData {
+    let json_data = get_public_project_creation_data_json(slug, version_jar.as_ref());
+    let multipart_data = get_public_project_creation_data_multipart(&json_data, version_jar.as_ref());
+    ProjectCreationRequestData {
+        slug: slug.to_string(),
+        jar: version_jar,
+        segment_data: multipart_data,
+    }
+}
+
+pub fn get_public_project_creation_data_json(
+    slug: &str,
+    version_jar: Option<&TestFile>,
+) -> serde_json::Value {
     let initial_versions = if let Some(ref jar) = version_jar {
         json!([{
             "file_parts": [jar.filename()],
@@ -40,24 +53,11 @@ pub fn get_public_project_creation_data(
 
     let is_draft = version_jar.is_none();
 
-    let json_data = get_public_project_creation_data_json(slug, &jar);
-    let multipart_data = get_public_project_creation_data_multipart(&json_data, &jar);
-    ProjectCreationRequestData {
-        slug: slug.to_string(),
-        jar,
-        segment_data: multipart_data,
-    }
-}
-
-pub fn get_public_project_creation_data_json(
-    slug: &str,
-    jar: &TestFile,
-) -> serde_json::Value {
     json!(
         {
             "title": format!("Test Project {slug}"),
             "slug": slug,
-            "project_type": jar.project_type(),
+            "project_type": version_jar.as_ref().map(|f| f.project_type()).unwrap_or("mod".to_string()),
             "description": "A dummy project for testing with.",
             "body": "This project is approved, and versions are listed.",
             "client_side": "required",
@@ -72,7 +72,7 @@ pub fn get_public_project_creation_data_json(
 
 pub fn get_public_project_creation_data_multipart(
     json_data: &serde_json::Value,
-    jar: &TestFile,
+    version_jar: Option<&TestFile>,
 ) -> Vec<MultipartSegment> {
     // Basic json
     let json_segment = MultipartSegment {
@@ -82,7 +82,7 @@ pub fn get_public_project_creation_data_multipart(
         data: MultipartSegmentData::Text(serde_json::to_string(json_data).unwrap()),
     };
 
-    let segment_data = if let Some(ref jar) = version_jar {
+    if let Some(ref jar) = version_jar {
         // Basic file
         let file_segment = MultipartSegment {
             name: jar.filename(),
@@ -94,14 +94,6 @@ pub fn get_public_project_creation_data_multipart(
         vec![json_segment.clone(), file_segment]
     } else {
         vec![json_segment.clone()]
-    };
-
-    vec![json_segment, file_segment]
-}
-    ProjectCreationRequestData {
-        slug: slug.to_string(),
-        jar: version_jar,
-        segment_data,
     }
 }
 
