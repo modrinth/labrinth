@@ -1,9 +1,25 @@
 name: Unit Tests
 
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches:
+      - master
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
+
 jobs:
   test:
-    name: ubuntu-latest-rust-stable
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }}-rust-${{ matrix.rust }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.rust != 'stable' }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        rust: [stable]
 
     steps:
       - uses: actions/checkout@v2
@@ -16,7 +32,7 @@ jobs:
         name: Install toolchain
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: ${{ matrix.rust }}
           override: true
 
       # Cache dependencies and build artifacts
@@ -27,7 +43,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ubuntu-latest-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/cargo@v1
         with:
