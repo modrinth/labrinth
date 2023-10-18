@@ -130,7 +130,7 @@ impl OAuthClient {
             self.id.0,
             self.name,
             self.icon_url,
-            self.max_scopes.bits() as i64,
+            self.max_scopes.to_postgres(),
             self.secret_hash,
             self.created_by.0
         )
@@ -138,6 +138,27 @@ impl OAuthClient {
         .await?;
 
         self.insert_redirect_uris(transaction).await?;
+
+        Ok(())
+    }
+
+    pub async fn update_editable_fields(
+        &self,
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        sqlx::query!(
+            "
+            UPDATE oauth_clients
+            SET name = $1, icon_url = $2, max_scopes = $3
+            WHERE (id = $4)
+            ",
+            self.name,
+            self.icon_url,
+            self.max_scopes.to_postgres(),
+            self.id.0,
+        )
+        .execute(exec)
+        .await?;
 
         Ok(())
     }

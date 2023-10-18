@@ -144,6 +144,10 @@ impl Scopes {
         let scopes = scopes.replace(' ', "|").replace("%20", "|");
         bitflags::parser::from_str(&scopes)
     }
+
+    pub fn to_postgres(&self) -> i64 {
+        self.bits() as i64
+    }
 }
 
 #[derive(Serialize, Deserialize)]

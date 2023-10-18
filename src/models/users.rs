@@ -90,8 +90,18 @@ impl From<DBUser> for User {
 }
 
 impl User {
-    pub fn can_interact_with_oauth_client(&self, client_owner_id: UserId) -> bool {
-        self.role.is_mod() || self.id == client_owner_id
+    pub fn validate_can_interact_with_oauth_client(
+        &self,
+        client_owner_id: UserId,
+    ) -> Result<(), crate::routes::ApiError> {
+        if self.role.is_mod() || self.id == client_owner_id {
+            Ok(())
+        } else {
+            Err(crate::routes::ApiError::CustomAuthentication(
+                "You don't have sufficient permissions to interact with this OAuth application"
+                    .to_string(),
+            ))
+        }
     }
 }
 
