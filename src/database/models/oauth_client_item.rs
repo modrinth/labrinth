@@ -137,7 +137,7 @@ impl OAuthClient {
         .execute(&mut *transaction)
         .await?;
 
-        self.insert_redirect_uris(transaction).await?;
+        Self::insert_redirect_uris(&self.redirect_uris, transaction).await?;
 
         Ok(())
     }
@@ -163,12 +163,30 @@ impl OAuthClient {
         Ok(())
     }
 
-    async fn insert_redirect_uris(
-        &self,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    pub async fn remove_redirect_uris(
+        ids: impl IntoIterator<Item = OAuthRedirectUriId>,
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<(), DatabaseError> {
-        let (ids, client_ids, uris): (Vec<_>, Vec<_>, Vec<_>) = self
-            .redirect_uris
+        let ids = ids.into_iter().map(|id| id.0).collect_vec();
+        sqlx::query!(
+            "
+            DELETE FROM oauth_clients
+            WHERE id IN
+            (SELECT * FROM UNNEST($1::bigint[]))
+            ",
+            &ids[..]
+        )
+        .execute(exec)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn insert_redirect_uris(
+        uris: &[OAuthRedirectUri],
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        let (ids, client_ids, uris): (Vec<_>, Vec<_>, Vec<_>) = uris
             .iter()
             .map(|r| (r.id.0, r.client_id.0, r.uri.clone()))
             .multiunzip();
@@ -181,7 +199,7 @@ impl OAuthClient {
             &client_ids[..],
             &uris[..],
         )
-        .execute(&mut *transaction)
+        .execute(exec)
         .await?;
 
         Ok(())

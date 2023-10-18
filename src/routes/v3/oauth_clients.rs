@@ -1,3 +1,5 @@
+use std::{collections::HashSet, fmt::Display, iter::FromIterator};
+
 use actix_web::{
     delete, get, patch, post,
     web::{self},
@@ -19,7 +21,7 @@ use crate::{
         models::{
             generate_oauth_client_id, generate_oauth_redirect_id,
             oauth_client_item::{OAuthClient, OAuthRedirectUri},
-            OAuthClientId, User, UserId,
+            DatabaseError, OAuthClientId, User, UserId,
         },
         redis::RedisPool,
     },
@@ -124,15 +126,8 @@ pub async fn oauth_client_create<'a>(
     let client_secret = generate_oauth_client_secret();
     let client_secret_hash = format!("{:x}", sha2::Sha512::digest(client_secret.as_bytes()));
 
-    let mut redirect_uris = vec![];
-    for uri in new_oauth_app.redirect_uris.iter() {
-        let id = generate_oauth_redirect_id(&mut transaction).await?;
-        redirect_uris.push(OAuthRedirectUri {
-            id,
-            client_id,
-            uri: uri.to_string(),
-        });
-    }
+    let redirect_uris =
+        create_redirect_uris(&new_oauth_app.redirect_uris, client_id, &mut transaction).await?;
 
     let client = OAuthClient {
         id: client_id,
@@ -200,6 +195,9 @@ pub struct OAuthClientEdit {
     pub icon_url: Option<Option<String>>,
 
     pub max_scopes: Option<Scopes>,
+
+    #[validate(length(min = 1))]
+    pub redirect_uris: Option<Vec<String>>,
 }
 
 #[patch("oauth_app/{id}")]
@@ -242,6 +240,7 @@ pub async fn oauth_client_edit(
             name,
             icon_url,
             max_scopes,
+            redirect_uris,
         } = client_updates.into_inner();
         if let Some(name) = name {
             updated_client.name = name;
@@ -255,7 +254,17 @@ pub async fn oauth_client_edit(
             updated_client.max_scopes = max_scopes;
         }
 
-        updated_client.update_editable_fields(&**pool).await?;
+        let mut transaction = pool.begin().await?;
+        updated_client
+            .update_editable_fields(&mut transaction)
+            .await?;
+
+        if let Some(redirects) = redirect_uris {
+            edit_redirects(redirects, &existing_client, &mut transaction).await?;
+        }
+
+        transaction.commit().await?;
+
         Ok(HttpResponse::Ok().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))
@@ -272,8 +281,54 @@ fn generate_oauth_client_secret() -> String {
 
 async fn get_oauth_client_from_str_id(
     client_id: String,
-    pool: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
 ) -> Result<Option<OAuthClient>, ApiError> {
     let client_id = OAuthClientId(parse_base62(&client_id)? as i64);
-    Ok(OAuthClient::get(client_id, pool).await?)
+    Ok(OAuthClient::get(client_id, exec).await?)
+}
+
+async fn create_redirect_uris(
+    uri_strings: impl IntoIterator<Item = impl Display>,
+    client_id: OAuthClientId,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<Vec<OAuthRedirectUri>, DatabaseError> {
+    let mut redirect_uris = vec![];
+    for uri in uri_strings.into_iter() {
+        let id = generate_oauth_redirect_id(transaction).await?;
+        redirect_uris.push(OAuthRedirectUri {
+            id,
+            client_id,
+            uri: uri.to_string(),
+        });
+    }
+
+    Ok(redirect_uris)
+}
+
+async fn edit_redirects(
+    redirects: Vec<String>,
+    existing_client: &OAuthClient,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), DatabaseError> {
+    let updated_redirects: HashSet<String> = redirects.into_iter().collect();
+    let original_redirects: HashSet<String> = existing_client
+        .redirect_uris
+        .iter()
+        .map(|r| r.uri.to_string())
+        .collect();
+
+    let redirects_to_add = create_redirect_uris(
+        updated_redirects.difference(&original_redirects),
+        existing_client.id,
+        &mut *transaction,
+    )
+    .await?;
+    OAuthClient::insert_redirect_uris(&redirects_to_add, &mut *transaction).await?;
+
+    let mut redirects_to_remove = existing_client.redirect_uris.clone();
+    redirects_to_remove.retain(|r| !updated_redirects.contains(&r.uri));
+    OAuthClient::remove_redirect_uris(redirects_to_remove.iter().map(|r| r.id), &mut *transaction)
+        .await?;
+
+    Ok(())
 }
