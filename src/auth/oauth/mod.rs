@@ -30,7 +30,8 @@ pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
         scope("auth/oauth")
             .service(init_oauth)
-            .service(accept_client_scopes),
+            .service(accept_client_scopes)
+            .service(request_token),
     );
 }
 
