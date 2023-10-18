@@ -38,6 +38,7 @@ pub enum Flow {
     InitOAuthAppApproval {
         user_id: UserId,
         client_id: OAuthClientId,
+        existing_authorization_id: Option<OAuthClientAuthorizationId>,
         scopes: Scopes,
         validated_redirect_uri: ValidatedRedirectUri,
         original_redirect_uri: Option<String>,

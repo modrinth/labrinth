@@ -129,6 +129,7 @@ pub async fn init_oauth(
                 let flow_id = Flow::InitOAuthAppApproval {
                     user_id: user.id.into(),
                     client_id: client.id,
+                    existing_authorization_id: existing_authorization.map(|a| a.id),
                     scopes: requested_scopes,
                     validated_redirect_uri: redirect_uri.clone(),
                     original_redirect_uri: oauth_info.redirect_uri.clone(),
@@ -174,7 +175,7 @@ pub async fn accept_client_scopes(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::USER_AUTH_WRITE]),
+        Some(&[Scopes::USER_OAUTH_AUTHORIZATIONS_WRITE]),
     )
     .await
     .map_err(|e| OAuthError::error(e))?
@@ -186,6 +187,7 @@ pub async fn accept_client_scopes(
     if let Some(Flow::InitOAuthAppApproval {
         user_id,
         client_id,
+        existing_authorization_id,
         scopes,
         validated_redirect_uri,
         original_redirect_uri,
@@ -194,19 +196,15 @@ pub async fn accept_client_scopes(
     {
         let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
 
-        let auth_id = generate_oauth_client_authorization_id(&mut transaction)
+        let auth_id = match existing_authorization_id {
+            Some(id) => id,
+            None => generate_oauth_client_authorization_id(&mut transaction)
+                .await
+                .map_err(OAuthError::error)?,
+        };
+        OAuthClientAuthorization::upsert(auth_id, client_id, user_id, scopes, &mut transaction)
             .await
             .map_err(OAuthError::error)?;
-        OAuthClientAuthorization {
-            id: auth_id,
-            client_id,
-            user_id,
-            scopes,
-            created: Utc::now(),
-        }
-        .insert(&mut transaction)
-        .await
-        .map_err(OAuthError::error)?;
 
         transaction.commit().await.map_err(OAuthError::error)?;
 

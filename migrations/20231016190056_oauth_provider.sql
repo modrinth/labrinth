@@ -17,7 +17,8 @@ CREATE TABLE oauth_client_authorizations (
     client_id bigint NOT NULL REFERENCES oauth_clients (id) ON DELETE CASCADE,
     user_id bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     scopes bigint NOT NULL,
-    created timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (client_id, user_id)
 );
 CREATE TABLE oauth_access_tokens (
     id bigint PRIMARY KEY,
@@ -30,5 +31,4 @@ CREATE TABLE oauth_access_tokens (
 );
 CREATE INDEX oauth_client_creator ON oauth_clients(created_by);
 CREATE INDEX oauth_redirect_client ON oauth_client_redirect_uris(client_id);
-CREATE INDEX oauth_authorization_client_user ON oauth_client_authorizations(client_id, user_id);
 CREATE INDEX oauth_access_token_hash ON oauth_access_tokens(token_hash);

@@ -10,7 +10,6 @@ use itertools::Itertools;
 use rand::{distributions::Alphanumeric, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use serde::Deserialize;
-use sha2::Digest;
 use sqlx::PgPool;
 use validator::Validate;
 
@@ -20,15 +19,13 @@ use crate::{
     database::{
         models::{
             generate_oauth_client_id, generate_oauth_redirect_id,
+            oauth_client_authorization_item::OAuthClientAuthorization,
             oauth_client_item::{OAuthClient, OAuthRedirectUri},
             DatabaseError, OAuthClientId, User,
         },
         redis::RedisPool,
     },
-    models::{
-        self, ids::base62_impl::parse_base62, oauth_clients::OAuthClientCreationResult,
-        pats::Scopes,
-    },
+    models::{self, oauth_clients::OAuthClientCreationResult, pats::Scopes},
     queue::session::AuthQueue,
     routes::v2::project_creation::CreateError,
     util::validate::validation_errors_to_string,
@@ -271,6 +268,57 @@ pub async fn oauth_client_edit(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+#[get("user/oauth_authorizations")]
+pub async fn get_user_oauth_authorizations(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_OAUTH_AUTHORIZATIONS_READ]),
+    )
+    .await?
+    .1;
+
+    let authorizations =
+        OAuthClientAuthorization::get_all_for_user(current_user.id.into(), &**pool).await?;
+
+    let mapped: Vec<models::oauth_clients::OAuthClientAuthorizationInfo> =
+        authorizations.into_iter().map(|a| a.into()).collect_vec();
+
+    Ok(HttpResponse::Ok().json(mapped))
+}
+
+#[delete("user/oauth_authorizations/{client_id}")]
+pub async fn revoke_oauth_authorization(
+    req: HttpRequest,
+    info: web::Path<String>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_OAUTH_AUTHORIZATIONS_WRITE]),
+    )
+    .await?
+    .1;
+
+    let client_id = models::ids::OAuthClientId::parse(&info.into_inner())?;
+
+    OAuthClientAuthorization::remove(client_id.into(), current_user.id.into(), &**pool).await?;
+
+    Ok(HttpResponse::Ok().body(""))
 }
 
 fn generate_oauth_client_secret() -> String {
