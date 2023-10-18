@@ -14,7 +14,7 @@ use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, post, web, HttpRequest, HttpResponse};
-use chrono::{Duration, Utc};
+use chrono::Duration;
 use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 
 use self::errors::{OAuthError, OAuthErrorType};
+
+use super::AuthenticationError;
 
 pub mod errors;
 
@@ -170,8 +172,7 @@ pub async fn accept_client_scopes(
     redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, OAuthError> {
-    //TODO: Any way to do this without getting the user?
-    let user = get_user_from_headers(
+    let current_user = get_user_from_headers(
         &req,
         &**pool,
         &redis,
@@ -195,6 +196,10 @@ pub async fn accept_client_scopes(
         state,
     }) = flow
     {
+        if current_user.id != user_id.into() {
+            return Err(OAuthError::error(AuthenticationError::InvalidCredentials));
+        }
+
         let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
 
         let auth_id = match existing_authorization_id {

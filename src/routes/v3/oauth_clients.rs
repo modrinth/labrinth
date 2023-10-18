@@ -111,7 +111,7 @@ pub async fn oauth_client_create<'a>(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::OAUTH_CLIENT_WRITE]),
+        Some(&[Scopes::OAUTH_CLIENT_CREATE]),
     )
     .await?
     .1;
@@ -215,7 +215,7 @@ pub async fn oauth_client_edit(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::OAUTH_CLIENT_DELETE]),
+        Some(&[Scopes::OAUTH_CLIENT_WRITE]),
     )
     .await?
     .1;
