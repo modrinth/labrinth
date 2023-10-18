@@ -148,6 +148,10 @@ impl Scopes {
     pub fn to_postgres(&self) -> i64 {
         self.bits() as i64
     }
+
+    pub fn from_postgres(value: i64) -> Self {
+        Self::from_bits(value as u64).unwrap_or(Scopes::NONE)
+    }
 }
 
 #[derive(Serialize, Deserialize)]

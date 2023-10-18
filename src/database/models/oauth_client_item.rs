@@ -66,13 +66,10 @@ macro_rules! select_clients_with_predicate {
 }
 
 impl OAuthClient {
-    pub async fn get<'a, E>(
+    pub async fn get(
         id: OAuthClientId,
-        exec: E,
-    ) -> Result<Option<OAuthClient>, DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    ) -> Result<Option<OAuthClient>, DatabaseError> {
         let client_id_param = id.0;
         let value = select_clients_with_predicate!("WHERE clients.id = $1", client_id_param)
             .fetch_optional(exec)
@@ -81,13 +78,10 @@ impl OAuthClient {
         return Ok(value.map(|r| r.into()));
     }
 
-    pub async fn get_all_user_clients<'a, E>(
+    pub async fn get_all_user_clients(
         user_id: UserId,
-        exec: E,
-    ) -> Result<Vec<OAuthClient>, DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    ) -> Result<Vec<OAuthClient>, DatabaseError> {
         let user_id_param = user_id.0;
         let clients = select_clients_with_predicate!("WHERE created_by = $1", user_id_param)
             .fetch_all(exec)
@@ -96,10 +90,10 @@ impl OAuthClient {
         return Ok(clients.into_iter().map(|r| r.into()).collect());
     }
 
-    pub async fn remove<'a, E>(id: OAuthClientId, exec: E) -> Result<(), DatabaseError>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-    {
+    pub async fn remove(
+        id: OAuthClientId,
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
         // Cascades to oauth_client_redirect_uris, oauth_client_authorizations
         sqlx::query!(
             "
@@ -225,7 +219,7 @@ impl From<ClientQueryResult> for OAuthClient {
             id: OAuthClientId(r.id),
             name: r.name,
             icon_url: r.icon_url,
-            max_scopes: Scopes::from_bits(r.max_scopes as u64).unwrap_or(Scopes::NONE),
+            max_scopes: Scopes::from_postgres(r.max_scopes),
             secret_hash: r.secret_hash,
             redirect_uris: redirects,
             created: r.created,

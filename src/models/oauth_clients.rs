@@ -1,7 +1,6 @@
 use super::{
-    ids::{Base62Id, TeamId, UserId},
+    ids::{Base62Id, UserId},
     pats::Scopes,
-    teams::TeamMember,
 };
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +50,7 @@ impl From<crate::database::models::oauth_client_item::OAuthClient> for OAuthClie
             name: value.name,
             icon_url: value.icon_url,
             max_scopes: value.max_scopes,
-            redirect_uris: todo!(),
+            redirect_uris: value.redirect_uris.into_iter().map(|r| r.into()).collect(),
             created_by: value.created_by.into(),
         }
     }

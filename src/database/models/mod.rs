@@ -8,6 +8,7 @@ pub mod image_item;
 pub mod notification_item;
 pub mod oauth_client_authorization_item;
 pub mod oauth_client_item;
+pub mod oauth_token_item;
 pub mod organization_item;
 pub mod pat_item;
 pub mod project_item;

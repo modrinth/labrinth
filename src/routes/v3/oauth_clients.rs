@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, iter::FromIterator};
+use std::{collections::HashSet, fmt::Display};
 
 use actix_web::{
     delete, get, patch, post,
@@ -21,7 +21,7 @@ use crate::{
         models::{
             generate_oauth_client_id, generate_oauth_redirect_id,
             oauth_client_item::{OAuthClient, OAuthRedirectUri},
-            DatabaseError, OAuthClientId, User, UserId,
+            DatabaseError, OAuthClientId, User,
         },
         redis::RedisPool,
     },

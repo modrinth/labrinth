@@ -5,7 +5,9 @@ use crate::auth::{get_user_from_headers, AuthenticationError, OAuthError, OAuthE
 use crate::database::models::flow_item::Flow;
 use crate::database::models::oauth_client_authorization_item::OAuthClientAuthorization;
 use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
-use crate::database::models::{generate_oauth_client_authorization_id, OAuthClientId};
+use crate::database::models::{
+    generate_oauth_client_authorization_id, OAuthClientAuthorizationId, OAuthClientId,
+};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
@@ -2356,40 +2358,44 @@ pub async fn init_oauth(
             OAuthClientAuthorization::get(client.id, user.id.into(), &**pool)
                 .await
                 .map_err(|e| OAuthError::redirect(e, &oauth_info.state, &redirect_uri))?;
-        let has_already_accepted =
-            existing_authorization.is_some_and(|auth| auth.scopes.contains(requested_scopes));
-        if has_already_accepted {
-            get_init_oauth_code_flow_response(
-                user.id.into(),
-                client.id,
-                requested_scopes,
-                redirect_uri,
-                oauth_info.redirect_uri,
-                oauth_info.state,
-                &redis,
-            )
-            .await
-        } else {
-            let flow_id = Flow::InitOAuthAppApproval {
-                user_id: user.id.into(),
-                client_id: client.id,
-                scopes: requested_scopes,
-                validated_redirect_uri: redirect_uri.clone(),
-                original_redirect_uri: oauth_info.redirect_uri.clone(),
-                state: oauth_info.state.clone(),
+        match existing_authorization {
+            Some(existing_authorization)
+                if existing_authorization.scopes.contains(requested_scopes) =>
+            {
+                init_oauth_code_flow(
+                    user.id.into(),
+                    client.id,
+                    existing_authorization.id,
+                    requested_scopes,
+                    redirect_uri,
+                    oauth_info.redirect_uri,
+                    oauth_info.state,
+                    &redis,
+                )
+                .await
             }
-            .insert(Duration::minutes(30), &redis)
-            .await
-            .map_err(|e| OAuthError::redirect(e, &oauth_info.state, &redirect_uri))?;
+            _ => {
+                let flow_id = Flow::InitOAuthAppApproval {
+                    user_id: user.id.into(),
+                    client_id: client.id,
+                    scopes: requested_scopes,
+                    validated_redirect_uri: redirect_uri.clone(),
+                    original_redirect_uri: oauth_info.redirect_uri.clone(),
+                    state: oauth_info.state.clone(),
+                }
+                .insert(Duration::minutes(30), &redis)
+                .await
+                .map_err(|e| OAuthError::redirect(e, &oauth_info.state, &redirect_uri))?;
 
-            let access_request = OAuthClientAccessRequest {
-                client_id: client.id,
-                client_name: client.name,
-                client_icon: client.icon_url,
-                flow_id,
-                requested_scopes,
-            };
-            Ok(HttpResponse::Ok().json(access_request))
+                let access_request = OAuthClientAccessRequest {
+                    client_id: client.id,
+                    client_name: client.name,
+                    client_icon: client.icon_url,
+                    flow_id,
+                    requested_scopes,
+                };
+                Ok(HttpResponse::Ok().json(access_request))
+            }
         }
     } else {
         Err(OAuthError::error(OAuthErrorType::UnrecognizedClient {
@@ -2436,11 +2442,11 @@ pub async fn accept_client_scopes(
     {
         let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
 
-        let id = generate_oauth_client_authorization_id(&mut transaction)
+        let auth_id = generate_oauth_client_authorization_id(&mut transaction)
             .await
             .map_err(OAuthError::error)?;
         OAuthClientAuthorization {
-            id,
+            id: auth_id,
             client_id,
             user_id,
             scopes,
@@ -2452,9 +2458,10 @@ pub async fn accept_client_scopes(
 
         transaction.commit().await.map_err(OAuthError::error)?;
 
-        get_init_oauth_code_flow_response(
+        init_oauth_code_flow(
             user_id,
             client_id,
+            auth_id,
             scopes,
             validated_redirect_uri,
             original_redirect_uri,
@@ -2467,9 +2474,10 @@ pub async fn accept_client_scopes(
     }
 }
 
-async fn get_init_oauth_code_flow_response(
+async fn init_oauth_code_flow(
     user_id: crate::database::models::UserId,
     client_id: OAuthClientId,
+    authorization_id: OAuthClientAuthorizationId,
     scopes: Scopes,
     validated_redirect_uri: ValidatedRedirectUri,
     original_redirect_uri: Option<String>,
@@ -2479,6 +2487,7 @@ async fn get_init_oauth_code_flow_response(
     let code = Flow::OAuthAuthorizationCodeSupplied {
         user_id,
         client_id,
+        authorization_id,
         scopes,
         validated_redirect_uri: validated_redirect_uri.clone(),
         original_redirect_uri,

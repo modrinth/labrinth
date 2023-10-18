@@ -176,6 +176,14 @@ generate_ids!(
     OAuthRedirectUriId
 );
 
+generate_ids!(
+    pub generate_oauth_access_token_id,
+    OAuthAccessTokenId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM oauth_access_tokens WHERE id=$1)",
+    OAuthAccessTokenId
+);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Hash, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct UserId(pub i64);
@@ -273,6 +281,10 @@ pub struct OAuthClientAuthorizationId(pub i64);
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[sqlx(transparent)]
 pub struct OAuthRedirectUriId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct OAuthAccessTokenId(pub i64);
 
 use crate::models::ids;
 
