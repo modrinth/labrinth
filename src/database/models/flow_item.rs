@@ -1,5 +1,5 @@
 use super::ids::*;
-use crate::auth::flows::ValidatedRedirectUri;
+use crate::auth::oauth::ValidatedRedirectUri;
 use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
 use crate::{auth::flows::AuthProvider, models::pats::Scopes};
