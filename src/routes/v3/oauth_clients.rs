@@ -34,6 +34,8 @@ use crate::{
     util::validate::validation_errors_to_string,
 };
 
+use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
+
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(oauth_client_create);
     cfg.service(get_user_clients);
@@ -124,7 +126,7 @@ pub async fn oauth_client_create<'a>(
     let client_id = generate_oauth_client_id(&mut transaction).await?;
 
     let client_secret = generate_oauth_client_secret();
-    let client_secret_hash = format!("{:x}", sha2::Sha512::digest(client_secret.as_bytes()));
+    let client_secret_hash = DBOAuthClient::hash_secret(&client_secret);
 
     let redirect_uris =
         create_redirect_uris(&new_oauth_app.redirect_uris, client_id, &mut transaction).await?;
@@ -283,7 +285,7 @@ async fn get_oauth_client_from_str_id(
     client_id: String,
     exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
 ) -> Result<Option<OAuthClient>, ApiError> {
-    let client_id = OAuthClientId(parse_base62(&client_id)? as i64);
+    let client_id = models::ids::OAuthClientId::parse(&client_id)?.into();
     Ok(OAuthClient::get(client_id, exec).await?)
 }
 

@@ -1,16 +1,24 @@
 use crate::auth::get_user_from_headers;
+use crate::auth::validate::extract_authorization_header;
 use crate::database::models::flow_item::Flow;
 use crate::database::models::oauth_client_authorization_item::OAuthClientAuthorization;
 use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
+use crate::database::models::oauth_token_item::OAuthAccessToken;
 use crate::database::models::{
-    generate_oauth_client_authorization_id, OAuthClientAuthorizationId, OAuthClientId,
+    generate_oauth_access_token_id, generate_oauth_client_authorization_id,
+    OAuthClientAuthorizationId, OAuthClientId,
 };
 use crate::database::redis::RedisPool;
+use crate::models;
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
-use actix_web::{get, web, HttpRequest, HttpResponse};
+use actix_web::{get, post, web, HttpRequest, HttpResponse};
 use chrono::{Duration, Utc};
+use rand::distributions::Alphanumeric;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
+use reqwest::header::{CACHE_CONTROL, PRAGMA};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 
@@ -28,7 +36,7 @@ pub fn config(cfg: &mut ServiceConfig) {
 
 #[derive(Serialize, Deserialize)]
 pub struct OAuthInit {
-    pub client_id: OAuthClientId,
+    pub client_id: String,
     pub redirect_uri: Option<String>,
     pub scope: Option<String>,
     pub state: Option<String>,
@@ -62,7 +70,10 @@ pub async fn init_oauth(
     .map_err(OAuthError::error)?
     .1;
 
-    let client = DBOAuthClient::get(oauth_info.client_id, &**pool)
+    let client_id: OAuthClientId = models::ids::OAuthClientId::parse(&oauth_info.client_id)
+        .map_err(OAuthError::error)?
+        .into();
+    let client = DBOAuthClient::get(client_id, &**pool)
         .await
         .map_err(OAuthError::error)?;
 
@@ -138,9 +149,9 @@ pub async fn init_oauth(
             }
         }
     } else {
-        Err(OAuthError::error(OAuthErrorType::UnrecognizedClient {
-            client_id: oauth_info.client_id,
-        }))
+        Err(OAuthError::error(OAuthErrorType::InvalidClientId(
+            client_id,
+        )))
     }
 }
 
@@ -215,6 +226,142 @@ pub async fn accept_client_scopes(
     }
 }
 
+#[derive(Deserialize)]
+pub struct TokenRequest {
+    grant_type: String,
+    code: String,
+    redirect_uri: Option<String>,
+    client_id: String,
+}
+
+#[derive(Serialize)]
+pub struct TokenResponse {
+    access_token: String,
+    token_type: String,
+    expires_in: i64,
+}
+
+#[post("token")]
+/// Params should be in the urlencoded request body
+/// And client secret should be in the HTTP basic authorization header
+/// Per IETF RFC6749 Section 4.1.3 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3)
+pub async fn request_token(
+    req: HttpRequest,
+    req_params: web::Form<TokenRequest>,
+    pool: Data<PgPool>,
+    redis: Data<RedisPool>,
+) -> Result<HttpResponse, OAuthError> {
+    let client_id = models::ids::OAuthClientId::parse(&req_params.client_id)
+        .map_err(OAuthError::error)?
+        .into();
+    let client = DBOAuthClient::get(client_id, &**pool)
+        .await
+        .map_err(OAuthError::error)?;
+    if let Some(client) = client {
+        authenticate_client_token_request(&req, &client)?;
+
+        let flow = Flow::get(&req_params.code, &redis)
+            .await
+            .map_err(OAuthError::error)?;
+        if let Some(Flow::OAuthAuthorizationCodeSupplied {
+            user_id,
+            client_id,
+            authorization_id,
+            scopes,
+            original_redirect_uri,
+        }) = flow
+        {
+            // Ensure auth code is single use
+            // per IETF RFC6749 Section 10.5 (https://datatracker.ietf.org/doc/html/rfc6749#section-10.5)
+            Flow::remove(&req_params.code, &redis)
+                .await
+                .map_err(OAuthError::error)?;
+
+            // https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
+            if client_id != client_id {
+                return Err(OAuthError::error(OAuthErrorType::UnauthorizedClient));
+            }
+
+            if original_redirect_uri != req_params.redirect_uri {
+                return Err(OAuthError::error(OAuthErrorType::RedirectUriChanged(
+                    req_params.redirect_uri.clone(),
+                )));
+            }
+
+            if req_params.grant_type != "authorization_code" {
+                return Err(OAuthError::error(
+                    OAuthErrorType::OnlySupportsAuthorizationCodeGrant(
+                        req_params.grant_type.clone(),
+                    ),
+                ));
+            }
+
+            let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
+            let token_id = generate_oauth_access_token_id(&mut transaction)
+                .await
+                .map_err(OAuthError::error)?;
+            let token = generate_access_token();
+            let token_hash = OAuthAccessToken::hash_token(&token);
+            let time_until_expiration = OAuthAccessToken {
+                id: token_id,
+                authorization_id,
+                token_hash,
+                scopes,
+                created: Default::default(),
+                expires: Default::default(),
+                last_used: None,
+                client_id,
+                user_id,
+            }
+            .insert(&mut *transaction)
+            .await
+            .map_err(OAuthError::error)?;
+
+            transaction.commit().await.map_err(OAuthError::error)?;
+
+            // IETF RFC6749 Section 5.1 (https://datatracker.ietf.org/doc/html/rfc6749#section-5.1)
+            Ok(HttpResponse::Ok()
+                .append_header((CACHE_CONTROL, "no-store"))
+                .append_header((PRAGMA, "no-cache"))
+                .json(TokenResponse {
+                    access_token: token,
+                    token_type: "Bearer".to_string(),
+                    expires_in: time_until_expiration.num_seconds(),
+                }))
+        } else {
+            Err(OAuthError::error(OAuthErrorType::InvalidAuthCode))
+        }
+    } else {
+        Err(OAuthError::error(OAuthErrorType::InvalidClientId(
+            client_id,
+        )))
+    }
+}
+
+fn authenticate_client_token_request(
+    req: &HttpRequest,
+    client: &DBOAuthClient,
+) -> Result<(), OAuthError> {
+    let client_secret = extract_authorization_header(&req).map_err(OAuthError::error)?;
+    let hashed_client_secret = DBOAuthClient::hash_secret(client_secret);
+    if client.secret_hash != hashed_client_secret {
+        Err(OAuthError::error(
+            OAuthErrorType::ClientAuthenticationFailed,
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn generate_access_token() -> String {
+    let random = ChaCha20Rng::from_entropy()
+        .sample_iter(&Alphanumeric)
+        .take(60)
+        .map(char::from)
+        .collect::<String>();
+    format!("mro_{}", random)
+}
+
 async fn init_oauth_code_flow(
     user_id: crate::database::models::UserId,
     client_id: OAuthClientId,
@@ -230,7 +377,6 @@ async fn init_oauth_code_flow(
         client_id,
         authorization_id,
         scopes,
-        validated_redirect_uri: validated_redirect_uri.clone(),
         original_redirect_uri,
     }
     .insert(Duration::minutes(10), redis)
@@ -267,7 +413,7 @@ impl ValidatedRedirectUri {
                 {
                     return Ok(ValidatedRedirectUri(to_validate.clone()));
                 } else {
-                    return Err(OAuthError::error(OAuthErrorType::InvalidRedirectUri(
+                    return Err(OAuthError::error(OAuthErrorType::RedirectUriNotConfigured(
                         to_validate.clone(),
                     )));
                 }
@@ -340,8 +486,7 @@ mod tests {
         let validated =
             ValidatedRedirectUri::validate(&Some(to_validate), validate_against, OAuthClientId(0));
 
-        assert!(
-            validated.is_err_and(|e| matches!(e.error_type, OAuthErrorType::InvalidRedirectUri(_)))
-        );
+        assert!(validated
+            .is_err_and(|e| matches!(e.error_type, OAuthErrorType::RedirectUriNotConfigured(_))));
     }
 }

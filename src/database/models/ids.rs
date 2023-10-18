@@ -413,6 +413,11 @@ impl From<OAuthClientId> for ids::OAuthClientId {
         ids::OAuthClientId(id.0 as u64)
     }
 }
+impl From<ids::OAuthClientId> for OAuthClientId {
+    fn from(id: ids::OAuthClientId) -> Self {
+        Self(id.0 as i64)
+    }
+}
 impl From<OAuthRedirectUriId> for ids::OAuthRedirectUriId {
     fn from(id: OAuthRedirectUriId) -> Self {
         ids::OAuthRedirectUriId(id.0 as u64)

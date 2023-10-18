@@ -2,6 +2,7 @@ use super::{DatabaseError, OAuthAccessTokenId, OAuthClientAuthorizationId, OAuth
 use crate::models::pats::Scopes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct OAuthAccessToken {
@@ -58,18 +59,20 @@ impl OAuthAccessToken {
         }));
     }
 
+    /// Inserts and returns the time until the token expires
     pub async fn insert(
         &self,
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
-    ) -> Result<(), DatabaseError> {
-        sqlx::query!(
+    ) -> Result<chrono::Duration, DatabaseError> {
+        let r = sqlx::query!(
             "
             INSERT INTO oauth_access_tokens (
                 id, authorization_id, token_hash, scopes, expires, last_used
             )
-            Values (
+            VALUES (
                 $1, $2, $3, $4, $5, $6
             )
+            RETURNING created, expires
             ",
             self.id.0,
             self.authorization_id.0,
@@ -78,9 +81,16 @@ impl OAuthAccessToken {
             self.expires,
             Option::<DateTime<Utc>>::None
         )
-        .execute(exec)
+        .fetch_one(exec)
         .await?;
 
-        Ok(())
+        let (created, expires) = (r.created, r.expires);
+        let time_until_expiration = expires - created;
+
+        Ok(time_until_expiration)
+    }
+
+    pub fn hash_token(token: &str) -> String {
+        format!("{:x}", sha2::Sha512::digest(token.as_bytes()))
     }
 }

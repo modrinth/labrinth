@@ -48,7 +48,6 @@ pub enum Flow {
         client_id: OAuthClientId,
         authorization_id: OAuthClientAuthorizationId,
         scopes: Scopes,
-        validated_redirect_uri: ValidatedRedirectUri,
         original_redirect_uri: Option<String>, // Needed for https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
     },
 }

@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 
 use crate::models::pats::Scopes;
 
@@ -197,6 +198,10 @@ impl OAuthClient {
         .await?;
 
         Ok(())
+    }
+
+    pub fn hash_secret(secret: &str) -> String {
+        format!("{:x}", sha2::Sha512::digest(secret.as_bytes()))
     }
 }
 

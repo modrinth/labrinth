@@ -25,7 +25,7 @@ CREATE TABLE oauth_access_tokens (
     token_hash text NOT NULL UNIQUE,
     scopes bigint NOT NULL,
     created timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires timestamptz NOT NULL,
+    expires timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP + interval '14 days',
     last_used timestamptz NULL
 );
 CREATE INDEX oauth_client_creator ON oauth_clients(created_by);
