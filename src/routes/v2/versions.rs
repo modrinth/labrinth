@@ -13,6 +13,7 @@ use crate::models::pats::Scopes;
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::routes::v3;
 use crate::util::img;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
@@ -55,7 +56,20 @@ pub async fn version_list(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // TODO: move route to v3
-    Ok(HttpResponse::Ok().json(""))
+
+    let filters = v3::versions::VersionListFilters {
+        game_versions: filters.game_versions,
+        loaders: filters.loaders,
+        featured: filters.featured,
+        version_type: filters.version_type,
+        limit: filters.limit,
+        offset: filters.offset,
+    };
+
+    let response = v3::versions::version_list(req, info, web::Query(filters), pool, redis, session_queue).await?;
+
+    //TODO: Convert response to V2 format
+    Ok(response)
 }
 
 // Given a project ID/slug and a version slug

@@ -15,6 +15,7 @@ use crate::models::projects::{
 };
 use actix_web::http::header::HeaderValue;
 
+
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
@@ -48,19 +49,34 @@ pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
 #[post("project")]
 pub async fn project_create(
     req: HttpRequest,
-    payload: Multipart,
+    mut payload: Multipart,
+    client: Data<PgPool>,
+    redis: Data<RedisPool>,
+    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
+    session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
 
-    // Redirects to V3 route
-    let self_addr = dotenvy::var("SELF_ADDR")?;
-    let url = format!("{self_addr}/v3/project");
-    let response = v2_reroute::reroute_multipart(&url, req, payload, |json | {
+    let (headers, payload) = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
         // Convert input data to V3 format
         json["game_name"] = json!("minecraft_java");
-    }).await?;    
-    let response = HttpResponse::build(response.status())
-        .content_type(response.headers().get("content-type").and_then(|h| h.to_str().ok()).unwrap_or_default())
-        .body(response.bytes().await.unwrap_or_default());
+    }).await;
+    // for (key, value) in headers.iter() {
+    //     req.headers().append(key.clone(), value.clone());
+    // }
+    let response= v3::project_creation::project_create(req, payload, client, redis, file_host, session_queue).await?;
+
+
+
+    // Redirects to V3 route
+    // let self_addr = dotenvy::var("SELF_ADDR")?;
+    // let url = format!("{self_addr}/v3/project");
+    // let response = v2_reroute::reroute_multipart(&url, req, payload, |json | {
+    //     // Convert input data to V3 format
+    //     json["game_name"] = json!("minecraft_java");
+    // }).await?;    
+    // let response = HttpResponse::build(response.status())
+    //     .content_type(response.headers().get("content-type").and_then(|h| h.to_str().ok()).unwrap_or_default())
+    //     .body(response.bytes().await.unwrap_or_default());
 
     // TODO: Convert response to V2 format
     Ok(response)

@@ -17,7 +17,7 @@ use crate::models::projects::{
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::MessageBody;
 use crate::queue::session::AuthQueue;
-use crate::routes::{ApiError, v2_reroute};
+use crate::routes::{ApiError, v2_reroute, v3};
 use crate::routes::v3::projects::delete_from_index;
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::img;
@@ -393,13 +393,34 @@ pub async fn project_edit(
     let self_addr = dotenvy::var("SELF_ADDR")?;
     let url = format!("{self_addr}/v3/project/{id}", id = info.0);
 
-    let response = v2_reroute::reroute_patch(&url, req, serde_json::to_value(new_project)?).await?;
+    let new_project = new_project.into_inner();
+    let new_project = v3::projects::EditProject {
+        title: new_project.title,
+        description: new_project.description,
+        body: new_project.body,
+        categories: new_project.categories,
+        additional_categories: new_project.additional_categories,
+        issues_url: new_project.issues_url,
+        source_url: new_project.source_url,
+        wiki_url: new_project.wiki_url,
+        license_url: new_project.license_url,
+        discord_url: new_project.discord_url,
+        donation_urls: new_project.donation_urls,
+        license_id: new_project.license_id,
+        client_side: new_project.client_side,
+        server_side: new_project.server_side,
+        slug: new_project.slug,
+        status: new_project.status,
+        requested_status: new_project.requested_status,
+        moderation_message: new_project.moderation_message,
+        moderation_message_body: new_project.moderation_message_body,
+        monetization_status: new_project.monetization_status,
+    };
 
-    let response = HttpResponse::build(response.status())
-        .content_type(response.headers().get("content-type").and_then(|h| h.to_str().ok()).unwrap_or_default())
-        .body(response.bytes().await.unwrap_or_default());
+    let response = v3::projects::project_edit(req, info, pool, config, web::Json(new_project), redis, session_queue).await?;
 
     // TODO: Convert response to V2 format
+
     Ok(response)
 }
 

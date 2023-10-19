@@ -38,7 +38,11 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("project")
-            .service(project_edit)
+        .route("{id}", web::patch().to(project_edit))
+        .service(
+            web::scope("{project_id}")
+            .route("versions", web::get().to(super::versions::version_list))
+        )
     );
 }
 
@@ -141,7 +145,6 @@ pub struct EditProject {
     pub monetization_status: Option<MonetizationStatus>,
 }
 
-#[patch("{id}")]
 pub async fn project_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,

@@ -84,7 +84,6 @@ struct InitialFileData {
 }
 
 // under `/api/v1/version`
-#[post("version")]
 pub async fn version_create(
     req: HttpRequest,
     mut payload: Multipart,
@@ -483,8 +482,6 @@ async fn version_create_inner(
     Ok(HttpResponse::Ok().json(response))
 }
 
-// under /api/v1/version/{version_id}
-#[post("{version_id}/file")]
 pub async fn upload_file_to_version(
     req: HttpRequest,
     url_data: web::Path<(VersionId,)>,

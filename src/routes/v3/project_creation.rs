@@ -22,7 +22,7 @@ use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
-use actix_web::web::Data;
+use actix_web::web::{Data, self};
 use actix_web::{post, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
@@ -35,7 +35,7 @@ use thiserror::Error;
 use validator::Validate;
 
 pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
-    cfg.service(project_create);
+    cfg.route("create", web::post().to(project_create));
 }
 
 #[derive(Error, Debug)]
@@ -275,7 +275,6 @@ pub async fn undo_uploads(
     Ok(())
 }
 
-#[post("project")]
 pub async fn project_create(
     req: HttpRequest,
     mut payload: Multipart,

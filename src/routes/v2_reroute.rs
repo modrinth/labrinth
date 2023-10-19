@@ -1,107 +1,172 @@
 use actix_multipart::Multipart;
-use actix_web::{web::Payload, HttpRequest};
-use futures::{TryStreamExt, StreamExt};
+use actix_web::test::TestRequest;
+use bytes::{Bytes, BytesMut};
+use actix_web::http::header::{TryIntoHeaderPair,HeaderMap, HeaderName};
+use futures::{StreamExt, stream};
+use serde_json::{Value, json};
 
-use super::{v3::project_creation::CreateError, ApiError};
+pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: HeaderMap,   closure: impl Fn(&mut serde_json::Value)) -> (HeaderMap, Multipart) {
+    let mut segments: Vec<MultipartSegment> = Vec::new();
 
-// const for ignore_headers
-const IGNORE_HEADERS: [&str; 3] = [
-    "content-type",
-    "content-length",
-    "accept-encoding",
-];
+    if let Some(mut field) = multipart.next().await {
+        let mut field = field.unwrap();
+        let content_disposition = field.content_disposition().clone(); // This unwrap is okay because we expect every field to have content disposition
+        let field_name = content_disposition.get_name().unwrap_or(""); // replace unwrap_or as you see fit
+        let field_filename = content_disposition.get_filename();
+        let field_content_type = field.content_type();
+        let field_content_type = field_content_type.map(|ct| ct.to_string());
 
-pub async fn reroute_patch(url : &str, req : HttpRequest, json : serde_json::Value) -> Result<reqwest::Response, ApiError> {
-    // Forwarding headers
-    let mut headers = reqwest::header::HeaderMap::new();
-    for (key, value) in req.headers() {
-        if !IGNORE_HEADERS.contains(&key.as_str()) {
-            headers.insert(key.clone(), value.clone());
+        let mut buffer = Vec::new();
+        while let Some(chunk) = field.next().await {
+            // let data = chunk.map_err(|e| ApiError::from(e))?;
+            let data = chunk.unwrap();//.map_err(|e| ApiError::from(e))?;
+            buffer.extend_from_slice(&data);
         }
+
+        {
+            let mut json_value: Value = serde_json::from_slice(&buffer).unwrap();
+            json_value["game_name"] = json!("minecraft-java");
+            buffer = serde_json::to_vec(&json_value).unwrap();
+        }
+
+        segments.push(MultipartSegment { name: field_name.to_string(),
+             filename: field_filename.map(|s| s.to_string()),
+             content_type: field_content_type, 
+             data: MultipartSegmentData::Binary(buffer)
+         })
+
     }
 
-    // Sending the request
-    let client = reqwest::Client::new();
-    Ok(client.patch(url)
-        .headers(headers)
-        .json(&json)
-        .send()
-        .await?)
+    while let Some(mut field) = multipart.next().await {
+        let mut field = field.unwrap();
+        let content_disposition = field.content_disposition().clone(); // This unwrap is okay because we expect every field to have content disposition
+        let field_name = content_disposition.get_name().unwrap_or(""); // replace unwrap_or as you see fit
+        let field_filename = content_disposition.get_filename();
+        let field_content_type = field.content_type();
+        let field_content_type = field_content_type.map(|ct| ct.to_string());
+
+        let mut buffer = Vec::new();
+        while let Some(chunk) = field.next().await {
+            // let data = chunk.map_err(|e| ApiError::from(e))?;
+            let data = chunk.unwrap();//.map_err(|e| ApiError::from(e))?;
+            buffer.extend_from_slice(&data);
+        }
+
+        // if /* this is the JSON part */ {
+        //     let mut json_value: Value = serde_json::from_slice(&buffer)?;
+        //     json_value["new_key"] = json!("new_value");
+        //     buffer = serde_json::to_vec(&json_value)?;
+        // }
+
+        segments.push(MultipartSegment { name: field_name.to_string(),
+             filename: field_filename.map(|s| s.to_string()),
+             content_type: field_content_type, 
+             data: MultipartSegmentData::Binary(buffer)
+         })
+
+    }
+
+    // let modified_stream = iter(modified_parts.into_iter().map(Result::<Bytes, ApiError>::Ok));
+
+    // let modified_stream = ModifiedStream { inner: modified_stream };
+
+    // let new_multipart = Multipart::new(&headers, modified_stream);
+
+    let (boundary, payload) = generate_multipart(segments);
+
+    let header = match ("Content-Type", format!("multipart/form-data; boundary={}", boundary).as_str()).try_into_pair() {
+        Ok((key, value)) => {
+            headers.insert(key, value);
+        }
+        Err(err) => {
+            panic!("Error inserting test header: {:?}.", err);
+        }
+    };
+
+    let new_multipart = Multipart::new(&headers, stream::once(async { Ok(payload) }));
+
+    (headers, new_multipart)
 }
 
-pub async fn reroute_multipart(url : &str, req : HttpRequest, mut payload : Multipart, closure: impl Fn(&mut serde_json::Value)) -> Result<reqwest::Response, CreateError> {
-    println!("print 3!");
 
-    // Forwarding headers
-    let mut headers = reqwest::header::HeaderMap::new();
-    for (key, value) in req.headers() {
-        if !IGNORE_HEADERS.contains(&key.as_str()) {
-            headers.insert(key.clone(), value.clone());
-        }
+
+
+// Multipart functionality (actix-test does not innately support multipart)
+#[derive(Debug, Clone)]
+pub struct MultipartSegment {
+    pub name: String,
+    pub filename: Option<String>,
+    pub content_type: Option<String>,
+    pub data: MultipartSegmentData,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum MultipartSegmentData {
+    Text(String),
+    Binary(Vec<u8>),
+}
+
+pub trait AppendsMultipart {
+    fn set_multipart(self, data: impl IntoIterator<Item = MultipartSegment>) -> Self;
+}
+
+impl AppendsMultipart for TestRequest {
+    fn set_multipart(self, data: impl IntoIterator<Item = MultipartSegment>) -> Self {
+        let (boundary, payload) = generate_multipart(data);
+        self.append_header((
+            "Content-Type",
+            format!("multipart/form-data; boundary={}", boundary),
+        ))
+        .set_payload(payload)
     }
-    println!("print 4!");
+}
 
-    // Forwarding multipart data
-    let mut body = reqwest::multipart::Form::new();
-    println!("print 5!");
+fn generate_multipart(data: impl IntoIterator<Item = MultipartSegment>) -> (String, Bytes) {
+    let mut boundary: String = String::from("----WebKitFormBoundary");
+    boundary.push_str(&rand::random::<u64>().to_string());
+    boundary.push_str(&rand::random::<u64>().to_string());
+    boundary.push_str(&rand::random::<u64>().to_string());
 
-    // Data field
-    if let Ok(Some(mut field)) = payload.try_next().await {
-        // The first multipart field must be named "data" and contain a JSON
-        let content_disposition = field.content_disposition();
-        let name = content_disposition
-            .get_name()
-            .ok_or_else(|| CreateError::MissingValueError(String::from("Missing content name")))?;
+    let mut payload = BytesMut::new();
 
-        if name != "data" {
-            return Err(CreateError::InvalidInput(String::from(
-                "`data` field must come before file fields",
-            )));
+    for segment in data {
+        payload.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"",
+                boundary = boundary,
+                name = segment.name
+            )
+            .as_bytes(),
+        );
+
+        if let Some(filename) = &segment.filename {
+            payload.extend_from_slice(
+                format!("; filename=\"{filename}\"", filename = filename).as_bytes(),
+            );
         }
-        println!("print 7!");
-
-        let mut data = Vec::new();
-        while let Some(chunk) = field.next().await {
-            data.extend_from_slice(&chunk.map_err(CreateError::MultipartError)?);
+        if let Some(content_type) = &segment.content_type {
+            payload.extend_from_slice(
+                format!(
+                    "\r\nContent-Type: {content_type}",
+                    content_type = content_type
+                )
+                .as_bytes(),
+            );
         }
-        let mut data: serde_json::Value = serde_json::from_slice(&data)?;
+        payload.extend_from_slice(b"\r\n\r\n");
 
-        // Now that we have the json data, execute the closure
-        closure(&mut data);
-
-        // Re-encode the json data and add it to the body
-        let data = serde_json::to_string(&data)?;
-        body = body.part("data", reqwest::multipart::Part::text(data));
+        match &segment.data {
+            MultipartSegmentData::Text(text) => {
+                payload.extend_from_slice(text.as_bytes());
+            }
+            MultipartSegmentData::Binary(binary) => {
+                payload.extend_from_slice(binary);
+            }
+        }
+        payload.extend_from_slice(b"\r\n");
     }
+    payload.extend_from_slice(format!("--{boundary}--\r\n", boundary = boundary).as_bytes());
 
-    // Forward every other field exactly as is
-    while let Ok(Some(field)) = payload.try_next().await {
-        let content_type = field.content_type().map(|ct| ct.to_string()).unwrap_or("text/plain".to_string());
-        let field_name = field.name().to_string();
-        let content_disposition = field.content_disposition().clone();
-        let filename = content_disposition.get_filename().unwrap_or_default().to_string();
-        
-        let bytes: Vec<u8> = field
-            .map(|chunk| chunk.unwrap().to_vec())  // Convert each chunk to Vec<u8>
-            .fold(Vec::new(), |mut acc, vec| {  // Collect all chunks into one Vec<u8>
-                acc.extend(vec);
-                async move { acc }
-            })
-            .await;
-        
-        let part = reqwest::multipart::Part::bytes(bytes)
-            .file_name(filename)
-            .mime_str(&content_type)
-            .unwrap();
-        
-        body = body.part(field_name, part);
-    }
-
-    // Sending the request
-    let client = reqwest::Client::new();
-    Ok(client.post(url)
-        .headers(headers)
-        .multipart(body)
-        .send()
-        .await?)
+    (boundary, Bytes::from(payload))
 }

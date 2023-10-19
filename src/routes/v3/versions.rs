@@ -22,12 +22,14 @@ use sqlx::PgPool;
 use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(super::version_creation::version_create);
+
+    cfg.route("version", web::post().to(super::version_creation::version_create));
+    cfg.route("{id}", web::post().to(super::version_creation::version_create));
 
     cfg.service(
         web::scope("version")
-            .service(version_edit)
-            .service(super::version_creation::upload_file_to_version),
+        .route("{id}", web::patch().to(version_edit))
+        .route("{version_id}/file", web::post().to(super::version_creation::upload_file_to_version))
     );
 }
 #[derive(Serialize, Deserialize, Validate)]
@@ -66,7 +68,6 @@ pub struct EditVersionFileType {
     pub file_type: Option<FileType>,
 }
 
-#[patch("{id}")]
 pub async fn version_edit(
     req: HttpRequest,
     info: web::Path<(models::ids::VersionId,)>,
@@ -466,6 +467,7 @@ pub async fn version_edit(
     }
 }
 
+#[derive(Deserialize)]
 pub struct VersionListFilters {
     pub game_versions: Option<String>,
     pub loaders: Option<String>,
@@ -475,123 +477,123 @@ pub struct VersionListFilters {
     pub offset: Option<usize>,
 }
 
-// #[get("version")]
-// pub async fn version_list(
-//     req: HttpRequest,
-//     info: web::Path<(String,)>,
-//     web::Query(filters): web::Query<VersionListFilters>,
-//     pool: web::Data<PgPool>,
-//     redis: web::Data<RedisPool>,
-//     session_queue: web::Data<AuthQueue>,
-// ) -> Result<HttpResponse, ApiError> {
-//     let string = info.into_inner().0;
+pub async fn version_list(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    web::Query(filters): web::Query<VersionListFilters>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let string = info.into_inner().0;
 
-//     let result = database::models::Project::get(&string, &**pool, &redis).await?;
+    let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
-//     let user_option = get_user_from_headers(
-//         &req,
-//         &**pool,
-//         &redis,
-//         &session_queue,
-//         Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
-//     )
-//     .await
-//     .map(|x| x.1)
-//     .ok();
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
 
-//     if let Some(project) = result {
-//         if !is_authorized(&project.inner, &user_option, &pool).await? {
-//             return Ok(HttpResponse::NotFound().body(""));
-//         }
+    if let Some(project) = result {
+        if !is_authorized(&project.inner, &user_option, &pool).await? {
+            return Ok(HttpResponse::NotFound().body(""));
+        }
 
-//         let version_filters = filters
-//             .game_versions
-//             .as_ref()
-//             .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
-//         let loader_filters = filters
-//             .loaders
-//             .as_ref()
-//             .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
-//         let mut versions = database::models::Version::get_many(&project.versions, &**pool, &redis)
-//             .await?
-//             .into_iter()
-//             .skip(filters.offset.unwrap_or(0))
-//             .take(filters.limit.unwrap_or(usize::MAX))
-//             .filter(|x| {
-//                 let mut bool = true;
+        let version_filters = filters
+            .game_versions
+            .as_ref()
+            .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
+        let loader_filters = filters
+            .loaders
+            .as_ref()
+            .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
+        let mut versions = database::models::Version::get_many(&project.versions, &**pool, &redis)
+            .await?
+            .into_iter()
+            .skip(filters.offset.unwrap_or(0))
+            .take(filters.limit.unwrap_or(usize::MAX))
+            .filter(|x| {
+                let mut bool = true;
 
-//                 if let Some(version_type) = filters.version_type {
-//                     bool &= &*x.inner.version_type == version_type.as_str();
-//                 }
-//                 if let Some(loaders) = &loader_filters {
-//                     bool &= x.loaders.iter().any(|y| loaders.contains(y));
-//                 }
-//                 if let Some(game_versions) = &version_filters {
-//                     bool &= x.game_versions.iter().any(|y| game_versions.contains(y));
-//                 }
+                if let Some(version_type) = filters.version_type {
+                    bool &= &*x.inner.version_type == version_type.as_str();
+                }
+                if let Some(loaders) = &loader_filters {
+                    bool &= x.loaders.iter().any(|y| loaders.contains(y));
+                }
+                // if let Some(game_versions) = &version_filters {
+                //     bool &= x.game_versions.iter().any(|y| game_versions.contains(y));
+                // }
 
-//                 bool
-//             })
-//             .collect::<Vec<_>>();
+                bool
+            })
+            .collect::<Vec<_>>();
 
-//         let mut response = versions
-//             .iter()
-//             .filter(|version| {
-//                 filters
-//                     .featured
-//                     .map(|featured| featured == version.inner.featured)
-//                     .unwrap_or(true)
-//             })
-//             .cloned()
-//             .collect::<Vec<_>>();
+        let mut response = versions
+            .iter()
+            .filter(|version| {
+                filters
+                    .featured
+                    .map(|featured| featured == version.inner.featured)
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
 
-//         versions.sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
+        versions.sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
 
-//         // Attempt to populate versions with "auto featured" versions
-//         if response.is_empty() && !versions.is_empty() && filters.featured.unwrap_or(false) {
-//             let (loaders, game_versions) = futures::future::try_join(
-//                 database::models::loader_fields::Loader::list(&**pool, &redis),
-//                 database::models::loader_fields::GameVersion::list_filter(
-//                     None,
-//                     Some(true),
-//                     &**pool,
-//                     &redis,
-//                 ),
-//             )
-//             .await?;
+        // Attempt to populate versions with "auto featured" versions
+        if response.is_empty() && !versions.is_empty() && filters.featured.unwrap_or(false) {
+            // let (loaders, game_versions) = futures::future::try_join(
+            //     database::models::loader_fields::Loader::list(&**pool, &redis),
+            //     database::models::loader_fields::GameVersion::list_filter(
+            //         None,
+            //         Some(true),
+            //         &**pool,
+            //         &redis,
+            //     ),
+            // )
+            // .await?;
 
-//             let mut joined_filters = Vec::new();
-//             for game_version in &game_versions {
-//                 for loader in &loaders {
-//                     joined_filters.push((game_version, loader))
-//                 }
-//             }
+            // let mut joined_filters = Vec::new();
+            // for game_version in &game_versions {
+            //     for loader in &loaders {
+            //         joined_filters.push((game_version, loader))
+            //     }
+            // }
 
-//             joined_filters.into_iter().for_each(|filter| {
-//                 versions
-//                     .iter()
-//                     .find(|version| {
-//                         version.game_versions.contains(&filter.0.version)
-//                             && version.loaders.contains(&filter.1.loader)
-//                     })
-//                     .map(|version| response.push(version.clone()))
-//                     .unwrap_or(());
-//             });
+            // joined_filters.into_iter().for_each(|filter| {
+            //     versions
+            //         .iter()
+            //         .find(|version| {
+            //             // version.game_versions.contains(&filter.0.version)
+            //                 // && 
+            //                 version.loaders.contains(&filter.1.loader)
+            //         })
+            //         .map(|version| response.push(version.clone()))
+            //         .unwrap_or(());
+            // });
 
-//             if response.is_empty() {
-//                 versions
-//                     .into_iter()
-//                     .for_each(|version| response.push(version));
-//             }
-//         }
+            if response.is_empty() {
+                versions
+                    .into_iter()
+                    .for_each(|version| response.push(version));
+            }
+        }
 
-//         response.sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
-//         response.dedup_by(|a, b| a.inner.id == b.inner.id);
+        response.sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
+        response.dedup_by(|a, b| a.inner.id == b.inner.id);
 
-//         let response = filter_authorized_versions(response, &user_option, &pool).await?;
+        let response = filter_authorized_versions(response, &user_option, &pool).await?;
 
-//         Ok(HttpResponse::Ok().json(response))
-//     } else {
-//         Ok(HttpResponse::NotFound().body(""))
-//     }
-// }
+        Ok(HttpResponse::Ok().json(response))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}

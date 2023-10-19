@@ -17,16 +17,17 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("version_file")
-            .service(get_update_from_hash)
-    );
 
     cfg.service(
-        web::scope("version_files")
-            .service(update_files)
-            .service(update_individual_files),
+        web::scope("version_file")
+        .route("{version_id}/update",web::post().to(get_update_from_hash))
     );
+    cfg.service(
+        web::scope("version_files")
+        .route("update",web::post().to(update_files))
+        .route("update_individual",web::post().to(update_individual_files))
+    );
+
 }
 
 #[derive(Serialize, Deserialize)]
@@ -47,7 +48,6 @@ pub struct UpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 
-#[post("{version_id}/update")]
 pub async fn get_update_from_hash(
     req: HttpRequest,
     info: web::Path<(String,)>,
@@ -127,7 +127,6 @@ pub struct ManyUpdateData {
     pub game_versions: Option<Vec<String>>,
     pub version_types: Option<Vec<VersionType>>,
 }
-#[post("update")]
 pub async fn update_files(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -228,7 +227,6 @@ pub struct ManyFileUpdateData {
     pub hashes: Vec<FileUpdateData>,
 }
 
-#[post("update_individual")]
 pub async fn update_individual_files(
     req: HttpRequest,
     pool: web::Data<PgPool>,

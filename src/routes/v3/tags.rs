@@ -11,11 +11,10 @@ use sqlx::PgPool;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("tag")
-            .service(category_list)
+        .route("category", web::get().to(category_list)));
             // .service(loader_list)
             // .service(game_version_list)
             // .service(side_type_list),
-    );
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -26,7 +25,6 @@ pub struct CategoryData {
     header: String,
 }
 
-#[get("category")]
 pub async fn category_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,

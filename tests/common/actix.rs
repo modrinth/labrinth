@@ -33,7 +33,7 @@ impl AppendsMultipart for TestRequest {
 }
 
 fn generate_multipart(data: impl IntoIterator<Item = MultipartSegment>) -> (String, Bytes) {
-    let mut boundary = String::from("----WebKitFormBoundary");
+    let mut boundary: String = String::from("----WebKitFormBoundary");
     boundary.push_str(&rand::random::<u64>().to_string());
     boundary.push_str(&rand::random::<u64>().to_string());
     boundary.push_str(&rand::random::<u64>().to_string());
