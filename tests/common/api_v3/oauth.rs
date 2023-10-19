@@ -1,5 +1,8 @@
-use actix_web::{dev::ServiceResponse, test::TestRequest};
-use labrinth::auth::oauth::{AcceptOAuthClientScopes, TokenRequest};
+use actix_web::{
+    dev::ServiceResponse,
+    test::{self, TestRequest},
+};
+use labrinth::auth::oauth::{AcceptOAuthClientScopes, TokenRequest, TokenResponse};
 use reqwest::header::AUTHORIZATION;
 
 use super::ApiV3;
@@ -54,6 +57,20 @@ impl ApiV3 {
                 .to_request(),
         )
         .await
+    }
+
+    pub async fn get_oauth_access_token(
+        &self,
+        auth_code: String,
+        original_redirect_uri: Option<String>,
+        client_id: String,
+        client_secret: &str,
+    ) -> String {
+        let response = self
+            .oauth_token(auth_code, original_redirect_uri, client_id, client_secret)
+            .await;
+        let token_resp: TokenResponse = test::read_body_json(response).await;
+        token_resp.access_token
     }
 }
 
