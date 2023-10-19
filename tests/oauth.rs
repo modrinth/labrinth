@@ -1,80 +1,51 @@
-use std::collections::HashMap;
-
+use crate::common::{database::FRIEND_USER_ID, dummy_data::DummyOAuthClientAlpha};
 use actix_http::StatusCode;
-use actix_web::test::{self, TestRequest};
+use actix_web::{
+    dev::ServiceResponse,
+    test::{self},
+};
 use common::{
-    asserts::assert_status,
-    database::{FRIEND_USER_PAT, USER_USER_PAT},
-    environment::with_test_environment,
+    asserts::assert_status, database::FRIEND_USER_PAT, environment::with_test_environment,
 };
-use labrinth::{
-    auth::oauth::{AcceptOAuthClientScopes, OAuthClientAccessRequest, TokenRequest, TokenResponse},
-    models::pats::Scopes,
-};
-use reqwest::header::{AUTHORIZATION, CACHE_CONTROL, LOCATION, PRAGMA};
-
-use crate::common::database::FRIEND_USER_ID;
+use labrinth::auth::oauth::{OAuthClientAccessRequest, TokenResponse};
+use reqwest::header::{CACHE_CONTROL, LOCATION, PRAGMA};
+use std::collections::HashMap;
 
 mod common;
 
 #[actix_rt::test]
-async fn oauth_flow() {
+async fn oauth_flow_happy_path() {
     with_test_environment(|env| async move {
-        let base_redirect_uri = "https://modrinth.com/test".to_string();
-        let client_creation = env
-            .v3
-            .add_oauth_client(
-                "test_client".to_string(),
-                Scopes::all(),
-                vec![base_redirect_uri.clone()],
-                USER_USER_PAT,
-            )
-            .await;
-        let client_id_str = serde_json::to_value(client_creation.client.id)
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .to_string();
+        let DummyOAuthClientAlpha {
+            valid_redirect_uri: base_redirect_uri,
+            client_id,
+            client_secret,
+        } = env.dummy.unwrap().oauth_client_alpha.clone();
 
         // Initiate authorization
         let redirect_uri = format!("{}?foo=bar", base_redirect_uri);
         let original_state = "1234";
-        let uri = &format!(
-            "/v3/auth/oauth/authorize?client_id={}&redirect_uri={}\
-                &scope={}&state={original_state}",
-            urlencoding::encode(&client_id_str),
-            urlencoding::encode(&redirect_uri),
-            urlencoding::encode("USER_READ NOTIFICATION_READ")
-        )
-        .to_string();
-        let req = TestRequest::get()
-            .uri(&uri)
-            .append_header((AUTHORIZATION, FRIEND_USER_PAT))
-            .to_request();
-        let resp = env.call(req).await;
+        let resp = env
+            .v3
+            .oauth_authorize(
+                &client_id,
+                "USER_READ NOTIFICATION_READ",
+                &redirect_uri,
+                original_state,
+                FRIEND_USER_PAT,
+            )
+            .await;
         assert_status(&resp, StatusCode::OK);
         let access_request: OAuthClientAccessRequest = test::read_body_json(resp).await;
 
         // Accept the authorization request
         let resp = env
-            .call(
-                TestRequest::post()
-                    .uri("/v3/auth/oauth/accept")
-                    .append_header((AUTHORIZATION, FRIEND_USER_PAT))
-                    .set_json(AcceptOAuthClientScopes {
-                        flow: access_request.flow_id,
-                    })
-                    .to_request(),
-            )
+            .v3
+            .oauth_accept(&access_request.flow_id, FRIEND_USER_PAT)
             .await;
         assert_status(&resp, StatusCode::FOUND);
-        let redirect_location = resp.headers().get(LOCATION).unwrap().to_str().unwrap();
-        let query = actix_web::web::Query::<HashMap<String, String>>::from_query(
-            redirect_location.split_once('?').unwrap().1,
-        )
-        .unwrap();
+        let query = get_redirect_location_query_params(&resp);
 
-        println!("redirect location: {}, {:#?}", redirect_location, query.0);
         let auth_code = query.get("code").unwrap();
         let state = query.get("state").unwrap();
         let foo = query.get("foo").unwrap();
@@ -83,17 +54,12 @@ async fn oauth_flow() {
 
         // Get the token
         let resp = env
-            .call(
-                TestRequest::post()
-                    .uri("/v3/auth/oauth/token")
-                    .append_header((AUTHORIZATION, client_creation.client_secret))
-                    .set_form(TokenRequest {
-                        grant_type: "authorization_code".to_string(),
-                        code: auth_code.to_string(),
-                        redirect_uri: Some(redirect_uri.clone()),
-                        client_id: client_id_str.to_string(),
-                    })
-                    .to_request(),
+            .v3
+            .oauth_token(
+                auth_code.to_string(),
+                Some(redirect_uri.clone()),
+                client_id.to_string(),
+                &client_secret,
             )
             .await;
         assert_status(&resp, StatusCode::OK);
@@ -107,4 +73,14 @@ async fn oauth_flow() {
             .await;
     })
     .await;
+}
+
+fn get_redirect_location_query_params(
+    response: &ServiceResponse,
+) -> actix_web::web::Query<HashMap<String, String>> {
+    let redirect_location = response.headers().get(LOCATION).unwrap().to_str().unwrap();
+    actix_web::web::Query::<HashMap<String, String>>::from_query(
+        redirect_location.split_once('?').unwrap().1,
+    )
+    .unwrap()
 }

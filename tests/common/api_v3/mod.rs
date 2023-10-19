@@ -4,6 +4,7 @@ use super::environment::LocalService;
 use actix_web::dev::ServiceResponse;
 use std::rc::Rc;
 
+pub mod oauth;
 pub mod oauth_clients;
 
 #[derive(Clone)]

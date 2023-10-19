@@ -1,6 +1,9 @@
 use actix_http::StatusCode;
 use actix_web::test::{self, TestRequest};
-use labrinth::models::{oauth_clients::OAuthClientCreationResult, pats::Scopes};
+use labrinth::models::{
+    oauth_clients::{OAuthClient, OAuthClientCreationResult},
+    pats::Scopes,
+};
 use reqwest::header::AUTHORIZATION;
 use serde_json::json;
 
@@ -27,6 +30,17 @@ impl ApiV3 {
             }))
             .to_request();
 
+        let resp = self.call(req).await;
+        assert_status(&resp, StatusCode::OK);
+
+        test::read_body_json(resp).await
+    }
+
+    pub async fn get_user_oauth_clients(&self, user_id: &str, pat: &str) -> Vec<OAuthClient> {
+        let req = TestRequest::get()
+            .uri(&format!("/v3/user/{}/oauth_apps", user_id))
+            .append_header((AUTHORIZATION, pat))
+            .to_request();
         let resp = self.call(req).await;
         assert_status(&resp, StatusCode::OK);
 
