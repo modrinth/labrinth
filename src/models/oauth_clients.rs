@@ -27,7 +27,7 @@ pub struct OAuthRedirectUri {
     pub uri: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct OAuthClientCreationResult {
     pub client_secret: String,
     pub client: OAuthClient,

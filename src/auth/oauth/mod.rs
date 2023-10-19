@@ -18,7 +18,7 @@ use chrono::Duration;
 use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use reqwest::header::{CACHE_CONTROL, PRAGMA};
+use reqwest::header::{CACHE_CONTROL, LOCATION, PRAGMA};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 
@@ -159,12 +159,12 @@ pub async fn init_oauth(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AcceptOAuthClientScopes {
     pub flow: String,
 }
 
-#[get("accept")]
+#[post("accept")]
 pub async fn accept_client_scopes(
     req: HttpRequest,
     accept_body: web::Json<AcceptOAuthClientScopes>,
@@ -230,19 +230,19 @@ pub async fn accept_client_scopes(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct TokenRequest {
-    grant_type: String,
-    code: String,
-    redirect_uri: Option<String>,
-    client_id: String,
+    pub grant_type: String,
+    pub code: String,
+    pub redirect_uri: Option<String>,
+    pub client_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct TokenResponse {
-    access_token: String,
-    token_type: String,
-    expires_in: i64,
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: i64,
 }
 
 #[post("token")]
@@ -396,7 +396,7 @@ async fn init_oauth_code_flow(
 
     // IETF RFC 6749 Section 4.1.2 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2)
     Ok(HttpResponse::Found()
-        .append_header(("Location", redirect_uri))
+        .append_header((LOCATION, redirect_uri))
         .finish())
 }
 

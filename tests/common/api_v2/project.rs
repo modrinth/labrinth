@@ -29,7 +29,7 @@ impl ApiV2 {
             .set_multipart(creation_data.segment_data)
             .to_request();
         let resp = self.call(req).await;
-        assert_status(resp, StatusCode::OK);
+        assert_status(&resp, StatusCode::OK);
 
         // Approve as a moderator.
         let req = TestRequest::patch()
@@ -42,7 +42,7 @@ impl ApiV2 {
             ))
             .to_request();
         let resp = self.call(req).await;
-        assert_status(resp, StatusCode::NO_CONTENT);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         let project = self
             .get_project_deserialized(&creation_data.slug, pat)

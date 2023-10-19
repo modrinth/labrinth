@@ -1,9 +1,12 @@
+use actix_http::StatusCode;
 use actix_web::{dev::ServiceResponse, test};
 use labrinth::models::{
     notifications::Notification,
     teams::{OrganizationPermissions, ProjectPermissions, TeamMember},
 };
 use serde_json::json;
+
+use crate::common::asserts::assert_status;
 
 use super::ApiV2;
 
@@ -124,6 +127,7 @@ impl ApiV2 {
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 

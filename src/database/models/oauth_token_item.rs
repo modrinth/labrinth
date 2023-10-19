@@ -67,10 +67,10 @@ impl OAuthAccessToken {
         let r = sqlx::query!(
             "
             INSERT INTO oauth_access_tokens (
-                id, authorization_id, token_hash, scopes, expires, last_used
+                id, authorization_id, token_hash, scopes, last_used
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6
+                $1, $2, $3, $4, $5
             )
             RETURNING created, expires
             ",
@@ -78,7 +78,6 @@ impl OAuthAccessToken {
             self.authorization_id.0,
             self.token_hash,
             self.scopes.to_postgres(),
-            self.expires,
             Option::<DateTime<Utc>>::None
         )
         .fetch_one(exec)

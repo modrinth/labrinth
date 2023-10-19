@@ -6,6 +6,7 @@ use self::database::TemporaryDatabase;
 
 pub mod actix;
 pub mod api_v2;
+pub mod api_v3;
 pub mod asserts;
 pub mod database;
 pub mod dummy_data;

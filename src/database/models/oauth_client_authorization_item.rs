@@ -107,7 +107,7 @@ impl OAuthClientAuthorization {
             VALUES (
                 $1, $2, $3, $4
             )
-            ON CONFLICT (id, client_id, user_id)
+            ON CONFLICT (id)
             DO UPDATE SET scopes = EXCLUDED.scopes
             ",
             id.0,
