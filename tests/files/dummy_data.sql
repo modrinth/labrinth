@@ -19,21 +19,34 @@ INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (52, 
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (53, 4, 'friend-pat', 'mrp_patfriend', $1, '2030-08-18 15:48:58.435729+00');
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (54, 5, 'enemy-pat', 'mrp_patenemy', $1, '2030-08-18 15:48:58.435729+00');
 
--- -- Sample game versions, loaders, categories
-INSERT INTO game_versions (id, version, type, created)
-VALUES (20000, '1.20.1', 'release', timezone('utc', now()));
-INSERT INTO game_versions (id, version, type, created)
-VALUES (20001, '1.20.2', 'release', timezone('utc', now()));
-INSERT INTO game_versions (id, version, type, created)
-VALUES (20002, '1.20.3', 'release', timezone('utc', now()));
-INSERT INTO game_versions (id, version, type, created)
-VALUES (20003, '1.20.4', 'release', timezone('utc', now()));
-INSERT INTO game_versions (id, version, type, created)
-VALUES (20004, '1.20.5', 'release', timezone('utc', now()));
-
-INSERT INTO loaders (id, loader) VALUES (1, 'fabric');
+INSERT INTO loaders (id, loader, game_id) VALUES (1, 'fabric', 1);
 INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,1);
 INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,2); 
+
+-- Sample game versions, loaders, categories
+-- Game versions is '2'
+INSERT INTO loader_field_enum_values(enum_id, value, metadata)
+VALUES (2, '1.20.1', '{"type":"release","major":false}');
+INSERT INTO loader_field_enum_values(enum_id, value, metadata)
+VALUES (2, '1.20.2', '{"type":"release","major":false}');
+INSERT INTO loader_field_enum_values(enum_id, value, metadata)
+VALUES (2, '1.20.3', '{"type":"release","major":false}');
+INSERT INTO loader_field_enum_values(enum_id, value, metadata)
+VALUES (2, '1.20.4', '{"type":"release","major":false}');
+INSERT INTO loader_field_enum_values(enum_id, value, metadata)
+VALUES (2, '1.20.5', '{"type":"release","major":false}');
+
+-- INSERT INTO game_versions (id, version, type, created)
+-- VALUES (20000, '1.20.1', 'release', timezone('utc', now()));
+-- INSERT INTO game_versions (id, version, type, created)
+-- VALUES (20001, '1.20.2', 'release', timezone('utc', now()));
+-- INSERT INTO game_versions (id, version, type, created)
+-- VALUES (20002, '1.20.3', 'release', timezone('utc', now()));
+-- INSERT INTO game_versions (id, version, type, created)
+-- VALUES (20003, '1.20.4', 'release', timezone('utc', now()));
+-- INSERT INTO game_versions (id, version, type, created)
+-- VALUES (20004, '1.20.5', 'release', timezone('utc', now()));
+
 
 INSERT INTO categories (id, category, project_type) VALUES
     (1, 'combat', 1),

@@ -1,4 +1,4 @@
-use crate::database::models::categories::Loader;
+use crate::database::models::loader_fields::{Loader, Game};
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::{QueryFile, QueryVersion};
 use crate::database::redis::RedisPool;
@@ -179,7 +179,7 @@ async fn find_version(
         return Ok(exact_matches.get(0).map(|x| (*x).clone()));
     };
 
-    let db_loaders: HashSet<String> = Loader::list(pool, redis)
+    let db_loaders: HashSet<String> = Loader::list(Game::MinecraftJava.name(), pool, redis)
         .await?
         .into_iter()
         .map(|x| x.loader)
@@ -197,9 +197,6 @@ async fn find_version(
 
             if !loaders.is_empty() {
                 bool &= x.loaders.iter().any(|y| loaders.contains(y));
-            }
-            if !game_versions.is_empty() {
-                bool &= x.game_versions.iter().any(|y| game_versions.contains(y));
             }
 
             bool

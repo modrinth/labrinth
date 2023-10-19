@@ -11,7 +11,7 @@ use crate::models::organizations::OrganizationId;
 use crate::models::pats::Scopes;
 use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
 use crate::queue::session::AuthQueue;
-use crate::routes::v2::project_creation::CreateError;
+use crate::routes::v3::project_creation::CreateError;
 use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;

@@ -66,11 +66,6 @@ pub struct Project {
     /// The license of this project
     pub license: License,
 
-    /// The support range for the client project*
-    pub client_side: SideType,
-    /// The support range for the server project
-    pub server_side: SideType,
-
     /// The total number of downloads the project has had.
     pub downloads: u32,
     /// The total number of followers this project has accumulated
@@ -81,8 +76,6 @@ pub struct Project {
 
     /// A list of the categories that the project is in.
     pub additional_categories: Vec<String>,
-    /// A list of game versions this project supports
-    pub game_versions: Vec<String>,
     /// A list of loaders this project supports
     pub loaders: Vec<String>,
 
@@ -162,13 +155,10 @@ impl From<QueryProject> for Project {
                 },
                 url: m.license_url,
             },
-            client_side: data.client_side,
-            server_side: data.server_side,
             downloads: m.downloads as u32,
             followers: m.follows as u32,
             categories: data.categories,
             additional_categories: data.additional_categories,
-            game_versions: m.game_versions,
             loaders: m.loaders,
             versions: data.versions.into_iter().map(|v| v.into()).collect(),
             icon_url: m.icon_url,
@@ -487,8 +477,6 @@ pub struct Version {
     pub files: Vec<VersionFile>,
     /// A list of projects that this version depends on.
     pub dependencies: Vec<Dependency>,
-    /// A list of versions of Minecraft that this version of the project supports.
-    pub game_versions: Vec<GameVersion>,
     /// The loaders that this version works on
     pub loaders: Vec<Loader>,
 }
@@ -540,7 +528,6 @@ impl From<QueryVersion> for Version {
                     dependency_type: DependencyType::from_string(d.dependency_type.as_str()),
                 })
                 .collect(),
-            game_versions: data.game_versions.into_iter().map(GameVersion).collect(),
             loaders: data.loaders.into_iter().map(Loader).collect(),
         }
     }

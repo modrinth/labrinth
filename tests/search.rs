@@ -1,17 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use actix_web::test;
 use common::dummy_data::TestFile;
 use common::request_data;
 use labrinth::models::ids::base62_impl::parse_base62;
-use labrinth::models::projects::Project;
-use labrinth::search::SearchResults;
 use serde_json::json;
 use futures::stream::StreamExt;
 use crate::common::database::*;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
 use crate::common::request_data::ProjectCreationRequestData;
-use crate::common::{actix::AppendsMultipart, environment::TestEnvironment};
+use crate::common::environment::TestEnvironment;
 
 // importing common module.
 mod common;

@@ -15,29 +15,41 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
             SELECT m.id id, v.id version_id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,
             m.team_id team_id, m.license license, m.slug slug, m.status status_name, m.color color,
-            cs.name client_side_type, ss.name server_side_type, pt.name project_type_name, u.username username,
+            pt.name project_type_name, u.username username,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,
             ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders,
-            ARRAY_AGG(DISTINCT gv.version) filter (where gv.version is not null) versions,
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is false) gallery,
-            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery
+            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery,
+            JSONB_AGG(
+                DISTINCT jsonb_build_object(
+                    'id', vf.id,
+                    'field_id', vf.field_id,
+                    'int_value', vf.int_value,
+                    'enum_value', vf.enum_value,
+                    'string_value', vf.string_value,
+                    'field', lf.field,
+                    'field_type', lf.field_type,
+                    'enum_type', lf.enum_type,
+                    'enum_name', lfe.enum_name
+                )
+            ) version_fields
+
             FROM versions v
             INNER JOIN mods m ON v.mod_id = m.id AND m.status = ANY($2)
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
-            LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
-            LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
             LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id
             LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
             INNER JOIN project_types pt ON pt.id = m.project_type
-            INNER JOIN side_types cs ON m.client_side = cs.id
-            INNER JOIN side_types ss ON m.server_side = ss.id
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
             INNER JOIN users u ON tm.user_id = u.id
+            LEFT OUTER JOIN version_fields vf on v.id = vf.version_id
+            LEFT OUTER JOIN loader_fields lf on vf.field_id = lf.id
+            LEFT OUTER JOIN loader_field_enums lfe on lf.enum_type = lfe.id
             WHERE v.status != ANY($1)
-            GROUP BY v.id, m.id, cs.id, ss.id, pt.id, u.id;
+            GROUP BY v.id, m.id, pt.id, u.id;
             ",
             &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>(),
             &*crate::models::projects::ProjectStatus::iterator().filter(|x| x.is_searchable()).map(|x| x.to_string()).collect::<Vec<String>>(),
@@ -53,8 +65,6 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
 
                     let display_categories = categories.clone();
                     categories.append(&mut additional_categories);
-
-                    let versions = m.versions.unwrap_or_default();
 
                     let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
                     let version_id: crate::models::projects::ProjectId = ProjectId(m.version_id).into();
@@ -83,11 +93,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
                         created_timestamp: m.approved.unwrap_or(m.published).timestamp(),
                         date_modified: m.updated,
                         modified_timestamp: m.updated.timestamp(),
-                        latest_version: versions.last().cloned().unwrap_or_else(|| "None".to_string()),
-                        versions,
                         license,
-                        client_side: m.client_side_type,
-                        server_side: m.server_side_type,
                         slug: m.slug,
                         project_type: m.project_type_name,
                         gallery: m.gallery.unwrap_or_default(),

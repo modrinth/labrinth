@@ -426,19 +426,20 @@ pub async fn test_patch_project() {
     assert_eq!(resp.status(), 404);
 
     // New slug does work
-    let project = api.get_project_deserialized("newslug", USER_USER_PAT).await;
-    assert_eq!(project.slug, Some("newslug".to_string()));
-    assert_eq!(project.title, "New successful title");
-    assert_eq!(project.description, "New successful description");
-    assert_eq!(project.body, "New successful body");
-    assert_eq!(project.categories, vec![DUMMY_CATEGORIES[0]]);
-    assert_eq!(project.license.id, "MIT");
-    assert_eq!(project.issues_url, Some("https://github.com".to_string()));
-    assert_eq!(project.discord_url, Some("https://discord.gg".to_string()));
-    assert_eq!(project.wiki_url, Some("https://wiki.com".to_string()));
-    assert_eq!(project.client_side.to_string(), "optional");
-    assert_eq!(project.server_side.to_string(), "required");
-    assert_eq!(project.donation_urls.unwrap()[0].url, "https://patreon.com");
+    let resp = api.get_project("newslug", USER_USER_PAT).await;
+    let project: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(project["slug"], json!(Some("newslug".to_string())));
+    assert_eq!(project["title"], "New successful title");
+    assert_eq!(project["description"], "New successful description");
+    assert_eq!(project["body"], "New successful body");
+    assert_eq!(project["categories"], json!(vec![DUMMY_CATEGORIES[0]]));
+    assert_eq!(project["license"]["id"], "MIT");
+    assert_eq!(project["issues_url"], json!(Some("https://github.com".to_string())));
+    assert_eq!(project["discord_url"], json!(Some("https://discord.gg".to_string())));
+    assert_eq!(project["wiki_url"], json!(Some("https://wiki.com".to_string())));
+    assert_eq!(project["client_side"].to_string(), "optional");
+    assert_eq!(project["server_side"].to_string(), "required");
+    assert_eq!(project["donation_urls"][0]["url"], "https://patreon.com");
 
     // Cleanup test db
     test_env.cleanup().await;

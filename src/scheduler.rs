@@ -38,15 +38,16 @@ impl Drop for Scheduler {
 
 use log::{info, warn};
 
-pub fn schedule_versions(scheduler: &mut Scheduler, pool: sqlx::Pool<sqlx::Postgres>) {
+pub fn schedule_versions(scheduler: &mut Scheduler, pool: sqlx::Pool<sqlx::Postgres>, redis : RedisPool) {
     let version_index_interval =
         std::time::Duration::from_secs(parse_var("VERSION_INDEX_INTERVAL").unwrap_or(1800));
 
     scheduler.run(version_index_interval, move || {
         let pool_ref = pool.clone();
+        let redis = redis.clone();
         async move {
             info!("Indexing game versions list from Mojang");
-            let result = update_versions(&pool_ref).await;
+            let result = update_versions(&pool_ref, &redis).await;
             if let Err(e) = result {
                 warn!("Version update failed: {}", e);
             }
@@ -65,7 +66,7 @@ pub enum VersionIndexingError {
     DatabaseError(#[from] crate::database::models::DatabaseError),
 }
 
-use crate::util::env::parse_var;
+use crate::{util::env::parse_var, database::redis::RedisPool};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use tokio_stream::wrappers::IntervalStream;
@@ -84,7 +85,7 @@ struct VersionFormat<'a> {
     release_time: DateTime<Utc>,
 }
 
-async fn update_versions(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), VersionIndexingError> {
+async fn update_versions(pool: &sqlx::Pool<sqlx::Postgres>, redis : &RedisPool) -> Result<(), VersionIndexingError> {
     let input = reqwest::get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
         .await?
         .json::<InputFormat>()
@@ -144,45 +145,45 @@ async fn update_versions(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), Versio
         ];
     }
 
-    for version in input.versions.into_iter() {
-        let mut name = version.id;
-        if !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        {
-            if let Some((_, alternate)) = HALL_OF_SHAME.iter().find(|(version, _)| name == *version)
-            {
-                name = String::from(*alternate);
-            } else {
-                // We'll deal with these manually
-                skipped_versions_count += 1;
-                continue;
-            }
-        }
+    // for version in input.versions.into_iter() {
+    //     let mut name = version.id;
+    //     if !name
+    //         .chars()
+    //         .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+    //     {
+    //         if let Some((_, alternate)) = HALL_OF_SHAME.iter().find(|(version, _)| name == *version)
+    //         {
+    //             name = String::from(*alternate);
+    //         } else {
+    //             // We'll deal with these manually
+    //             skipped_versions_count += 1;
+    //             continue;
+    //         }
+    //     }
 
-        let type_ = match &*version.type_ {
-            "release" => "release",
-            "snapshot" => "snapshot",
-            "old_alpha" => "alpha",
-            "old_beta" => "beta",
-            _ => "other",
-        };
+    //     let type_ = match &*version.type_ {
+    //         "release" => "release",
+    //         "snapshot" => "snapshot",
+    //         "old_alpha" => "alpha",
+    //         "old_beta" => "beta",
+    //         _ => "other",
+    //     };
 
-        crate::database::models::categories::GameVersion::builder()
-            .version(&name)?
-            .version_type(type_)?
-            .created(
-                if let Some((_, alternate)) =
-                    HALL_OF_SHAME_2.iter().find(|(version, _)| name == *version)
-                {
-                    alternate
-                } else {
-                    &version.release_time
-                },
-            )
-            .insert(pool)
-            .await?;
-    }
+    //     crate::database::models::loader_fields::GameVersion::builder()
+    //         .version(&name)?
+    //         .version_type(type_)?
+    //         .created(
+    //             if let Some((_, alternate)) =
+    //                 HALL_OF_SHAME_2.iter().find(|(version, _)| name == *version)
+    //             {
+    //                 alternate
+    //             } else {
+    //                 &version.release_time
+    //             },
+    //         )
+    //         .insert(pool, redis)
+    //         .await?;
+    // }
 
     if skipped_versions_count > 0 {
         // This will currently always trigger due to 1.14 pre releases

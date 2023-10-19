@@ -238,6 +238,22 @@ pub struct SessionId(pub i64);
 #[sqlx(transparent)]
 pub struct ImageId(pub i64);
 
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct LoaderFieldId(pub i32);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct LoaderFieldEnumId(pub i32);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct LoaderFieldEnumValueId(pub i32);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct GameId(pub i32);
+
 use crate::models::ids;
 
 impl From<ids::ProjectId> for ProjectId {

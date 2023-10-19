@@ -1,10 +1,11 @@
 use super::ApiError;
 use crate::database::models;
-use crate::database::models::categories::{DonationPlatform, ProjectType, ReportType, SideType};
+use crate::database::models::categories::{DonationPlatform, ProjectType, ReportType};
+use crate::database::models::loader_fields::{Loader, GameVersion};
 use crate::database::redis::RedisPool;
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};
-use models::categories::{Category, GameVersion, Loader};
+use models::categories::{Category};
 use sqlx::PgPool;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -35,18 +36,9 @@ pub async fn category_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let results = Category::list(&**pool, &redis)
-        .await?
-        .into_iter()
-        .map(|x| CategoryData {
-            icon: x.icon,
-            name: x.category,
-            project_type: x.project_type,
-            header: x.header,
-        })
-        .collect::<Vec<_>>();
-
-    Ok(HttpResponse::Ok().json(results))
+    // TODO: should cvall v3
+    
+    Ok(HttpResponse::Ok().json(""))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -61,19 +53,9 @@ pub async fn loader_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let mut results = Loader::list(&**pool, &redis)
-        .await?
-        .into_iter()
-        .map(|x| LoaderData {
-            icon: x.icon,
-            name: x.loader,
-            supported_project_types: x.supported_project_types,
-        })
-        .collect::<Vec<_>>();
-
-    results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-
-    Ok(HttpResponse::Ok().json(results))
+    // TODO: should cvall v3
+    
+    Ok(HttpResponse::Ok().json(""))
 }
 
 #[derive(serde::Serialize)]
@@ -97,21 +79,9 @@ pub async fn game_version_list(
     query: web::Query<GameVersionQuery>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let results: Vec<GameVersionQueryData> = if query.type_.is_some() || query.major.is_some() {
-        GameVersion::list_filter(query.type_.as_deref(), query.major, &**pool, &redis).await?
-    } else {
-        GameVersion::list(&**pool, &redis).await?
-    }
-    .into_iter()
-    .map(|x| GameVersionQueryData {
-        version: x.version,
-        version_type: x.type_,
-        date: x.created,
-        major: x.major,
-    })
-    .collect();
-
-    Ok(HttpResponse::Ok().json(results))
+    // TODO: should cvall v3
+    
+    Ok(HttpResponse::Ok().json("`"))
 }
 
 #[derive(serde::Serialize)]
@@ -209,6 +179,7 @@ pub async fn side_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let results = SideType::list(&**pool, &redis).await?;
-    Ok(HttpResponse::Ok().json(results))
+        // TODO: should call v3
+
+    Ok(HttpResponse::Ok().json(""))
 }

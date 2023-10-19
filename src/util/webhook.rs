@@ -1,4 +1,5 @@
-use crate::database::models::categories::GameVersion;
+use crate::database;
+use crate::database::models::{loader_fields::GameVersion, GameId};
 use crate::database::redis::RedisPool;
 use crate::models::projects::ProjectId;
 use crate::routes::ApiError;
@@ -77,35 +78,47 @@ pub async fn send_discord_webhook(
     webhook_url: String,
     message: Option<String>,
 ) -> Result<(), ApiError> {
-    let all_game_versions = GameVersion::list(pool, redis).await?;
+    // let all_game_versions = GameVersion::list(pool, redis).await?;
 
     let row =
         sqlx::query!(
             "
             SELECT m.id id, m.title title, m.description description, m.color color,
-            m.icon_url icon_url, m.slug slug, cs.name client_side_type, ss.name server_side_type,
+            m.icon_url icon_url, m.slug slug,
             pt.name project_type, u.username username, u.avatar_url avatar_url,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories,
             ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders,
-            JSONB_AGG(DISTINCT jsonb_build_object('id', gv.id, 'version', gv.version, 'type', gv.type, 'created', gv.created, 'major', gv.major)) filter (where gv.version is not null) versions,
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is false) gallery,
-            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery
+            ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery,
+            JSONB_AGG(
+                DISTINCT jsonb_build_object(
+                    'id', vf.id,
+                    'field_id', vf.field_id,
+                    'int_value', vf.int_value,
+                    'enum_value', vf.enum_value,
+                    'string_value', vf.string_value,
+                    'field', lf.field,
+                    'field_type', lf.field_type,
+                    'enum_type', lf.enum_type,
+                    'enum_name', lfe.enum_name
+                )
+            ) version_fields
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id AND mc.is_additional = FALSE
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
             LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ALL($2)
-            LEFT OUTER JOIN game_versions_versions gvv ON gvv.joining_version_id = v.id
-            LEFT OUTER JOIN game_versions gv ON gvv.game_version_id = gv.id
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
             LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id
             LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
             INNER JOIN project_types pt ON pt.id = m.project_type
-            INNER JOIN side_types cs ON m.client_side = cs.id
-            INNER JOIN side_types ss ON m.server_side = ss.id
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
             INNER JOIN users u ON tm.user_id = u.id
+            LEFT OUTER JOIN version_fields vf on v.id = vf.version_id
+            LEFT OUTER JOIN loader_fields lf on vf.field_id = lf.id
+            LEFT OUTER JOIN loader_field_enums lfe on lf.enum_type = lfe.id
+
             WHERE m.id = $1
-            GROUP BY m.id, cs.id, ss.id, pt.id, u.id;
+            GROUP BY m.id, pt.id, u.id;
             ",
             project_id.0 as i64,
             &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>(),
@@ -120,10 +133,10 @@ pub async fn send_discord_webhook(
         let categories = project.categories.unwrap_or_default();
         let loaders = project.loaders.unwrap_or_default();
 
-        let versions: Vec<GameVersion> =
-            serde_json::from_value(project.versions.unwrap_or_default())
-                .ok()
-                .unwrap_or_default();
+        // let versions: Vec<GameVersion> =
+        //     serde_json::from_value(project.versions.unwrap_or_default())
+        //         .ok()
+        //         .unwrap_or_default();
 
         if !categories.is_empty() {
             fields.push(DiscordEmbedField {
@@ -187,15 +200,15 @@ pub async fn send_discord_webhook(
             });
         }
 
-        if !versions.is_empty() {
-            let formatted_game_versions: String = get_gv_range(versions, all_game_versions);
+        // if !versions.is_empty() {
+        //     let formatted_game_versions: String = get_gv_range(versions, all_game_versions);
 
-            fields.push(DiscordEmbedField {
-                name: "Versions",
-                value: formatted_game_versions,
-                inline: true,
-            });
-        }
+        //     fields.push(DiscordEmbedField {
+        //         name: "Versions",
+        //         value: formatted_game_versions,
+        //         inline: true,
+        //     });
+        // }
 
         let mut project_type = project.project_type;
 

@@ -94,23 +94,23 @@ pub async fn forge_updates(
         promos: HashMap::new(),
     };
 
-    for version in versions {
-        if version.version_type == VersionType::Release {
-            for game_version in &version.game_versions {
-                response
-                    .promos
-                    .entry(format!("{}-recommended", game_version.0))
-                    .or_insert_with(|| version.version_number.clone());
-            }
-        }
+    // for version in versions {
+    //     if version.version_type == VersionType::Release {
+    //         for game_version in &version.game_versions {
+    //             response
+    //                 .promos
+    //                 .entry(format!("{}-recommended", game_version.0))
+    //                 .or_insert_with(|| version.version_number.clone());
+    //         }
+    //     }
 
-        for game_version in &version.game_versions {
-            response
-                .promos
-                .entry(format!("{}-latest", game_version.0))
-                .or_insert_with(|| version.version_number.clone());
-        }
-    }
+    //     for game_version in &version.game_versions {
+    //         response
+    //             .promos
+    //             .entry(format!("{}-latest", game_version.0))
+    //             .or_insert_with(|| version.version_number.clone());
+    //     }
+    // }
 
     Ok(HttpResponse::Ok().json(response))
 }

@@ -107,8 +107,8 @@ pub async fn validate_file(
     file_extension: String,
     mut project_type: String,
     mut loaders: Vec<Loader>,
-    game_versions: Vec<GameVersion>,
-    all_game_versions: Vec<crate::database::models::categories::GameVersion>,
+    // game_versions: Vec<GameVersion>,
+    // all_game_versions: Vec<crate::database::models::loader_fields::GameVersion>,
     file_type: Option<FileType>,
 ) -> Result<ValidationResult, ValidationError> {
     actix_web::web::block(move || {
@@ -131,11 +131,11 @@ pub async fn validate_file(
                 && loaders
                     .iter()
                     .any(|x| validator.get_supported_loaders().contains(&&*x.0))
-                && game_version_supported(
-                    &game_versions,
-                    &all_game_versions,
-                    validator.get_supported_game_versions(),
-                )
+                // && game_version_supported(
+                //     &game_versions,
+                //     &all_game_versions,
+                //     validator.get_supported_game_versions(),
+                // )
             {
                 if validator.get_file_extensions().contains(&&*file_extension) {
                     return validator.validate(&mut zip);
@@ -164,7 +164,7 @@ pub async fn validate_file(
 
 fn game_version_supported(
     game_versions: &[GameVersion],
-    all_game_versions: &[crate::database::models::categories::GameVersion],
+    all_game_versions: &[crate::database::models::loader_fields::GameVersion],
     supported_game_versions: SupportedGameVersions,
 ) -> bool {
     match supported_game_versions {

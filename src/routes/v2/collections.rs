@@ -9,6 +9,7 @@ use crate::models::ids::{CollectionId, ProjectId};
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::routes::v3::project_creation::CreateError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
@@ -20,8 +21,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use validator::Validate;
-
-use super::project_creation::CreateError;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(collections_get);
