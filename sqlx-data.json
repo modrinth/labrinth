@@ -189,19 +189,6 @@
     },
     "query": "\n                DELETE FROM reports\n                WHERE user_id = $1 OR reporter = $1\n                "
   },
-  "0472045549758d8eef84592908c438d6222a26926f4b06865b84979fc92564ba": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Timestamptz"
-        ]
-      }
-    },
-    "query": "\n                    UPDATE pats\n                    SET last_used = $2\n                    WHERE (id = $1)\n                    "
-  },
   "04e5ecb14c526000e9098efb65861f6125e6fcc88f39d6ad811ac8504d229de1": {
     "describe": {
       "columns": [],
@@ -1077,6 +1064,19 @@
     },
     "query": "\n            UPDATE threads_messages\n            SET body = $2\n            WHERE id = $1\n            "
   },
+  "2040e7f0a9b66bc12dc89007b07bab9da5fdd1b7ee72d411a9989deb4ee506bb": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array",
+          "Timestamptz"
+        ]
+      }
+    },
+    "query": "\n                UPDATE pats\n                SET last_used = $2\n                WHERE id IN\n                (SELECT * FROM UNNEST($1::bigint[]))\n                "
+  },
   "21d20e5f09cb0729dc16c8609c35cec5a913f3172b53b8ae05da0096a33b4b64": {
     "describe": {
       "columns": [
@@ -1805,6 +1805,26 @@
     },
     "query": "\n            UPDATE users\n            SET trolley_id = $1, trolley_account_status = $2\n            WHERE id = $3\n            "
   },
+  "3f8bd0280a59ad4561ca652cebc7734a9af0e944f1671df71f9f4e25d835ffd9": {
+    "describe": {
+      "columns": [
+        {
+          "name": "exists",
+          "ordinal": 0,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT EXISTS(SELECT 1 FROM oauth_client_authorizations WHERE id=$1)"
+  },
   "40f7c5bec98fe3503d6bd6db2eae5a4edb8d5d6efda9b9dc124f344ae5c60e08": {
     "describe": {
       "columns": [],
@@ -2108,6 +2128,26 @@
     },
     "query": "UPDATE mods\n                    SET downloads = downloads + 1\n                    WHERE (id = $1)"
   },
+  "49d5360751072cc2cb5954cdecb31044f41d210dd64bbbb5e7c2347acc2304e9": {
+    "describe": {
+      "columns": [
+        {
+          "name": "exists",
+          "ordinal": 0,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT EXISTS(SELECT 1 FROM oauth_client_redirect_uris WHERE id=$1)"
+  },
   "4a54d350b4695c32a802675506e85b0506fc62a63ca0ee5f38890824301d6515": {
     "describe": {
       "columns": [],
@@ -2197,6 +2237,68 @@
       }
     },
     "query": "\n                    UPDATE mods\n                    SET description = $1\n                    WHERE (id = $2)\n                    "
+  },
+  "4eb4b52a089d2fa11b1036d7f9fca546db44014cb9381f4f3a6d0af5d9d69511": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "client_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "scopes",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "client_name",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "client_icon_url",
+          "ordinal": 6,
+          "type_info": "Text"
+        },
+        {
+          "name": "client_created_by",
+          "ordinal": 7,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT \n                auths.id,\n                auths.client_id,\n                auths.user_id,\n                auths.scopes,\n                auths.created,\n                clients.name as client_name,\n                clients.icon_url as client_icon_url,\n                clients.created_by as client_created_by\n            FROM oauth_client_authorizations auths\n            JOIN oauth_clients clients ON clients.id = auths.client_id\n            WHERE user_id=$1\n            "
   },
   "4fb5bd341369b4beb6b4a88de296b608ea5441a96db9f7360fbdccceb4628202": {
     "describe": {
@@ -2846,6 +2948,64 @@
     },
     "query": "\n            SELECT tm.id, tm.team_id, tm.user_id, tm.role, tm.permissions, tm.organization_permissions, tm.accepted, tm.payouts_split, tm.ordering\n            FROM organizations o\n            INNER JOIN team_members tm ON tm.team_id = o.team_id AND user_id = $2 AND accepted = TRUE\n            WHERE o.id = $1\n            "
   },
+  "65c9f9cd010c14100839cd0b044103cac7e4b850d446b29d2efd9757b642fc1c": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array",
+          "Timestamptz"
+        ]
+      }
+    },
+    "query": "\n        UPDATE oauth_access_tokens\n        SET last_used = $2\n        WHERE id IN\n        (SELECT * FROM UNNEST($1::bigint[]))\n        "
+  },
+  "65ddadc9d103ccb9d81e1f52565cff1889e5490f0d0d62170ed2b9515ffc5104": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "client_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "scopes",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT id, client_id, user_id, scopes, created\n            FROM oauth_client_authorizations\n            WHERE client_id=$1 AND user_id=$2\n            "
+  },
   "665e294e9737fd0299fc4639127d56811485dc8a5a4e08a4e7292044d8a2fb7a": {
     "describe": {
       "columns": [],
@@ -2923,6 +3083,21 @@
       }
     },
     "query": "\n                DELETE FROM notifications\n                WHERE user_id = $1\n                "
+  },
+  "68ef15f50a067503dce124b50fb3c2efd07808c4a859ab1b1e9e65e16439a8f3": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO oauth_client_authorizations (\n                id, client_id, user_id, scopes\n            )\n            VALUES (\n                $1, $2, $3, $4\n            )\n            ON CONFLICT (id)\n            DO UPDATE SET scopes = EXCLUDED.scopes\n            "
   },
   "69b093cad9109ccf4779bfd969897f6b9ebc9d0d4230c958de4fa07435776349": {
     "describe": {
@@ -3030,6 +3205,36 @@
       }
     },
     "query": "\n            SELECT r.id, rt.name, r.mod_id, r.version_id, r.user_id, r.body, r.reporter, r.created, t.id thread_id, r.closed\n            FROM reports r\n            INNER JOIN report_types rt ON rt.id = r.report_type_id\n            INNER JOIN threads t ON t.report_id = r.id\n            WHERE r.id = ANY($1)\n            ORDER BY r.created DESC\n            "
+  },
+  "6b881555e610ddc6796cdcbfd2de26e68b10522d0f1df3f006d58f6b72be9911": {
+    "describe": {
+      "columns": [
+        {
+          "name": "created",
+          "ordinal": 0,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "expires",
+          "ordinal": 1,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Text",
+          "Int8",
+          "Timestamptz"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO oauth_access_tokens (\n                id, authorization_id, token_hash, scopes, last_used\n            )\n            VALUES (\n                $1, $2, $3, $4, $5\n            )\n            RETURNING created, expires\n            "
   },
   "6b89c2b2557e304c2a3a02d7824327685f9be696254bf2370d0c995aafc6a2d8": {
     "describe": {
@@ -3234,6 +3439,74 @@
       }
     },
     "query": "\n            DELETE FROM mods_categories\n            WHERE joining_mod_id = $1 AND is_additional = $2\n            "
+  },
+  "7174cd941ff95260ad9c564daf92876c5ae253df538f4cd4c3701e63137fb01b": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "authorization_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "token_hash",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "scopes",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "expires",
+          "ordinal": 5,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "last_used",
+          "ordinal": 6,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "client_id",
+          "ordinal": 7,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 8,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            SELECT\n                tokens.id,\n                tokens.authorization_id,\n                tokens.token_hash,\n                tokens.scopes,\n                tokens.created,\n                tokens.expires,\n                tokens.last_used,\n                auths.client_id,\n                auths.user_id\n            FROM oauth_access_tokens tokens\n            JOIN oauth_client_authorizations auths\n            ON tokens.authorization_id = auths.id\n            WHERE tokens.token_hash = $1\n            "
   },
   "71abd207410d123f9a50345ddcddee335fea0d0cc6f28762713ee01a36aee8a0": {
     "describe": {
@@ -3998,6 +4271,23 @@
     },
     "query": "\n            SELECT t.id, t.thread_type, t.mod_id, t.report_id, t.show_in_mod_inbox,\n            ARRAY_AGG(DISTINCT tm.user_id) filter (where tm.user_id is not null) members,\n            JSONB_AGG(DISTINCT jsonb_build_object('id', tmsg.id, 'author_id', tmsg.author_id, 'thread_id', tmsg.thread_id, 'body', tmsg.body, 'created', tmsg.created)) filter (where tmsg.id is not null) messages\n            FROM threads t\n            LEFT OUTER JOIN threads_messages tmsg ON tmsg.thread_id = t.id\n            LEFT OUTER JOIN threads_members tm ON tm.thread_id = t.id\n            WHERE t.id = ANY($1)\n            GROUP BY t.id\n            "
   },
+  "93f6a94a9b288916dbf9999338d2278605311a311def3cbe38846b8ca465737f": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Text",
+          "Text",
+          "Int8",
+          "Text",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO oauth_clients (\n                id, name, icon_url, max_scopes, secret_hash, created_by\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6\n            )\n            "
+  },
   "9544cea57095a94109be5fef9a4737626a9003d58680943cdbffc7c9ada7877b": {
     "describe": {
       "columns": [],
@@ -4127,6 +4417,74 @@
     },
     "query": "\n                                UPDATE historical_payouts\n                                SET status = $1\n                                WHERE payment_id = $2\n                                "
   },
+  "97f5b001699f8de4e80bdb5680f23d53fcf26489a387d6e170a58a55a814201d": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "icon_url",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "max_scopes",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "secret_hash",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "created",
+          "ordinal": 5,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "created_by",
+          "ordinal": 6,
+          "type_info": "Int8"
+        },
+        {
+          "name": "uri_ids",
+          "ordinal": 7,
+          "type_info": "Int8Array"
+        },
+        {
+          "name": "uri_vals",
+          "ordinal": 8,
+          "type_info": "TextArray"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        null,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT\n                clients.id,\n                clients.name,\n                clients.icon_url,\n                clients.max_scopes,\n                clients.secret_hash,\n                clients.created,\n                clients.created_by,\n                uris.uri_ids,\n                uris.uri_vals\n            FROM oauth_clients clients\n            LEFT JOIN (\n                SELECT client_id, array_agg(id) as uri_ids, array_agg(uri) as uri_vals\n                FROM oauth_client_redirect_uris\n                GROUP BY client_id\n            ) uris ON clients.id = uris.client_id\n            WHERE created_by = $1"
+  },
   "99a1eac69d7f5a5139703df431e6a5c3012a90143a8c635f93632f04d0bc41d4": {
     "describe": {
       "columns": [],
@@ -4202,6 +4560,20 @@
       }
     },
     "query": "\n                DELETE FROM collections_mods\n                WHERE collection_id = $1\n                "
+  },
+  "9dadd6926a8429e60cb5fd53285b81f2f47ccdded1e764c04d8b7651d9796ce0": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array",
+          "Int8Array",
+          "VarcharArray"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO oauth_client_redirect_uris (id, client_id, uri)\n            SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::varchar[])\n            "
   },
   "a0148ff25855202e7bb220b6a2bc9220a95e309fb0dae41d9a05afa86e6b33af": {
     "describe": {
@@ -4531,6 +4903,74 @@
       }
     },
     "query": "\n                DELETE FROM mod_follows\n                WHERE mod_id = $1\n                "
+  },
+  "b0699eef7dbf20f3ea457d1fe16338a9e6a9d7763d5614066adb0255139d7956": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "icon_url",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "max_scopes",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "secret_hash",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "created",
+          "ordinal": 5,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "created_by",
+          "ordinal": 6,
+          "type_info": "Int8"
+        },
+        {
+          "name": "uri_ids",
+          "ordinal": 7,
+          "type_info": "Int8Array"
+        },
+        {
+          "name": "uri_vals",
+          "ordinal": 8,
+          "type_info": "TextArray"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        null,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            SELECT\n                clients.id,\n                clients.name,\n                clients.icon_url,\n                clients.max_scopes,\n                clients.secret_hash,\n                clients.created,\n                clients.created_by,\n                uris.uri_ids,\n                uris.uri_vals\n            FROM oauth_clients clients\n            LEFT JOIN (\n                SELECT client_id, array_agg(id) as uri_ids, array_agg(uri) as uri_vals\n                FROM oauth_client_redirect_uris\n                GROUP BY client_id\n            ) uris ON clients.id = uris.client_id\n            WHERE clients.id = $1"
   },
   "b0c29c51bd3ae5b93d487471a98ee9bbb43a4df468ba781852b137dd315b9608": {
     "describe": {
@@ -5393,6 +5833,18 @@
     },
     "query": "\n                UPDATE team_members\n                SET role = $1\n                WHERE (team_id = $2 AND user_id = $3)\n                "
   },
+  "cf84f5e2a594a90b2e7993758807aaaaf533a4409633cf00c071049bb6816c96": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM oauth_client_redirect_uris\n            WHERE id IN\n            (SELECT * FROM UNNEST($1::bigint[]))\n            "
+  },
   "cfcc6970c0b469c4afd37bedfd386def7980f6b7006030d4783723861d0e3a38": {
     "describe": {
       "columns": [
@@ -5437,6 +5889,26 @@
       }
     },
     "query": "\n                    UPDATE users\n                    SET gitlab_id = $2\n                    WHERE (id = $1)\n                    "
+  },
+  "d0b2ddba90ce69a50d0260a191bf501784de06acdddeed1db8f570cb04755f1a": {
+    "describe": {
+      "columns": [
+        {
+          "name": "exists",
+          "ordinal": 0,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT EXISTS(SELECT 1 FROM oauth_clients WHERE id=$1)"
   },
   "d1566672369ea22cb1f638f073f8e3fb467b354351ae71c67941323749ec9bcd": {
     "describe": {
@@ -5757,6 +6229,19 @@
     },
     "query": "\n                SELECT id, session, user_id\n                FROM sessions\n                WHERE refresh_expires <= NOW()\n                "
   },
+  "db1deb79fa509974f1cd68cacd541c55bf62928a96d9582d3e223d6473335428": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM oauth_client_authorizations\n            WHERE client_id=$1 AND user_id=$2\n            "
+  },
   "dc6aa2e7bfd5d5004620ddd4cd6a47ecc56159e1489054e0652d56df802fb5e5": {
     "describe": {
       "columns": [],
@@ -5874,6 +6359,26 @@
       }
     },
     "query": "\n            INSERT INTO versions (\n                id, mod_id, author_id, name, version_number,\n                changelog, date_published, downloads,\n                version_type, featured, status\n            )\n            VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8,\n                $9, $10, $11\n            )\n            "
+  },
+  "e15ff50bd75a49d50975d337f61f3412349dd6bc5c836d2634bbcb376a6f7c12": {
+    "describe": {
+      "columns": [
+        {
+          "name": "exists",
+          "ordinal": 0,
+          "type_info": "Bool"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT EXISTS(SELECT 1 FROM oauth_access_tokens WHERE id=$1)"
   },
   "e3235e872f98eb85d3eb4a2518fb9dc88049ce62362bfd02623e9b49ac2e9fed": {
     "describe": {
@@ -6021,6 +6526,18 @@
       }
     },
     "query": "\n            SELECT c.id FROM collections c\n            WHERE c.user_id = $1\n            "
+  },
+  "e60f725571e7b7b716d19735ab3b8f3133bea215a89964d78cb652f930465faf": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM oauth_clients\n            WHERE id = $1\n            "
   },
   "e6db02891be261e61a25716b83c1298482eb9a04f0c026532030aeb374405f13": {
     "describe": {
@@ -6185,6 +6702,21 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM team_members WHERE id=$1)"
+  },
+  "e8cc8895ebc8b1904a43e00f1e123f75ffdaebc76d67a5d35218fa9273d46d53": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            UPDATE oauth_clients\n            SET name = $1, icon_url = $2, max_scopes = $3\n            WHERE (id = $4)\n            "
   },
   "e8d4589132b094df1e7a3ca0440344fc8013c0d20b3c71a1142ccbee91fb3c70": {
     "describe": {
