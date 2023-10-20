@@ -35,8 +35,9 @@ use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(oauth_client_create);
-    cfg.service(get_user_clients);
+    cfg.service(oauth_client_edit);
     cfg.service(oauth_client_delete);
+    cfg.service(get_user_clients);
     cfg.service(get_user_oauth_authorizations);
     cfg.service(revoke_oauth_authorization);
 }

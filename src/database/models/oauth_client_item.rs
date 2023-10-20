@@ -165,7 +165,7 @@ impl OAuthClient {
         let ids = ids.into_iter().map(|id| id.0).collect_vec();
         sqlx::query!(
             "
-            DELETE FROM oauth_clients
+            DELETE FROM oauth_client_redirect_uris
             WHERE id IN
             (SELECT * FROM UNNEST($1::bigint[]))
             ",

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
@@ -8,6 +9,8 @@ use labrinth::auth::oauth::{
     OAuthClientAccessRequest, RespondToOAuthClientScopes, TokenRequest, TokenResponse,
 };
 use reqwest::header::{AUTHORIZATION, LOCATION};
+
+use crate::common::asserts::assert_status;
 
 use super::ApiV3;
 
@@ -129,17 +132,20 @@ pub fn generate_authorize_uri(
 }
 
 pub async fn get_authorize_accept_flow_id(response: ServiceResponse) -> String {
+    assert_status(&response, StatusCode::OK);
     test::read_body_json::<OAuthClientAccessRequest, _>(response)
         .await
         .flow_id
 }
 
 pub async fn get_auth_code_from_redirect_params(response: &ServiceResponse) -> String {
+    assert_status(&response, StatusCode::FOUND);
     let query_params = get_redirect_location_query_params(response);
     query_params.get("code").unwrap().to_string()
 }
 
 pub async fn get_access_token(response: ServiceResponse) -> String {
+    assert_status(&response, StatusCode::OK);
     test::read_body_json::<TokenResponse, _>(response)
         .await
         .access_token
