@@ -33,7 +33,7 @@ async fn oauth_flow_happy_path() {
                 &client_id,
                 "USER_READ NOTIFICATION_READ",
                 &redirect_uri,
-                original_state,
+                Some(original_state),
                 FRIEND_USER_PAT,
             )
             .await;
@@ -89,7 +89,7 @@ async fn oauth_authorize_for_already_authorized_scopes_returns_auth_code() {
                 &client_id,
                 "USER_READ NOTIFICATION_READ",
                 &valid_redirect_uri,
-                "1234",
+                Some("1234"),
                 USER_USER_PAT,
             )
             .await;
@@ -102,7 +102,7 @@ async fn oauth_authorize_for_already_authorized_scopes_returns_auth_code() {
                 &client_id,
                 "USER_READ",
                 &valid_redirect_uri,
-                "5678",
+                Some("5678"),
                 USER_USER_PAT,
             )
             .await;
@@ -126,7 +126,7 @@ async fn get_oauth_token_with_already_used_auth_code_fails() {
                 &client_id,
                 "USER_READ",
                 &valid_redirect_uri,
-                "1234",
+                None,
                 USER_USER_PAT,
             )
             .await;
@@ -159,6 +159,40 @@ async fn get_oauth_token_with_already_used_auth_code_fails() {
     })
     .await;
 }
+
+#[actix_rt::test]
+async fn oauth_authorize_with_broader_scopes_requires_user_accept() {
+    with_test_environment(|env| async {
+        let DummyOAuthClientAlpha {
+            valid_redirect_uri: redirect_uri,
+            client_id,
+            ..
+        } = env.dummy.unwrap().oauth_client_alpha.clone();
+        let resp = env
+            .v3
+            .oauth_authorize(&client_id, "USER_READ", &redirect_uri, None, USER_USER_PAT)
+            .await;
+        let flow_id = get_authorize_accept_flow_id(resp).await;
+        env.v3.oauth_accept(&flow_id, USER_USER_PAT).await;
+
+        let resp = env
+            .v3
+            .oauth_authorize(
+                &client_id,
+                "USER_READ NOTIFICATION_READ",
+                &redirect_uri,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+
+        assert_status(&resp, StatusCode::OK);
+        get_authorize_accept_flow_id(resp).await; // ensure we can deser this without error to really confirm
+    })
+    .await;
+}
+
+//TODO: What about rejecting???
 
 async fn get_authorize_accept_flow_id(response: ServiceResponse) -> String {
     test::read_body_json::<OAuthClientAccessRequest, _>(response)

@@ -13,7 +13,7 @@ impl ApiV3 {
         client_id: &str,
         scope: &str,
         redirect_uri: &str,
-        state: &str,
+        state: Option<&str>,
         pat: &str,
     ) -> ServiceResponse {
         let uri = generate_authorize_uri(client_id, scope, redirect_uri, state);
@@ -78,15 +78,19 @@ pub fn generate_authorize_uri(
     client_id: &str,
     scope: &str,
     redirect_uri: &str,
-    state: &str,
+    state: Option<&str>,
 ) -> String {
     format!(
         "/v3/auth/oauth/authorize?client_id={}&redirect_uri={}\
-            &scope={}&state={}",
+            &scope={}{}",
         urlencoding::encode(client_id),
         urlencoding::encode(redirect_uri),
         urlencoding::encode(scope),
-        urlencoding::encode(state),
+        if let Some(state) = state {
+            urlencoding::encode(state).to_string()
+        } else {
+            "".to_string()
+        },
     )
     .to_string()
 }
