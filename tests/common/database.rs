@@ -104,110 +104,103 @@ impl TemporaryDatabase {
             .await
             .expect("Connection to database failed");
 
-        loop {
-            // Try to acquire an advisory lock
-            let lock_acquired: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(1)")
-                .fetch_one(&main_pool)
+        // Wait for advisory lock
+        sqlx::query("SELECT pg_advisory_lock(1)")
+            .execute(&main_pool)
+            .await
+            .unwrap();
+
+        // Create the db template if it doesn't exist
+        // Check if template_db already exists
+        let db_exists: Option<i32> = sqlx::query_scalar(&format!(
+            "SELECT 1 FROM pg_database WHERE datname = '{TEMPLATE_DATABASE_NAME}'"
+        ))
+        .fetch_optional(&main_pool)
+        .await
+        .unwrap();
+        if db_exists.is_none() {
+            let create_db_query = format!("CREATE DATABASE {TEMPLATE_DATABASE_NAME}");
+            sqlx::query(&create_db_query)
+                .execute(&main_pool)
+                .await
+                .expect("Database creation failed");
+        }
+
+        // Switch to template
+        let url = dotenvy::var("DATABASE_URL").expect("No database URL");
+        let mut template_url = Url::parse(&url).expect("Invalid database URL");
+        template_url.set_path(&format!("/{}", TEMPLATE_DATABASE_NAME));
+
+        let pool = PgPool::connect(template_url.as_str())
+            .await
+            .expect("Connection to database failed");
+
+        // Check if dummy data exists- a fake 'dummy_data' table is created if it does
+        let mut dummy_data_exists: bool =
+            sqlx::query_scalar("SELECT to_regclass('dummy_data') IS NOT NULL")
+                .fetch_one(&pool)
                 .await
                 .unwrap();
-
-            if lock_acquired {
-                // Create the db template if it doesn't exist
-                // Check if template_db already exists
-                let db_exists: Option<i32> = sqlx::query_scalar(&format!(
-                    "SELECT 1 FROM pg_database WHERE datname = '{TEMPLATE_DATABASE_NAME}'"
-                ))
-                .fetch_optional(&main_pool)
-                .await
-                .unwrap();
-                if db_exists.is_none() {
-                    let create_db_query = format!("CREATE DATABASE {TEMPLATE_DATABASE_NAME}");
-                    sqlx::query(&create_db_query)
-                        .execute(&main_pool)
-                        .await
-                        .expect("Database creation failed");
-                }
-
-                // Switch to template
-                let url = dotenvy::var("DATABASE_URL").expect("No database URL");
-                let mut template_url = Url::parse(&url).expect("Invalid database URL");
-                template_url.set_path(&format!("/{}", TEMPLATE_DATABASE_NAME));
-
-                let pool = PgPool::connect(template_url.as_str())
-                    .await
-                    .expect("Connection to database failed");
-
-                // Check if dummy data exists- a fake 'dummy_data' table is created if it does
-                let mut dummy_data_exists: bool =
-                    sqlx::query_scalar("SELECT to_regclass('dummy_data') IS NOT NULL")
-                        .fetch_one(&pool)
-                        .await
-                        .unwrap();
-                if dummy_data_exists {
-                    // Check if the dummy data needs to be updated
-                    let dummy_data_update =
-                        sqlx::query_scalar::<_, i64>("SELECT update_id FROM dummy_data")
-                            .fetch_optional(&pool)
-                            .await
-                            .unwrap();
-                    let needs_update = !dummy_data_update.is_some_and(|d| d == DUMMY_DATA_UPDATE);
-                    if needs_update {
-                        println!("Dummy data updated, so template DB tables will be dropped and re-created");
-                        // Drop all tables in the database so they can be re-created and later filled with updated dummy data
-                        sqlx::query("DROP SCHEMA public CASCADE;")
-                            .execute(&pool)
-                            .await
-                            .unwrap();
-                        sqlx::query("CREATE SCHEMA public;")
-                            .execute(&pool)
-                            .await
-                            .unwrap();
-                        dummy_data_exists = false;
-                    }
-                }
-
-                // Run migrations on the template
-                let migrations = sqlx::migrate!("./migrations");
-                migrations.run(&pool).await.expect("Migrations failed");
-
-                if !dummy_data_exists {
-                    // Add dummy data
-                    let temporary_test_env = TestEnvironment::build_with_db(TemporaryDatabase {
-                        pool: pool.clone(),
-                        database_name: TEMPLATE_DATABASE_NAME.to_string(),
-                        redis_pool: RedisPool::new(None),
-                    })
-                    .await;
-                    dummy_data::add_dummy_data(&temporary_test_env).await;
-                }
-                pool.close().await;
-
-                // Switch back to main database (as we cant create from template while connected to it)
-                let pool = PgPool::connect(url.as_str()).await.unwrap();
-
-                // Create the temporary database from the template
-                let create_db_query = format!(
-                    "CREATE DATABASE {} TEMPLATE {}",
-                    &temp_database_name, TEMPLATE_DATABASE_NAME
-                );
-
-                sqlx::query(&create_db_query)
-                    .execute(&pool)
-                    .await
-                    .expect("Database creation failed");
-
-                // Release the advisory lock
-                sqlx::query("SELECT pg_advisory_unlock(1)")
-                    .execute(&main_pool)
+        if dummy_data_exists {
+            // Check if the dummy data needs to be updated
+            let dummy_data_update =
+                sqlx::query_scalar::<_, i64>("SELECT update_id FROM dummy_data")
+                    .fetch_optional(&pool)
                     .await
                     .unwrap();
-
-                main_pool.close().await;
-                break;
+            let needs_update = !dummy_data_update.is_some_and(|d| d == DUMMY_DATA_UPDATE);
+            if needs_update {
+                println!(
+                    "Dummy data updated, so template DB tables will be dropped and re-created"
+                );
+                // Drop all tables in the database so they can be re-created and later filled with updated dummy data
+                sqlx::query("DROP SCHEMA public CASCADE;")
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+                sqlx::query("CREATE SCHEMA public;")
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+                dummy_data_exists = false;
             }
-            // Wait for the lock to be released
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
+
+        // Run migrations on the template
+        let migrations = sqlx::migrate!("./migrations");
+        migrations.run(&pool).await.expect("Migrations failed");
+
+        if !dummy_data_exists {
+            // Add dummy data
+            let temporary_test_env = TestEnvironment::build_with_db(TemporaryDatabase {
+                pool: pool.clone(),
+                database_name: TEMPLATE_DATABASE_NAME.to_string(),
+                redis_pool: RedisPool::new(None),
+            })
+            .await;
+            dummy_data::add_dummy_data(&temporary_test_env).await;
+        }
+        pool.close().await;
+        drop(pool);
+
+        // Create the temporary database from the template
+        let create_db_query = format!(
+            "CREATE DATABASE {} TEMPLATE {}",
+            &temp_database_name, TEMPLATE_DATABASE_NAME
+        );
+
+        sqlx::query(&create_db_query)
+            .execute(&main_pool)
+            .await
+            .expect("Database creation failed");
+
+        // Release the advisory lock
+        sqlx::query("SELECT pg_advisory_unlock(1)")
+            .execute(&main_pool)
+            .await
+            .unwrap();
+
+        main_pool.close().await;
     }
 
     // Deletes the temporary database (panics)
