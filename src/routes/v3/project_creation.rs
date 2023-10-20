@@ -1,6 +1,6 @@
 use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
-use crate::database::models::loader_fields::{Game, LoaderFieldEnum, LoaderFieldEnumValue};
+use crate::database::models::loader_fields::{Game, LoaderFieldEnum, LoaderFieldEnumValue, VersionField, LoaderField};
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item, User, DatabaseError};
 use crate::database::redis::RedisPool;
@@ -182,6 +182,10 @@ struct ProjectCreateData {
     /// A long description of the project, in markdown.
     pub body: String,
 
+    #[validate(length(max = 32))]
+    #[validate]
+    /// A list of initial versions to upload with the created project
+    pub initial_versions: Vec<InitialVersionData>,
     #[validate(length(max = 3))]
     /// A list of the categories that the project is in.
     pub categories: Vec<String>,
@@ -230,6 +234,10 @@ struct ProjectCreateData {
     /// The license id that the project follows
     pub license_id: String,
 
+    #[validate(length(max = 64))]
+    #[validate]
+    /// The multipart names of the gallery items to upload
+    pub gallery_items: Option<Vec<NewGalleryItem>>,
     #[serde(default = "default_requested_status")]
     /// The status of the mod to be set once it is approved
     pub requested_status: ProjectStatus,
@@ -375,6 +383,10 @@ println!("in2!");
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
 
     let project_create_data;
+    let game_id;
+    let mut versions;
+    let mut versions_map = std::collections::HashMap::new();
+    let mut gallery_urls = Vec::new();
     {
         // The first multipart field must be named "data" and contain a
         // JSON `ProjectCreateData` object.
@@ -413,6 +425,8 @@ println!("in2!");
             .validate()
             .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
 
+        println!("CREATING PROJECT: {}", serde_json::to_string_pretty(&create_data).unwrap());
+
         let slug_project_id_option: Option<ProjectId> =
             serde_json::from_str(&format!("\"{}\"", create_data.slug)).ok();
 
@@ -450,6 +464,40 @@ println!("in2!");
             }
         }
         println!("in7");
+
+        // Check game exists, and get loaders for it
+        let game_name = &create_data.game_name;
+        game_id = models::loader_fields::Game::get_id(
+            &create_data.game_name,
+            &mut *transaction,
+        ).await?.ok_or_else(|| CreateError::InvalidInput(format!("Game '{game_name}' is currently unsupported.")))?;
+        let all_loaders = models::loader_fields::Loader::list(&game_name, &mut *transaction, redis).await?;
+
+        // Create VersionBuilders for the versions specified in `initial_versions`
+        versions = Vec::with_capacity(create_data.initial_versions.len());
+        for (i, data) in create_data.initial_versions.iter().enumerate() {
+            // Create a map of multipart field names to version indices
+            for name in &data.file_parts {
+                if versions_map.insert(name.to_owned(), i).is_some() {
+                    // If the name is already used
+                    return Err(CreateError::InvalidInput(String::from(
+                        "Duplicate multipart field name",
+                    )));
+                }
+            }
+            versions.push(
+                create_initial_version(
+                    data,
+                    project_id,
+                    current_user.id,
+                    &all_loaders,
+                    &create_data.project_type,
+                    transaction,
+                    redis
+                )
+                .await?,
+            );
+        }
 
         project_create_data = create_data;
     }
@@ -508,6 +556,75 @@ println!("in2!");
                 );
                 return Ok(());
             }
+            if let Some(gallery_items) = &project_create_data.gallery_items {
+                if gallery_items.iter().filter(|a| a.featured).count() > 1 {
+                    return Err(CreateError::InvalidInput(String::from(
+                        "Only one gallery image can be featured.",
+                    )));
+                }
+                if let Some(item) = gallery_items.iter().find(|x| x.item == name) {
+                    let data = read_from_field(
+                        &mut field,
+                        5 * (1 << 20),
+                        "Gallery image exceeds the maximum of 5MiB.",
+                    )
+                    .await?;
+                    let hash = sha1::Sha1::from(&data).hexdigest();
+                    let (_, file_extension) =
+                        super::version_creation::get_name_ext(&content_disposition)?;
+                    let content_type = crate::util::ext::get_image_content_type(file_extension)
+                        .ok_or_else(|| {
+                            CreateError::InvalidIconFormat(file_extension.to_string())
+                        })?;
+                    let url = format!("data/{project_id}/images/{hash}.{file_extension}");
+                    let upload_data = file_host
+                        .upload_file(content_type, &url, data.freeze())
+                        .await?;
+                    uploaded_files.push(UploadedFile {
+                        file_id: upload_data.file_id,
+                        file_name: upload_data.file_name,
+                    });
+                    gallery_urls.push(crate::models::projects::GalleryItem {
+                        url: format!("{cdn_url}/{url}"),
+                        featured: item.featured,
+                        title: item.title.clone(),
+                        description: item.description.clone(),
+                        created: Utc::now(),
+                        ordering: item.ordering,
+                    });
+                    return Ok(());
+                }
+            }
+            let index = if let Some(i) = versions_map.get(name) {
+                *i
+            } else {
+                return Err(CreateError::InvalidInput(format!(
+                    "File `{file_name}` (field {name}) isn't specified in the versions data"
+                )));
+            };
+            // `index` is always valid for these lists
+            let created_version = versions.get_mut(index).unwrap();
+            let version_data = project_create_data.initial_versions.get(index).unwrap();
+            // Upload the new jar file
+            super::version_creation::upload_file(
+                &mut field,
+                file_host,
+                version_data.file_parts.len(),
+                uploaded_files,
+                &mut created_version.files,
+                &mut created_version.dependencies,
+                &cdn_url,
+                &content_disposition,
+                project_id,
+                created_version.version_id.into(),
+                &project_create_data.project_type,
+                version_data.loaders.clone().into_iter().map(|l|l.loader).collect(),
+                version_data.primary_file.is_some(),
+                version_data.primary_file.as_deref() == Some(name),
+                None,
+                transaction,
+            )
+            .await?;
 
             Ok(())
         }
@@ -524,7 +641,20 @@ println!("in2!");
     println!("in10");
 
     {
+        // Check to make sure that all specified files were uploaded
+        for (version_data, builder) in project_create_data
+            .initial_versions
+            .iter()
+            .zip(versions.iter())
+        {
         
+            if version_data.file_parts.len() != builder.files.len() {
+                return Err(CreateError::InvalidInput(String::from(
+                    "Some files were specified in initial_versions but not uploaded",
+                )));
+            }
+        }
+    
         // Convert the list of category names to actual categories
         let mut categories = Vec::with_capacity(project_create_data.categories.len());
         for category in &project_create_data.categories {
@@ -567,19 +697,18 @@ println!("in2!");
 
         let team_id = team.insert(&mut *transaction).await?;
 
-        let status = ProjectStatus::Draft;
-        if !project_create_data.requested_status.can_be_requested() {
-            return Err(CreateError::InvalidInput(String::from(
-                "Specified requested status is not allowed to be requested",
-            )));
+        let status;
+        if project_create_data.is_draft.unwrap_or(false) {
+            status = ProjectStatus::Draft;
+        } else {
+            status = ProjectStatus::Processing;
+            if project_create_data.initial_versions.is_empty() {
+                return Err(CreateError::InvalidInput(String::from(
+                    "Project submitted for review with no initial versions",
+                )));
+            }
         }
 
-        let game_name = &project_create_data.game_name;
-        let game_id = models::loader_fields::Game::get_id(
-            &project_create_data.game_name,
-            &mut *transaction,
-        ).await?.ok_or_else(|| CreateError::InvalidInput(format!("Game '{game_name}' is currently unsupported.")))?;
-        
         let license_id =
             spdx::Expression::parse(&project_create_data.license_id).map_err(|err| {
                 CreateError::InvalidInput(format!("Invalid SPDX license identifier: {err}"))
@@ -628,11 +757,22 @@ println!("in2!");
             discord_url: project_create_data.discord_url,
             categories,
             additional_categories,
+            initial_versions: versions,
             status,
             requested_status: Some(project_create_data.requested_status),
             license: license_id.to_string(),
             slug: Some(project_create_data.slug),
             donation_urls,
+            gallery_items: gallery_urls.iter()
+                .map(|x| models::project_item::GalleryItem {
+                    image_url: x.url.clone(),
+                    featured: x.featured,
+                    title: x.title.clone(),
+                    description: x.description.clone(),
+                    created: x.created,
+                    ordering: x.ordering,
+                })
+                .collect(),
             color: icon_data.and_then(|x| x.1),
             monetization_status: MonetizationStatus::Monetized,
         };
@@ -714,14 +854,18 @@ println!("in2!");
             categories: project_create_data.categories,
             additional_categories: project_create_data.additional_categories,
             loaders: vec![],
-            versions: vec![],
-            gallery: vec![],
+            versions: project_builder
+                .initial_versions
+                .iter()
+                .map(|v| v.version_id.into())
+                .collect::<Vec<_>>(),
             icon_url: project_builder.icon_url.clone(),
             issues_url: project_builder.issues_url.clone(),
             source_url: project_builder.source_url.clone(),
             wiki_url: project_builder.wiki_url.clone(),
             discord_url: project_builder.discord_url.clone(),
             donation_urls: project_create_data.donation_urls.clone(),
+            gallery: gallery_urls,
             color: project_builder.color,
             thread_id: thread_id.into(),
             monetization_status: MonetizationStatus::Monetized,
@@ -735,10 +879,10 @@ async fn create_initial_version(
     version_data: &InitialVersionData,
     project_id: ProjectId,
     author: UserId,
-    all_game_versions: &[models::loader_fields::GameVersion],
     all_loaders: &[models::loader_fields::Loader],
-    project_type: &str,
+    project_type: &String,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    redis: &RedisPool,
 ) -> Result<models::version_item::VersionBuilder, CreateError> {
     if version_data.project_id.is_some() {
         return Err(CreateError::InvalidInput(String::from(
@@ -765,22 +909,56 @@ async fn create_initial_version(
     //     })
     //     .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
 
-    let loaders = version_data
-        .loaders
+    println!("This one!!!!!");
+    println!("Loaders: {:?}", serde_json::to_string(&version_data.loaders).unwrap());
+    println!("All loaders: {:?}", serde_json::to_string(&all_loaders).unwrap());
+    println!("Supported project types: {:?}", all_loaders.iter().map(|x| x.supported_project_types.clone()).collect::<Vec<_>>());
+    
+    let mut loader_ids = vec![];
+    let mut loaders = vec![];
+    let mut version_fields = vec![];
+    for loader_create in version_data.loaders.iter() {
+        let loader_name = loader_create.loader.0.clone();
+        println!("ADding loader: {}", loader_name);
+        // Confirm loader from list of loaders
+        let loader_id = all_loaders
         .iter()
-        .map(|x| {
-            all_loaders
-                .iter()
-                .find(|y| {
-                    y.loader == x.0
-                        && y.supported_project_types
-                            .contains(&project_type.to_string())
-                })
-                .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
-                .map(|y| y.id)
+        .find(|y| {
+            y.loader == loader_name && y.supported_project_types.contains(project_type)
         })
-        .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
+        .ok_or_else(|| CreateError::InvalidLoader(loader_name.clone()))
+        .map(|y| y.id)?;
 
+        loader_ids.push(loader_id);
+        loaders.push(loader_create.loader.clone());
+
+        for (key, value) in loader_create.fields .iter() {
+            println!("ADding loader field: {} {}", key, value);
+            // TODO: more efficient, multiselect
+                let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction).await?.ok_or_else(|| {
+                    CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
+                })?;
+                let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), &mut *transaction, redis).await?;
+                version_fields.push(vf);
+        }
+    }
+
+    // let loaders = version_data
+    //     .loaders
+    //     .iter()
+    //     .map(|x| {
+    //         all_loaders
+    //             .iter()
+    //             .find(|y| {
+    //                 y.loader == x.0
+    //                     && y.supported_project_types
+    //                         .contains(&project_type.to_string())
+    //             })
+    //             .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
+    //             .map(|y| y.id)
+    //     })
+    //     .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
+        println!("past...");
     let dependencies = version_data
         .dependencies
         .iter()
@@ -801,7 +979,8 @@ async fn create_initial_version(
         changelog: version_data.version_body.clone().unwrap_or_default(),
         files: Vec::new(),
         dependencies,
-        loaders,
+        loaders: loader_ids,
+        version_fields,
         featured: version_data.featured,
         status: VersionStatus::Listed,
         version_type: version_data.release_channel.to_string(),

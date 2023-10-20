@@ -36,16 +36,15 @@ VALUES (2, '1.20.4', '{"type":"release","major":false}');
 INSERT INTO loader_field_enum_values(enum_id, value, metadata)
 VALUES (2, '1.20.5', '{"type":"release","major":false}');
 
--- INSERT INTO game_versions (id, version, type, created)
--- VALUES (20000, '1.20.1', 'release', timezone('utc', now()));
--- INSERT INTO game_versions (id, version, type, created)
--- VALUES (20001, '1.20.2', 'release', timezone('utc', now()));
--- INSERT INTO game_versions (id, version, type, created)
--- VALUES (20002, '1.20.3', 'release', timezone('utc', now()));
--- INSERT INTO game_versions (id, version, type, created)
--- VALUES (20003, '1.20.4', 'release', timezone('utc', now()));
--- INSERT INTO game_versions (id, version, type, created)
--- VALUES (20004, '1.20.5', 'release', timezone('utc', now()));
+INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
+VALUES (1, 'game_versions', 'array(enum)', 2);
+
+-- Side-types 
+INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
+VALUES (1, 'client_side', 'enum', 1);
+
+INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
+VALUES (1, 'server_side', 'enum', 1);
 
 
 INSERT INTO categories (id, category, project_type) VALUES

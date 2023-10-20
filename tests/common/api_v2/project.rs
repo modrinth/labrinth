@@ -82,6 +82,20 @@ impl ApiV2 {
         test::read_body_json(resp).await
     }
 
+    pub async fn get_version(&self, id : &str, pat: &str) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri(&format!("/v2/version/{id}"))
+            .append_header(("Authorization", pat))
+            .to_request();
+        self.call(req).await
+    }
+
+    pub async fn get_version_deserialized(&self, id : &str, pat: &str) -> Version {
+        let resp = self.get_version(id, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
     pub async fn get_user_projects_deserialized(
         &self,
         user_id_or_username: &str,

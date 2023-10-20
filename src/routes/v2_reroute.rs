@@ -5,7 +5,7 @@ use actix_web::http::header::{TryIntoHeaderPair,HeaderMap, HeaderName};
 use futures::{StreamExt, stream};
 use serde_json::{Value, json};
 
-pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: HeaderMap,   closure: impl Fn(&mut serde_json::Value)) -> (HeaderMap, Multipart) {
+pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: HeaderMap,   closure: impl Fn(&mut serde_json::Value)) -> Multipart {
     let mut segments: Vec<MultipartSegment> = Vec::new();
 
     if let Some(mut field) = multipart.next().await {
@@ -25,7 +25,7 @@ pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: Header
 
         {
             let mut json_value: Value = serde_json::from_slice(&buffer).unwrap();
-            json_value["game_name"] = json!("minecraft-java");
+            closure(&mut json_value);
             buffer = serde_json::to_vec(&json_value).unwrap();
         }
 
@@ -52,12 +52,6 @@ pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: Header
             buffer.extend_from_slice(&data);
         }
 
-        // if /* this is the JSON part */ {
-        //     let mut json_value: Value = serde_json::from_slice(&buffer)?;
-        //     json_value["new_key"] = json!("new_value");
-        //     buffer = serde_json::to_vec(&json_value)?;
-        // }
-
         segments.push(MultipartSegment { name: field_name.to_string(),
              filename: field_filename.map(|s| s.to_string()),
              content_type: field_content_type, 
@@ -66,15 +60,9 @@ pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: Header
 
     }
 
-    // let modified_stream = iter(modified_parts.into_iter().map(Result::<Bytes, ApiError>::Ok));
-
-    // let modified_stream = ModifiedStream { inner: modified_stream };
-
-    // let new_multipart = Multipart::new(&headers, modified_stream);
-
     let (boundary, payload) = generate_multipart(segments);
 
-    let header = match ("Content-Type", format!("multipart/form-data; boundary={}", boundary).as_str()).try_into_pair() {
+    match ("Content-Type", format!("multipart/form-data; boundary={}", boundary).as_str()).try_into_pair() {
         Ok((key, value)) => {
             headers.insert(key, value);
         }
@@ -85,7 +73,7 @@ pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: Header
 
     let new_multipart = Multipart::new(&headers, stream::once(async { Ok(payload) }));
 
-    (headers, new_multipart)
+    new_multipart
 }
 
 

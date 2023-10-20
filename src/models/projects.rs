@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use super::ids::{Base62Id, OrganizationId};
 use super::teams::TeamId;
 use super::users::UserId;
+use crate::database::models::loader_fields::VersionField as DBVersionField;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::models::threads::ThreadId;
@@ -478,12 +481,41 @@ pub struct Version {
     /// A list of projects that this version depends on.
     pub dependencies: Vec<Dependency>,
     /// The loaders that this version works on
-    pub loaders: Vec<Loader>,
+    pub loaders: Vec<LoaderStruct>,
+
+}
+
+// A loader and its associated loader VersionFields
+#[derive(Serialize, Deserialize, Validate, Clone)]
+pub struct LoaderStruct {
+    pub loader : Loader,
+
+    // All other fields are loader-specific VersionFields
+    #[serde(flatten)]
+    pub fields : HashMap<String, serde_json::Value>,
 }
 
 impl From<QueryVersion> for Version {
     fn from(data: QueryVersion) -> Version {
         let v = data.inner;
+
+        let loader_names : Vec<Loader> = data.loaders.into_iter().map(Loader).collect();
+        let mut loaders : HashMap<String, LoaderStruct> = HashMap::new();
+        for loader in loader_names {
+            loaders.insert(loader.0.clone(), LoaderStruct {
+                loader,
+                fields: HashMap::new(),
+            });
+        }
+        for version_field in data.version_fields {
+            if let Some(loader_struct) = loaders.get_mut(&version_field.loader_name) {
+                // Only add the internal component of the field for display
+                // "ie": "game_versions",["1.2.3"] instead of "game_versions",ArrayEnum(...)
+                loader_struct.fields.insert(version_field.field_name, version_field.value.serialize_internal());
+            }
+        }
+        let loaders = loaders.into_iter().map(|(_, v)| v).collect();
+
 
         Version {
             id: v.id.into(),
@@ -528,7 +560,7 @@ impl From<QueryVersion> for Version {
                     dependency_type: DependencyType::from_string(d.dependency_type.as_str()),
                 })
                 .collect(),
-            loaders: data.loaders.into_iter().map(Loader).collect(),
+            loaders,
         }
     }
 }

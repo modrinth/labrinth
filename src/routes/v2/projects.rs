@@ -390,8 +390,6 @@ pub async fn project_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // TODO: Should call v3 route
-    let self_addr = dotenvy::var("SELF_ADDR")?;
-    let url = format!("{self_addr}/v3/project/{id}", id = info.0);
 
     let new_project = new_project.into_inner();
     let new_project = v3::projects::EditProject {

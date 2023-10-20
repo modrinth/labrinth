@@ -2,6 +2,7 @@ use super::ids::*;
 use super::DatabaseError;
 use super::loader_fields::LoaderField;
 use super::loader_fields::VersionField;
+use crate::database::models::loader_fields::LoaderFieldEnumValue;
 use crate::database::models::loader_fields::LoaderFieldType;
 use crate::database::models::loader_fields::QueryVersionField;
 use crate::database::redis::RedisPool;
@@ -27,6 +28,7 @@ pub struct VersionBuilder {
     pub files: Vec<VersionFileBuilder>,
     pub dependencies: Vec<DependencyBuilder>,
     pub loaders: Vec<LoaderId>,
+    pub version_fields: Vec<VersionField>,
     pub version_type: String,
     pub featured: bool,
     pub status: VersionStatus,
@@ -242,12 +244,14 @@ impl VersionBuilder {
         VersionFileBuilder::insert_many(files, self.version_id, transaction).await?;
 
         DependencyBuilder::insert_many(dependencies, self.version_id, transaction).await?;
-
+        
         let loader_versions = loaders
             .iter()
             .map(|l| LoaderVersion::new(*l, version_id))
             .collect_vec();
         LoaderVersion::insert_many(loader_versions, &mut *transaction).await?;
+
+        VersionField::insert_many(self.version_fields, transaction).await?;
 
         Ok(self.version_id)
     }
@@ -523,15 +527,17 @@ impl Version {
                 
                 JSONB_AGG(
                     DISTINCT jsonb_build_object(
-                        'values', jsonb_build_object(
-                            'vf_id', vf.id,
-                            'field_id', vf.field_id,
-                            'int_value', vf.int_value,
-                            'enum_value', vf.enum_value,
-                            'string_value', vf.string_value
-                        ),
+                    'field_id', vf.field_id,
+                    'int_value', vf.int_value,
+                    'enum_value', vf.enum_value,
+                    'string_value', vf.string_value
+                    )
+                ) version_fields,
+                JSONB_AGG(
+                    DISTINCT jsonb_build_object(
                         'lf_id', lf.id,
                         'l_id', lf.loader_id,
+                        'loader_name', l.loader,
                         'field', lf.field,
                         'field_type', lf.field_type,
                         'enum_type', lf.enum_type,
@@ -541,7 +547,17 @@ impl Version {
 
                         'enum_name', lfe.enum_name
                     )
-                ) version_fields
+                ) loader_fields,
+                JSONB_AGG(
+                    DISTINCT jsonb_build_object(
+                        'id', lfev.id,
+                        'enum_id', lfev.enum_id,
+                        'value', lfev.value,
+                        'ordering', lfev.ordering,
+                        'created', lfev.created,
+                        'metadata', lfev.metadata
+                    )  
+                ) loader_field_enum_values
                                 
                 FROM versions v
                 LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id
@@ -552,6 +568,7 @@ impl Version {
                 LEFT OUTER JOIN version_fields vf on v.id = vf.version_id
                 LEFT OUTER JOIN loader_fields lf on vf.field_id = lf.id
                 LEFT OUTER JOIN loader_field_enums lfe on lf.enum_type = lfe.id
+                LEFT OUTER JOIN loader_field_enum_values lfev on lfe.id = lfev.enum_id
 
                 WHERE v.id = ANY($1)
                 GROUP BY v.id
@@ -645,13 +662,12 @@ impl Version {
                                 files
                             },
                             version_fields: {
-                                #[derive(Deserialize)]
-                                struct QueryVersionFieldCombined {
-                                    values: Vec<QueryVersionField>,
-
+                                #[derive(Deserialize, Debug)]
+                                struct JsonLoaderField {
                                     lf_id: i32,
                                     l_id: i32,
                                     field: String,
+                                    loader_name: String,
                                     field_type: String,
                                     enum_type: Option<i32>,
                                     min_val: Option<i32>,
@@ -661,26 +677,91 @@ impl Version {
                                     enum_name: Option<String>,
                                 }
 
-                                let query_version_field_combined: Vec<QueryVersionFieldCombined> = serde_json::from_value(
-                                    v.version_fields.unwrap_or_default()).unwrap_or_default();
+                                #[derive(Deserialize, Debug)]
+                                struct JsonVersionField {
+                                    field_id: i32,
+                                    int_value: Option<i32>,
+                                    enum_value: Option<i32>,
+                                    string_value: Option<String>,
+                                }
+
+                                #[derive(Deserialize, Debug)]
+                                struct JsonLoaderFieldEnumValue {
+                                    id: i32,
+                                    enum_id: i32,
+                                    value: String,
+                                    ordering: Option<i32>,
+                                    created: DateTime<Utc>,
+                                    metadata: Option<String>,
+                                }
+
+
+                                println!("Value: {:#?}", serde_json::to_string(&v.loader_fields));
+
+                                let query_loader_fields: Vec<JsonLoaderField> = serde_json::from_value(
+                                    v.loader_fields.unwrap_or_default()).unwrap();
+
                                 
+                                println!("Value: {:#?}", serde_json::to_string(&v.version_fields));
+
+                                let query_version_field_combined: Vec<JsonVersionField> = serde_json::from_value(
+                                    v.version_fields.unwrap_or_default()).unwrap();
+                                
+                                println!("Query version field combined: {:#?}", query_version_field_combined);
+
+                                println!("Value: {:#?}", serde_json::to_string(&v.loader_field_enum_values));
+                                let query_loader_field_enum_values: Vec<JsonLoaderFieldEnumValue> = serde_json::from_value(
+                                    v.loader_field_enum_values.unwrap_or_default()).unwrap();
+
+                                    println!("Query loader field enum values: {:#?}", query_loader_field_enum_values);
+
                                 let version_id = VersionId(v.id);
-                                query_version_field_combined.into_iter().filter_map( |q| {
+                                query_loader_fields.into_iter().filter_map( |q| {
+                                    println!("Query version field: {:#?}", q);
                                     let loader_field = LoaderField { 
                                         id: LoaderFieldId(q.lf_id),
-                                         loader_id: LoaderId(q.l_id),
-                                         field: q.field,
+                                            loader_id: LoaderId(q.l_id),
+                                            field: q.field.clone(),
+                                            loader_name: q.loader_name.clone(),
                                           field_type: LoaderFieldType::build(&q.field_type, q.enum_type),
                                            optional: q.optional,
                                             min_val: q.min_val,
                                              max_val: q.max_val 
                                         };
-                                    VersionField::build(
+
+                                        let values = query_version_field_combined.iter().filter_map(|qvf| {
+                                            if qvf.field_id == q.lf_id {
+                                                let lfev = query_loader_field_enum_values.iter().find(|x| Some(x.id) == qvf.enum_value);
+                                                
+                                                Some(QueryVersionField { 
+                                                    version_id,
+                                                    field_id: LoaderFieldId(qvf.field_id),
+                                                    int_value: qvf.int_value,
+                                                    enum_value: lfev.map(|lfev| LoaderFieldEnumValue {
+                                                        id: LoaderFieldEnumValueId(lfev.id),
+                                                        enum_id: LoaderFieldEnumId(lfev.enum_id),
+                                                        value: lfev.value.clone(),
+                                                        ordering: lfev.ordering,
+                                                        created: lfev.created,
+                                                        metadata: serde_json::from_str(&lfev.metadata.clone().unwrap_or_default()).unwrap_or_default()
+                                                    }),
+                                                    string_value: qvf.string_value.clone()
+                                                 })
+                                            } else {
+                                                None
+                                            }
+                                        }).collect::<Vec<_>>();
+    
+
+
+                                        println!("Loader field: {:#?}", loader_field);
+                                    let v = VersionField::build(
                                             loader_field,
                                             version_id,
-
-                                            q.values
-                                        ).ok()
+                                            values
+                                        ).ok();
+                                    println!("Version field: {:#?}", v);
+                                    v
                                 }).collect()
                             },
                             loaders: v.loaders.unwrap_or_default(),

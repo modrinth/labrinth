@@ -56,27 +56,50 @@ pub async fn project_create(
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
 
-    let (headers, payload) = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
+    // Convert V2 multipart payload to V3 multipart payload
+    let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
         // Convert input data to V3 format
-        json["game_name"] = json!("minecraft_java");
+
+        // Set game name (all v2 projects are minecraft-java)
+        json["game_name"] = json!("minecraft-java");
+
+        // Loader fields are now a struct, containing all versionfields
+        // loaders: ["fabric"]
+        // game_versions: ["1.16.5", "1.17"]
+        // -> becomes ->
+        // loaders: [{"loader": "fabric", "game_versions": ["1.16.5", "1.17"]}]
+
+        // Side types will be applied to each version
+        let client_side = json["client_side"].as_str().unwrap_or("required").to_string();
+        let server_side = json["server_side"].as_str().unwrap_or("required").to_string();
+        json["client_side"] = json!(null);
+        json["server_side"] = json!(null);
+
+        if let Some(versions) = json["initial_versions"].as_array_mut() {
+            for version in versions {
+                // Construct loader object with version fields
+                // V2 fields becoming loader fields are:
+                // - client_side
+                // - server_side
+                // - game_versions
+                let mut loaders = vec![];
+                for loader in version["loaders"].as_array().unwrap_or(&Vec::new()) {
+                    let loader = loader.as_str().unwrap_or("");
+                    loaders.push(json!({
+                        "loader": loader,
+                        "game_versions": version["game_versions"].as_array(),
+                        "client_side": client_side,
+                        "server_side": server_side,
+                    }));
+                }
+                version["loaders"] = json!(loaders);
+            }
+        }
+    
     }).await;
-    // for (key, value) in headers.iter() {
-    //     req.headers().append(key.clone(), value.clone());
-    // }
+
+    // Call V3 project creation
     let response= v3::project_creation::project_create(req, payload, client, redis, file_host, session_queue).await?;
-
-
-
-    // Redirects to V3 route
-    // let self_addr = dotenvy::var("SELF_ADDR")?;
-    // let url = format!("{self_addr}/v3/project");
-    // let response = v2_reroute::reroute_multipart(&url, req, payload, |json | {
-    //     // Convert input data to V3 format
-    //     json["game_name"] = json!("minecraft_java");
-    // }).await?;    
-    // let response = HttpResponse::build(response.status())
-    //     .content_type(response.headers().get("content-type").and_then(|h| h.to_str().ok()).unwrap_or_default())
-    //     .body(response.bytes().await.unwrap_or_default());
 
     // TODO: Convert response to V2 format
     Ok(response)

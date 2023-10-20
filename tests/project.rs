@@ -291,6 +291,7 @@ pub async fn test_patch_project() {
     let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
     let beta_project_slug = &test_env.dummy.as_ref().unwrap().project_beta.project_slug;
 
+
     // First, we do some patch requests that should fail.
     // Failure because the user is not authorized.
     let resp = api
@@ -428,6 +429,14 @@ pub async fn test_patch_project() {
     // New slug does work
     let resp = api.get_project("newslug", USER_USER_PAT).await;
     let project: serde_json::Value = test::read_body_json(resp).await;
+    
+    // TODO DELETE ME
+    // Get and check versions real quick
+    let version = api.get_version_deserialized(project["versions"][0].as_str().unwrap(), USER_USER_PAT).await;
+        // print json
+    println!("Serialiezd version: {}", serde_json::to_string_pretty(&version).unwrap());
+
+    println!("Serialiezd project: {}", serde_json::to_string_pretty(&project).unwrap());
     assert_eq!(project["slug"], json!(Some("newslug".to_string())));
     assert_eq!(project["title"], "New successful title");
     assert_eq!(project["description"], "New successful description");

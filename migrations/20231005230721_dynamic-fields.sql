@@ -51,13 +51,13 @@ CREATE TABLE loader_fields (
 ALTER TABLE loaders ADD COLUMN hidable boolean NOT NULL default false;
 
 CREATE TABLE version_fields (
-  id bigint PRIMARY KEY,
   version_id bigint REFERENCES versions ON UPDATE CASCADE NOT NULL,
   field_id integer REFERENCES loader_fields ON UPDATE CASCADE NOT NULL,
   -- for int/bool values
   int_value integer NULL,
   enum_value integer REFERENCES loader_field_enum_values ON UPDATE CASCADE NULL,
-  string_value text NULL
+  string_value text NULL,
+  PRIMARY KEY (version_id, field_id)
 );
 
 -- Convert side_types

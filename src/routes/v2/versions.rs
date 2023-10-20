@@ -230,8 +230,38 @@ pub async fn version_edit(
     new_version: web::Json<EditVersion>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: move route to v3
-    Ok(HttpResponse::Ok().json(""))
+    // TODO: Should call v3 route
+
+    let new_version = new_version.into_inner();
+    let new_version = v3::versions::EditVersion {
+        name: new_version.name,
+        version_number: new_version.version_number,
+        changelog: new_version.changelog,
+        version_type: new_version.version_type,
+        dependencies: new_version.dependencies,
+        game_versions: new_version.game_versions,
+        loaders: new_version.loaders,
+        featured: new_version.featured,
+        primary_file: new_version.primary_file,
+        downloads: new_version.downloads,
+        status: new_version.status,
+        file_types: new_version.file_types.map(|v| 
+            v.into_iter().map(|evft| 
+                v3::versions::EditVersionFileType {
+            algorithm: evft.algorithm,
+            hash: evft.hash,
+            file_type: evft.file_type,
+            }).collect::<Vec<_>>() 
+         )
+        };
+
+    let response = v3::versions::version_edit(req, info, pool, redis, web::Json(new_version), session_queue).await?;
+
+    println!("Interecepting patch: {:?}", response);
+    // TODO: Convert response to V2 format
+
+    
+    Ok(response)
 }
 
 #[derive(Deserialize)]

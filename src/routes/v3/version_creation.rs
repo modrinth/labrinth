@@ -1,6 +1,6 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
-use crate::database::models::loader_fields::{Game, LoaderFieldEnumValue, LoaderFieldEnum};
+use crate::database::models::loader_fields::{Game, LoaderFieldEnumValue, LoaderFieldEnum, VersionField, LoaderField};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
     DependencyBuilder, VersionBuilder, VersionFileBuilder,
@@ -14,7 +14,7 @@ use crate::models::pack::PackFileHash;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
     Dependency, DependencyType, FileType, GameVersion, Loader, ProjectId, Version, VersionFile,
-    VersionId, VersionStatus, VersionType,
+    VersionId, VersionStatus, VersionType, LoaderStruct,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
@@ -64,7 +64,7 @@ pub struct InitialVersionData {
     #[serde(alias = "version_type")]
     pub release_channel: VersionType,
     #[validate(length(min = 1))]
-    pub loaders: Vec<Loader>,
+    pub loaders: Vec<LoaderStruct>,
     pub featured: bool,
     pub primary_file: Option<String>,
     #[serde(default = "default_requested_status")]
@@ -139,9 +139,6 @@ async fn version_create_inner(
     let mut initial_version_data = None;
     let mut version_builder = None;
 
-    // let all_game_versions = models::loader_fields::GameVersion::list(&mut *transaction, redis).await?;
-    let all_loaders = models::loader_fields::Loader::list(Game::MinecraftJava.name(),&mut *transaction, redis).await?;
-
     let user = get_user_from_headers(
         &req,
         pool,
@@ -194,18 +191,8 @@ async fn version_create_inner(
                 let project_id: models::ProjectId = version_create_data.project_id.unwrap().into();
 
                 // Ensure that the project this version is being added to exists
-                let results = sqlx::query!(
-                    "SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)",
-                    project_id as models::ProjectId
-                )
-                .fetch_one(&mut *transaction)
-                .await?;
-
-                if !results.exists.unwrap_or(false) {
-                    return Err(CreateError::InvalidInput(
-                        "An invalid project id was supplied".to_string(),
-                    ));
-                }
+                let project = models::Project::get_id(project_id, &mut *transaction, redis).await?
+                .ok_or_else(|| CreateError::InvalidInput("An invalid project id was supplied".to_string()))?;
 
                 // Check that the user creating this version is a team member
                 // of the project the version is being added to.
@@ -261,20 +248,42 @@ async fn version_create_inner(
                 .await?
                 .name;
 
-                let loaders = version_create_data
-                    .loaders
-                    .iter()
-                    .map(|x| {
-                        all_loaders
-                            .iter()
-                            .find(|y| {
-                                y.loader == x.0 && y.supported_project_types.contains(&project_type)
-                            })
-                            .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
-                            .map(|y| y.id)
-                    })
-                    .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
+                let game_id = project.inner.game_id;
+                let all_loaders = models::loader_fields::Loader::list_id(game_id,&mut *transaction, redis).await?;
 
+                println!("Loaders: {:?}", serde_json::to_string(&version_create_data.loaders).unwrap());
+                println!("All loaders: {:?}", serde_json::to_string(&all_loaders).unwrap());
+                println!("Supported project types: {:?}", all_loaders.iter().map(|x| x.supported_project_types.clone()).collect::<Vec<_>>());
+
+                let mut loader_ids = vec![];
+                let mut loaders = vec![];
+                let mut version_fields = vec![];
+                for loader_create in version_create_data.loaders.iter() {
+                    let loader_name = loader_create.loader.0.clone();
+
+                    // Confirm loader from list of loaders
+                    let loader_id = all_loaders
+                    .iter()
+                    .find(|y| {
+                        y.loader == loader_name && y.supported_project_types.contains(&project_type)
+                    })
+                    .ok_or_else(|| CreateError::InvalidLoader(loader_name.clone()))
+                    .map(|y| y.id)?;
+
+                    loader_ids.push(loader_id);
+                    loaders.push(loader_create.loader.clone());
+
+                    for (key, value) in loader_create.fields .iter() {
+                        // TODO: more efficient, multiselect
+                            let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction).await?.ok_or_else(|| {
+                                CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
+                            })?;
+                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), &mut *transaction, redis).await?;
+                            version_fields.push(vf);
+                    }
+                }
+
+                println!("Got past this part");
                 let dependencies = version_create_data
                     .dependencies
                     .iter()
@@ -295,7 +304,8 @@ async fn version_create_inner(
                     changelog: version_create_data.version_body.clone().unwrap_or_default(),
                     files: Vec::new(),
                     dependencies,
-                    loaders,
+                    loaders: loader_ids,
+                    version_fields,
                     version_type: version_create_data.release_channel.to_string(),
                     featured: version_create_data.featured,
                     status: version_create_data.status,
@@ -337,7 +347,7 @@ async fn version_create_inner(
                 version.project_id.into(),
                 version.version_id.into(),
                 &project_type,
-                version_data.loaders,
+                version_data.loaders.into_iter().map(|l|l.loader).collect(),
                 version_data.primary_file.is_some(),
                 version_data.primary_file.as_deref() == Some(name),
                 version_data.file_types.get(name).copied().flatten(),

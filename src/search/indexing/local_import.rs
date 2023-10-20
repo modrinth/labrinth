@@ -23,7 +23,6 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery,
             JSONB_AGG(
                 DISTINCT jsonb_build_object(
-                    'id', vf.id,
                     'field_id', vf.field_id,
                     'int_value', vf.int_value,
                     'enum_value', vf.enum_value,
