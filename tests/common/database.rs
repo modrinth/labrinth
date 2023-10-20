@@ -7,8 +7,6 @@ use url::Url;
 
 use crate::common::{dummy_data, environment::TestEnvironment};
 
-use super::dummy_data::DUMMY_DATA_UPDATE;
-
 // The dummy test database adds a fair bit of 'dummy' data to test with.
 // Some constants are used to refer to that data, and are described here.
 // The rest can be accessed in the TestEnvironment 'dummy' field.
@@ -121,7 +119,11 @@ impl TemporaryDatabase {
                 .await
                 .unwrap();
                 if db_exists.is_none() {
-                    create_template_database(&main_pool).await;
+                    let create_db_query = format!("CREATE DATABASE {TEMPLATE_DATABASE_NAME}");
+                    sqlx::query(&create_db_query)
+                        .execute(&main_pool)
+                        .await
+                        .expect("Database creation failed");
                 }
 
                 // Switch to template
@@ -133,49 +135,25 @@ impl TemporaryDatabase {
                     .await
                     .expect("Connection to database failed");
 
-                // Check if dummy data exists- a fake 'dummy_data' table is created if it does
-                let mut dummy_data_exists: bool =
-                    sqlx::query_scalar("SELECT to_regclass('dummy_data') IS NOT NULL")
-                        .fetch_one(&pool)
-                        .await
-                        .unwrap();
-                if dummy_data_exists {
-                    // Check if the dummy data needs to be updated
-                    let dummy_data_update =
-                        sqlx::query_scalar::<_, i64>("SELECT update_id FROM dummy_data")
-                            .fetch_optional(&pool)
-                            .await
-                            .unwrap();
-                    let needs_update = !dummy_data_update.is_some_and(|d| d == DUMMY_DATA_UPDATE);
-                    if needs_update {
-                        println!("Dummy data updated, so template DB tables will be dropped and re-created");
-                        // Drop all tables in the database so they can be re-created and later filled with updated dummy data
-                        sqlx::query("DROP SCHEMA public CASCADE;")
-                            .execute(&pool)
-                            .await
-                            .unwrap();
-                        sqlx::query("CREATE SCHEMA public;")
-                            .execute(&pool)
-                            .await
-                            .unwrap();
-                        dummy_data_exists = false;
-                    }
-                }
-
                 // Run migrations on the template
                 let migrations = sqlx::migrate!("./migrations");
                 migrations.run(&pool).await.expect("Migrations failed");
 
+                // Check if dummy data exists- a fake 'dummy_data' table is created if it does
+                let dummy_data_exists: bool =
+                    sqlx::query_scalar("SELECT to_regclass('dummy_data') IS NOT NULL")
+                        .fetch_one(&pool)
+                        .await
+                        .unwrap();
                 if !dummy_data_exists {
                     // Add dummy data
                     let temporary_test_env = TestEnvironment::build_with_db(TemporaryDatabase {
                         pool: pool.clone(),
                         database_name: TEMPLATE_DATABASE_NAME.to_string(),
-                        redis_pool: RedisPool::new(Some(generate_random_name("test_template_"))),
+                        redis_pool: RedisPool::new(None),
                     })
                     .await;
                     dummy_data::add_dummy_data(&temporary_test_env).await;
-                    temporary_test_env.db.pool.close().await;
                 }
                 pool.close().await;
 
@@ -236,14 +214,6 @@ impl TemporaryDatabase {
             .await
             .expect("Database deletion failed");
     }
-}
-
-async fn create_template_database(pool: &sqlx::Pool<sqlx::Postgres>) {
-    let create_db_query = format!("CREATE DATABASE {TEMPLATE_DATABASE_NAME}");
-    sqlx::query(&create_db_query)
-        .execute(pool)
-        .await
-        .expect("Database creation failed");
 }
 
 // Appends a random 8-digit number to the end of the str
