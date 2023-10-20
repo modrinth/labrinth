@@ -178,9 +178,7 @@ impl TemporaryDatabase {
                     temporary_test_env.db.pool.close().await;
                 }
                 pool.close().await;
-
-                // Switch back to main database (as we cant create from template while connected to it)
-                let pool = PgPool::connect(url.as_str()).await.unwrap();
+                drop(pool);
 
                 // Create the temporary database from the template
                 let create_db_query = format!(
@@ -189,7 +187,7 @@ impl TemporaryDatabase {
                 );
 
                 sqlx::query(&create_db_query)
-                    .execute(&pool)
+                    .execute(&main_pool)
                     .await
                     .expect("Database creation failed");
 
