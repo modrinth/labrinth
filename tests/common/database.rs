@@ -150,11 +150,11 @@ impl TemporaryDatabase {
                     if needs_update {
                         println!("Dummy data updated, so template DB tables will be dropped and re-created");
                         // Drop all tables in the database so they can be re-created and later filled with updated dummy data
-                        sqlx::query!("DROP SCHEMA public CASCADE;")
+                        sqlx::query("DROP SCHEMA public CASCADE;")
                             .execute(&pool)
                             .await
                             .unwrap();
-                        sqlx::query!("CREATE SCHEMA public;")
+                        sqlx::query("CREATE SCHEMA public;")
                             .execute(&pool)
                             .await
                             .unwrap();
