@@ -25,13 +25,13 @@ impl ApiV3 {
         user_pat: &str,
     ) -> String {
         let auth_resp = self
-            .oauth_authorize(&client_id, scope, redirect_uri, state, user_pat)
+            .oauth_authorize(client_id, scope, redirect_uri, state, user_pat)
             .await;
         let flow_id = get_authorize_accept_flow_id(auth_resp).await;
         let redirect_resp = self.oauth_accept(&flow_id, user_pat).await;
         let auth_code = get_auth_code_from_redirect_params(&redirect_resp).await;
         let token_resp = self
-            .oauth_token(auth_code, None, client_id.to_string(), &client_secret)
+            .oauth_token(auth_code, None, client_id.to_string(), client_secret)
             .await;
         get_access_token(token_resp).await
     }
@@ -139,7 +139,7 @@ pub async fn get_authorize_accept_flow_id(response: ServiceResponse) -> String {
 }
 
 pub async fn get_auth_code_from_redirect_params(response: &ServiceResponse) -> String {
-    assert_status(&response, StatusCode::FOUND);
+    assert_status(response, StatusCode::FOUND);
     let query_params = get_redirect_location_query_params(response);
     query_params.get("code").unwrap().to_string()
 }

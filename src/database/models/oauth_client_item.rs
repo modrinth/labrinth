@@ -76,7 +76,7 @@ impl OAuthClient {
             .fetch_optional(exec)
             .await?;
 
-        return Ok(value.map(|r| r.into()));
+        Ok(value.map(|r| r.into()))
     }
 
     pub async fn get_all_user_clients(
@@ -88,7 +88,7 @@ impl OAuthClient {
             .fetch_all(exec)
             .await?;
 
-        return Ok(clients.into_iter().map(|r| r.into()).collect());
+        Ok(clients.into_iter().map(|r| r.into()).collect())
     }
 
     pub async fn remove(
@@ -212,7 +212,7 @@ impl From<ClientQueryResult> for OAuthClient {
                 .zip(uris.iter())
                 .map(|(id, uri)| OAuthRedirectUri {
                     id: OAuthRedirectUriId(*id),
-                    client_id: OAuthClientId(r.id.clone()),
+                    client_id: OAuthClientId(r.id),
                     uri: uri.to_string(),
                 })
                 .collect()

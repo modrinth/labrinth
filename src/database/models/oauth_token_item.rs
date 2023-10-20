@@ -46,7 +46,7 @@ impl OAuthAccessToken {
         .fetch_optional(exec)
         .await?;
 
-        return Ok(value.map(|r| OAuthAccessToken {
+        Ok(value.map(|r| OAuthAccessToken {
             id: OAuthAccessTokenId(r.id),
             authorization_id: OAuthClientAuthorizationId(r.authorization_id),
             token_hash: r.token_hash,
@@ -56,7 +56,7 @@ impl OAuthAccessToken {
             last_used: r.last_used,
             client_id: OAuthClientId(r.client_id),
             user_id: UserId(r.user_id),
-        }));
+        }))
     }
 
     /// Inserts and returns the time until the token expires

@@ -76,9 +76,9 @@ impl actix_web::ResponseError for OAuthError {
         if let Some(ValidatedRedirectUri(mut redirect_uri)) = self.valid_redirect_uri.clone() {
             redirect_uri = format!(
                 "{}?error={}&error_description={}",
-                redirect_uri.to_string(),
+                redirect_uri,
                 self.error_type.error_name(),
-                self.error_type.to_string(),
+                self.error_type,
             );
 
             if let Some(state) = self.state.as_ref() {

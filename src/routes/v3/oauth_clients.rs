@@ -70,7 +70,7 @@ pub async fn get_user_clients(
 
         let response = clients
             .into_iter()
-            .map(|c| models::oauth_clients::OAuthClient::from(c))
+            .map(models::oauth_clients::OAuthClient::from)
             .collect_vec();
 
         Ok(HttpResponse::Ok().json(response))

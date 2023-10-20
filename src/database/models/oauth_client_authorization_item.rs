@@ -44,13 +44,13 @@ impl OAuthClientAuthorization {
         .fetch_optional(exec)
         .await?;
 
-        return Ok(value.map(|r| OAuthClientAuthorization {
+        Ok(value.map(|r| OAuthClientAuthorization {
             id: OAuthClientAuthorizationId(r.id),
             client_id: OAuthClientId(r.client_id),
             user_id: UserId(r.user_id),
             scopes: Scopes::from_postgres(r.scopes),
             created: r.created,
-        }));
+        }))
     }
 
     pub async fn get_all_for_user(
@@ -77,7 +77,7 @@ impl OAuthClientAuthorization {
         .fetch_all(exec)
         .await?;
 
-        return Ok(results
+        Ok(results
             .into_iter()
             .map(|r| OAuthClientAuthorizationWithClientInfo {
                 id: OAuthClientAuthorizationId(r.id),
@@ -89,7 +89,7 @@ impl OAuthClientAuthorization {
                 client_icon_url: r.client_icon_url,
                 client_created_by: UserId(r.client_created_by),
             })
-            .collect_vec());
+            .collect_vec())
     }
 
     pub async fn upsert(

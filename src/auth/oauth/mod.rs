@@ -315,7 +315,7 @@ pub async fn accept_or_reject_client_scopes(
         Some(&[Scopes::USER_OAUTH_AUTHORIZATIONS_WRITE]),
     )
     .await
-    .map_err(|e| OAuthError::error(e))?
+    .map_err(OAuthError::error)?
     .1;
 
     let flow = Flow::take_if(
@@ -381,7 +381,7 @@ fn authenticate_client_token_request(
     req: &HttpRequest,
     client: &DBOAuthClient,
 ) -> Result<(), OAuthError> {
-    let client_secret = extract_authorization_header(&req).map_err(OAuthError::error)?;
+    let client_secret = extract_authorization_header(req).map_err(OAuthError::error)?;
     let hashed_client_secret = DBOAuthClient::hash_secret(client_secret);
     if client.secret_hash != hashed_client_secret {
         Err(OAuthError::error(
@@ -448,21 +448,21 @@ impl ValidatedRedirectUri {
             if let Some(to_validate) = to_validate {
                 if validate_against
                     .into_iter()
-                    .any(|uri| same_uri_except_query_components(&uri, to_validate))
+                    .any(|uri| same_uri_except_query_components(uri, to_validate))
                 {
-                    return Ok(ValidatedRedirectUri(to_validate.clone()));
+                    Ok(ValidatedRedirectUri(to_validate.clone()))
                 } else {
-                    return Err(OAuthError::error(OAuthErrorType::RedirectUriNotConfigured(
+                    Err(OAuthError::error(OAuthErrorType::RedirectUriNotConfigured(
                         to_validate.clone(),
-                    )));
+                    )))
                 }
             } else {
-                return Ok(ValidatedRedirectUri(first_client_redirect_uri.to_string()));
+                Ok(ValidatedRedirectUri(first_client_redirect_uri.to_string()))
             }
         } else {
-            return Err(OAuthError::error(
+            Err(OAuthError::error(
                 OAuthErrorType::ClientMissingRedirectURI { client_id },
-            ));
+            ))
         }
     }
 }

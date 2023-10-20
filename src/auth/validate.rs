@@ -177,10 +177,10 @@ where
 pub fn extract_authorization_header(req: &HttpRequest) -> Result<&str, AuthenticationError> {
     let headers = req.headers();
     let token_val: Option<&HeaderValue> = headers.get(AUTHORIZATION);
-    Ok(token_val
+    token_val
         .ok_or_else(|| AuthenticationError::InvalidAuthMethod)?
         .to_str()
-        .map_err(|_| AuthenticationError::InvalidCredentials)?)
+        .map_err(|_| AuthenticationError::InvalidCredentials)
 }
 
 pub async fn check_is_moderator_from_headers<'a, 'b, E>(
