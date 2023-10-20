@@ -175,6 +175,7 @@ impl TemporaryDatabase {
                     })
                     .await;
                     dummy_data::add_dummy_data(&temporary_test_env).await;
+                    temporary_test_env.db.pool.close().await;
                 }
                 pool.close().await;
 
