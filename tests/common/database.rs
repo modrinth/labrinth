@@ -175,7 +175,7 @@ impl TemporaryDatabase {
                     let temporary_test_env = TestEnvironment::build_with_db(TemporaryDatabase {
                         pool: pool.clone(),
                         database_name: TEMPLATE_DATABASE_NAME.to_string(),
-                        redis_pool: RedisPool::new(Some(generate_random_name("test_template_"))),
+                        redis_pool: RedisPool::new(None),
                     })
                     .await;
                     dummy_data::add_dummy_data(&temporary_test_env).await;
