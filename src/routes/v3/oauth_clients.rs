@@ -9,7 +9,7 @@ use chrono::Utc;
 use itertools::Itertools;
 use rand::{distributions::Alphanumeric, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
 
@@ -181,7 +181,7 @@ pub async fn oauth_client_delete<'a>(
     }
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Serialize, Deserialize, Validate)]
 pub struct OAuthClientEdit {
     #[validate(
         custom(function = "crate::util::validate::validate_name"),

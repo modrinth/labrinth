@@ -88,6 +88,26 @@ impl TestEnvironment {
             .await;
         assert_status(&resp, StatusCode::NO_CONTENT);
     }
+
+    pub async fn assert_read_notifications_status(
+        &self,
+        user_id: &str,
+        pat: &str,
+        status_code: StatusCode,
+    ) {
+        let resp = self.v2.get_user_notifications(user_id, pat).await;
+        assert_status(&resp, status_code);
+    }
+
+    pub async fn assert_read_user_projects_status(
+        &self,
+        user_id: &str,
+        pat: &str,
+        status_code: StatusCode,
+    ) {
+        let resp = self.v2.get_user_projects(user_id, pat).await;
+        assert_status(&resp, status_code);
+    }
 }
 
 pub trait LocalService {

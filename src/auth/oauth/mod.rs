@@ -33,6 +33,7 @@ pub fn config(cfg: &mut ServiceConfig) {
         scope("auth/oauth")
             .service(init_oauth)
             .service(accept_client_scopes)
+            .service(reject_client_scopes)
             .service(request_token),
     );
 }
@@ -160,74 +161,30 @@ pub async fn init_oauth(
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct AcceptOAuthClientScopes {
+pub struct RespondToOAuthClientScopes {
     pub flow: String,
 }
 
 #[post("accept")]
 pub async fn accept_client_scopes(
     req: HttpRequest,
-    accept_body: web::Json<AcceptOAuthClientScopes>,
+    accept_body: web::Json<RespondToOAuthClientScopes>,
     pool: Data<PgPool>,
     redis: Data<RedisPool>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, OAuthError> {
-    let current_user = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::USER_OAUTH_AUTHORIZATIONS_WRITE]),
-    )
-    .await
-    .map_err(|e| OAuthError::error(e))?
-    .1;
+    accept_or_reject_client_scopes(true, req, accept_body, pool, redis, session_queue).await
+}
 
-    let flow = Flow::get(&accept_body.flow, &redis)
-        .await
-        .map_err(|e| OAuthError::error(e))?;
-    if let Some(Flow::InitOAuthAppApproval {
-        user_id,
-        client_id,
-        existing_authorization_id,
-        scopes,
-        validated_redirect_uri,
-        original_redirect_uri,
-        state,
-    }) = flow
-    {
-        if current_user.id != user_id.into() {
-            return Err(OAuthError::error(AuthenticationError::InvalidCredentials));
-        }
-
-        let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
-
-        let auth_id = match existing_authorization_id {
-            Some(id) => id,
-            None => generate_oauth_client_authorization_id(&mut transaction)
-                .await
-                .map_err(OAuthError::error)?,
-        };
-        OAuthClientAuthorization::upsert(auth_id, client_id, user_id, scopes, &mut transaction)
-            .await
-            .map_err(OAuthError::error)?;
-
-        transaction.commit().await.map_err(OAuthError::error)?;
-
-        init_oauth_code_flow(
-            user_id,
-            client_id,
-            auth_id,
-            scopes,
-            validated_redirect_uri,
-            original_redirect_uri,
-            state,
-            &redis,
-        )
-        .await
-    } else {
-        Err(OAuthError::error(OAuthErrorType::InvalidAcceptFlowId))
-    }
+#[post("reject")]
+pub async fn reject_client_scopes(
+    req: HttpRequest,
+    body: web::Json<RespondToOAuthClientScopes>,
+    pool: Data<PgPool>,
+    redis: Data<RedisPool>,
+    session_queue: Data<AuthQueue>,
+) -> Result<HttpResponse, OAuthError> {
+    accept_or_reject_client_scopes(false, req, body, pool, redis, session_queue).await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -264,9 +221,15 @@ pub async fn request_token(
     if let Some(client) = client {
         authenticate_client_token_request(&req, &client)?;
 
-        let flow = Flow::get(&req_params.code, &redis)
-            .await
-            .map_err(OAuthError::error)?;
+        // Ensure auth code is single use
+        // per IETF RFC6749 Section 10.5 (https://datatracker.ietf.org/doc/html/rfc6749#section-10.5)
+        let flow = Flow::take_if(
+            &req_params.code,
+            |f| matches!(f, Flow::OAuthAuthorizationCodeSupplied { .. }),
+            &redis,
+        )
+        .await
+        .map_err(OAuthError::error)?;
         if let Some(Flow::OAuthAuthorizationCodeSupplied {
             user_id,
             client_id,
@@ -275,12 +238,6 @@ pub async fn request_token(
             original_redirect_uri,
         }) = flow
         {
-            // Ensure auth code is single use
-            // per IETF RFC6749 Section 10.5 (https://datatracker.ietf.org/doc/html/rfc6749#section-10.5)
-            Flow::remove(&req_params.code, &redis)
-                .await
-                .map_err(OAuthError::error)?;
-
             // https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
             if client_id != client_id {
                 return Err(OAuthError::error(OAuthErrorType::UnauthorizedClient));
@@ -339,6 +296,84 @@ pub async fn request_token(
         Err(OAuthError::error(OAuthErrorType::InvalidClientId(
             client_id,
         )))
+    }
+}
+
+pub async fn accept_or_reject_client_scopes(
+    accept: bool,
+    req: HttpRequest,
+    body: web::Json<RespondToOAuthClientScopes>,
+    pool: Data<PgPool>,
+    redis: Data<RedisPool>,
+    session_queue: Data<AuthQueue>,
+) -> Result<HttpResponse, OAuthError> {
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_OAUTH_AUTHORIZATIONS_WRITE]),
+    )
+    .await
+    .map_err(|e| OAuthError::error(e))?
+    .1;
+
+    let flow = Flow::take_if(
+        &body.flow,
+        |f| matches!(f, Flow::InitOAuthAppApproval { .. }),
+        &redis,
+    )
+    .await
+    .map_err(OAuthError::error)?;
+    if let Some(Flow::InitOAuthAppApproval {
+        user_id,
+        client_id,
+        existing_authorization_id,
+        scopes,
+        validated_redirect_uri,
+        original_redirect_uri,
+        state,
+    }) = flow
+    {
+        if current_user.id != user_id.into() {
+            return Err(OAuthError::error(AuthenticationError::InvalidCredentials));
+        }
+
+        if accept {
+            let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
+
+            let auth_id = match existing_authorization_id {
+                Some(id) => id,
+                None => generate_oauth_client_authorization_id(&mut transaction)
+                    .await
+                    .map_err(OAuthError::error)?,
+            };
+            OAuthClientAuthorization::upsert(auth_id, client_id, user_id, scopes, &mut transaction)
+                .await
+                .map_err(OAuthError::error)?;
+
+            transaction.commit().await.map_err(OAuthError::error)?;
+
+            init_oauth_code_flow(
+                user_id,
+                client_id,
+                auth_id,
+                scopes,
+                validated_redirect_uri,
+                original_redirect_uri,
+                state,
+                &redis,
+            )
+            .await
+        } else {
+            Err(OAuthError::redirect(
+                OAuthErrorType::AccessDenied,
+                &state,
+                &validated_redirect_uri,
+            ))
+        }
+    } else {
+        Err(OAuthError::error(OAuthErrorType::InvalidAcceptFlowId))
     }
 }
 

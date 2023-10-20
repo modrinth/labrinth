@@ -51,7 +51,8 @@ impl actix_web::ResponseError for OAuthError {
         match self.error_type {
             OAuthErrorType::AuthenticationError(_)
             | OAuthErrorType::FailedScopeParse(_)
-            | OAuthErrorType::ScopesTooBroad => {
+            | OAuthErrorType::ScopesTooBroad
+            | OAuthErrorType::AccessDenied => {
                 if self.valid_redirect_uri.is_some() {
                     StatusCode::FOUND
                 } else {
@@ -129,6 +130,8 @@ pub enum OAuthErrorType {
     RedirectUriChanged(Option<String>),
     #[error("The provided grant type ({0}) must be \"authorization_code\"")]
     OnlySupportsAuthorizationCodeGrant(String),
+    #[error("The resource owner denied the request")]
+    AccessDenied,
 }
 
 impl From<crate::database::models::DatabaseError> for OAuthErrorType {
@@ -157,6 +160,7 @@ impl OAuthErrorType {
             Self::InvalidClientId(_) | Self::ClientAuthenticationFailed => "invalid_client",
             Self::InvalidAuthCode | Self::OnlySupportsAuthorizationCodeGrant(_) => "invalid_grant",
             Self::UnauthorizedClient => "unauthorized_client",
+            Self::AccessDenied => "access_denied",
         }
         .to_string()
     }

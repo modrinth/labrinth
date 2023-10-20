@@ -75,6 +75,22 @@ impl Flow {
         redis.get_deserialized_from_json(FLOWS_NAMESPACE, id).await
     }
 
+    /// Gets the flow and removes it from the cache, but only removes if the flow was present and the predicate returned true
+    /// The predicate should validate that the flow being removed is the correct one, as a security measure
+    pub async fn take_if(
+        id: &str,
+        predicate: impl FnOnce(&Flow) -> bool,
+        redis: &RedisPool,
+    ) -> Result<Option<Flow>, DatabaseError> {
+        let flow = Self::get(id, redis).await?;
+        if let Some(flow) = flow.as_ref() {
+            if predicate(flow) {
+                Self::remove(id, redis).await?;
+            }
+        }
+        Ok(flow)
+    }
+
     pub async fn remove(id: &str, redis: &RedisPool) -> Result<Option<()>, DatabaseError> {
         redis.delete(FLOWS_NAMESPACE, id).await?;
         Ok(Some(()))

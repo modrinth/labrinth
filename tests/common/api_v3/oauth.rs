@@ -1,18 +1,43 @@
+use std::collections::HashMap;
+
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
-use labrinth::auth::oauth::{AcceptOAuthClientScopes, TokenRequest, TokenResponse};
-use reqwest::header::AUTHORIZATION;
+use labrinth::auth::oauth::{
+    OAuthClientAccessRequest, RespondToOAuthClientScopes, TokenRequest, TokenResponse,
+};
+use reqwest::header::{AUTHORIZATION, LOCATION};
 
 use super::ApiV3;
 
 impl ApiV3 {
+    pub async fn complete_full_authorize_flow(
+        &self,
+        client_id: &str,
+        client_secret: &str,
+        scope: Option<&str>,
+        redirect_uri: Option<&str>,
+        state: Option<&str>,
+        user_pat: &str,
+    ) -> String {
+        let auth_resp = self
+            .oauth_authorize(&client_id, scope, redirect_uri, state, user_pat)
+            .await;
+        let flow_id = get_authorize_accept_flow_id(auth_resp).await;
+        let redirect_resp = self.oauth_accept(&flow_id, user_pat).await;
+        let auth_code = get_auth_code_from_redirect_params(&redirect_resp).await;
+        let token_resp = self
+            .oauth_token(auth_code, None, client_id.to_string(), &client_secret)
+            .await;
+        get_access_token(token_resp).await
+    }
+
     pub async fn oauth_authorize(
         &self,
         client_id: &str,
-        scope: &str,
-        redirect_uri: &str,
+        scope: Option<&str>,
+        redirect_uri: Option<&str>,
         state: Option<&str>,
         pat: &str,
     ) -> ServiceResponse {
@@ -29,7 +54,20 @@ impl ApiV3 {
             TestRequest::post()
                 .uri("/v3/auth/oauth/accept")
                 .append_header((AUTHORIZATION, pat))
-                .set_json(AcceptOAuthClientScopes {
+                .set_json(RespondToOAuthClientScopes {
+                    flow: flow.to_string(),
+                })
+                .to_request(),
+        )
+        .await
+    }
+
+    pub async fn oauth_reject(&self, flow: &str, pat: &str) -> ServiceResponse {
+        self.call(
+            TestRequest::post()
+                .uri("/v3/auth/oauth/reject")
+                .append_header((AUTHORIZATION, pat))
+                .set_json(RespondToOAuthClientScopes {
                     flow: flow.to_string(),
                 })
                 .to_request(),
@@ -76,21 +114,51 @@ impl ApiV3 {
 
 pub fn generate_authorize_uri(
     client_id: &str,
-    scope: &str,
-    redirect_uri: &str,
+    scope: Option<&str>,
+    redirect_uri: Option<&str>,
     state: Option<&str>,
 ) -> String {
     format!(
-        "/v3/auth/oauth/authorize?client_id={}&redirect_uri={}\
-            &scope={}{}",
+        "/v3/auth/oauth/authorize?client_id={}{}{}{}",
         urlencoding::encode(client_id),
-        urlencoding::encode(redirect_uri),
-        urlencoding::encode(scope),
-        if let Some(state) = state {
-            urlencoding::encode(state).to_string()
-        } else {
-            "".to_string()
-        },
+        optional_query_param("redirect_uri", redirect_uri),
+        optional_query_param("scope", scope),
+        optional_query_param("state", state),
     )
     .to_string()
+}
+
+pub async fn get_authorize_accept_flow_id(response: ServiceResponse) -> String {
+    test::read_body_json::<OAuthClientAccessRequest, _>(response)
+        .await
+        .flow_id
+}
+
+pub async fn get_auth_code_from_redirect_params(response: &ServiceResponse) -> String {
+    let query_params = get_redirect_location_query_params(response);
+    query_params.get("code").unwrap().to_string()
+}
+
+pub async fn get_access_token(response: ServiceResponse) -> String {
+    test::read_body_json::<TokenResponse, _>(response)
+        .await
+        .access_token
+}
+
+pub fn get_redirect_location_query_params(
+    response: &ServiceResponse,
+) -> actix_web::web::Query<HashMap<String, String>> {
+    let redirect_location = response.headers().get(LOCATION).unwrap().to_str().unwrap();
+    actix_web::web::Query::<HashMap<String, String>>::from_query(
+        redirect_location.split_once('?').unwrap().1,
+    )
+    .unwrap()
+}
+
+fn optional_query_param(key: &str, value: Option<&str>) -> String {
+    if let Some(val) = value {
+        format!("&{key}={}", urlencoding::encode(val))
+    } else {
+        "".to_string()
+    }
 }
