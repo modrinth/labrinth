@@ -1,11 +1,52 @@
+use std::borrow::BorrowMut;
 use actix_multipart::Multipart;
-use actix_web::test::TestRequest;
+use actix_web::{test::TestRequest, HttpResponse};
 use bytes::{Bytes, BytesMut};
 use actix_web::http::header::{TryIntoHeaderPair,HeaderMap, HeaderName};
-use futures::{StreamExt, stream};
+use futures::{StreamExt, stream, Future};
 use serde_json::{Value, json};
+use actix_web::test;
 
-pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: HeaderMap,   closure: impl Fn(&mut serde_json::Value)) -> Multipart {
+use crate::{database::{models::{version_item, DatabaseError}, redis::RedisPool}, models::ids::VersionId};
+
+use super::ApiError;
+
+
+pub async fn set_side_types_from_versions<'a, E>(json : &mut serde_json::Value, exec: E, redis: &RedisPool) -> Result<(), DatabaseError>
+where E : sqlx::Executor<'a, Database = sqlx::Postgres>
+{
+    json["client_side"] = json!("required"); // default to required
+    json["server_side"] = json!("required");
+    let version_id = json["versions"].as_array().and_then(|a| a.iter().next());
+    if let Some(version_id) = version_id {
+        let version_id = serde_json::from_value::<VersionId>(version_id.clone())?;
+        let versions_item = version_item::Version::get(version_id.into(), exec, &redis).await?;
+        println!("Got versions item: {:?}", serde_json::to_string(&versions_item));
+        if let Some(versions_item) = versions_item {
+            println!("Got versions item: {:?}", serde_json::to_string(&versions_item));
+            json["client_side"] = versions_item.version_fields.iter().find(|f| f.field_name == "client_side").map(|f| f.value.serialize_internal()).unwrap_or(json!("required"));
+            json["server_side"] = versions_item.version_fields.iter().find(|f| f.field_name == "server_side").map(|f| f.value.serialize_internal()).unwrap_or(json!("server_side"));
+        }
+    }
+    Ok(())
+}
+
+
+// TODO: this is not an ideal way to do this, but it works for now
+pub async fn extract_ok_json(mut response : HttpResponse) -> Result<serde_json::Value, HttpResponse> {
+    if response.status() == actix_web::http::StatusCode::OK {
+        // Takes json out of HttpResponse, mutates it, then regenerates the HttpResponse
+        // actix client
+        let body = response.into_body();
+        let bytes = actix_web::body::to_bytes(body).await.unwrap();
+        let mut json_value: Value = serde_json::from_slice(&bytes).unwrap();
+        Ok(json_value)
+    } else {
+        Err(response)
+    }
+}
+
+pub async fn alter_actix_multipart(mut multipart: Multipart, mut headers: HeaderMap,   mut closure: impl FnMut(&mut serde_json::Value)) -> Multipart {
     let mut segments: Vec<MultipartSegment> = Vec::new();
 
     if let Some(mut field) = multipart.next().await {

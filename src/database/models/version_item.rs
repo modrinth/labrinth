@@ -698,20 +698,17 @@ impl Version {
 
                                 println!("Value: {:#?}", serde_json::to_string(&v.loader_fields));
 
-                                let query_loader_fields: Vec<JsonLoaderField> = serde_json::from_value(
-                                    v.loader_fields.unwrap_or_default()).unwrap();
+                                let query_loader_fields : Vec<JsonLoaderField> = v.loader_fields.and_then(|x| serde_json::from_value(x).ok()).unwrap_or_default();
 
                                 
                                 println!("Value: {:#?}", serde_json::to_string(&v.version_fields));
 
-                                let query_version_field_combined: Vec<JsonVersionField> = serde_json::from_value(
-                                    v.version_fields.unwrap_or_default()).unwrap();
+                                let query_version_field_combined : Vec<JsonVersionField> = v.version_fields.and_then(|x| serde_json::from_value(x).ok()).unwrap_or_default();
                                 
                                 println!("Query version field combined: {:#?}", query_version_field_combined);
 
                                 println!("Value: {:#?}", serde_json::to_string(&v.loader_field_enum_values));
-                                let query_loader_field_enum_values: Vec<JsonLoaderFieldEnumValue> = serde_json::from_value(
-                                    v.loader_field_enum_values.unwrap_or_default()).unwrap();
+                                let query_loader_field_enum_values: Vec<JsonLoaderFieldEnumValue> = v.loader_field_enum_values.and_then(|x| serde_json::from_value(x).ok()).unwrap_or_default();
 
                                     println!("Query loader field enum values: {:#?}", query_loader_field_enum_values);
 

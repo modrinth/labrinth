@@ -301,11 +301,9 @@ impl VersionField {
             Ok(())
     }
     
-    pub async fn check_parse<'a, E>(version_id : VersionId, loader_field : LoaderField, key : &str, value : serde_json::Value, exec : E, redis : &RedisPool) -> Result<VersionField, CreateError> 
-    where E : sqlx::Executor<'a, Database = sqlx::Postgres>
+    pub fn check_parse(version_id : VersionId, loader_field : LoaderField, key : &str, value : serde_json::Value, enum_variants: Vec<LoaderFieldEnumValue>) -> Result<VersionField, String> 
     {
-        let value = VersionFieldValue::parse(&loader_field, value, exec, &redis).await?;
-
+        let value = VersionFieldValue::parse(&loader_field, value, enum_variants)?;
         Ok(VersionField {
             version_id,
             field_id: loader_field.id,
@@ -341,22 +339,18 @@ pub enum VersionFieldValue {
 }
 impl VersionFieldValue {
     // TODO: this could be combined with build
-    pub async fn parse<'a, E>(loader_field: &LoaderField, value : serde_json::Value, exec : E, redis : &RedisPool) -> Result<VersionFieldValue, CreateError>
-    where E : sqlx::Executor<'a, Database = sqlx::Postgres>
+    pub fn parse(loader_field: &LoaderField, value : serde_json::Value, enum_array: Vec<LoaderFieldEnumValue>) -> Result<VersionFieldValue, String>
     
      {
+        println!("Parsing field {} with type {:?} and value {:?}", loader_field.field, loader_field.field_type, value);
+        println!("Enum array {:?}", enum_array);
+
         let field_name = &loader_field.field;
         let field_type = &loader_field.field_type;
 
-        let incorrect_type_error = |field_type : &str| CreateError::InvalidInput(
-            format!("Provided value for {field_name} could not be parsed to {field_type} "));
-
-            // Todo more efficient?
-        let enum_array = if let LoaderFieldType::Enum(id) | LoaderFieldType::ArrayEnum(id) = field_type {
-            LoaderFieldEnumValue::list(*id, exec, redis).await?
-        } else {
-            vec![]
-        };
+        let error_value = value.clone();
+        let incorrect_type_error = |field_type : &str| 
+            format!("Provided value '{v}' for {field_name} could not be parsed to {field_type} ", v = serde_json::to_string(&error_value).unwrap_or_default());
 
         Ok(match field_type {
             LoaderFieldType::Integer => VersionFieldValue::Integer(
@@ -391,7 +385,7 @@ impl VersionFieldValue {
                     if let Some(ev) = enum_array.into_iter().find(|v| v.value == enum_value) {
                         ev
                     } else {
-                        return Err(CreateError::InvalidInput(format!("Provided value '{enum_value}' is not a valid variant for {field_name}")));
+                        return Err((format!("Provided value '{enum_value}' is not a valid variant for {field_name}")));
                     }
                 }
             ),
@@ -403,7 +397,7 @@ impl VersionFieldValue {
                         if let Some(ev) = enum_array.iter().find(|v| v.value == av) {
                             enum_values.push(ev.clone());
                         } else {
-                            return Err(CreateError::InvalidInput(format!("Provided value '{av}' is not a valid variant for {field_name}")));
+                            return Err((format!("Provided value '{av}' is not a valid variant for {field_name}")));
                         }
                     }
                     enum_values                    
@@ -467,7 +461,7 @@ impl VersionFieldValue {
 
     pub fn serialize_internal(&self) -> serde_json::Value {
         // Serialize to internal value
-        match self {
+        let a = match self {
             VersionFieldValue::Integer(i) => serde_json::Value::Number((*i).into()),
             VersionFieldValue::Text(s) => serde_json::Value::String(s.clone()),
             VersionFieldValue::Boolean(b) => serde_json::Value::Bool(*b),
@@ -477,7 +471,9 @@ impl VersionFieldValue {
             VersionFieldValue::Enum(_, v) => serde_json::Value::String(v.value.clone()),
             VersionFieldValue::ArrayEnum(_, v) => serde_json::Value::Array(v.iter().map(|v| serde_json::Value::String(v.value.clone())).collect()),
             VersionFieldValue::Unknown => serde_json::Value::Null
-        }
+        };
+        println!("Serializing internal: {:?} to {:?}", self, a);
+        a
     }
 }
 
@@ -625,6 +621,18 @@ impl LoaderFieldEnum {
 }
 
 impl LoaderFieldEnumValue {
+
+    pub async fn list_optional<'a, E>(list_optional : &LoaderFieldType, exec: E, redis: &RedisPool) -> Result<Vec<LoaderFieldEnumValue>, DatabaseError>
+    where E: sqlx::Executor<'a, Database = sqlx::Postgres>
+     {
+        match list_optional {
+            LoaderFieldType::Enum(id) | LoaderFieldType::ArrayEnum(id) => {
+                LoaderFieldEnumValue::list(*id, exec, redis).await
+            }
+            _ => Ok(vec![])
+        }
+    }
+
     pub async fn list<'a, E>(loader_field_enum_id : LoaderFieldEnumId, exec: E, redis: &RedisPool) -> Result<Vec<LoaderFieldEnumValue>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,

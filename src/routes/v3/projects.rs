@@ -12,7 +12,7 @@ use crate::models::images::ImageContext;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType,
+    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType, LoaderStruct,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::MessageBody;
@@ -38,6 +38,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("project")
+        .route("{id}", web::get().to(project_get))
+        .route("projects", web::get().to(projects_get))
         .route("{id}", web::patch().to(project_edit))
         .service(
             web::scope("{project_id}")
@@ -45,6 +47,67 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         )
     );
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct ProjectIds {
+    pub ids: String,
+}
+
+pub async fn projects_get(
+    req: HttpRequest,
+    web::Query(ids): web::Query<ProjectIds>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
+    let projects_data = db_models::Project::get_many(&ids, &**pool, &redis).await?;
+
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+
+    let projects = filter_authorized_projects(projects_data, &user_option, &pool).await?;
+
+    Ok(HttpResponse::Ok().json(projects))
+}
+
+pub async fn project_get(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let string = info.into_inner().0;
+
+    let project_data = db_models::Project::get(&string, &**pool, &redis).await?;
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+
+    if let Some(data) = project_data {
+        if is_authorized(&data.inner, &user_option, &pool).await? {
+            return Ok(HttpResponse::Ok().json(Project::from(data)));
+        }
+    }
+    Ok(HttpResponse::NotFound().body(""))
+}
+
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct EditProject {
@@ -114,8 +177,6 @@ pub struct EditProject {
     #[validate]
     pub donation_urls: Option<Vec<DonationLink>>,
     pub license_id: Option<String>,
-    pub client_side: Option<SideType>,
-    pub server_side: Option<SideType>,
     #[validate(
         length(min = 3, max = 64),
         regex = "crate::util::validate::RE_URL_SAFE"
@@ -154,6 +215,7 @@ pub async fn project_edit(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("project_edit");
     let user = get_user_from_headers(
         &req,
         &**pool,
@@ -163,6 +225,7 @@ pub async fn project_edit(
     )
     .await?
     .1;
+println!("user: {:?}", user);
 
     new_project
         .validate()
@@ -170,10 +233,11 @@ pub async fn project_edit(
 
     let string = info.into_inner().0;
     let result = db_models::Project::get(&string, &**pool, &redis).await?;
-
+    println!("result: {:?}", result);
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 
+        println!("id: {:?}", id);
         let (team_member, organization_team_member) =
             db_models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
@@ -181,12 +245,13 @@ pub async fn project_edit(
                 &**pool,
             )
             .await?;
-
+            println!("team_member: {:?}", team_member);
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member,
             &organization_team_member,
         );
+        println!("permissions: {:?}", permissions);
 
         if let Some(perms) = permissions {
             let mut transaction = pool.begin().await?;
@@ -234,12 +299,15 @@ pub async fn project_edit(
             }
 
             if let Some(status) = &new_project.status {
+                println!("Status: {:?}", status);
                 if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the status of this project!"
                             .to_string(),
                     ));
                 }
+
+                println!("Got thru");
 
                 if !(user.role.is_mod()
                     || !project_item.inner.status.is_approved()
@@ -251,7 +319,9 @@ pub async fn project_edit(
                     ));
                 }
 
+                println!("Got thru 2");
                 if status == &ProjectStatus::Processing {
+                    println!("Got thru 3");
                     if project_item.versions.is_empty() {
                         return Err(ApiError::InvalidInput(String::from(
                             "Project submitted for review with no initial versions",
@@ -268,7 +338,7 @@ pub async fn project_edit(
                     )
                     .execute(&mut *transaction)
                     .await?;
-
+                    println!("Got thru 4");
                     sqlx::query!(
                         "
                         UPDATE threads
@@ -280,8 +350,9 @@ pub async fn project_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
-
+                println!("Got thru 5");
                 if status.is_approved() && !project_item.inner.status.is_approved() {
+                    println!("Got thru 6");
                     sqlx::query!(
                         "
                         UPDATE mods
@@ -293,9 +364,11 @@ pub async fn project_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
-
+                println!("Got thru 7");
                 if status.is_searchable() && !project_item.inner.webhook_sent {
+                    println!("Got thru 8");
                     if let Ok(webhook_url) = dotenvy::var("PUBLIC_DISCORD_WEBHOOK") {
+                        println!("Got thru 9");
                         crate::util::webhook::send_discord_webhook(
                             project_item.inner.id.into(),
                             &pool,
@@ -318,9 +391,13 @@ pub async fn project_edit(
                         .await?;
                     }
                 }
+                println!("Got thru 10");
 
                 if user.role.is_mod() {
+                    println!("Got thru 11");
+
                     if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK") {
+                        println!("Got thru 12");
                         crate::util::webhook::send_discord_webhook(
                             project_item.inner.id.into(),
                             &pool,
@@ -342,6 +419,7 @@ pub async fn project_edit(
                         .ok();
                     }
                 }
+                println!("Got thru 13");
 
                 if team_member.map(|x| !x.accepted).unwrap_or(true) {
                     let notified_members = sqlx::query!(
@@ -367,6 +445,7 @@ pub async fn project_edit(
                     .insert_many(notified_members, &mut transaction, &redis)
                     .await?;
                 }
+                println!("Got thru 14");
 
                 ThreadMessageBuilder {
                     author_id: Some(user.id.into()),
@@ -378,6 +457,7 @@ pub async fn project_edit(
                 }
                 .insert(&mut transaction)
                 .await?;
+            println!("Got thru 15");
 
                 sqlx::query!(
                     "
@@ -425,6 +505,7 @@ pub async fn project_edit(
                 .execute(&mut *transaction)
                 .await?;
             }
+            
 
             if perms.contains(ProjectPermissions::EDIT_DETAILS) {
                 if new_project.categories.is_some() {

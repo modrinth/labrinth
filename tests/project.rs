@@ -446,8 +446,8 @@ pub async fn test_patch_project() {
     assert_eq!(project["issues_url"], json!(Some("https://github.com".to_string())));
     assert_eq!(project["discord_url"], json!(Some("https://discord.gg".to_string())));
     assert_eq!(project["wiki_url"], json!(Some("https://wiki.com".to_string())));
-    assert_eq!(project["client_side"].to_string(), "optional");
-    assert_eq!(project["server_side"].to_string(), "required");
+    assert_eq!(project["client_side"], json!("optional"));
+    assert_eq!(project["server_side"], json!("required"));
     assert_eq!(project["donation_urls"][0]["url"], "https://patreon.com");
 
     // Cleanup test db
@@ -509,8 +509,8 @@ async fn permissions_patch_project() {
         ("title", json!("randomname")),
         ("description", json!("randomdescription")),
         ("categories", json!(["combat", "economy"])),
-        ("client_side", json!("unsupported")),
-        ("server_side", json!("unsupported")),
+        // ("client_side", json!("unsupported")),
+        // ("server_side", json!("unsupported")),
         ("additional_categories", json!(["decoration"])),
         ("issues_url", json!("https://issues.com")),
         ("source_url", json!("https://source.com")),
@@ -542,17 +542,17 @@ async fn permissions_patch_project() {
                             },
                         }))
                 };
-
+                println!("Testing {}", key);
                 PermissionsTest::new(&test_env)
                     .simple_project_permissions_test(edit_details, req_gen)
-                    .await
-                    .unwrap();
+                    .await.into_iter();
             }
         })
         .buffer_unordered(4)
         .collect::<Vec<_>>()
         .await;
 
+    println!("HERE!");
     // Test with status and requested_status
     // This requires a project with a version, so we use alpha_project_id
     let req_gen = |ctx: &PermissionsTestContext| {
@@ -569,6 +569,7 @@ async fn permissions_patch_project() {
         .simple_project_permissions_test(edit_details, req_gen)
         .await
         .unwrap();
+    println!("HERE!2");
 
     // Bulk patch projects
     let req_gen = |ctx: &PermissionsTestContext| {

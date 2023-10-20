@@ -3,14 +3,16 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
+use crate::database::models::loader_fields::{LoaderField, VersionField, LoaderFieldEnumValue};
 use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
 use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
+use crate::models::ids::VersionId;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
-use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
+use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType, LoaderStruct};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::img;
@@ -32,7 +34,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .route("{version_id}/file", web::post().to(super::version_creation::upload_file_to_version))
     );
 }
-#[derive(Serialize, Deserialize, Validate)]
+#[derive(Serialize, Deserialize, Validate, Default, Debug)]
 pub struct EditVersion {
     #[validate(
         length(min = 1, max = 64),
@@ -53,7 +55,7 @@ pub struct EditVersion {
     )]
     pub dependencies: Option<Vec<Dependency>>,
     pub game_versions: Option<Vec<models::projects::GameVersion>>,
-    pub loaders: Option<Vec<models::projects::Loader>>,
+    pub loaders: Option<Vec<LoaderStruct>>,
     pub featured: Option<bool>,
     pub primary_file: Option<(String, String)>,
     pub downloads: Option<u32>,
@@ -61,21 +63,41 @@ pub struct EditVersion {
     pub file_types: Option<Vec<EditVersionFileType>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct EditVersionFileType {
     pub algorithm: String,
     pub hash: String,
     pub file_type: Option<FileType>,
 }
 
+// TODO: Avoid this pattern
 pub async fn version_edit(
     req: HttpRequest,
-    info: web::Path<(models::ids::VersionId,)>,
+    info: web::Path<(VersionId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
-    new_version: web::Json<EditVersion>,
+    new_version: web::Json<serde_json::Value>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("HERE: {:?}", new_version);
+
+    let new_version : EditVersion = serde_json::from_value(new_version.into_inner())?;
+        println!("HERE: {:?}", new_version);
+
+    version_edit_helper(req, info.into_inner(), pool, redis, new_version, session_queue).await
+}
+pub async fn version_edit_helper(
+    req: HttpRequest,
+    info: (VersionId,),
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    new_version: EditVersion,
+    session_queue: web::Data<AuthQueue>,
+    
+) -> Result<HttpResponse, ApiError> {
+
+    println!("in version edit");
+    println!("VVV - new_version: {:?}", new_version);
     let user = get_user_from_headers(
         &req,
         &**pool,
@@ -86,16 +108,19 @@ pub async fn version_edit(
     .await?
     .1;
 
+
     new_version
         .validate()
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
 
-    let version_id = info.into_inner().0;
+    let version_id = info.0;
     let id = version_id.into();
 
     let result = database::models::Version::get(id, &**pool, &redis).await?;
 
     if let Some(version_item) = result {
+        println!("VVV - VERSOIN: {:?}", serde_json::to_string(&version_item));
+
         let project_item =
             database::models::Project::get_id(version_item.inner.project_id, &**pool, &redis)
                 .await?;
@@ -257,10 +282,23 @@ pub async fn version_edit(
                 .execute(&mut *transaction)
                 .await?;
 
+                sqlx::query!(
+                    "
+                    DELETE FROM version_fields WHERE version_id = $1
+                    ",
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                // TODO: This should check if loader supports project type like the version_creation route
                 let mut loader_versions = Vec::new();
+                let mut version_fields = Vec::new();
                 for loader in loaders {
+                    let loader_name = loader.loader.0.clone();
+
                     let loader_id =
-                        database::models::loader_fields::Loader::get_id(&loader.0, &mut *transaction)
+                        database::models::loader_fields::Loader::get_id(&loader_name, &mut *transaction)
                             .await?
                             .ok_or_else(|| {
                                 ApiError::InvalidInput(
@@ -268,8 +306,19 @@ pub async fn version_edit(
                                 )
                             })?;
                     loader_versions.push(LoaderVersion::new(loader_id, id));
+                        println!("VVV - Loader fields: {:?}", loader.fields);
+                    for (key, value) in loader.fields .iter() {
+                        // TODO: more efficient, multiselect
+                            let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction).await?.ok_or_else(|| {
+                                ApiError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
+                            })?;
+                            let enum_variants = LoaderFieldEnumValue::list_optional(&loader_field.field_type, &mut *transaction, &redis).await?;
+                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), enum_variants).map_err(|s| ApiError::InvalidInput(s))?;
+                            version_fields.push(vf);
+                    }
                 }
                 LoaderVersion::insert_many(loader_versions, &mut transaction).await?;
+                VersionField::insert_many(version_fields, &mut transaction).await?;
 
                 database::models::Project::update_loaders(
                     version_item.inner.project_id,

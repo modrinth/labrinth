@@ -306,7 +306,6 @@ pub async fn project_create(
         &session_queue,
     )
     .await;
-println!("Out3!");
 
     if result.is_err() {
         let undo_result = undo_uploads(&***file_host, &uploaded_files).await;
@@ -319,7 +318,6 @@ println!("Out3!");
     } else {
         transaction.commit().await?;
     }
-    println!("Out!");
 
     result
 }
@@ -366,7 +364,6 @@ async fn project_create_inner(
 ) -> Result<HttpResponse, CreateError> {
     // The base URL for files uploaded to backblaze
     let cdn_url = dotenvy::var("CDN_URL")?;
-    println!("in1!");
 
     // The currently logged in user
     let current_user = get_user_from_headers(
@@ -378,7 +375,6 @@ async fn project_create_inner(
     )
     .await?
     .1;
-println!("in2!");
 
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
 
@@ -390,7 +386,6 @@ println!("in2!");
     {
         // The first multipart field must be named "data" and contain a
         // JSON `ProjectCreateData` object.
-        println!("in3");
 
         let mut field = payload
             .next()
@@ -401,7 +396,6 @@ println!("in2!");
                     "No `data` field in multipart upload",
                 )))
             })?;
-            println!("in4");
 
         let content_disposition = field.content_disposition();
         let name = content_disposition
@@ -909,6 +903,7 @@ async fn create_initial_version(
     //     })
     //     .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
 
+    println!("\n\n\n\n\n\n\n\n\n\n\n----\n\n\n");
     println!("This one!!!!!");
     println!("Loaders: {:?}", serde_json::to_string(&version_data.loaders).unwrap());
     println!("All loaders: {:?}", serde_json::to_string(&all_loaders).unwrap());
@@ -932,13 +927,15 @@ async fn create_initial_version(
         loader_ids.push(loader_id);
         loaders.push(loader_create.loader.clone());
 
+        println!("Loader_create fields: {:?}",loader_create.fields);
         for (key, value) in loader_create.fields .iter() {
             println!("ADding loader field: {} {}", key, value);
             // TODO: more efficient, multiselect
                 let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction).await?.ok_or_else(|| {
                     CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
                 })?;
-                let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), &mut *transaction, redis).await?;
+                let enum_variants = LoaderFieldEnumValue::list_optional(&loader_field.field_type, &mut *transaction, &redis).await?;
+                let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), enum_variants).map_err(|s| CreateError::InvalidInput(s))?;
                 version_fields.push(vf);
         }
     }

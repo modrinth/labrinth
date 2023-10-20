@@ -386,7 +386,11 @@ pub async fn get_project_beta(test_env: &TestEnvironment) -> (Project, Version) 
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
-    let project: Project = test::read_body_json(resp).await;
+    println!("Got out and got through123!");
+    let project: serde_json::Value = test::read_body_json(resp).await;
+    println!("here");
+    println!("Serde json value: {}", serde_json::to_string(&project).unwrap());
+    let project: Project = serde_json::from_value(project).unwrap();
 
     // Get project's versions
     let req = TestRequest::get()

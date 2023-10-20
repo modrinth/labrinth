@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::ApiError;
 use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
@@ -7,10 +9,11 @@ use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
 use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
+use crate::models::ids::VersionId;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
-use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
+use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType, LoaderStruct};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3;
@@ -224,7 +227,7 @@ pub struct EditVersionFileType {
 #[patch("{id}")]
 pub async fn version_edit(
     req: HttpRequest,
-    info: web::Path<(models::ids::VersionId,)>,
+    info: web::Path<(VersionId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     new_version: web::Json<EditVersion>,
@@ -240,7 +243,10 @@ pub async fn version_edit(
         version_type: new_version.version_type,
         dependencies: new_version.dependencies,
         game_versions: new_version.game_versions,
-        loaders: new_version.loaders,
+        loaders: new_version.loaders.map(|l| l.into_iter().map(|l| LoaderStruct {
+            loader: l,
+            fields: HashMap::new(),
+        }).collect::<Vec<_>>()),
         featured: new_version.featured,
         primary_file: new_version.primary_file,
         downloads: new_version.downloads,
@@ -254,8 +260,9 @@ pub async fn version_edit(
             }).collect::<Vec<_>>() 
          )
         };
+        // TODO: maybe should allow client server in loaders field? but probably not needed here
 
-    let response = v3::versions::version_edit(req, info, pool, redis, web::Json(new_version), session_queue).await?;
+    let response = v3::versions::version_edit(req, info, pool, redis, web::Json(serde_json::to_value(new_version)?), session_queue).await?;
 
     println!("Interecepting patch: {:?}", response);
     // TODO: Convert response to V2 format

@@ -1,35 +1,37 @@
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
 use crate::database;
-use crate::database::models::image_item;
+use crate::database::models::{image_item, version_item, project_item};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
+use crate::models::ids::VersionId;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType,
+    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType, LoaderStruct, Loader,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::MessageBody;
 use crate::queue::session::AuthQueue;
 use crate::routes::{ApiError, v2_reroute, v3};
-use crate::routes::v3::projects::delete_from_index;
+use crate::routes::v3::projects::{delete_from_index, ProjectIds};
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::img;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse, App};
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
 use meilisearch_sdk::indexes::IndexesResults;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
+use std::borrow::BorrowMut;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -115,11 +117,6 @@ pub async fn random_projects_get(
     Ok(HttpResponse::Ok().json(projects_data))
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ProjectIds {
-    pub ids: String,
-}
-
 #[get("projects")]
 pub async fn projects_get(
     req: HttpRequest,
@@ -128,23 +125,24 @@ pub async fn projects_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
-    let projects_data = db_models::Project::get_many(&ids, &**pool, &redis).await?;
+    // Convert V2 data to V3 data
 
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::PROJECT_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
+    // Call V3 project creation
+    let response= v3::projects::projects_get(req, web::Query(ids), pool.clone(), redis.clone(), session_queue).await?;
 
-    let projects = filter_authorized_projects(projects_data, &user_option, &pool).await?;
-
-    Ok(HttpResponse::Ok().json(projects))
+    // Convert response to V2 forma
+    match v2_reroute::extract_ok_json(response).await {
+        Ok(mut json) => {
+            if let Some(projects) = json.as_array_mut() {
+                for project in projects {
+                    // We need versions
+                    v2_reroute::set_side_types_from_versions(project, &**pool, &redis).await?;
+                }
+            }
+        Ok(HttpResponse::Ok().json(json))
+    },
+        Err(response) =>    Ok(response)
+    }
 }
 
 #[get("{id}")]
@@ -155,26 +153,20 @@ pub async fn project_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let string = info.into_inner().0;
+    // Convert V2 data to V3 data
 
-    let project_data = db_models::Project::get(&string, &**pool, &redis).await?;
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::PROJECT_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
+    // Call V3 project creation
+    let response= v3::projects::project_get(req, info, pool.clone(), redis.clone(), session_queue).await?;
 
-    if let Some(data) = project_data {
-        if is_authorized(&data.inner, &user_option, &pool).await? {
-            return Ok(HttpResponse::Ok().json(Project::from(data)));
-        }
+    // Convert response to V2 forma
+    match v2_reroute::extract_ok_json(response).await {
+        Ok(mut json) => {
+            v2_reroute::set_side_types_from_versions(&mut json, &**pool, &redis).await?;
+        
+        Ok(HttpResponse::Ok().json(json))
+    },
+        Err(response) =>    Ok(response)
     }
-    Ok(HttpResponse::NotFound().body(""))
 }
 
 //checks the validity of a project id or slug
@@ -390,36 +382,81 @@ pub async fn project_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // TODO: Should call v3 route
-
-    let new_project = new_project.into_inner();
+    println!("\n-\n-\n-\n-\n-\n-\n-\n-\n-\n-Starting New Project Edit Call");
+    println!("New Project: {:?}", serde_json::to_string(&new_project)?);
+    let v2_new_project = new_project.into_inner();
+    let client_side = v2_new_project.client_side.clone();
+    let server_side = v2_new_project.server_side.clone();
+    let new_slug = v2_new_project.slug.clone();
+    println!("Client Side: {:?}", client_side);
+    println!("Server Side: {:?}", server_side);
     let new_project = v3::projects::EditProject {
-        title: new_project.title,
-        description: new_project.description,
-        body: new_project.body,
-        categories: new_project.categories,
-        additional_categories: new_project.additional_categories,
-        issues_url: new_project.issues_url,
-        source_url: new_project.source_url,
-        wiki_url: new_project.wiki_url,
-        license_url: new_project.license_url,
-        discord_url: new_project.discord_url,
-        donation_urls: new_project.donation_urls,
-        license_id: new_project.license_id,
-        client_side: new_project.client_side,
-        server_side: new_project.server_side,
-        slug: new_project.slug,
-        status: new_project.status,
-        requested_status: new_project.requested_status,
-        moderation_message: new_project.moderation_message,
-        moderation_message_body: new_project.moderation_message_body,
-        monetization_status: new_project.monetization_status,
+        title: v2_new_project.title,
+        description: v2_new_project.description,
+        body: v2_new_project.body,
+        categories: v2_new_project.categories,
+        additional_categories: v2_new_project.additional_categories,
+        issues_url: v2_new_project.issues_url,
+        source_url: v2_new_project.source_url,
+        wiki_url: v2_new_project.wiki_url,
+        license_url: v2_new_project.license_url,
+        discord_url: v2_new_project.discord_url,
+        donation_urls: v2_new_project.donation_urls,
+        license_id: v2_new_project.license_id,
+        // client_side: new_project.client_side,
+        // server_side: new_project.server_side,
+        slug: v2_new_project.slug,
+        status: v2_new_project.status,
+        requested_status: v2_new_project.requested_status,
+        moderation_message: v2_new_project.moderation_message,
+        moderation_message_body: v2_new_project.moderation_message_body,
+        monetization_status: v2_new_project.monetization_status,
     };
+    // TODO: client_side and server_side
 
-    let response = v3::projects::project_edit(req, info, pool, config, web::Json(new_project), redis, session_queue).await?;
+        
+    // This returns 204 or failure so we don't need to do anything with it
+    let project_id = info.clone().0;
+    let mut response = v3::projects::project_edit(req.clone(), info, pool.clone(), config, web::Json(new_project), redis.clone(), session_queue.clone()).await?;
+    
+    // If client and server side were set, we will call
+    // the version setting route for each version to set the side types for each of them.
+    if response.status().is_success() {
+        println!("\nWas successful!");
+        println!("Project ID: {:?}", project_id);
+        if client_side.is_some() || server_side.is_some() {
+            let project_item = project_item::Project::get(&new_slug.unwrap_or(project_id), &**pool, &redis).await?;
+        println!("a successful: {:?}", serde_json::to_string(&project_item)?);
+        let version_ids = project_item.map(|x| x.versions).unwrap_or_default();
+        println!("as successful: {:?}", version_ids);
+        let versions = version_item::Version::get_many(&version_ids, &**pool, &redis).await?;
+        println!("Versions: {:?}", serde_json::to_string(&versions)?);
+            for version in versions {
+                let loaders : Result<Vec<_>, _> = version.loaders.into_iter().map(|l| serde_json::from_value(json!({
+                
+                    "loader": Loader(l),
+                    "client_side": client_side,
+                    "server_side": server_side,    
+                }))).collect();
+
+            println!("SUBMITTING JSON\n\n\n\n\n: {:?}", json!({
+                "client_side": client_side,
+                "server_side": server_side,    
+            }));
+            response = v3::versions::version_edit_helper(req.clone(), (version.inner.id.into(),), pool.clone(), redis.clone(), v3::versions::EditVersion {
+                loaders: Some(loaders?),
+                ..Default::default()
+            }, session_queue.clone()).await?;    
+            }
+        }
+
+
+    } 
+
+    Ok(response)
 
     // TODO: Convert response to V2 format
 
-    Ok(response)
 }
 
 

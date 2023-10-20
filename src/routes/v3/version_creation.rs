@@ -278,7 +278,8 @@ async fn version_create_inner(
                             let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction).await?.ok_or_else(|| {
                                 CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
                             })?;
-                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), &mut *transaction, redis).await?;
+                            let enum_variants = LoaderFieldEnumValue::list_optional(&loader_field.field_type, &mut *transaction, &redis).await?;
+                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), enum_variants).map_err(|s| CreateError::InvalidInput(s))?;
                             version_fields.push(vf);
                     }
                 }

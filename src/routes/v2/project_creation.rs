@@ -2,7 +2,7 @@ use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::loader_fields::Game;
 use crate::database::models::thread_item::ThreadBuilder;
-use crate::database::models::{self, image_item, User};
+use crate::database::models::{self, image_item, User, version_item};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
@@ -57,8 +57,12 @@ pub async fn project_create(
 ) -> Result<HttpResponse, CreateError> {
 
     // Convert V2 multipart payload to V3 multipart payload
+    let mut saved_slug = None;
     let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
         // Convert input data to V3 format
+
+        // Save slug for out of closure
+        saved_slug = Some(json["slug"].as_str().unwrap_or("").to_string());
 
         // Set game name (all v2 projects are minecraft-java)
         json["game_name"] = json!("minecraft-java");
@@ -99,9 +103,17 @@ pub async fn project_create(
     }).await;
 
     // Call V3 project creation
-    let response= v3::project_creation::project_create(req, payload, client, redis, file_host, session_queue).await?;
+    let response= v3::project_creation::project_create(req, payload, client.clone(), redis.clone(), file_host, session_queue).await?;
+
+    // Convert response to V2 forma
+    match v2_reroute::extract_ok_json(response).await {
+        Ok(mut json) => {
+        v2_reroute::set_side_types_from_versions(&mut json, &**client, &redis).await?;
+        Ok(HttpResponse::Ok().json(json))
+    },
+        Err(response) =>    Ok(response)
+    }
 
     // TODO: Convert response to V2 format
-    Ok(response)
 }
 

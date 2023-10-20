@@ -544,7 +544,7 @@ impl Project {
                 .flatten()
                 .collect(),
         );
-
+        println!("Project ids: {:?}", project_ids);
         if !project_ids.is_empty() {
             let projects = redis
                 .multi_get::<String, _>(PROJECTS_NAMESPACE, project_ids)
@@ -570,6 +570,9 @@ impl Project {
                 .flat_map(|x| parse_base62(&x.to_string()).ok())
                 .map(|x| x as i64)
                 .collect();
+
+            println!("Project ids parsed: {:?}", project_ids_parsed);
+            println!("Remaining strings: {:?}", &remaining_strings.iter().map(|x| x.to_string().to_lowercase()).collect::<Vec<_>>());
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
                 SELECT m.id id, m.game_id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
@@ -604,7 +607,7 @@ impl Project {
                 .try_filter_map(|e| async {
                     Ok(e.right().map(|m| {
                         let id = m.id;
-
+                        println!("FOUND SOMETHING!");
                     QueryProject {
                         inner: Project {
                             id: ProjectId(id),
@@ -649,6 +652,7 @@ impl Project {
                         categories: m.categories.unwrap_or_default(),
                         additional_categories: m.additional_categories.unwrap_or_default(),
                         versions: {
+                            println!("Calculating versions...");
                                 #[derive(Deserialize)]
                                 struct Version {
                                     pub id: VersionId,
@@ -662,7 +666,7 @@ impl Project {
                                     .unwrap_or_default();
 
                                 versions.sort_by(|a, b| a.date_published.cmp(&b.date_published));
-
+                                println!("No bueno...");
                                 versions.into_iter().map(|x| x.id).collect()
                             },
                             gallery_items: {

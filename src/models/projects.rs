@@ -486,14 +486,27 @@ pub struct Version {
 }
 
 // A loader and its associated loader VersionFields
-#[derive(Serialize, Deserialize, Validate, Clone)]
+#[derive(Serialize, Deserialize, Validate, Clone, Debug)]
 pub struct LoaderStruct {
     pub loader : Loader,
 
     // All other fields are loader-specific VersionFields
+    #[serde(deserialize_with = "skip_nulls")]
     #[serde(flatten)]
     pub fields : HashMap<String, serde_json::Value>,
 }
+
+fn skip_nulls<'de, D>(deserializer: D) -> Result<HashMap<String, serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let mut map = HashMap::deserialize(deserializer)?;
+    println!("Loaded hashmap {:?}", map);
+    map.retain(|_, v : &mut serde_json::Value | !v.is_null());
+    println!("Loaded hashmap2 {:?}", map);
+    Ok(map)
+}
+
 
 impl From<QueryVersion> for Version {
     fn from(data: QueryVersion) -> Version {
@@ -674,7 +687,7 @@ pub struct VersionFile {
 
 /// A dendency which describes what versions are required, break support, or are optional to the
 /// version's functionality
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Dependency {
     /// The specific version id that the dependency uses
     pub version_id: Option<VersionId>,
@@ -686,7 +699,7 @@ pub struct Dependency {
     pub dependency_type: DependencyType,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum VersionType {
     Release,
@@ -711,7 +724,7 @@ impl VersionType {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum DependencyType {
     Required,
@@ -783,12 +796,12 @@ impl FileType {
 }
 
 /// A specific version of Minecraft
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(transparent)]
 pub struct GameVersion(pub String);
 
 /// A project loader
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
 pub struct Loader(pub String);
 
