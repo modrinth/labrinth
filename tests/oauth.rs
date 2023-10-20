@@ -47,9 +47,9 @@ async fn oauth_flow_happy_path() {
 
         let auth_code = query.get("code").unwrap();
         let state = query.get("state").unwrap();
-        let foo = query.get("foo").unwrap();
+        let foo_val = query.get("foo").unwrap();
         assert_eq!(state, original_state);
-        assert_eq!(foo, "bar");
+        assert_eq!(foo_val, "bar");
 
         // Get the token
         let resp = env

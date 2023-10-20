@@ -1,4 +1,5 @@
 use crate::auth::get_user_from_headers;
+use crate::auth::oauth::uris::{OAuthRedirectUris, ValidatedRedirectUri};
 use crate::auth::validate::extract_authorization_header;
 use crate::database::models::flow_item::Flow;
 use crate::database::models::oauth_client_authorization_item::OAuthClientAuthorization;
@@ -27,6 +28,7 @@ use self::errors::{OAuthError, OAuthErrorType};
 use super::AuthenticationError;
 
 pub mod errors;
+pub mod uris;
 
 pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
@@ -113,6 +115,8 @@ pub async fn init_oauth(
             OAuthClientAuthorization::get(client.id, user.id.into(), &**pool)
                 .await
                 .map_err(|e| OAuthError::redirect(e, &oauth_info.state, &redirect_uri))?;
+        let redirect_uris =
+            OAuthRedirectUris::new(oauth_info.redirect_uri.clone(), redirect_uri.clone());
         match existing_authorization {
             Some(existing_authorization)
                 if existing_authorization.scopes.contains(requested_scopes) =>
@@ -122,8 +126,7 @@ pub async fn init_oauth(
                     client.id,
                     existing_authorization.id,
                     requested_scopes,
-                    redirect_uri,
-                    oauth_info.redirect_uri,
+                    redirect_uris,
                     oauth_info.state,
                     &redis,
                 )
@@ -135,8 +138,7 @@ pub async fn init_oauth(
                     client_id: client.id,
                     existing_authorization_id: existing_authorization.map(|a| a.id),
                     scopes: requested_scopes,
-                    validated_redirect_uri: redirect_uri.clone(),
-                    original_redirect_uri: oauth_info.redirect_uri.clone(),
+                    redirect_uris,
                     state: oauth_info.state.clone(),
                 }
                 .insert(Duration::minutes(30), &redis)
@@ -212,10 +214,10 @@ pub async fn request_token(
     pool: Data<PgPool>,
     redis: Data<RedisPool>,
 ) -> Result<HttpResponse, OAuthError> {
-    let client_id = models::ids::OAuthClientId::parse(&req_params.client_id)
+    let req_client_id = models::ids::OAuthClientId::parse(&req_params.client_id)
         .map_err(OAuthError::error)?
         .into();
-    let client = DBOAuthClient::get(client_id, &**pool)
+    let client = DBOAuthClient::get(req_client_id, &**pool)
         .await
         .map_err(OAuthError::error)?;
     if let Some(client) = client {
@@ -239,7 +241,7 @@ pub async fn request_token(
         }) = flow
         {
             // https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
-            if client_id != client_id {
+            if req_client_id != client_id {
                 return Err(OAuthError::error(OAuthErrorType::UnauthorizedClient));
             }
 
@@ -294,7 +296,7 @@ pub async fn request_token(
         }
     } else {
         Err(OAuthError::error(OAuthErrorType::InvalidClientId(
-            client_id,
+            req_client_id,
         )))
     }
 }
@@ -330,8 +332,7 @@ pub async fn accept_or_reject_client_scopes(
         client_id,
         existing_authorization_id,
         scopes,
-        validated_redirect_uri,
-        original_redirect_uri,
+        redirect_uris,
         state,
     }) = flow
     {
@@ -359,8 +360,7 @@ pub async fn accept_or_reject_client_scopes(
                 client_id,
                 auth_id,
                 scopes,
-                validated_redirect_uri,
-                original_redirect_uri,
+                redirect_uris,
                 state,
                 &redis,
             )
@@ -369,7 +369,7 @@ pub async fn accept_or_reject_client_scopes(
             Err(OAuthError::redirect(
                 OAuthErrorType::AccessDenied,
                 &state,
-                &validated_redirect_uri,
+                &redirect_uris.validated,
             ))
         }
     } else {
@@ -406,8 +406,7 @@ async fn init_oauth_code_flow(
     client_id: OAuthClientId,
     authorization_id: OAuthClientAuthorizationId,
     scopes: Scopes,
-    validated_redirect_uri: ValidatedRedirectUri,
-    original_redirect_uri: Option<String>,
+    redirect_uris: OAuthRedirectUris,
     state: Option<String>,
     redis: &RedisPool,
 ) -> Result<HttpResponse, OAuthError> {
@@ -416,61 +415,23 @@ async fn init_oauth_code_flow(
         client_id,
         authorization_id,
         scopes,
-        original_redirect_uri,
+        original_redirect_uri: redirect_uris.original.clone(),
     }
     .insert(Duration::minutes(10), redis)
     .await
-    .map_err(|e| OAuthError::redirect(e, &state, &validated_redirect_uri.clone()))?;
+    .map_err(|e| OAuthError::redirect(e, &state, &redirect_uris.validated.clone()))?;
 
     let mut redirect_params = vec![format!("code={code}")];
     if let Some(state) = state {
         redirect_params.push(format!("state={state}"));
     }
 
-    let redirect_uri = append_params_to_uri(&validated_redirect_uri.0, &redirect_params);
+    let redirect_uri = append_params_to_uri(&redirect_uris.validated.0, &redirect_params);
 
     // IETF RFC 6749 Section 4.1.2 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2)
     Ok(HttpResponse::Found()
         .append_header((LOCATION, redirect_uri))
         .finish())
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ValidatedRedirectUri(pub String);
-
-impl ValidatedRedirectUri {
-    pub fn validate<'a>(
-        to_validate: &Option<String>,
-        validate_against: impl IntoIterator<Item = &'a str> + Clone,
-        client_id: OAuthClientId,
-    ) -> Result<Self, OAuthError> {
-        if let Some(first_client_redirect_uri) = validate_against.clone().into_iter().next() {
-            if let Some(to_validate) = to_validate {
-                if validate_against
-                    .into_iter()
-                    .any(|uri| same_uri_except_query_components(uri, to_validate))
-                {
-                    Ok(ValidatedRedirectUri(to_validate.clone()))
-                } else {
-                    Err(OAuthError::error(OAuthErrorType::RedirectUriNotConfigured(
-                        to_validate.clone(),
-                    )))
-                }
-            } else {
-                Ok(ValidatedRedirectUri(first_client_redirect_uri.to_string()))
-            }
-        } else {
-            Err(OAuthError::error(
-                OAuthErrorType::ClientMissingRedirectURI { client_id },
-            ))
-        }
-    }
-}
-
-fn same_uri_except_query_components(a: &str, b: &str) -> bool {
-    let mut a_components = a.split('?');
-    let mut b_components = b.split('?');
-    a_components.next() == b_components.next()
 }
 
 fn append_params_to_uri(uri: &str, params: &[impl AsRef<str>]) -> String {
@@ -482,50 +443,4 @@ fn append_params_to_uri(uri: &str, params: &[impl AsRef<str>]) -> String {
     }
 
     uri
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn validate_for_none_returns_first_valid_uri() {
-        let validate_against = vec!["https://modrinth.com/a"];
-
-        let validated =
-            ValidatedRedirectUri::validate(&None, validate_against.clone(), OAuthClientId(0))
-                .unwrap();
-
-        assert_eq!(validate_against[0], validated.0);
-    }
-
-    #[test]
-    fn validate_for_valid_uri_returns_first_matching_uri_ignoring_query_params() {
-        let validate_against = vec![
-            "https://modrinth.com/a?q3=p3&q4=p4",
-            "https://modrinth.com/a/b/c?q1=p1&q2=p2",
-        ];
-        let to_validate = "https://modrinth.com/a/b/c?query0=param0&query1=param1".to_string();
-
-        let validated = ValidatedRedirectUri::validate(
-            &Some(to_validate.clone()),
-            validate_against,
-            OAuthClientId(0),
-        )
-        .unwrap();
-
-        assert_eq!(to_validate, validated.0);
-    }
-
-    #[test]
-    fn validate_for_invalid_uri_returns_err() {
-        let validate_against = vec!["https://modrinth.com/a"];
-        let to_validate = "https://modrinth.com/a/b".to_string();
-
-        let validated =
-            ValidatedRedirectUri::validate(&Some(to_validate), validate_against, OAuthClientId(0));
-
-        assert!(validated
-            .is_err_and(|e| matches!(e.error_type, OAuthErrorType::RedirectUriNotConfigured(_))));
-    }
 }
