@@ -49,7 +49,7 @@ impl AuthQueue {
         std::mem::replace(&mut queue, HashMap::with_capacity(len))
     }
 
-    pub async fn take_set<T>(queue: &Mutex<HashSet<T>>) -> HashSet<T> {
+    pub async fn take_hashset<T>(queue: &Mutex<HashSet<T>>) -> HashSet<T> {
         let mut queue = queue.lock().await;
         let len = queue.len();
 
@@ -58,8 +58,8 @@ impl AuthQueue {
 
     pub async fn index(&self, pool: &PgPool, redis: &RedisPool) -> Result<(), DatabaseError> {
         let session_queue = self.take_sessions().await;
-        let pat_queue = Self::take_set(&self.pat_queue).await;
-        let oauth_access_token_queue = Self::take_set(&self.oauth_access_token_queue).await;
+        let pat_queue = Self::take_hashset(&self.pat_queue).await;
+        let oauth_access_token_queue = Self::take_hashset(&self.oauth_access_token_queue).await;
 
         if !session_queue.is_empty()
             || !pat_queue.is_empty()
