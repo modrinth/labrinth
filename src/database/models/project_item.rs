@@ -350,16 +350,6 @@ impl Project {
 
             sqlx::query!(
                 "
-                DELETE FROM mod_follows
-                WHERE mod_id = $1
-                ",
-                id as ProjectId
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            sqlx::query!(
-                "
                 DELETE FROM mods_gallery
                 WHERE mod_id = $1
                 ",

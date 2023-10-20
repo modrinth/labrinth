@@ -2,6 +2,7 @@ use thiserror::Error;
 
 pub mod categories;
 pub mod collection_item;
+pub mod creator_follows;
 pub mod flow_item;
 pub mod ids;
 pub mod image_item;
