@@ -10,10 +10,10 @@ use serde_json::json;
 use sqlx::Executor;
 use zip::{write::FileOptions, ZipWriter, CompressionMethod};
 
-use crate::common::{actix::AppendsMultipart, database::USER_USER_PAT};
+use crate::common::database::USER_USER_PAT;
+use labrinth::util::actix::{MultipartSegmentData,MultipartSegment,AppendsMultipart};
 
 use super::{
-    actix::{MultipartSegment, MultipartSegmentData},
     environment::TestEnvironment,
     request_data::get_public_project_creation_data,
 };

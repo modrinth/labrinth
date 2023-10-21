@@ -1,5 +1,4 @@
-use crate::database;
-use crate::database::models::{loader_fields::GameVersion, GameId};
+use crate::database::models::loader_fields::GameVersion;
 use crate::database::redis::RedisPool;
 use crate::models::projects::ProjectId;
 use crate::routes::ApiError;

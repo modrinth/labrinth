@@ -1,8 +1,6 @@
-use crate::database::redis::RedisPool;
-use crate::models::ids::base62_impl::parse_base62;
-use crate::routes::ApiError;
-use crate::routes::v3::project_creation::CreateError;
+use std::collections::HashMap;
 
+use crate::database::redis::RedisPool;
 use super::ids::*;
 use super::DatabaseError;
 use chrono::DateTime;
@@ -11,12 +9,6 @@ use futures::TryStreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-const GAME_LOADERS_NAMESPACE: &str = "game_loaders";
-const LOADER_FIELD_ID_NAMESPACE: &str = "loader_field_ids"; // from str to id
-const LOADER_FIELDS_NAMESPACE: &str = "loader_fields";
-const LOADER_FIELD_ENUMS_NAMESPACE: &str = "loader_field_enums";
-const VERSION_FIELDS_NAMESPACE: &str = "version_fields_enums";
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Game {
@@ -223,6 +215,7 @@ pub struct LoaderFieldEnumValue {
     pub value: String,
     pub ordering: Option<i32>,
     pub created: DateTime<Utc>,
+    #[serde(flatten)]
     pub metadata: serde_json::Value,
 }
 
@@ -477,7 +470,7 @@ impl VersionFieldValue {
                     if let Some(ev) = enum_array.into_iter().find(|v| v.value == enum_value) {
                         ev
                     } else {
-                        return Err((format!("Provided value '{enum_value}' is not a valid variant for {field_name}")));
+                        return Err(format!("Provided value '{enum_value}' is not a valid variant for {field_name}"));
                     }
                 }
             ),
@@ -489,7 +482,7 @@ impl VersionFieldValue {
                         if let Some(ev) = enum_array.iter().find(|v| v.value == av) {
                             enum_values.push(ev.clone());
                         } else {
-                            return Err((format!("Provided value '{av}' is not a valid variant for {field_name}")));
+                            return Err(format!("Provided value '{av}' is not a valid variant for {field_name}"));
                         }
                     }
                     enum_values                    
@@ -768,22 +761,20 @@ impl LoaderFieldEnumValue {
     // Matches filter against metadata of enum values
     pub async fn list_filter<'a, E>(
         loader_field_enum_id : LoaderFieldEnumId,
-        filter : serde_json::Value,
+        filter : HashMap<String, serde_json::Value>,
         exec: E,
         redis: &RedisPool,
     ) -> Result<Vec<LoaderFieldEnumValue>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-
-        let filter = filter.as_object().ok_or(DatabaseError::SchemaError("Filter must be an object".to_string()))?;
         
         let result = Self::list(loader_field_enum_id, exec, redis)
             .await?
             .into_iter()
             .filter(|x| {
                 let mut bool = true;
-                for (key, value) in filter {
+                for (key, value) in filter.iter() {
                     if let Some(metadata_value) = x.metadata.get(key) {
                         bool &= metadata_value == value;
                     } else {

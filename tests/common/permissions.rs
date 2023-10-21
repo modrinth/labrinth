@@ -310,6 +310,7 @@ impl<'a> PermissionsTest<'a> {
         .to_request();
 
         let resp = test_env.call(request).await;
+        println!("RESP: {:?}", resp.response().body());
         if !resp.status().is_success() {
             return Err(format!(
                 "Success permissions test failed. Expected success, got {}",

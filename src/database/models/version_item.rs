@@ -1,10 +1,6 @@
 use super::ids::*;
 use super::DatabaseError;
-use super::loader_fields::LoaderField;
 use super::loader_fields::VersionField;
-use crate::database::models::loader_fields::LoaderFieldEnumValue;
-use crate::database::models::loader_fields::LoaderFieldType;
-use crate::database::models::loader_fields::QueryVersionField;
 use crate::database::redis::RedisPool;
 use crate::models::projects::{FileType, VersionStatus};
 use chrono::{DateTime, Utc};

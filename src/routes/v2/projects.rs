@@ -1,37 +1,28 @@
-use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
+use crate::auth::{get_user_from_headers, is_authorized};
 use crate::{database, search};
 use crate::database::models::{image_item, version_item, project_item};
-use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
-use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::ids::VersionId;
-use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;
-use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType, LoaderStruct, Loader,
+    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType, Loader,
 };
 use crate::models::teams::ProjectPermissions;
-use crate::models::threads::MessageBody;
 use crate::queue::session::AuthQueue;
 use crate::routes::{ApiError, v2_reroute, v3};
 use crate::routes::v3::projects::{delete_from_index, ProjectIds};
 use crate::search::{search_for_project, SearchConfig, SearchError};
-use crate::util::img;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse, App};
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
-use meilisearch_sdk::indexes::IndexesResults;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
-use std::borrow::BorrowMut;
 use std::sync::Arc;
 use validator::Validate;
 

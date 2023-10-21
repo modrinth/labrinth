@@ -9,9 +9,10 @@ use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::routes::v3;
+use crate::routes::v3::version_file::{HashQuery, default_algorithm};
 use crate::{database, models};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -32,17 +33,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(update_files)
             .service(update_individual_files),
     );
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct HashQuery {
-    #[serde(default = "default_algorithm")]
-    pub algorithm: String,
-    pub version_id: Option<VersionId>,
-}
-
-fn default_algorithm() -> String {
-    "sha1".into()
 }
 
 // under /api/v1/version_file/{hash}
@@ -268,6 +258,7 @@ pub struct UpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 
+// TODO: this being left as empty was not caught by tests, so write tests for this
 #[post("{version_id}/update")]
 pub async fn get_update_from_hash(
     req: HttpRequest,
@@ -278,8 +269,30 @@ pub async fn get_update_from_hash(
     update_data: web::Json<UpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: should call v3
-    Ok(HttpResponse::NotFound().body(""))
+    let update_data = update_data.into_inner();
+    let mut loader_fields = HashMap::new();
+    let mut game_versions = vec![];
+    for gv in update_data.game_versions.into_iter().flatten() {
+        game_versions.push(serde_json::json!(gv.clone()));
+    }
+    loader_fields.insert("game_versions".to_string(), game_versions);
+    let update_data = v3::version_file::UpdateData {
+        loaders: update_data.loaders.clone(),
+        version_types: update_data.version_types.clone(),
+        loader_fields: Some(loader_fields),
+    };
+
+    let response = v3::version_file::get_update_from_hash(
+        req,
+        info,
+        pool,
+        redis,
+        hash_query,
+        web::Json(update_data),
+        session_queue,
+    ).await?;
+    
+    Ok(response)
 }
 
 // Requests above with multiple versions below

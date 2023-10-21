@@ -37,17 +37,25 @@ pub struct HashQuery {
     pub version_id: Option<VersionId>,
 }
 
-fn default_algorithm() -> String {
+pub fn default_algorithm() -> String {
     "sha1".into()
 }
 
 #[derive(Deserialize)]
 pub struct UpdateData {
     pub loaders: Option<Vec<String>>,
-    pub game_versions: Option<Vec<String>>,
     pub version_types: Option<Vec<VersionType>>,
+    /*
+        Loader fields to filter with:
+        "game_versions": ["1.16.5", "1.17"]
+        
+        Returns if it matches any of the values
+     */
+    pub loader_fields: Option<HashMap<String, Vec<serde_json::Value>>>,
+
 }
 
+// TODO: write tests for this
 pub async fn get_update_from_hash(
     req: HttpRequest,
     info: web::Path<(String,)>,
@@ -96,10 +104,14 @@ pub async fn get_update_from_hash(
                         if let Some(loaders) = &update_data.loaders {
                             bool &= x.loaders.iter().any(|y| loaders.contains(y));
                         }
-                        // if let Some(game_versions) = &update_data.game_versions {
-                        //     bool &= x.game_versions.iter().any(|y| game_versions.contains(y));
-                        // }
-
+                        
+                        if let Some(loader_fields) = &update_data.loader_fields {
+                            for (key, value) in loader_fields {
+                                bool &= x.version_fields.iter().any(|y| {
+                                    y.field_name == *key && value.contains(&y.value.serialize_internal()) 
+                                });
+                            }
+                        }
                         bool
                     })
                     .sorted_by(|a, b| a.inner.date_published.cmp(&b.inner.date_published))

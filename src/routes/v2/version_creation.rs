@@ -1,31 +1,16 @@
-use crate::auth::get_user_from_headers;
-use crate::database::models::notification_item::NotificationBuilder;
-use crate::database::models::version_item::{
-    DependencyBuilder, VersionBuilder, VersionFileBuilder,
-};
-use crate::database::models::{self, image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models::images::{Image, ImageContext, ImageId};
-use crate::models::notifications::NotificationBody;
-use crate::models::pack::PackFileHash;
-use crate::models::pats::Scopes;
+use crate::models::ids::ImageId;
 use crate::models::projects::{
-    Dependency, DependencyType, FileType, GameVersion, Loader, ProjectId, Version, VersionFile,
+    Dependency, FileType, GameVersion, Loader, ProjectId,
     VersionId, VersionStatus, VersionType,
 };
-use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v2_reroute, v3};
 use crate::routes::v3::project_creation::CreateError;
-use crate::util::routes::read_from_field;
-use crate::util::validate::validation_errors_to_string;
-use crate::validate::{validate_file, ValidationResult};
-use actix_multipart::{Field, Multipart};
+use actix_multipart::Multipart;
 use actix_web::web::Data;
 use actix_web::{post, web, HttpRequest, HttpResponse};
-use chrono::Utc;
-use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
@@ -90,7 +75,7 @@ struct InitialFileData {
 #[post("version")]
 pub async fn version_create(
     req: HttpRequest,
-    mut payload: Multipart,
+    payload: Multipart,
     client: Data<PgPool>,
     redis: Data<RedisPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
@@ -156,16 +141,13 @@ pub async fn version_create(
 pub async fn upload_file_to_version(
     req: HttpRequest,
     url_data: web::Path<(VersionId,)>,
-    mut payload: Multipart,
+    payload: Multipart,
     client: Data<PgPool>,
     redis: Data<RedisPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     // TODO: do we need to modify this?
-
     let response= v3::version_creation::upload_file_to_version(req, url_data, payload, client.clone(), redis.clone(), file_host, session_queue).await?;
-
-
     Ok(response)
 }

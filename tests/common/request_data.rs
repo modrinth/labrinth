@@ -1,11 +1,8 @@
 #![allow(dead_code)]
 use serde_json::json;
 
-use super::{
-    actix::MultipartSegment,
-    dummy_data::{DummyImage, TestFile},
-};
-use crate::common::actix::MultipartSegmentData;
+use super::dummy_data::{DummyImage, TestFile};
+use labrinth::util::actix::{MultipartSegmentData,MultipartSegment};
 
 pub struct ProjectCreationRequestData {
     pub slug: String,

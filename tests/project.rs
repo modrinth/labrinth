@@ -2,8 +2,8 @@ use actix_http::StatusCode;
 use actix_web::test;
 use bytes::Bytes;
 use chrono::{Duration, Utc};
-use common::actix::MultipartSegment;
-use common::environment::with_test_environment;
+use labrinth::util::actix::{MultipartSegmentData,MultipartSegment, AppendsMultipart};
+use common::environment::{with_test_environment, TestEnvironment};
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
@@ -14,7 +14,6 @@ use serde_json::json;
 use crate::common::database::*;
 
 use crate::common::dummy_data::DUMMY_CATEGORIES;
-use crate::common::{actix::AppendsMultipart, environment::TestEnvironment};
 
 // importing common module.
 mod common;
@@ -130,54 +129,54 @@ async fn test_add_remove_project() {
     );
 
     // Basic json
-    let json_segment = common::actix::MultipartSegment {
+    let json_segment = MultipartSegment {
         name: "data".to_string(),
         filename: None,
         content_type: Some("application/json".to_string()),
-        data: common::actix::MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
+        data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
     };
 
     // Basic json, with a different file
     json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
-    let json_diff_file_segment = common::actix::MultipartSegment {
-        data: common::actix::MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
+    let json_diff_file_segment = MultipartSegment {
+        data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
         ..json_segment.clone()
     };
 
     // Basic json, with a different file, and a different slug
     json_data["slug"] = json!("new_demo");
     json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
-    let json_diff_slug_file_segment = common::actix::MultipartSegment {
-        data: common::actix::MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
+    let json_diff_slug_file_segment = MultipartSegment {
+        data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
         ..json_segment.clone()
     };
 
     // Basic file
-    let file_segment = common::actix::MultipartSegment {
+    let file_segment = MultipartSegment {
         name: "basic-mod.jar".to_string(),
         filename: Some("basic-mod.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
-        data: common::actix::MultipartSegmentData::Binary(
+        data: MultipartSegmentData::Binary(
             include_bytes!("../tests/files/basic-mod.jar").to_vec(),
         ),
     };
 
     // Differently named file, with the same content (for hash testing)
-    let file_diff_name_segment = common::actix::MultipartSegment {
+    let file_diff_name_segment = MultipartSegment {
         name: "basic-mod-different.jar".to_string(),
         filename: Some("basic-mod-different.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
-        data: common::actix::MultipartSegmentData::Binary(
+        data: MultipartSegmentData::Binary(
             include_bytes!("../tests/files/basic-mod.jar").to_vec(),
         ),
     };
 
     // Differently named file, with different content
-    let file_diff_name_content_segment = common::actix::MultipartSegment {
+    let file_diff_name_content_segment = MultipartSegment {
         name: "basic-mod-different.jar".to_string(),
         filename: Some("basic-mod-different.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
-        data: common::actix::MultipartSegmentData::Binary(
+        data: MultipartSegmentData::Binary(
             include_bytes!("../tests/files/basic-mod-different.jar").to_vec(),
         ),
     };
@@ -755,7 +754,7 @@ async fn permissions_upload_version() {
                 name: "data".to_string(),
                 filename: None,
                 content_type: Some("application/json".to_string()),
-                data: common::actix::MultipartSegmentData::Text(
+                data: MultipartSegmentData::Text(
                     serde_json::to_string(&json!({
                         "project_id": ctx.project_id.unwrap(),
                         "file_parts": ["basic-mod.jar"],
@@ -775,7 +774,7 @@ async fn permissions_upload_version() {
                 name: "basic-mod.jar".to_string(),
                 filename: Some("basic-mod.jar".to_string()),
                 content_type: Some("application/java-archive".to_string()),
-                data: common::actix::MultipartSegmentData::Binary(
+                data: MultipartSegmentData::Binary(
                     include_bytes!("../tests/files/basic-mod.jar").to_vec(),
                 ),
             },
@@ -796,7 +795,7 @@ async fn permissions_upload_version() {
                     name: "data".to_string(),
                     filename: None,
                     content_type: Some("application/json".to_string()),
-                    data: common::actix::MultipartSegmentData::Text(
+                    data: MultipartSegmentData::Text(
                         serde_json::to_string(&json!({
                             "file_parts": ["basic-mod-different.jar"],
                         }))
@@ -807,7 +806,7 @@ async fn permissions_upload_version() {
                     name: "basic-mod-different.jar".to_string(),
                     filename: Some("basic-mod-different.jar".to_string()),
                     content_type: Some("application/java-archive".to_string()),
-                    data: common::actix::MultipartSegmentData::Binary(
+                    data: MultipartSegmentData::Binary(
                         include_bytes!("../tests/files/basic-mod-different.jar").to_vec(),
                     ),
                 },

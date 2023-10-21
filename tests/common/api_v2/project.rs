@@ -4,11 +4,10 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use bytes::Bytes;
-use labrinth::{models::projects::{Project, Version}, search::SearchResults};
+use labrinth::{models::projects::{Project, Version}, search::SearchResults, util::actix::AppendsMultipart};
 use serde_json::json;
 
 use crate::common::{
-    actix::AppendsMultipart,
     asserts::assert_status,
     database::MOD_USER_PAT,
     request_data::{ImageData, ProjectCreationRequestData},

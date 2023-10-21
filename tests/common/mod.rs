@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use self::database::TemporaryDatabase;
 
-pub mod actix;
 pub mod api_v2;
 pub mod asserts;
 pub mod database;
