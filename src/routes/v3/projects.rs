@@ -953,6 +953,16 @@ pub async fn edit_project_categories(
     Ok(())
 }
 
+#[get("search")]
+pub async fn project_search(
+    web::Query(info): web::Query<SearchRequest>,
+    config: web::Data<SearchConfig>,
+) -> Result<HttpResponse, SearchError> {
+    let results = search_for_project(&info, &config).await?;
+    Ok(HttpResponse::Ok().json(results))
+}
+
+
 pub async fn delete_from_index(
     id: ProjectId,
     config: web::Data<SearchConfig>,
@@ -967,3 +977,4 @@ pub async fn delete_from_index(
 
     Ok(())
 }
+

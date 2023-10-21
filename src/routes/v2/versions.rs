@@ -181,9 +181,13 @@ pub async fn version_get(
 
     if let Some(data) = version_data {
         if is_authorized_version(&data.inner, &user_option, &pool).await? {
+            println!("Got version: {:?}", serde_json::to_value(&data)?);
+            panic!();
+
             return Ok(HttpResponse::Ok().json(models::projects::Version::from(data)));
         }
     }
+
 
     Ok(HttpResponse::NotFound().body(""))
 }

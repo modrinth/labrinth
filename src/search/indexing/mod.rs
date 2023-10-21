@@ -2,6 +2,7 @@
 pub mod local_import;
 
 use crate::search::{SearchConfig, UploadSearchProject};
+use dashmap::DashSet;
 use local_import::index_local;
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::indexes::Index;
@@ -32,11 +33,15 @@ const MEILISEARCH_CHUNK_SIZE: usize = 10000;
 
 pub async fn index_projects(pool: PgPool, config: &SearchConfig) -> Result<(), IndexingError> {
     let mut docs_to_add: Vec<UploadSearchProject> = vec![];
+    let mut additional_fields: Vec<String> = vec![];
 
-    docs_to_add.append(&mut index_local(pool.clone()).await?);
+    let (mut uploads, mut loader_fields) = index_local(pool.clone()).await?;
+    docs_to_add.append(&mut uploads);
+    additional_fields.append(&mut loader_fields);
 
+    println!("Additional fields: {:?}", additional_fields);
     // Write Indices
-    add_projects(docs_to_add, config).await?;
+    add_projects(docs_to_add,  additional_fields, config).await?;
 
     Ok(())
 }
@@ -46,6 +51,7 @@ async fn create_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, IndexingError> {
+    println!("Creatingg index: {}", name);
     client
         .delete_index(name)
         .await?
@@ -114,25 +120,36 @@ async fn add_to_index(
 async fn create_and_add_to_index(
     client: &Client,
     projects: &[UploadSearchProject],
+    additional_fields: &[String],
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<(), IndexingError> {
-    let index = create_index(client, name, custom_rules).await?;
+    println!("Creating and adding to index: {}, {}", name, projects.len());
+    let index = create_index(client, name,  custom_rules).await?;
+   
+    let mut new_filterable_attributes = index.get_filterable_attributes().await?;
+    new_filterable_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
+    index.set_filterable_attributes(new_filterable_attributes).await?;
+    
+    println!("Current filterable attributes: {:?}", index.get_filterable_attributes().await?);
+
     add_to_index(client, index, projects).await?;
     Ok(())
 }
 
 pub async fn add_projects(
     projects: Vec<UploadSearchProject>,
+    additional_fields: Vec<String>,
     config: &SearchConfig,
 ) -> Result<(), IndexingError> {
     let client = config.make_client();
 
-    create_and_add_to_index(&client, &projects, "projects", None).await?;
+    create_and_add_to_index(&client, &projects, &additional_fields, "projects", None).await?;
 
     create_and_add_to_index(
         &client,
         &projects,
+        &additional_fields,
         "projects_filtered",
         Some(&[
             "sort",
@@ -170,7 +187,6 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "description",
     "categories",
     "display_categories",
-    "versions",
     "downloads",
     "follows",
     "icon_url",
@@ -178,8 +194,6 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "date_modified",
     "latest_version",
     "license",
-    "client_side",
-    "server_side",
     "gallery",
     "featured_gallery",
     "color",
@@ -189,10 +203,7 @@ const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["title", "description", "author
 
 const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "categories",
-    "versions",
     "license",
-    "client_side",
-    "server_side",
     "project_type",
     "downloads",
     "follows",

@@ -35,8 +35,8 @@ CREATE TABLE loader_fields (
   id serial PRIMARY KEY,
   loader_id integer REFERENCES loaders ON UPDATE CASCADE NOT NULL,
   field varchar(64) NOT NULL,
-  -- "int", "text", "enum", "bool", 
-  -- "array(int)", "array(text)", "array(enum)", "array(bool)"
+  -- "integer", "text", "enum", "bool", 
+  -- "array_integer", "array_text", "array_enum", "array_bool"
   field_type varchar(64) NOT NULL,
   -- only for enum
   enum_type integer REFERENCES loader_field_enums ON UPDATE CASCADE NULL,
@@ -90,7 +90,7 @@ INSERT INTO loader_field_enums (id, enum_name, hidable) VALUES (2, 'game_version
 INSERT INTO loader_field_enum_values (original_id, enum_id, value, created, metadata)
 SELECT id, 2, version, created, json_build_object('type', type, 'major', major) FROM game_versions;
 
-INSERT INTO loader_fields (loader_id, field, field_type, enum_type, optional, min_val) SELECT l.id, 'game_versions', 'enum', 2, false, 1 FROM loaders l;
+INSERT INTO loader_fields (loader_id, field, field_type, enum_type, optional, min_val) SELECT l.id, 'game_versions', 'array_enum', 2, false, 1 FROM loaders l;
 
 INSERT INTO version_fields(version_id, field_id, enum_value) 
 SELECT gvv.joining_version_id, 2, lfev.id 

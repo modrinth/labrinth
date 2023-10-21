@@ -49,7 +49,7 @@ pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
 #[post("project")]
 pub async fn project_create(
     req: HttpRequest,
-    mut payload: Multipart,
+    payload: Multipart,
     client: Data<PgPool>,
     redis: Data<RedisPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
@@ -60,7 +60,7 @@ pub async fn project_create(
     let mut saved_slug = None;
     let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
         // Convert input data to V3 format
-
+        println!("ABOUT TO ALTER ACTIX MULTIPART {}", json.to_string());
         // Save slug for out of closure
         saved_slug = Some(json["slug"].as_str().unwrap_or("").to_string());
 
@@ -99,7 +99,9 @@ pub async fn project_create(
                 version["loaders"] = json!(loaders);
             }
         }
-    
+        println!("JUST ALTER ACTIX MULTIPART {}", json.to_string());
+        println!("Done;");
+
     }).await;
 
     // Call V3 project creation

@@ -1,15 +1,21 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+use dashmap::DashSet;
 use futures::TryStreamExt;
 use log::info;
+use serde::Deserialize;
 
 use super::IndexingError;
 use crate::database::models::ProjectId;
+use crate::database::models::loader_fields::{VersionFieldValue, LoaderFieldType, VersionField};
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
-pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, IndexingError> {
+pub async fn index_local(pool: PgPool) -> Result<(Vec<UploadSearchProject>, Vec<String>), IndexingError> {
     info!("Indexing local projects!");
-
-    Ok(
+    let loader_field_keys : Arc<DashSet<String>> = Arc::new(DashSet::new());
+    let uploads =
         sqlx::query!(
             "
             SELECT m.id id, v.id version_id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
@@ -23,17 +29,39 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery,
             JSONB_AGG(
                 DISTINCT jsonb_build_object(
-                    'field_id', vf.field_id,
-                    'int_value', vf.int_value,
-                    'enum_value', vf.enum_value,
-                    'string_value', vf.string_value,
+                'field_id', vf.field_id,
+                'int_value', vf.int_value,
+                'enum_value', vf.enum_value,
+                'string_value', vf.string_value
+                )
+            ) version_fields,
+            JSONB_AGG(
+                DISTINCT jsonb_build_object(
+                    'lf_id', lf.id,
+                    'l_id', lf.loader_id,
+                    'loader_name', lo.loader,
                     'field', lf.field,
                     'field_type', lf.field_type,
                     'enum_type', lf.enum_type,
+                    'min_val', lf.min_val,
+                    'max_val', lf.max_val,
+                    'optional', lf.optional,
+
                     'enum_name', lfe.enum_name
                 )
-            ) version_fields
+            ) loader_fields,
+            JSONB_AGG(
+                DISTINCT jsonb_build_object(
+                    'id', lfev.id,
+                    'enum_id', lfev.enum_id,
+                    'value', lfev.value,
+                    'ordering', lfev.ordering,
+                    'created', lfev.created,
+                    'metadata', lfev.metadata
+                )  
+            ) loader_field_enum_values
 
+            
             FROM versions v
             INNER JOIN mods m ON v.mod_id = m.id AND m.status = ANY($2)
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
@@ -47,6 +75,7 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
             LEFT OUTER JOIN version_fields vf on v.id = vf.version_id
             LEFT OUTER JOIN loader_fields lf on vf.field_id = lf.id
             LEFT OUTER JOIN loader_field_enums lfe on lf.enum_type = lfe.id
+            LEFT OUTER JOIN loader_field_enum_values lfev on lfev.enum_id = lfe.id
             WHERE v.status != ANY($1)
             GROUP BY v.id, m.id, pt.id, u.id;
             ",
@@ -55,7 +84,9 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
             crate::models::teams::OWNER_ROLE,
         )
             .fetch_many(&pool)
-            .try_filter_map(|e| async {
+            .try_filter_map(|e| {
+                let loader_field_keys = loader_field_keys.clone();
+                async move {
                 Ok(e.right().map(|m| {
                     let mut additional_categories = m.additional_categories.unwrap_or_default();
                     let mut categories = m.categories.unwrap_or_default();
@@ -64,6 +95,18 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
 
                     let display_categories = categories.clone();
                     categories.append(&mut additional_categories);
+
+                    let version_fields = VersionField::from_query_json(m.id, m.loader_fields, m.version_fields, m.loader_field_enum_values);
+                    println!("Got version fields: {:?}", version_fields);
+                    let loader_fields : HashMap<String, Vec<String>> = version_fields.into_iter().map(|vf| {
+                        let key = format!("{}_{}", vf.loader_name, vf.field_name);
+                        let value = vf.value.as_search_strings();
+                        (key, value)
+                    }).collect();
+                    println!("Got loader fields: {:?}", loader_fields);
+                    for v in loader_fields.keys().cloned() {
+                        loader_field_keys.insert(v);
+                    }
 
                     let project_id: crate::models::projects::ProjectId = ProjectId(m.id).into();
                     let version_id: crate::models::projects::ProjectId = ProjectId(m.version_id).into();
@@ -100,10 +143,11 @@ pub async fn index_local(pool: PgPool) -> Result<Vec<UploadSearchProject>, Index
                         open_source,
                         color: m.color.map(|x| x as u32),
                         featured_gallery: m.featured_gallery.unwrap_or_default().first().cloned(),
+                        loader_fields
                     }
                 }))
-            })
+}})
             .try_collect::<Vec<_>>()
-            .await?
-    )
+            .await?;
+    Ok((uploads, Arc::try_unwrap(loader_field_keys).unwrap_or_default().into_iter().collect()))
 }

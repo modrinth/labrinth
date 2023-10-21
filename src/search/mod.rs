@@ -7,6 +7,7 @@ use meilisearch_sdk::client::Client;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::min;
+use std::collections::HashMap;
 use std::fmt::Write;
 use thiserror::Error;
 
@@ -96,6 +97,20 @@ pub struct UploadSearchProject {
     pub modified_timestamp: i64,
     pub open_source: bool,
     pub color: Option<u32>,
+
+    #[serde(flatten)]
+    /*
+        Version fields are stored as:
+            "loader_field": ["value1", "value2", ...]
+        By convention, first underline separates the loader from the field name,
+        and any subsequent underlines may be part of the field name.
+        eg:
+            "fabric_game_versions": ["1.21", "1.22"]
+            "fabric_client_side": ["required"]
+            "fabric_server_side": ["optional"]
+     */
+    pub loader_fields: HashMap<String, Vec<String>>
+
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -117,7 +132,6 @@ pub struct ResultSearchProject {
     pub description: String,
     pub categories: Vec<String>,
     pub display_categories: Vec<String>,
-    pub versions: Vec<String>,
     pub downloads: i32,
     pub follows: i32,
     pub icon_url: String,
@@ -125,13 +139,13 @@ pub struct ResultSearchProject {
     pub date_created: String,
     /// RFC 3339 formatted modification date of the project
     pub date_modified: String,
-    pub latest_version: String,
     pub license: String,
-    pub client_side: String,
-    pub server_side: String,
     pub gallery: Vec<String>,
     pub featured_gallery: Option<String>,
     pub color: Option<u32>,
+
+    #[serde(flatten)]
+    pub loader_fields: HashMap<String, Vec<String>>
 }
 
 pub async fn search_for_project(
@@ -210,16 +224,31 @@ pub async fn search_for_project(
                 filter_string.push_str(&filters);
             }
 
+            println!("Filter string: {}", filter_string);
+
             if !filter_string.is_empty() {
                 query.with_filter(&filter_string);
             }
         }
 
-        query.execute::<ResultSearchProject>().await?
+        // query.execute::<ResultSearchProject>().await?
+        let v = query.execute::<serde_json::Value>().await?;
+        println!("Got results from MeiliSearch");
+        println!("Value: {:?}", v);
+        v
     };
+    println!("Finished filtering");
 
     Ok(SearchResults {
-        hits: results.hits.into_iter().map(|r| r.result).collect(),
+        hits: results
+            .hits
+            .into_iter()
+            .map(|r| {
+                let mut result: ResultSearchProject = serde_json::from_value(r.result).unwrap();
+                result
+            })
+            .collect(),
+        // hits: results.hits.into_iter().map(|r| r.result).collect(),
         offset: results.offset.unwrap_or_default(),
         limit: results.limit.unwrap_or_default(),
         total_hits: results.estimated_total_hits.unwrap_or_default(),

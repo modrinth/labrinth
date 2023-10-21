@@ -73,6 +73,7 @@ pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
+    // TODO: redirect to v3
     let results = search_for_project(&info, &config).await?;
     Ok(HttpResponse::Ok().json(results))
 }

@@ -150,10 +150,10 @@ async fn search_projects() {
             ["project_type:modpack"]
         ]), vec![4]),
         (json!([
-            ["client_side:required"]
+            ["fabric_client_side:required"]
             ]), vec![0,2,3]),
         (json!([
-            ["server_side:required"]
+            ["fabric_server_side:required"]
             ]), vec![0,2,3,6]),
         (json!([
             ["open_source:true"]
@@ -168,7 +168,7 @@ async fn search_projects() {
             ["author:user"]
             ]), vec![0,1,2,4,5]),
         (json!([
-            ["versions:1.20.5"]
+            ["fabric_game_versions:1.20.5"]
             ]), vec![4,5]),
     ];
     // TODO: versions, game versions
@@ -184,7 +184,7 @@ async fn search_projects() {
     
     // Test searches
     let stream = futures::stream::iter(pairs);
-    stream.for_each_concurrent(10, |(facets, mut expected_project_ids)| {
+    stream.for_each_concurrent(1, |(facets, mut expected_project_ids)| {
         let id_conversion = id_conversion.clone();
         let test_name = test_name.clone();
         async move {

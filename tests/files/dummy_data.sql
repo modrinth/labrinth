@@ -37,7 +37,7 @@ INSERT INTO loader_field_enum_values(enum_id, value, metadata)
 VALUES (2, '1.20.5', '{"type":"release","major":false}');
 
 INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
-VALUES (1, 'game_versions', 'array(enum)', 2);
+VALUES (1, 'game_versions', 'array_enum', 2);
 
 -- Side-types 
 INSERT INTO loader_fields(loader_id, field, field_type, enum_type)

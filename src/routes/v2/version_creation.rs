@@ -16,6 +16,7 @@ use crate::models::projects::{
 };
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::routes::{v2_reroute, v3};
 use crate::routes::v3::project_creation::CreateError;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
@@ -28,6 +29,7 @@ use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
+use serde_json::json;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -95,7 +97,58 @@ pub async fn version_create(
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     // TODO: should call this from the v3
-    Ok(HttpResponse::NoContent().body(""))
+    let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
+        // Convert input data to V3 format
+
+        // Loader fields are now a struct, containing all versionfields
+        // loaders: ["fabric"]
+        // game_versions: ["1.16.5", "1.17"]
+        // -> becomes ->
+        // loaders: [{"loader": "fabric", "game_versions": ["1.16.5", "1.17"]}]
+        let mut loaders = vec![];
+        for loader in json["loaders"].as_array().unwrap_or(&Vec::new()) {
+            let loader = loader.as_str().unwrap_or("");
+            loaders.push(json!({
+                "loader": loader,
+                "game_versions": json["game_versions"].as_array(),
+            }));
+        }
+        json["loaders"] = json!(loaders);
+
+    
+    }).await;
+
+    // Call V3 project creation
+    let response= v3::version_creation::version_create(req, payload, client.clone(), redis.clone(), file_host, session_queue).await?;
+
+    // Convert response to V2 forma
+    match v2_reroute::extract_ok_json(response).await {
+        Ok(mut json) => {
+            // Get game_versions out of loaders, and flatten loadedrs
+            let mut game_versions = Vec::new();
+            let mut loaders = Vec::new();
+            if let Some(loaders_json) = json["loaders"].as_array() {
+                for loader_json in loaders_json {
+                    if let Some(loader) = loader_json["loader"].as_str() {
+                        loaders.push(loader.to_string());
+                    }
+                    if let Some(game_versions_json) = loader_json["game_versions"].as_array() {
+                        for game_version_json in game_versions_json {
+                            if let Some(game_version) = game_version_json.as_str() {
+                                game_versions.push(game_version.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            json["game_versions"] = json!(game_versions);
+            json["loaders"] = json!(loaders);
+            
+            println!("Completed version creation: {:?}", json);
+            Ok(HttpResponse::Ok().json(json))
+    },
+        Err(response) =>    Ok(response)
+    }
 }
 
 // under /api/v1/version/{version_id}
@@ -109,6 +162,10 @@ pub async fn upload_file_to_version(
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
-    // TODO: should call this from the v3
-    Ok(HttpResponse::NoContent().body(""))
+    // TODO: do we need to modify this?
+
+    let response= v3::version_creation::upload_file_to_version(req, url_data, payload, client.clone(), redis.clone(), file_host, session_queue).await?;
+
+
+    Ok(response)
 }
