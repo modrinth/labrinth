@@ -1,5 +1,5 @@
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
-use crate::database;
+use crate::{database, search};
 use crate::database::models::{image_item, version_item, project_item};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
@@ -74,6 +74,76 @@ pub async fn project_search(
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
     // TODO: redirect to v3
+    println!("info: {:?}", serde_json::to_string(&info));
+
+
+
+    // Search now uses loader_fields instead of explicit 'client_side' and 'server_side' fields
+    // Loader fields are:
+    // (loader)_(field):(value) 
+    // The first _ by convention is used to separate the loader from the field
+    // For each v2 loader, we create a loader field facet for each of these fields that are now loader fields
+    let facets : Option<Vec<Vec<String>>> = if let Some(facets) = info.facets {
+        let facets = serde_json::from_str::<Vec<Vec<&str>>>(&facets)?;
+
+        // "versions:x" => "fabric_game_versions:x", "forge_game_versions:x" ...
+        // They are put in the same array- considered to be 'or'
+        let mut v2_loaders = vec!["fabric", "forge"]; // TODO: populate
+        {
+            let client = meilisearch_sdk::Client::new(&*config.address, &*config.key);
+            let index = info.index.as_deref().unwrap_or("relevance");
+            let meilisearch_index = client.get_index(search::get_sort_index(index)?.0).await?;
+            let filterable_fields = meilisearch_index.get_filterable_attributes().await?;
+            // Only keep v2 loaders that are filterable
+            v2_loaders = v2_loaders.into_iter().filter(|x| filterable_fields.iter().any(|f| f.starts_with(&format!("{}_game_versions", x)))).collect();
+            println!("Post-analysis v2_loaders: {:?}", v2_loaders);
+
+        }
+        Some(facets.into_iter().map(|facet| {
+            facet
+                .into_iter()
+                .map(|facet| {
+                    let version = match facet.split(":").nth(1) {
+                        Some(version) => version,
+                        None => return vec![facet.to_string()],
+                    };
+                    println!("Analyzing facet: {:?}", facet);
+
+                    let f = if facet.starts_with("versions:") {
+                        v2_loaders
+                            .iter()
+                            .map(|loader| format!("{}_game_versions:{}", loader, version))
+                            .collect::<Vec<_>>()
+                    } else if facet.starts_with("client_side:") {
+                        v2_loaders
+                            .iter()
+                            .map(|loader| format!("{}_client_side:{}", loader, version))
+                            .collect::<Vec<_>>()
+                    } else if facet.starts_with("server_side:") {
+                        v2_loaders
+                            .iter()
+                            .map(|loader| format!("{}_server_side:{}", loader, version))
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![facet.to_string()]
+                    };
+                    println!("Post-analysis facet: {:?}", f);
+                    f
+                })
+                .flatten()
+                .collect::<Vec<_>>()
+        }).collect())
+    } else {
+        None
+    };
+
+    println!("Post-analysis facets: {:?}", facets);
+    
+    let info = SearchRequest {
+        facets : facets.and_then(|x| serde_json::to_string(&x).ok()),
+        ..info
+    };
+    
     let results = search_for_project(&info, &config).await?;
     Ok(HttpResponse::Ok().json(results))
 }

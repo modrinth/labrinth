@@ -148,6 +148,17 @@ pub struct ResultSearchProject {
     pub loader_fields: HashMap<String, Vec<String>>
 }
 
+pub fn get_sort_index(index: &str) -> Result<(&str, [&str; 1]), SearchError> {
+    Ok(match index {
+        "relevance" => ("projects", ["downloads:desc"]),
+        "downloads" => ("projects_filtered", ["downloads:desc"]),
+        "follows" => ("projects", ["follows:desc"]),
+        "updated" => ("projects", ["date_modified:desc"]),
+        "newest" => ("projects", ["date_created:desc"]),
+        i => return Err(SearchError::InvalidIndex(i.to_string())),
+    })
+}
+
 pub async fn search_for_project(
     info: &SearchRequest,
     config: &SearchConfig,
@@ -158,14 +169,7 @@ pub async fn search_for_project(
     let index = info.index.as_deref().unwrap_or("relevance");
     let limit = info.limit.as_deref().unwrap_or("10").parse()?;
 
-    let sort = match index {
-        "relevance" => ("projects", ["downloads:desc"]),
-        "downloads" => ("projects_filtered", ["downloads:desc"]),
-        "follows" => ("projects", ["follows:desc"]),
-        "updated" => ("projects", ["date_modified:desc"]),
-        "newest" => ("projects", ["date_created:desc"]),
-        i => return Err(SearchError::InvalidIndex(i.to_string())),
-    };
+    let sort = get_sort_index(index)?;
 
     let meilisearch_index = client.get_index(sort.0).await?;
 

@@ -814,9 +814,10 @@ pub struct SearchRequest {
     pub index: Option<String>,
     pub limit: Option<String>,
 
+    // TODO: implement fully with explanation
     pub new_filters: Option<String>,
 
-    // Deprecated values below. WILL BE REMOVED V3!
+    // TODO: Deprecated values below. WILL BE REMOVED V3!
     pub facets: Option<String>,
     pub filters: Option<String>,
     pub version: Option<String>,

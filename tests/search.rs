@@ -150,10 +150,10 @@ async fn search_projects() {
             ["project_type:modpack"]
         ]), vec![4]),
         (json!([
-            ["fabric_client_side:required"]
+            ["client_side:required"]
             ]), vec![0,2,3]),
         (json!([
-            ["fabric_server_side:required"]
+            ["server_side:required"]
             ]), vec![0,2,3,6]),
         (json!([
             ["open_source:true"]
@@ -168,7 +168,7 @@ async fn search_projects() {
             ["author:user"]
             ]), vec![0,1,2,4,5]),
         (json!([
-            ["fabric_game_versions:1.20.5"]
+            ["versions:1.20.5"]
             ]), vec![4,5]),
     ];
     // TODO: versions, game versions
