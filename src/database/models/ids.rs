@@ -183,6 +183,13 @@ generate_ids!(
     "SELECT EXISTS(SELECT 1 FROM oauth_access_tokens WHERE id=$1)",
     OAuthAccessTokenId
 );
+generate_ids!(
+    pub generate_event_id,
+    EventId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM events WHERE id=$1)",
+    EventId
+);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Hash, Serialize, Deserialize)]
 #[sqlx(transparent)]
@@ -285,6 +292,16 @@ pub struct OAuthRedirectUriId(pub i64);
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[sqlx(transparent)]
 pub struct OAuthAccessTokenId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct EventId(pub i64);
+
+impl From<i64> for EventId {
+    fn from(value: i64) -> Self {
+        EventId(value)
+    }
+}
 
 use crate::models::ids;
 
@@ -408,6 +425,7 @@ impl From<PatId> for ids::PatId {
         ids::PatId(id.0 as u64)
     }
 }
+
 impl From<OAuthClientId> for ids::OAuthClientId {
     fn from(id: OAuthClientId) -> Self {
         ids::OAuthClientId(id.0 as u64)
@@ -427,4 +445,55 @@ impl From<OAuthClientAuthorizationId> for ids::OAuthClientAuthorizationId {
     fn from(id: OAuthClientAuthorizationId) -> Self {
         ids::OAuthClientAuthorizationId(id.0 as u64)
     }
+}
+
+pub mod dynamic {
+    use super::*;
+
+    #[derive(sqlx::Type, PartialEq, Debug)]
+    #[sqlx(type_name = "id_type", rename_all = "snake_case")]
+    pub enum IdType {
+        ProjectId,
+        UserId,
+        OrganizationId,
+    }
+
+    #[derive(sqlx::Type)]
+    #[sqlx(type_name = "dynamic_id")]
+    pub struct DynamicId {
+        pub id: i64,
+        pub id_type: IdType,
+    }
+
+    macro_rules! from_static_impl {
+        ($struct:ident, $variant:expr) => {
+            impl From<$struct> for DynamicId {
+                fn from(value: $struct) -> Self {
+                    DynamicId {
+                        id: value.0,
+                        id_type: $variant,
+                    }
+                }
+            }
+
+            impl std::convert::TryFrom<DynamicId> for $struct {
+                type Error = DatabaseError;
+
+                fn try_from(value: DynamicId) -> Result<Self, Self::Error> {
+                    if value.id_type == $variant {
+                        return Ok($struct(value.id));
+                    }
+
+                    Err(DatabaseError::DynamicIdConversionError {
+                        expected: $variant,
+                        actual: value.id_type,
+                    })
+                }
+            }
+        };
+    }
+
+    from_static_impl!(ProjectId, IdType::ProjectId);
+    from_static_impl!(UserId, IdType::UserId);
+    from_static_impl!(OrganizationId, IdType::OrganizationId);
 }

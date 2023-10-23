@@ -3,6 +3,7 @@ use thiserror::Error;
 pub mod categories;
 pub mod collection_item;
 pub mod creator_follows;
+pub mod event_item;
 pub mod flow_item;
 pub mod ids;
 pub mod image_item;
@@ -32,10 +33,18 @@ pub use thread_item::{Thread, ThreadMessage};
 pub use user_item::User;
 pub use version_item::Version;
 
+use self::dynamic::IdType;
+
 #[derive(Error, Debug)]
 pub enum DatabaseError {
     #[error("Error while interacting with the database: {0}")]
     Database(#[from] sqlx::Error),
+    #[error(
+        "Error converting from a dynamic id in the database (expected {expected:#?}, was {actual:#?})"
+    )]
+    DynamicIdConversionError { expected: IdType, actual: IdType },
+    #[error("Didn't expect value to be null: {0}")]
+    UnexpectedNull(String),
     #[error("Error while trying to generate random ID")]
     RandomId,
     #[error("Error while interacting with the cache: {0}")]
