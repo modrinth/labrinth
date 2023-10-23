@@ -4,13 +4,13 @@ use super::{OrganizationId, UserId};
 use crate::database::models::DatabaseError;
 
 pub struct UserFollow {
-    follower_id: UserId,
-    target_id: UserId,
+    pub follower_id: UserId,
+    pub target_id: UserId,
 }
 
 pub struct OrganizationFollow {
-    follower_id: UserId,
-    target_id: OrganizationId,
+    pub follower_id: UserId,
+    pub target_id: OrganizationId,
 }
 
 impl UserFollow {
@@ -75,5 +75,24 @@ impl UserFollow {
                 target_id: UserId(r.target_id),
             })
             .collect_vec())
+    }
+
+    pub async fn unfollow(
+        follower_id: UserId,
+        target_id: UserId,
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        sqlx::query!(
+            "
+            DELETE FROM user_follows
+            WHERE follower_id=$1 AND target_id=$2
+            ",
+            follower_id.0,
+            target_id.0,
+        )
+        .execute(exec)
+        .await?;
+
+        Ok(())
     }
 }
