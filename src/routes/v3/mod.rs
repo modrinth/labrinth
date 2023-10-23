@@ -1,3 +1,5 @@
+pub mod users;
+
 pub use super::ApiError;
 use crate::{auth::oauth, util::cors::default_cors};
 use actix_web::{web, HttpResponse};
@@ -10,6 +12,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("v3")
             .wrap(default_cors())
             .route("", web::get().to(hello_world))
+            .configure(users::config)
             .configure(oauth::config)
             .configure(oauth_clients::config),
     );
