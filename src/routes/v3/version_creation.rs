@@ -1,11 +1,11 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
-use crate::database::models::loader_fields::{Game, LoaderFieldEnumValue, LoaderFieldEnum, VersionField, LoaderField};
+use crate::database::models::loader_fields::{LoaderFieldEnumValue, VersionField, LoaderField, Game};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
     DependencyBuilder, VersionBuilder, VersionFileBuilder,
 };
-use crate::database::models::{self, image_item, Organization, DatabaseError};
+use crate::database::models::{self, image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::images::{Image, ImageContext, ImageId};
@@ -13,17 +13,17 @@ use crate::models::notifications::NotificationBody;
 use crate::models::pack::PackFileHash;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    Dependency, DependencyType, FileType, GameVersion, Loader, ProjectId, Version, VersionFile,
+    Dependency, DependencyType, FileType, Loader, ProjectId, Version, VersionFile,
     VersionId, VersionStatus, VersionType, LoaderStruct,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
-use crate::validate::{validate_file, ValidationResult};
+use crate::validate::{ValidationResult, validate_file};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
-use actix_web::{post, web, HttpRequest, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -138,6 +138,7 @@ async fn version_create_inner(
 
     let mut initial_version_data = None;
     let mut version_builder = None;
+    let mut game = None;
 
     let user = get_user_from_headers(
         &req,
@@ -249,11 +250,8 @@ async fn version_create_inner(
                 .name;
 
                 let game_id = project.inner.game_id;
-                let all_loaders = models::loader_fields::Loader::list_id(game_id,&mut *transaction, redis).await?;
-
-                println!("Loaders: {:?}", serde_json::to_string(&version_create_data.loaders).unwrap());
-                println!("All loaders: {:?}", serde_json::to_string(&all_loaders).unwrap());
-                println!("Supported project types: {:?}", all_loaders.iter().map(|x| x.supported_project_types.clone()).collect::<Vec<_>>());
+                game = Game::from_id(game_id, &mut *transaction).await?;
+                let all_loaders = models::loader_fields::Loader::list_id(game_id,&mut *transaction).await?;
 
                 let mut loader_ids = vec![];
                 let mut loaders = vec![];
@@ -275,16 +273,15 @@ async fn version_create_inner(
 
                     for (key, value) in loader_create.fields .iter() {
                         // TODO: more efficient, multiselect
-                            let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction).await?.ok_or_else(|| {
+                            let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction, &redis).await?.ok_or_else(|| {
                                 CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
                             })?;
                             let enum_variants = LoaderFieldEnumValue::list_optional(&loader_field.field_type, &mut *transaction, &redis).await?;
-                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), enum_variants).map_err(|s| CreateError::InvalidInput(s))?;
+                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, value.clone(), enum_variants).map_err(|s| CreateError::InvalidInput(s))?;
                             version_fields.push(vf);
                     }
                 }
 
-                println!("Got past this part");
                 let dependencies = version_create_data
                     .dependencies
                     .iter()
@@ -319,6 +316,9 @@ async fn version_create_inner(
             let version = version_builder.as_mut().ok_or_else(|| {
                 CreateError::InvalidInput(String::from("`data` field must come before file fields"))
             })?;
+            let game = game.ok_or_else(|| {
+                CreateError::InvalidInput(String::from("`data` field must come before file fields"))
+            })?;
 
             let project_type = sqlx::query!(
                 "
@@ -345,14 +345,17 @@ async fn version_create_inner(
                 &mut version.dependencies,
                 &cdn_url,
                 &content_disposition,
+                game,
                 version.project_id.into(),
                 version.version_id.into(),
+                &version.version_fields,
                 &project_type,
                 version_data.loaders.into_iter().map(|l|l.loader).collect(),
                 version_data.primary_file.is_some(),
                 version_data.primary_file.as_deref() == Some(name),
                 version_data.file_types.get(name).copied().flatten(),
                 transaction,
+                redis,
             )
             .await?;
 
@@ -574,6 +577,9 @@ async fn upload_file_to_version_inner(
         }
     };
 
+    let project = models::Project::get_id(version.inner.project_id, &mut *transaction, &redis).await?
+    .ok_or_else(|| CreateError::InvalidInput("Version contained an invalid project id".to_string()))?;
+
     if !user.role.is_admin() {
         let team_member = models::TeamMember::get_from_user_id_project(
             version.inner.project_id,
@@ -627,10 +633,6 @@ async fn upload_file_to_version_inner(
     .await?
     .name;
 
-    let game_name = Game::MinecraftJava.name();
-    let game_version_enum = LoaderFieldEnum::get("game_versions", game_name, &mut *transaction, &redis).await?.ok_or_else(|| DatabaseError::SchemaError("Could not find game version enum".to_string()))?;
-    let all_game_versions = LoaderFieldEnumValue::list(game_version_enum.id, &mut *transaction, &redis).await?;
-
     let mut error = None;
     while let Some(item) = payload.next().await {
         let mut field: Field = item?;
@@ -671,6 +673,8 @@ async fn upload_file_to_version_inner(
                 })
                 .collect();
 
+            let game = Game::from_id(project.inner.game_id, &mut *transaction).await?.ok_or_else(|| CreateError::InvalidInput("Version contained an invalid game id".to_string()))?;
+
             upload_file(
                 &mut field,
                 file_host,
@@ -680,14 +684,17 @@ async fn upload_file_to_version_inner(
                 &mut dependencies,
                 &cdn_url,
                 &content_disposition,
+                game,
                 project_id,
                 version_id.into(),
+                &version.version_fields,
                 &project_type,
                 version.loaders.clone().into_iter().map(Loader).collect(),
                 true,
                 false,
                 file_data.file_types.get(name).copied().flatten(),
                 transaction,
+                &redis,
             )
             .await?;
 
@@ -730,14 +737,17 @@ pub async fn upload_file(
     dependencies: &mut Vec<DependencyBuilder>,
     cdn_url: &str,
     content_disposition: &actix_web::http::header::ContentDisposition,
+    game : Game,
     project_id: ProjectId,
     version_id: VersionId,
+    version_fields: &Vec<VersionField>,
     project_type: &str,
     loaders: Vec<Loader>,
     ignore_primary: bool,
     force_primary: bool,
     file_type: Option<FileType>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    redis: &RedisPool
 ) -> Result<(), CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
 
@@ -777,13 +787,17 @@ pub async fn upload_file(
             "Duplicate files are not allowed to be uploaded to Modrinth!".to_string(),
         ));
     }
-
+    
     let validation_result = validate_file(
+        game,
         data.clone().into(),
         file_extension.to_string(),
         project_type.to_string(),
         loaders.clone(),
         file_type,
+        version_fields.clone(),
+        &mut *transaction,
+        &redis,
     )
     .await?;
 

@@ -539,9 +539,7 @@ impl Version {
                         'enum_type', lf.enum_type,
                         'min_val', lf.min_val,
                         'max_val', lf.max_val,
-                        'optional', lf.optional,
-
-                        'enum_name', lfe.enum_name
+                        'optional', lf.optional
                     )
                 ) loader_fields,
                 JSONB_AGG(

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::database::models;
 use crate::database::models::loader_fields::{Loader, LoaderFieldEnumValue, LoaderFieldEnum};
 use crate::database::redis::RedisPool;
 use actix_web::{web, HttpResponse};

@@ -101,7 +101,7 @@ pub async fn version_create(
         json["loaders"] = json!(loaders);
 
     
-    }).await;
+    }).await?;
 
     // Call V3 project creation
     let response= v3::version_creation::version_create(req, payload, client.clone(), redis.clone(), file_host, session_queue).await?;
@@ -129,7 +129,6 @@ pub async fn version_create(
             json["game_versions"] = json!(game_versions);
             json["loaders"] = json!(loaders);
             
-            println!("Completed version creation: {:?}", json);
             Ok(HttpResponse::Ok().json(json))
     },
         Err(response) =>    Ok(response)

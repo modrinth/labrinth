@@ -1,8 +1,8 @@
 use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
-use crate::database::models::loader_fields::{Game, LoaderFieldEnum, LoaderFieldEnumValue, VersionField, LoaderField};
+use crate::database::models::{self, image_item, User};
+use crate::database::models::loader_fields::{LoaderFieldEnumValue, VersionField, LoaderField, Game};
 use crate::database::models::thread_item::ThreadBuilder;
-use crate::database::models::{self, image_item, User, DatabaseError};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
@@ -10,7 +10,7 @@ use crate::models::ids::ImageId;
 use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
+    DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, VersionId,
     VersionStatus,
 };
 use crate::models::teams::ProjectPermissions;
@@ -23,7 +23,7 @@ use crate::util::validate::validation_errors_to_string;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::StatusCode;
 use actix_web::web::{Data, self};
-use actix_web::{post, HttpRequest, HttpResponse};
+use actix_web::{HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
 use image::ImageError;
@@ -291,7 +291,6 @@ pub async fn project_create(
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
-    println!("Received project create!");
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
 
@@ -378,8 +377,9 @@ async fn project_create_inner(
 
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
 
-    let project_create_data;
+    let project_create_data: ProjectCreateData;
     let game_id;
+    let game;
     let mut versions;
     let mut versions_map = std::collections::HashMap::new();
     let mut gallery_urls = Vec::new();
@@ -407,7 +407,6 @@ async fn project_create_inner(
                 "`data` field must come before file fields",
             )));
         }
-        println!("in5");
 
         let mut data = Vec::new();
         while let Some(chunk) = field.next().await {
@@ -418,8 +417,6 @@ async fn project_create_inner(
         create_data
             .validate()
             .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
-
-        println!("CREATING PROJECT: {}", serde_json::to_string_pretty(&create_data).unwrap());
 
         let slug_project_id_option: Option<ProjectId> =
             serde_json::from_str(&format!("\"{}\"", create_data.slug)).ok();
@@ -440,7 +437,6 @@ async fn project_create_inner(
                 return Err(CreateError::SlugCollision);
             }
         }
-        println!("in6");
 
         {
             let results = sqlx::query!(
@@ -457,7 +453,6 @@ async fn project_create_inner(
                 return Err(CreateError::SlugCollision);
             }
         }
-        println!("in7");
 
         // Check game exists, and get loaders for it
         let game_name = &create_data.game_name;
@@ -465,6 +460,7 @@ async fn project_create_inner(
             &create_data.game_name,
             &mut *transaction,
         ).await?.ok_or_else(|| CreateError::InvalidInput(format!("Game '{game_name}' is currently unsupported.")))?;
+        game = Game::from_name(&create_data.game_name).ok_or_else(|| CreateError::InvalidInput(format!("Game '{game_name}' is currently unsupported.")))?;
         let all_loaders = models::loader_fields::Loader::list(&game_name, &mut *transaction, redis).await?;
 
         // Create VersionBuilders for the versions specified in `initial_versions`
@@ -495,7 +491,6 @@ async fn project_create_inner(
 
         project_create_data = create_data;
     }
-    println!("in8");
 
     let project_type_id = models::categories::ProjectType::get_id(
         project_create_data.project_type.as_str(),
@@ -510,7 +505,6 @@ async fn project_create_inner(
     })?;
 
     let mut icon_data = None;
-    println!("in9");
 
     let mut error = None;
     while let Some(item) = payload.next().await {
@@ -609,14 +603,17 @@ async fn project_create_inner(
                 &mut created_version.dependencies,
                 &cdn_url,
                 &content_disposition,
+                game,
                 project_id,
                 created_version.version_id.into(),
+                &created_version.version_fields,
                 &project_create_data.project_type,
                 version_data.loaders.clone().into_iter().map(|l|l.loader).collect(),
                 version_data.primary_file.is_some(),
                 version_data.primary_file.as_deref() == Some(name),
                 None,
                 transaction,
+                redis,
             )
             .await?;
 
@@ -632,7 +629,6 @@ async fn project_create_inner(
     if let Some(error) = error {
         return Err(error);
     }
-    println!("in10");
 
     {
         // Check to make sure that all specified files were uploaded
@@ -687,7 +683,6 @@ async fn project_create_inner(
                 ordering: 0,
             }],
         };
-        println!("in11");
 
         let team_id = team.insert(&mut *transaction).await?;
 
@@ -709,7 +704,6 @@ async fn project_create_inner(
             })?;
 
         let mut donation_urls = vec![];
-        println!("in12");
 
         if let Some(urls) = &project_create_data.donation_urls {
             for url in urls {
@@ -731,7 +725,6 @@ async fn project_create_inner(
                 })
             }
         }
-        println!("in13");
 
         let project_builder_actual = models::project_item::ProjectBuilder {
             project_id: project_id.into(),
@@ -902,19 +895,12 @@ async fn create_initial_version(
     //             .map(|y| y.id)
     //     })
     //     .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
-
-    println!("\n\n\n\n\n\n\n\n\n\n\n----\n\n\n");
-    println!("This one!!!!!");
-    println!("Loaders: {:?}", serde_json::to_string(&version_data.loaders).unwrap());
-    println!("All loaders: {:?}", serde_json::to_string(&all_loaders).unwrap());
-    println!("Supported project types: {:?}", all_loaders.iter().map(|x| x.supported_project_types.clone()).collect::<Vec<_>>());
     
     let mut loader_ids = vec![];
     let mut loaders = vec![];
     let mut version_fields = vec![];
     for loader_create in version_data.loaders.iter() {
         let loader_name = loader_create.loader.0.clone();
-        println!("ADding loader: {}", loader_name);
         // Confirm loader from list of loaders
         let loader_id = all_loaders
         .iter()
@@ -927,35 +913,17 @@ async fn create_initial_version(
         loader_ids.push(loader_id);
         loaders.push(loader_create.loader.clone());
 
-        println!("Loader_create fields: {:?}",loader_create.fields);
         for (key, value) in loader_create.fields .iter() {
-            println!("ADding loader field: {} {}", key, value);
             // TODO: more efficient, multiselect
-                let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction).await?.ok_or_else(|| {
+                let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction, &redis).await?.ok_or_else(|| {
                     CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
                 })?;
                 let enum_variants = LoaderFieldEnumValue::list_optional(&loader_field.field_type, &mut *transaction, &redis).await?;
-                let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), enum_variants).map_err(|s| CreateError::InvalidInput(s))?;
+                let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, value.clone(), enum_variants).map_err(|s| CreateError::InvalidInput(s))?;
                 version_fields.push(vf);
         }
     }
 
-    // let loaders = version_data
-    //     .loaders
-    //     .iter()
-    //     .map(|x| {
-    //         all_loaders
-    //             .iter()
-    //             .find(|y| {
-    //                 y.loader == x.0
-    //                     && y.supported_project_types
-    //                         .contains(&project_type.to_string())
-    //             })
-    //             .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
-    //             .map(|y| y.id)
-    //     })
-    //     .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
-        println!("past...");
     let dependencies = version_data
         .dependencies
         .iter()

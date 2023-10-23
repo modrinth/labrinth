@@ -228,31 +228,16 @@ pub async fn search_for_project(
                 filter_string.push_str(&filters);
             }
 
-            println!("Filter string: {}", filter_string);
-
             if !filter_string.is_empty() {
                 query.with_filter(&filter_string);
             }
         }
 
-        // query.execute::<ResultSearchProject>().await?
-        let v = query.execute::<serde_json::Value>().await?;
-        println!("Got results from MeiliSearch");
-        println!("Value: {:?}", v);
-        v
+        query.execute::<ResultSearchProject>().await?
     };
-    println!("Finished filtering");
 
     Ok(SearchResults {
-        hits: results
-            .hits
-            .into_iter()
-            .map(|r| {
-                let mut result: ResultSearchProject = serde_json::from_value(r.result).unwrap();
-                result
-            })
-            .collect(),
-        // hits: results.hits.into_iter().map(|r| r.result).collect(),
+        hits: results.hits.into_iter().map(|r| r.result).collect(),
         offset: results.offset.unwrap_or_default(),
         limit: results.limit.unwrap_or_default(),
         total_hits: results.estimated_total_hits.unwrap_or_default(),

@@ -1,15 +1,16 @@
+use std::collections::HashMap;
+
 use super::ApiError;
 use crate::auth::{
-    filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
+    filter_authorized_versions, get_user_from_headers, is_authorized,
 };
 use crate::database;
 use crate::database::models::loader_fields::{LoaderField, VersionField, LoaderFieldEnumValue};
 use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
-use crate::database::models::{image_item, Organization};
+use crate::database::models::Organization;
 use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::VersionId;
-use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType, LoaderStruct};
@@ -17,8 +18,7 @@ use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::img;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use chrono::{DateTime, Utc};
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
@@ -79,11 +79,7 @@ pub async fn version_edit(
     new_version: web::Json<serde_json::Value>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("HERE: {:?}", new_version);
-
     let new_version : EditVersion = serde_json::from_value(new_version.into_inner())?;
-        println!("HERE: {:?}", new_version);
-
     version_edit_helper(req, info.into_inner(), pool, redis, new_version, session_queue).await
 }
 pub async fn version_edit_helper(
@@ -95,9 +91,6 @@ pub async fn version_edit_helper(
     session_queue: web::Data<AuthQueue>,
     
 ) -> Result<HttpResponse, ApiError> {
-
-    println!("in version edit");
-    println!("VVV - new_version: {:?}", new_version);
     let user = get_user_from_headers(
         &req,
         &**pool,
@@ -107,7 +100,6 @@ pub async fn version_edit_helper(
     )
     .await?
     .1;
-
 
     new_version
         .validate()
@@ -119,7 +111,6 @@ pub async fn version_edit_helper(
     let result = database::models::Version::get(id, &**pool, &redis).await?;
 
     if let Some(version_item) = result {
-        println!("VVV - VERSOIN: {:?}", serde_json::to_string(&version_item));
 
         let project_item =
             database::models::Project::get_id(version_item.inner.project_id, &**pool, &redis)
@@ -306,14 +297,13 @@ pub async fn version_edit_helper(
                                 )
                             })?;
                     loader_versions.push(LoaderVersion::new(loader_id, id));
-                        println!("VVV - Loader fields: {:?}", loader.fields);
                     for (key, value) in loader.fields .iter() {
                         // TODO: more efficient, multiselect
-                            let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction).await?.ok_or_else(|| {
+                            let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction, &redis).await?.ok_or_else(|| {
                                 ApiError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
                             })?;
                             let enum_variants = LoaderFieldEnumValue::list_optional(&loader_field.field_type, &mut *transaction, &redis).await?;
-                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, &key, value.clone(), enum_variants).map_err(|s| ApiError::InvalidInput(s))?;
+                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, value.clone(), enum_variants).map_err(|s| ApiError::InvalidInput(s))?;
                             version_fields.push(vf);
                     }
                 }
@@ -518,13 +508,20 @@ pub async fn version_edit_helper(
 
 #[derive(Deserialize)]
 pub struct VersionListFilters {
-    pub game_versions: Option<String>,
     pub loaders: Option<String>,
     pub featured: Option<bool>,
     pub version_type: Option<VersionType>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    /*
+        Loader fields to filter with:
+        "game_versions": ["1.16.5", "1.17"]
+        
+        Returns if it matches any of the values
+    */
+    pub loader_fields: Option<String>,
 }
+
 
 pub async fn version_list(
     req: HttpRequest,
@@ -554,10 +551,10 @@ pub async fn version_list(
             return Ok(HttpResponse::NotFound().body(""));
         }
 
-        let version_filters = filters
-            .game_versions
+        let loader_field_filters = filters
+            .loader_fields
             .as_ref()
-            .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
+            .map(|x| serde_json::from_str::<HashMap<String, Vec<serde_json::Value>>>(x).unwrap_or_default());
         let loader_filters = filters
             .loaders
             .as_ref()
@@ -570,15 +567,21 @@ pub async fn version_list(
             .filter(|x| {
                 let mut bool = true;
 
+                // TODO: theres a lot of repeated logic here with the similar filterings in super::version_file
                 if let Some(version_type) = filters.version_type {
                     bool &= &*x.inner.version_type == version_type.as_str();
                 }
                 if let Some(loaders) = &loader_filters {
                     bool &= x.loaders.iter().any(|y| loaders.contains(y));
                 }
-                // if let Some(game_versions) = &version_filters {
-                //     bool &= x.game_versions.iter().any(|y| game_versions.contains(y));
-                // }
+
+                if let Some(loader_fields) = &loader_field_filters {
+                    for (key, value) in loader_fields {
+                        bool &= x.version_fields.iter().any(|y| {
+                            y.field_name == *key && value.contains(&y.value.serialize_internal()) 
+                        });
+                    }
+                }
 
                 bool
             })

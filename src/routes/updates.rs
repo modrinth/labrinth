@@ -6,6 +6,7 @@ use sqlx::PgPool;
 
 use crate::auth::{filter_authorized_versions, get_user_from_headers, is_authorized};
 use crate::database;
+use crate::database::models::loader_fields::GameVersion;
 use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
@@ -94,23 +95,34 @@ pub async fn forge_updates(
         promos: HashMap::new(),
     };
 
-    // for version in versions {
-    //     if version.version_type == VersionType::Release {
-    //         for game_version in &version.game_versions {
-    //             response
-    //                 .promos
-    //                 .entry(format!("{}-recommended", game_version.0))
-    //                 .or_insert_with(|| version.version_number.clone());
-    //         }
-    //     }
+    for version in versions {
+        // For forge in particular, we will hardcode it to use GameVersions rather than generic loader fields, as this is minecraft-java exclusive
+        // TODO: should this also be changed to loader_fields?
+        // Will have duplicates between game_versions (for non-forge loaders), but that's okay as 
+        // before v3 this was stored to the project and not the version
+        let game_version_values : Vec<serde_json::Value>  = version
+            .loaders
+            .iter()
+            .filter_map(|x| x.fields.get(GameVersion::LEGACY_FIELD_NAME).cloned()).collect();
+        let game_versions : Vec<String> = 
+        game_version_values.into_iter().filter_map(|v| serde_json::from_value::<Vec<String>>(v).ok()).flatten().collect();
 
-    //     for game_version in &version.game_versions {
-    //         response
-    //             .promos
-    //             .entry(format!("{}-latest", game_version.0))
-    //             .or_insert_with(|| version.version_number.clone());
-    //     }
-    // }
+        if version.version_type == VersionType::Release {
+            for game_version in &game_versions {
+                response
+                    .promos
+                    .entry(format!("{}-recommended", game_version))
+                    .or_insert_with(|| version.version_number.clone());
+            }
+        }
+
+        for game_version in &game_versions {
+            response
+                .promos
+                .entry(format!("{}-latest", game_version))
+                .or_insert_with(|| version.version_number.clone());
+        }
+    }
 
     Ok(HttpResponse::Ok().json(response))
 }

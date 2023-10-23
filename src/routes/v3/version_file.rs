@@ -1,16 +1,15 @@
 use super::ApiError;
 use crate::auth::{
-    filter_authorized_projects, filter_authorized_versions, get_user_from_headers,
+    get_user_from_headers,
     is_authorized_version,
 };
 use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
-use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::{database, models};
-use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -104,7 +103,7 @@ pub async fn get_update_from_hash(
                         if let Some(loaders) = &update_data.loaders {
                             bool &= x.loaders.iter().any(|y| loaders.contains(y));
                         }
-                        
+                            
                         if let Some(loader_fields) = &update_data.loader_fields {
                             for (key, value) in loader_fields {
                                 bool &= x.version_fields.iter().any(|y| {
@@ -136,7 +135,7 @@ pub struct ManyUpdateData {
     pub algorithm: String,
     pub hashes: Vec<String>,
     pub loaders: Option<Vec<String>>,
-    pub game_versions: Option<Vec<String>>,
+    pub loader_fields: Option<HashMap<String, Vec<serde_json::Value>>>,
     pub version_types: Option<Vec<VersionType>>,
 }
 pub async fn update_files(
@@ -199,9 +198,13 @@ pub async fn update_files(
                     if let Some(loaders) = &update_data.loaders {
                         bool &= x.loaders.iter().any(|y| loaders.contains(y));
                     }
-                    // if let Some(game_versions) = &update_data.game_versions {
-                    //     bool &= x.game_versions.iter().any(|y| game_versions.contains(y));
-                    // }
+                    if let Some(loader_fields) = &update_data.loader_fields {
+                        for (key, value) in loader_fields {
+                            bool &= x.version_fields.iter().any(|y| {
+                                y.field_name == *key && value.contains(&y.value.serialize_internal()) 
+                            });
+                        }
+                    }
 
                     bool
                 })
@@ -228,7 +231,7 @@ pub async fn update_files(
 pub struct FileUpdateData {
     pub hash: String,
     pub loaders: Option<Vec<String>>,
-    pub game_versions: Option<Vec<String>>,
+    pub loader_fields: Option<HashMap<String, Vec<serde_json::Value>>>,
     pub version_types: Option<Vec<VersionType>>,
 }
 
@@ -305,7 +308,15 @@ pub async fn update_individual_files(
                             if let Some(loaders) = &query_file.loaders {
                                 bool &= x.loaders.iter().any(|y| loaders.contains(y));
                             }
- 
+                            if let Some(loader_fields) = &query_file.loader_fields {
+                                for (key, value) in loader_fields {
+                                    bool &= x.version_fields.iter().any(|y| {
+                                        y.field_name == *key && value.contains(&y.value.serialize_internal()) 
+                                    });
+                                }
+                            }
+        
+
                             bool
                         })
                         .sorted_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published))

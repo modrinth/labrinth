@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use super::ids::{Base62Id, OrganizationId};
 use super::teams::TeamId;
 use super::users::UserId;
-use crate::database::models::loader_fields::VersionField as DBVersionField;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::models::threads::ThreadId;
@@ -501,9 +500,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let mut map = HashMap::deserialize(deserializer)?;
-    println!("Loaded hashmap {:?}", map);
     map.retain(|_, v : &mut serde_json::Value | !v.is_null());
-    println!("Loaded hashmap2 {:?}", map);
     Ok(map)
 }
 

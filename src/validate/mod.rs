@@ -1,5 +1,8 @@
+use crate::database::models::DatabaseError;
+use crate::database::models::loader_fields::{Game, GameVersion, VersionField};
+use crate::database::redis::RedisPool;
 use crate::models::pack::PackFormat;
-use crate::models::projects::{FileType, GameVersion, Loader};
+use crate::models::projects::{FileType, Loader};
 use crate::validate::datapack::DataPackValidator;
 use crate::validate::fabric::FabricValidator;
 use crate::validate::forge::{ForgeValidator, LegacyForgeValidator};
@@ -36,6 +39,8 @@ pub enum ValidationError {
     InvalidInput(std::borrow::Cow<'static, str>),
     #[error("Error while managing threads")]
     Blocking(#[from] actix_web::error::BlockingError),
+    #[error("Error while querying database")]
+    Database(#[from] DatabaseError),
 }
 
 #[derive(Eq, PartialEq)]
@@ -103,12 +108,41 @@ static VALIDATORS: &[&dyn Validator] = &[
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
 pub async fn validate_file(
+    game : Game,
+    data: bytes::Bytes,
+    file_extension: String,
+    project_type: String,
+    loaders: Vec<Loader>,
+    file_type: Option<FileType>,
+    version_fields : Vec<VersionField>,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    redis: &RedisPool,
+) -> Result<ValidationResult, ValidationError>
+ {
+    match game {
+        Game::MinecraftJava =>  {
+            let game_versions = version_fields.into_iter().find_map(|v| GameVersion::try_from_version_field(&v).ok()).unwrap_or_default();
+            let all_game_versions = GameVersion::list_transaction(&mut *transaction, &redis).await?;
+            validate_minecraft_file(
+                data,
+                file_extension,
+                project_type,
+                loaders,
+                game_versions,
+                all_game_versions,
+                file_type,
+            ).await
+        }
+    }
+}
+
+async fn validate_minecraft_file(
     data: bytes::Bytes,
     file_extension: String,
     mut project_type: String,
     mut loaders: Vec<Loader>,
-    // game_versions: Vec<GameVersion>,
-    // all_game_versions: Vec<crate::database::models::loader_fields::GameVersion>,
+    game_versions: Vec<GameVersion>, // 
+    all_game_versions: Vec<crate::database::models::loader_fields::GameVersion>,
     file_type: Option<FileType>,
 ) -> Result<ValidationResult, ValidationError> {
     actix_web::web::block(move || {
@@ -131,11 +165,11 @@ pub async fn validate_file(
                 && loaders
                     .iter()
                     .any(|x| validator.get_supported_loaders().contains(&&*x.0))
-                // && game_version_supported(
-                //     &game_versions,
-                //     &all_game_versions,
-                //     validator.get_supported_game_versions(),
-                // )
+                && game_version_supported(
+                    &game_versions,
+                    &all_game_versions,
+                    validator.get_supported_game_versions(),
+                )
             {
                 if validator.get_file_extensions().contains(&&*file_extension) {
                     return validator.validate(&mut zip);
@@ -162,6 +196,7 @@ pub async fn validate_file(
     .await?
 }
 
+// Write tests for this
 fn game_version_supported(
     game_versions: &[GameVersion],
     all_game_versions: &[crate::database::models::loader_fields::GameVersion],
@@ -172,19 +207,21 @@ fn game_version_supported(
         SupportedGameVersions::PastDate(date) => game_versions.iter().any(|x| {
             all_game_versions
                 .iter()
-                .find(|y| y.version == x.0)
+                .find(|y| y.version == x.version)
                 .map(|x| x.created > date)
                 .unwrap_or(false)
         }),
         SupportedGameVersions::Range(before, after) => game_versions.iter().any(|x| {
             all_game_versions
                 .iter()
-                .find(|y| y.version == x.0)
+                .find(|y| y.version == x.version)
                 .map(|x| x.created > before && x.created < after)
                 .unwrap_or(false)
         }),
         SupportedGameVersions::Custom(versions) => {
-            versions.iter().any(|x| game_versions.contains(x))
+            let version_ids = versions.iter().map(|gv| gv.id).collect::<Vec<_>>();
+            let game_version_ids = game_versions.iter().map(|gv| gv.id).collect::<Vec<_>>();
+            version_ids.iter().any(|x| game_version_ids.contains(x))
         }
     }
 }

@@ -4,7 +4,6 @@ use crate::auth::{
     is_authorized_version,
 };
 use crate::database::redis::RedisPool;
-use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
 use crate::models::teams::ProjectPermissions;
@@ -419,8 +418,30 @@ pub async fn update_files(
     update_data: web::Json<ManyUpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: should call v3
-    Ok(HttpResponse::Ok().json(""))
+    // TODO: write tests for this, it didnt get caught by cargo test
+    let update_data = update_data.into_inner();
+    let mut loader_fields = HashMap::new();
+    let mut game_versions = vec![];
+    for gv in update_data.game_versions.into_iter().flatten() {
+        game_versions.push(serde_json::json!(gv.clone()));
+    }
+    loader_fields.insert("game_versions".to_string(), game_versions);
+    let update_data = v3::version_file::ManyUpdateData {
+        loaders: update_data.loaders.clone(),
+        version_types: update_data.version_types.clone(),
+        loader_fields: Some(loader_fields),
+        algorithm: update_data.algorithm,
+        hashes: update_data.hashes,
+    };
+
+    let response = v3::version_file::update_files(
+        req,
+        pool,
+        redis,
+        web::Json(update_data),
+        session_queue,
+    ).await?;
+    Ok(response)
 }
 
 #[derive(Deserialize)]
@@ -446,5 +467,32 @@ pub async fn update_individual_files(
     update_data: web::Json<ManyFileUpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().json(""))
+        // TODO: write tests for this, it didnt get caught by cargo test
+    let update_data = update_data.into_inner();
+    let update_data = v3::version_file::ManyFileUpdateData {
+        algorithm: update_data.algorithm,
+        hashes: update_data.hashes.into_iter().map(|x| {
+        let mut loader_fields = HashMap::new();
+        let mut game_versions = vec![];
+        for gv in x.game_versions.into_iter().flatten() {
+            game_versions.push(serde_json::json!(gv.clone()));
+        }
+        loader_fields.insert("game_versions".to_string(), game_versions);
+        v3::version_file::FileUpdateData {
+            hash: x.hash.clone(),
+            loaders: x.loaders.clone(),
+            loader_fields: Some(loader_fields),
+            version_types: x.version_types.clone(),
+        }}).collect(),
+    };
+
+    let response = v3::version_file::update_individual_files(
+        req,
+        pool,
+        redis,
+        web::Json(update_data),
+        session_queue,
+    ).await?;
+    
+    Ok(response)
 }

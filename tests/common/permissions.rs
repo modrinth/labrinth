@@ -164,8 +164,6 @@ impl<'a> PermissionsTest<'a> {
         )
         .await;
 
-    println!("PATCHING...");
-
         // Failure test
         let request = req_gen(&PermissionsTestContext {
             project_id: Some(&project_id),
@@ -174,7 +172,6 @@ impl<'a> PermissionsTest<'a> {
         })
         .append_header(("Authorization", self.user_pat))
         .to_request();
-    println!("PATCHING2...");
 
         let resp = test_env.call(request).await;
         if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
@@ -186,7 +183,7 @@ impl<'a> PermissionsTest<'a> {
                     .join(","),
                 resp.status().as_u16()
             ));
-        }    println!("PATCHING3...");
+        }
 
 
         // Patch user's permissions to success permissions
@@ -198,7 +195,6 @@ impl<'a> PermissionsTest<'a> {
             test_env,
         )
         .await;
-    println!("PATCHING..4.");
 
         // Successful test
         let request = req_gen(&PermissionsTestContext {
@@ -208,7 +204,6 @@ impl<'a> PermissionsTest<'a> {
         })
         .append_header(("Authorization", self.user_pat))
         .to_request();
-    println!("PATCHING..5.");
 
         let resp = test_env.call(request).await;
         if !resp.status().is_success() {
@@ -217,7 +212,6 @@ impl<'a> PermissionsTest<'a> {
                 resp.status().as_u16()
             ));
         }
-        println!("PATCHING.6..");
 
         // If the remove_user flag is set, remove the user from the project
         // Relevant for existing projects/users
@@ -310,7 +304,6 @@ impl<'a> PermissionsTest<'a> {
         .to_request();
 
         let resp = test_env.call(request).await;
-        println!("RESP: {:?}", resp.response().body());
         if !resp.status().is_success() {
             return Err(format!(
                 "Success permissions test failed. Expected success, got {}",

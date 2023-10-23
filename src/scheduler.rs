@@ -145,45 +145,45 @@ async fn update_versions(pool: &sqlx::Pool<sqlx::Postgres>, redis : &RedisPool) 
         ];
     }
 
-    // for version in input.versions.into_iter() {
-    //     let mut name = version.id;
-    //     if !name
-    //         .chars()
-    //         .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-    //     {
-    //         if let Some((_, alternate)) = HALL_OF_SHAME.iter().find(|(version, _)| name == *version)
-    //         {
-    //             name = String::from(*alternate);
-    //         } else {
-    //             // We'll deal with these manually
-    //             skipped_versions_count += 1;
-    //             continue;
-    //         }
-    //     }
+    for version in input.versions.into_iter() {
+        let mut name = version.id;
+        if !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+        {
+            if let Some((_, alternate)) = HALL_OF_SHAME.iter().find(|(version, _)| name == *version)
+            {
+                name = String::from(*alternate);
+            } else {
+                // We'll deal with these manually
+                skipped_versions_count += 1;
+                continue;
+            }
+        }
 
-    //     let type_ = match &*version.type_ {
-    //         "release" => "release",
-    //         "snapshot" => "snapshot",
-    //         "old_alpha" => "alpha",
-    //         "old_beta" => "beta",
-    //         _ => "other",
-    //     };
+        let type_ = match &*version.type_ {
+            "release" => "release",
+            "snapshot" => "snapshot",
+            "old_alpha" => "alpha",
+            "old_beta" => "beta",
+            _ => "other",
+        };
 
-    //     crate::database::models::loader_fields::GameVersion::builder()
-    //         .version(&name)?
-    //         .version_type(type_)?
-    //         .created(
-    //             if let Some((_, alternate)) =
-    //                 HALL_OF_SHAME_2.iter().find(|(version, _)| name == *version)
-    //             {
-    //                 alternate
-    //             } else {
-    //                 &version.release_time
-    //             },
-    //         )
-    //         .insert(pool, redis)
-    //         .await?;
-    // }
+        crate::database::models::loader_fields::GameVersion::builder()
+            .version(&name)?
+            .version_type(type_)?
+            .created(
+                if let Some((_, alternate)) =
+                    HALL_OF_SHAME_2.iter().find(|(version, _)| name == *version)
+                {
+                    alternate
+                } else {
+                    &version.release_time
+                },
+            )
+            .insert(pool, &redis)
+            .await?;
+    }
 
     if skipped_versions_count > 0 {
         // This will currently always trigger due to 1.14 pre releases

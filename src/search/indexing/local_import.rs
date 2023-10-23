@@ -1,14 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use dashmap::DashSet;
 use futures::TryStreamExt;
 use log::info;
-use serde::Deserialize;
 
 use super::IndexingError;
 use crate::database::models::ProjectId;
-use crate::database::models::loader_fields::{VersionFieldValue, LoaderFieldType, VersionField};
+use crate::database::models::loader_fields::VersionField;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
@@ -45,9 +44,7 @@ pub async fn index_local(pool: PgPool) -> Result<(Vec<UploadSearchProject>, Vec<
                     'enum_type', lf.enum_type,
                     'min_val', lf.min_val,
                     'max_val', lf.max_val,
-                    'optional', lf.optional,
-
-                    'enum_name', lfe.enum_name
+                    'optional', lf.optional
                 )
             ) loader_fields,
             JSONB_AGG(
@@ -97,13 +94,13 @@ pub async fn index_local(pool: PgPool) -> Result<(Vec<UploadSearchProject>, Vec<
                     categories.append(&mut additional_categories);
 
                     let version_fields = VersionField::from_query_json(m.id, m.loader_fields, m.version_fields, m.loader_field_enum_values);
-                    println!("Got version fields: {:?}", version_fields);
+
                     let loader_fields : HashMap<String, Vec<String>> = version_fields.into_iter().map(|vf| {
                         let key = format!("{}_{}", vf.loader_name, vf.field_name);
                         let value = vf.value.as_search_strings();
                         (key, value)
                     }).collect();
-                    println!("Got loader fields: {:?}", loader_fields);
+
                     for v in loader_fields.keys().cloned() {
                         loader_field_keys.insert(v);
                     }

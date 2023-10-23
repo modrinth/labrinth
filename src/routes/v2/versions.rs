@@ -5,7 +5,6 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
-use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
 use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
@@ -17,8 +16,6 @@ use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType, 
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3;
-use crate::util::img;
-use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -59,9 +56,24 @@ pub async fn version_list(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // TODO: move route to v3
+    // TODO: write tests for this, it didnt get caught by cargo test
+    let loader_fields = if let Some(game_versions) = filters.game_versions {
+        // TODO: extract this logic which is similar to the other v2->v3 version_file functions
+        let mut loader_fields = HashMap::new();
+        serde_json::from_str::<Vec<String>>(&game_versions).ok().and_then(|versions| {
+            let mut game_versions: Vec<serde_json::Value> = vec![];
+            for gv in versions {
+                game_versions.push(serde_json::json!(gv.clone()));
+            }
+            loader_fields.insert("game_versions".to_string(), game_versions); 
+            serde_json::to_string(&loader_fields).ok()
+        })
+    } else {
+        None
+    };
 
     let filters = v3::versions::VersionListFilters {
-        game_versions: filters.game_versions,
+        loader_fields,
         loaders: filters.loaders,
         featured: filters.featured,
         version_type: filters.version_type,
@@ -265,10 +277,7 @@ pub async fn version_edit(
 
     let response = v3::versions::version_edit(req, info, pool, redis, web::Json(serde_json::to_value(new_version)?), session_queue).await?;
 
-    println!("Interecepting patch: {:?}", response);
-    // TODO: Convert response to V2 format
-
-    
+    // TODO: Convert response to V2 format    
     Ok(response)
 }
 

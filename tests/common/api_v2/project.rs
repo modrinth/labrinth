@@ -220,7 +220,6 @@ impl ApiV2 {
             .to_request();
         let resp = self.call(req).await;
         let status = resp.status();
-        println!("Body: {:?}", resp.response().body());
         assert_eq!(status, 200);
         test::read_body_json(resp).await
     }

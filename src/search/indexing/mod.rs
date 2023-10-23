@@ -2,7 +2,6 @@
 pub mod local_import;
 
 use crate::search::{SearchConfig, UploadSearchProject};
-use dashmap::DashSet;
 use local_import::index_local;
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::indexes::Index;
@@ -39,7 +38,6 @@ pub async fn index_projects(pool: PgPool, config: &SearchConfig) -> Result<(), I
     docs_to_add.append(&mut uploads);
     additional_fields.append(&mut loader_fields);
 
-    println!("Additional fields: {:?}", additional_fields);
     // Write Indices
     add_projects(docs_to_add,  additional_fields, config).await?;
 
@@ -51,7 +49,7 @@ async fn create_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, IndexingError> {
-    println!("Creatingg index: {}", name);
+
     client
         .delete_index(name)
         .await?
@@ -124,15 +122,12 @@ async fn create_and_add_to_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<(), IndexingError> {
-    println!("Creating and adding to index: {}, {}", name, projects.len());
     let index = create_index(client, name,  custom_rules).await?;
    
     let mut new_filterable_attributes = index.get_filterable_attributes().await?;
     new_filterable_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
     index.set_filterable_attributes(new_filterable_attributes).await?;
     
-    println!("Current filterable attributes: {:?}", index.get_filterable_attributes().await?);
-
     add_to_index(client, index, projects).await?;
     Ok(())
 }

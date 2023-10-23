@@ -65,10 +65,6 @@ pub async fn project_search(
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
     // TODO: redirect to v3
-    println!("info: {:?}", serde_json::to_string(&info));
-
-
-
     // Search now uses loader_fields instead of explicit 'client_side' and 'server_side' fields
     // Loader fields are:
     // (loader)_(field):(value) 
@@ -87,7 +83,6 @@ pub async fn project_search(
             let filterable_fields = meilisearch_index.get_filterable_attributes().await?;
             // Only keep v2 loaders that are filterable
             v2_loaders = v2_loaders.into_iter().filter(|x| filterable_fields.iter().any(|f| f.starts_with(&format!("{}_game_versions", x)))).collect();
-            println!("Post-analysis v2_loaders: {:?}", v2_loaders);
 
         }
         Some(facets.into_iter().map(|facet| {
@@ -98,9 +93,8 @@ pub async fn project_search(
                         Some(version) => version,
                         None => return vec![facet.to_string()],
                     };
-                    println!("Analyzing facet: {:?}", facet);
 
-                    let f = if facet.starts_with("versions:") {
+                    if facet.starts_with("versions:") {
                         v2_loaders
                             .iter()
                             .map(|loader| format!("{}_game_versions:{}", loader, version))
@@ -117,9 +111,7 @@ pub async fn project_search(
                             .collect::<Vec<_>>()
                     } else {
                         vec![facet.to_string()]
-                    };
-                    println!("Post-analysis facet: {:?}", f);
-                    f
+                    }
                 })
                 .flatten()
                 .collect::<Vec<_>>()
@@ -127,8 +119,6 @@ pub async fn project_search(
     } else {
         None
     };
-
-    println!("Post-analysis facets: {:?}", facets);
     
     let info = SearchRequest {
         facets : facets.and_then(|x| serde_json::to_string(&x).ok()),
@@ -444,14 +434,10 @@ pub async fn project_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // TODO: Should call v3 route
-    println!("\n-\n-\n-\n-\n-\n-\n-\n-\n-\n-Starting New Project Edit Call");
-    println!("New Project: {:?}", serde_json::to_string(&new_project)?);
     let v2_new_project = new_project.into_inner();
     let client_side = v2_new_project.client_side.clone();
     let server_side = v2_new_project.server_side.clone();
     let new_slug = v2_new_project.slug.clone();
-    println!("Client Side: {:?}", client_side);
-    println!("Server Side: {:?}", server_side);
     let new_project = v3::projects::EditProject {
         title: v2_new_project.title,
         description: v2_new_project.description,
@@ -484,15 +470,10 @@ pub async fn project_edit(
     // If client and server side were set, we will call
     // the version setting route for each version to set the side types for each of them.
     if response.status().is_success() {
-        println!("\nWas successful!");
-        println!("Project ID: {:?}", project_id);
         if client_side.is_some() || server_side.is_some() {
             let project_item = project_item::Project::get(&new_slug.unwrap_or(project_id), &**pool, &redis).await?;
-        println!("a successful: {:?}", serde_json::to_string(&project_item)?);
         let version_ids = project_item.map(|x| x.versions).unwrap_or_default();
-        println!("as successful: {:?}", version_ids);
         let versions = version_item::Version::get_many(&version_ids, &**pool, &redis).await?;
-        println!("Versions: {:?}", serde_json::to_string(&versions)?);
             for version in versions {
                 let loaders : Result<Vec<_>, _> = version.loaders.into_iter().map(|l| serde_json::from_value(json!({
                 
@@ -501,10 +482,6 @@ pub async fn project_edit(
                     "server_side": server_side,    
                 }))).collect();
 
-            println!("SUBMITTING JSON\n\n\n\n\n: {:?}", json!({
-                "client_side": client_side,
-                "server_side": server_side,    
-            }));
             response = v3::versions::version_edit_helper(req.clone(), (version.inner.id.into(),), pool.clone(), redis.clone(), v3::versions::EditVersion {
                 loaders: Some(loaders?),
                 ..Default::default()

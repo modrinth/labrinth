@@ -28,8 +28,6 @@ pub async fn project_create(
     // Convert V2 multipart payload to V3 multipart payload
     let mut saved_slug = None;
     let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
-        // Convert input data to V3 format
-        println!("ABOUT TO ALTER ACTIX MULTIPART {}", json.to_string());
         // Save slug for out of closure
         saved_slug = Some(json["slug"].as_str().unwrap_or("").to_string());
 
@@ -68,10 +66,8 @@ pub async fn project_create(
                 version["loaders"] = json!(loaders);
             }
         }
-        println!("JUST ALTER ACTIX MULTIPART {}", json.to_string());
-        println!("Done;");
 
-    }).await;
+    }).await?;
 
     // Call V3 project creation
     let response= v3::project_creation::project_create(req, payload, client.clone(), redis.clone(), file_host, session_queue).await?;

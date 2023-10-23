@@ -429,13 +429,6 @@ pub async fn test_patch_project() {
     let resp = api.get_project("newslug", USER_USER_PAT).await;
     let project: serde_json::Value = test::read_body_json(resp).await;
     
-    // TODO DELETE ME
-    // Get and check versions real quick
-    let version = api.get_version_deserialized(project["versions"][0].as_str().unwrap(), USER_USER_PAT).await;
-        // print json
-    println!("Serialiezd version: {}", serde_json::to_string_pretty(&version).unwrap());
-
-    println!("Serialiezd project: {}", serde_json::to_string_pretty(&project).unwrap());
     assert_eq!(project["slug"], json!(Some("newslug".to_string())));
     assert_eq!(project["title"], "New successful title");
     assert_eq!(project["description"], "New successful description");
@@ -541,7 +534,6 @@ async fn permissions_patch_project() {
                             },
                         }))
                 };
-                println!("Testing {}", key);
                 PermissionsTest::new(&test_env)
                     .simple_project_permissions_test(edit_details, req_gen)
                     .await.into_iter();
@@ -551,7 +543,7 @@ async fn permissions_patch_project() {
         .collect::<Vec<_>>()
         .await;
 
-    println!("HERE!");
+
     // Test with status and requested_status
     // This requires a project with a version, so we use alpha_project_id
     let req_gen = |ctx: &PermissionsTestContext| {
@@ -568,7 +560,6 @@ async fn permissions_patch_project() {
         .simple_project_permissions_test(edit_details, req_gen)
         .await
         .unwrap();
-    println!("HERE!2");
 
     // Bulk patch projects
     let req_gen = |ctx: &PermissionsTestContext| {

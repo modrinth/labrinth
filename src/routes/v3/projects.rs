@@ -1,18 +1,15 @@
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
-use crate::database::{self};
-use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
-use crate::database::models::project_item::{GalleryItem, ModCategory};
+use crate::database::models::project_item::ModCategory;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::database::redis::RedisPool;
-use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::images::ImageContext;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType, LoaderStruct,
+    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::MessageBody;
@@ -20,16 +17,12 @@ use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::img;
-use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use chrono::{DateTime, Utc};
+use actix_web::{get, web, HttpRequest, HttpResponse};
 use futures::TryStreamExt;
 use meilisearch_sdk::indexes::IndexesResults;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::PgPool;
-use std::sync::Arc;
 use validator::Validate;
 use crate::database::models as db_models;
 use crate::database::models::ids as db_ids;
@@ -215,7 +208,6 @@ pub async fn project_edit(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("project_edit");
     let user = get_user_from_headers(
         &req,
         &**pool,
@@ -225,7 +217,6 @@ pub async fn project_edit(
     )
     .await?
     .1;
-println!("user: {:?}", user);
 
     new_project
         .validate()
@@ -233,11 +224,10 @@ println!("user: {:?}", user);
 
     let string = info.into_inner().0;
     let result = db_models::Project::get(&string, &**pool, &redis).await?;
-    println!("result: {:?}", result);
+
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 
-        println!("id: {:?}", id);
         let (team_member, organization_team_member) =
             db_models::TeamMember::get_for_project_permissions(
                 &project_item.inner,
@@ -245,13 +235,12 @@ println!("user: {:?}", user);
                 &**pool,
             )
             .await?;
-            println!("team_member: {:?}", team_member);
+
         let permissions = ProjectPermissions::get_permissions_by_role(
             &user.role,
             &team_member,
             &organization_team_member,
         );
-        println!("permissions: {:?}", permissions);
 
         if let Some(perms) = permissions {
             let mut transaction = pool.begin().await?;
@@ -299,15 +288,12 @@ println!("user: {:?}", user);
             }
 
             if let Some(status) = &new_project.status {
-                println!("Status: {:?}", status);
                 if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the status of this project!"
                             .to_string(),
                     ));
                 }
-
-                println!("Got thru");
 
                 if !(user.role.is_mod()
                     || !project_item.inner.status.is_approved()
@@ -319,9 +305,7 @@ println!("user: {:?}", user);
                     ));
                 }
 
-                println!("Got thru 2");
                 if status == &ProjectStatus::Processing {
-                    println!("Got thru 3");
                     if project_item.versions.is_empty() {
                         return Err(ApiError::InvalidInput(String::from(
                             "Project submitted for review with no initial versions",
@@ -338,7 +322,7 @@ println!("user: {:?}", user);
                     )
                     .execute(&mut *transaction)
                     .await?;
-                    println!("Got thru 4");
+
                     sqlx::query!(
                         "
                         UPDATE threads
@@ -350,9 +334,8 @@ println!("user: {:?}", user);
                     .execute(&mut *transaction)
                     .await?;
                 }
-                println!("Got thru 5");
+
                 if status.is_approved() && !project_item.inner.status.is_approved() {
-                    println!("Got thru 6");
                     sqlx::query!(
                         "
                         UPDATE mods
@@ -364,11 +347,8 @@ println!("user: {:?}", user);
                     .execute(&mut *transaction)
                     .await?;
                 }
-                println!("Got thru 7");
                 if status.is_searchable() && !project_item.inner.webhook_sent {
-                    println!("Got thru 8");
                     if let Ok(webhook_url) = dotenvy::var("PUBLIC_DISCORD_WEBHOOK") {
-                        println!("Got thru 9");
                         crate::util::webhook::send_discord_webhook(
                             project_item.inner.id.into(),
                             &pool,
@@ -391,13 +371,9 @@ println!("user: {:?}", user);
                         .await?;
                     }
                 }
-                println!("Got thru 10");
 
                 if user.role.is_mod() {
-                    println!("Got thru 11");
-
                     if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK") {
-                        println!("Got thru 12");
                         crate::util::webhook::send_discord_webhook(
                             project_item.inner.id.into(),
                             &pool,
@@ -419,7 +395,6 @@ println!("user: {:?}", user);
                         .ok();
                     }
                 }
-                println!("Got thru 13");
 
                 if team_member.map(|x| !x.accepted).unwrap_or(true) {
                     let notified_members = sqlx::query!(
@@ -445,7 +420,6 @@ println!("user: {:?}", user);
                     .insert_many(notified_members, &mut transaction, &redis)
                     .await?;
                 }
-                println!("Got thru 14");
 
                 ThreadMessageBuilder {
                     author_id: Some(user.id.into()),
@@ -457,7 +431,6 @@ println!("user: {:?}", user);
                 }
                 .insert(&mut transaction)
                 .await?;
-            println!("Got thru 15");
 
                 sqlx::query!(
                     "
