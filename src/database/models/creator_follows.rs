@@ -31,8 +31,8 @@ impl UserFollow {
         Ok(())
     }
 
-    pub async fn get_follows_targeting(
-        user_id: UserId,
+    pub async fn get_followers(
+        target_id: UserId,
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Vec<UserFollow>, DatabaseError> {
         let res = sqlx::query!(
@@ -40,7 +40,7 @@ impl UserFollow {
             SELECT follower_id, target_id FROM user_follows
             WHERE target_id=$1
             ",
-            user_id.0
+            target_id.0
         )
         .fetch_all(exec)
         .await?;

@@ -49,7 +49,7 @@ pub async fn user_follow(
     .map_err(|e| match e {
         DatabaseError::Database(e)
             if e.as_database_error()
-                .is_some_and(|e| /*e.is_unique_violation()*/todo!()) =>
+                .is_some_and(|e| e.is_unique_violation()) =>
         {
             ApiError::InvalidInput("You are already following this user!".to_string())
         }
