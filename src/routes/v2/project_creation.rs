@@ -2,14 +2,14 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 
 use crate::queue::session::AuthQueue;
-use crate::routes::{v3, v2_reroute};
 use crate::routes::v3::project_creation::CreateError;
+use crate::routes::{v2_reroute, v3};
 use actix_multipart::Multipart;
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
+use serde_json::json;
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
-use serde_json::json;
 
 pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
     cfg.service(project_create);
@@ -24,7 +24,6 @@ pub async fn project_create(
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
-
     // Convert V2 multipart payload to V3 multipart payload
     let mut saved_slug = None;
     let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
@@ -41,8 +40,14 @@ pub async fn project_create(
         // loaders: [{"loader": "fabric", "game_versions": ["1.16.5", "1.17"]}]
 
         // Side types will be applied to each version
-        let client_side = json["client_side"].as_str().unwrap_or("required").to_string();
-        let server_side = json["server_side"].as_str().unwrap_or("required").to_string();
+        let client_side = json["client_side"]
+            .as_str()
+            .unwrap_or("required")
+            .to_string();
+        let server_side = json["server_side"]
+            .as_str()
+            .unwrap_or("required")
+            .to_string();
         json["client_side"] = json!(null);
         json["server_side"] = json!(null);
 
@@ -66,21 +71,26 @@ pub async fn project_create(
                 version["loaders"] = json!(loaders);
             }
         }
-
-    }).await?;
+    })
+    .await?;
 
     // Call V3 project creation
-    let response= v3::project_creation::project_create(req, payload, client.clone(), redis.clone(), file_host, session_queue).await?;
+    let response = v3::project_creation::project_create(
+        req,
+        payload,
+        client.clone(),
+        redis.clone(),
+        file_host,
+        session_queue,
+    )
+    .await?;
 
-    // Convert response to V2 forma
+    // Convert response to V2 format
     match v2_reroute::extract_ok_json(response).await {
         Ok(mut json) => {
-        v2_reroute::set_side_types_from_versions(&mut json, &**client, &redis).await?;
-        Ok(HttpResponse::Ok().json(json))
-    },
-        Err(response) =>    Ok(response)
+            v2_reroute::set_side_types_from_versions(&mut json, &**client, &redis).await?;
+            Ok(HttpResponse::Ok().json(json))
+        }
+        Err(response) => Ok(response),
     }
-
-    // TODO: Convert response to V2 format
 }
-

@@ -1,6 +1,6 @@
 use super::ids::*;
-use super::DatabaseError;
 use super::loader_fields::VersionField;
+use super::DatabaseError;
 use crate::database::redis::RedisPool;
 use crate::models::projects::{FileType, VersionStatus};
 use chrono::{DateTime, Utc};
@@ -240,7 +240,7 @@ impl VersionBuilder {
         VersionFileBuilder::insert_many(files, self.version_id, transaction).await?;
 
         DependencyBuilder::insert_many(dependencies, self.version_id, transaction).await?;
-        
+
         let loader_versions = loaders
             .iter()
             .map(|l| LoaderVersion::new(*l, version_id))

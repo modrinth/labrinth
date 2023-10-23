@@ -185,7 +185,6 @@ impl<'a> PermissionsTest<'a> {
             ));
         }
 
-
         // Patch user's permissions to success permissions
         modify_user_team_permissions(
             self.user_id,
@@ -674,8 +673,7 @@ impl<'a> PermissionsTest<'a> {
             Ok(())
         };
 
-        tokio::try_join!(test_1, test_2, test_3, test_4, test_5, test_6, test_7,)
-            .map_err(|e| e.to_string())?;
+        tokio::try_join!(test_1, test_2, test_3, test_4, test_5, test_6, test_7,).map_err(|e| e)?;
 
         Ok(())
     }
@@ -838,7 +836,7 @@ impl<'a> PermissionsTest<'a> {
             Ok(())
         };
 
-        tokio::try_join!(test_1, test_2, test_3,).map_err(|e| e.to_string())?;
+        tokio::try_join!(test_1, test_2, test_3,).map_err(|e| e)?;
 
         Ok(())
     }

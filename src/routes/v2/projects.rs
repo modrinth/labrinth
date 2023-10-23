@@ -1,22 +1,23 @@
 use crate::auth::{get_user_from_headers, is_authorized};
-use crate::{database, search};
-use crate::database::models::{image_item, version_item, project_item};
 use crate::database::models::project_item::{GalleryItem, ModCategory};
+use crate::database::models::{image_item, project_item, version_item};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType, Loader,
+    DonationLink, Loader, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest,
+    SideType,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
-use crate::routes::{ApiError, v2_reroute, v3};
 use crate::routes::v3::projects::{delete_from_index, ProjectIds};
+use crate::routes::{v2_reroute, v3, ApiError};
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
+use crate::{database, search};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
@@ -64,13 +65,12 @@ pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
-    // TODO: redirect to v3
     // Search now uses loader_fields instead of explicit 'client_side' and 'server_side' fields
     // Loader fields are:
-    // (loader)_(field):(value) 
+    // (loader)_(field):(value)
     // The first _ by convention is used to separate the loader from the field
     // For each v2 loader, we create a loader field facet for each of these fields that are now loader fields
-    let facets : Option<Vec<Vec<String>>> = if let Some(facets) = info.facets {
+    let facets: Option<Vec<Vec<String>>> = if let Some(facets) = info.facets {
         let facets = serde_json::from_str::<Vec<Vec<&str>>>(&facets)?;
 
         // "versions:x" => "fabric_game_versions:x", "forge_game_versions:x" ...
@@ -82,49 +82,56 @@ pub async fn project_search(
             let meilisearch_index = client.get_index(search::get_sort_index(index)?.0).await?;
             let filterable_fields = meilisearch_index.get_filterable_attributes().await?;
             // Only keep v2 loaders that are filterable
-            v2_loaders = v2_loaders.into_iter().filter(|x| filterable_fields.iter().any(|f| f.starts_with(&format!("{}_game_versions", x)))).collect();
-
+            v2_loaders.retain(|x| {
+                filterable_fields
+                    .iter()
+                    .any(|f| f.starts_with(&format!("{}_game_versions", x)))
+            });
         }
-        Some(facets.into_iter().map(|facet| {
-            facet
+        Some(
+            facets
                 .into_iter()
                 .map(|facet| {
-                    let version = match facet.split(":").nth(1) {
-                        Some(version) => version,
-                        None => return vec![facet.to_string()],
-                    };
+                    facet
+                        .into_iter()
+                        .flat_map(|facet| {
+                            let version = match facet.split(':').nth(1) {
+                                Some(version) => version,
+                                None => return vec![facet.to_string()],
+                            };
 
-                    if facet.starts_with("versions:") {
-                        v2_loaders
-                            .iter()
-                            .map(|loader| format!("{}_game_versions:{}", loader, version))
-                            .collect::<Vec<_>>()
-                    } else if facet.starts_with("client_side:") {
-                        v2_loaders
-                            .iter()
-                            .map(|loader| format!("{}_client_side:{}", loader, version))
-                            .collect::<Vec<_>>()
-                    } else if facet.starts_with("server_side:") {
-                        v2_loaders
-                            .iter()
-                            .map(|loader| format!("{}_server_side:{}", loader, version))
-                            .collect::<Vec<_>>()
-                    } else {
-                        vec![facet.to_string()]
-                    }
+                            if facet.starts_with("versions:") {
+                                v2_loaders
+                                    .iter()
+                                    .map(|loader| format!("{}_game_versions:{}", loader, version))
+                                    .collect::<Vec<_>>()
+                            } else if facet.starts_with("client_side:") {
+                                v2_loaders
+                                    .iter()
+                                    .map(|loader| format!("{}_client_side:{}", loader, version))
+                                    .collect::<Vec<_>>()
+                            } else if facet.starts_with("server_side:") {
+                                v2_loaders
+                                    .iter()
+                                    .map(|loader| format!("{}_server_side:{}", loader, version))
+                                    .collect::<Vec<_>>()
+                            } else {
+                                vec![facet.to_string()]
+                            }
+                        })
+                        .collect::<Vec<_>>()
                 })
-                .flatten()
-                .collect::<Vec<_>>()
-        }).collect())
+                .collect(),
+        )
     } else {
         None
     };
-    
+
     let info = SearchRequest {
-        facets : facets.and_then(|x| serde_json::to_string(&x).ok()),
+        facets: facets.and_then(|x| serde_json::to_string(&x).ok()),
         ..info
     };
-    
+
     let results = search_for_project(&info, &config).await?;
     Ok(HttpResponse::Ok().json(results))
 }
@@ -180,7 +187,14 @@ pub async fn projects_get(
     // Convert V2 data to V3 data
 
     // Call V3 project creation
-    let response= v3::projects::projects_get(req, web::Query(ids), pool.clone(), redis.clone(), session_queue).await?;
+    let response = v3::projects::projects_get(
+        req,
+        web::Query(ids),
+        pool.clone(),
+        redis.clone(),
+        session_queue,
+    )
+    .await?;
 
     // Convert response to V2 forma
     match v2_reroute::extract_ok_json(response).await {
@@ -191,9 +205,9 @@ pub async fn projects_get(
                     v2_reroute::set_side_types_from_versions(project, &**pool, &redis).await?;
                 }
             }
-        Ok(HttpResponse::Ok().json(json))
-    },
-        Err(response) =>    Ok(response)
+            Ok(HttpResponse::Ok().json(json))
+        }
+        Err(response) => Ok(response),
     }
 }
 
@@ -208,16 +222,17 @@ pub async fn project_get(
     // Convert V2 data to V3 data
 
     // Call V3 project creation
-    let response= v3::projects::project_get(req, info, pool.clone(), redis.clone(), session_queue).await?;
+    let response =
+        v3::projects::project_get(req, info, pool.clone(), redis.clone(), session_queue).await?;
 
     // Convert response to V2 forma
     match v2_reroute::extract_ok_json(response).await {
         Ok(mut json) => {
             v2_reroute::set_side_types_from_versions(&mut json, &**pool, &redis).await?;
-        
-        Ok(HttpResponse::Ok().json(json))
-    },
-        Err(response) =>    Ok(response)
+
+            Ok(HttpResponse::Ok().json(json))
+        }
+        Err(response) => Ok(response),
     }
 }
 
@@ -433,7 +448,6 @@ pub async fn project_edit(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: Should call v3 route
     let v2_new_project = new_project.into_inner();
     let client_side = v2_new_project.client_side.clone();
     let server_side = v2_new_project.server_side.clone();
@@ -451,8 +465,6 @@ pub async fn project_edit(
         discord_url: v2_new_project.discord_url,
         donation_urls: v2_new_project.donation_urls,
         license_id: v2_new_project.license_id,
-        // client_side: new_project.client_side,
-        // server_side: new_project.server_side,
         slug: v2_new_project.slug,
         status: v2_new_project.status,
         requested_status: v2_new_project.requested_status,
@@ -460,44 +472,56 @@ pub async fn project_edit(
         moderation_message_body: v2_new_project.moderation_message_body,
         monetization_status: v2_new_project.monetization_status,
     };
-    // TODO: client_side and server_side
 
-        
     // This returns 204 or failure so we don't need to do anything with it
     let project_id = info.clone().0;
-    let mut response = v3::projects::project_edit(req.clone(), info, pool.clone(), config, web::Json(new_project), redis.clone(), session_queue.clone()).await?;
-    
+    let mut response = v3::projects::project_edit(
+        req.clone(),
+        info,
+        pool.clone(),
+        config,
+        web::Json(new_project),
+        redis.clone(),
+        session_queue.clone(),
+    )
+    .await?;
+
     // If client and server side were set, we will call
     // the version setting route for each version to set the side types for each of them.
-    if response.status().is_success() {
-        if client_side.is_some() || server_side.is_some() {
-            let project_item = project_item::Project::get(&new_slug.unwrap_or(project_id), &**pool, &redis).await?;
+    if response.status().is_success() && (client_side.is_some() || server_side.is_some()) {
+        let project_item =
+            project_item::Project::get(&new_slug.unwrap_or(project_id), &**pool, &redis).await?;
         let version_ids = project_item.map(|x| x.versions).unwrap_or_default();
         let versions = version_item::Version::get_many(&version_ids, &**pool, &redis).await?;
-            for version in versions {
-                let loaders : Result<Vec<_>, _> = version.loaders.into_iter().map(|l| serde_json::from_value(json!({
-                
-                    "loader": Loader(l),
-                    "client_side": client_side,
-                    "server_side": server_side,    
-                }))).collect();
+        for version in versions {
+            let loaders: Result<Vec<_>, _> = version
+                .loaders
+                .into_iter()
+                .map(|l| {
+                    serde_json::from_value(json!({
+                        "loader": Loader(l),
+                        "client_side": client_side,
+                        "server_side": server_side,
+                    }))
+                })
+                .collect();
 
-            response = v3::versions::version_edit_helper(req.clone(), (version.inner.id.into(),), pool.clone(), redis.clone(), v3::versions::EditVersion {
-                loaders: Some(loaders?),
-                ..Default::default()
-            }, session_queue.clone()).await?;    
-            }
+            response = v3::versions::version_edit_helper(
+                req.clone(),
+                (version.inner.id.into(),),
+                pool.clone(),
+                redis.clone(),
+                v3::versions::EditVersion {
+                    loaders: Some(loaders?),
+                    ..Default::default()
+                },
+                session_queue.clone(),
+            )
+            .await?;
         }
-
-
-    } 
-
+    }
     Ok(response)
-
-    // TODO: Convert response to V2 format
-
 }
-
 
 #[derive(derive_new::new)]
 pub struct CategoryChanges<'a> {
@@ -1884,4 +1908,3 @@ pub async fn project_unfollow(
         ))
     }
 }
-

@@ -9,7 +9,7 @@ use crate::models::projects::VersionType;
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3;
-use crate::routes::v3::version_file::{HashQuery, default_algorithm};
+use crate::routes::v3::version_file::{default_algorithm, HashQuery};
 use crate::{database, models};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -257,7 +257,7 @@ pub struct UpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 
-// TODO: this being left as empty was not caught by tests, so write tests for this
+// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 #[post("{version_id}/update")]
 pub async fn get_update_from_hash(
     req: HttpRequest,
@@ -289,8 +289,9 @@ pub async fn get_update_from_hash(
         hash_query,
         web::Json(update_data),
         session_queue,
-    ).await?;
-    
+    )
+    .await?;
+
     Ok(response)
 }
 
@@ -410,6 +411,7 @@ pub struct ManyUpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 
+// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 #[post("update")]
 pub async fn update_files(
     req: HttpRequest,
@@ -418,7 +420,6 @@ pub async fn update_files(
     update_data: web::Json<ManyUpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: write tests for this, it didnt get caught by cargo test
     let update_data = update_data.into_inner();
     let mut loader_fields = HashMap::new();
     let mut game_versions = vec![];
@@ -434,13 +435,9 @@ pub async fn update_files(
         hashes: update_data.hashes,
     };
 
-    let response = v3::version_file::update_files(
-        req,
-        pool,
-        redis,
-        web::Json(update_data),
-        session_queue,
-    ).await?;
+    let response =
+        v3::version_file::update_files(req, pool, redis, web::Json(update_data), session_queue)
+            .await?;
     Ok(response)
 }
 
@@ -459,6 +456,7 @@ pub struct ManyFileUpdateData {
     pub hashes: Vec<FileUpdateData>,
 }
 
+// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 #[post("update_individual")]
 pub async fn update_individual_files(
     req: HttpRequest,
@@ -467,23 +465,27 @@ pub async fn update_individual_files(
     update_data: web::Json<ManyFileUpdateData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-        // TODO: write tests for this, it didnt get caught by cargo test
     let update_data = update_data.into_inner();
     let update_data = v3::version_file::ManyFileUpdateData {
         algorithm: update_data.algorithm,
-        hashes: update_data.hashes.into_iter().map(|x| {
-        let mut loader_fields = HashMap::new();
-        let mut game_versions = vec![];
-        for gv in x.game_versions.into_iter().flatten() {
-            game_versions.push(serde_json::json!(gv.clone()));
-        }
-        loader_fields.insert("game_versions".to_string(), game_versions);
-        v3::version_file::FileUpdateData {
-            hash: x.hash.clone(),
-            loaders: x.loaders.clone(),
-            loader_fields: Some(loader_fields),
-            version_types: x.version_types.clone(),
-        }}).collect(),
+        hashes: update_data
+            .hashes
+            .into_iter()
+            .map(|x| {
+                let mut loader_fields = HashMap::new();
+                let mut game_versions = vec![];
+                for gv in x.game_versions.into_iter().flatten() {
+                    game_versions.push(serde_json::json!(gv.clone()));
+                }
+                loader_fields.insert("game_versions".to_string(), game_versions);
+                v3::version_file::FileUpdateData {
+                    hash: x.hash.clone(),
+                    loaders: x.loaders.clone(),
+                    loader_fields: Some(loader_fields),
+                    version_types: x.version_types,
+                }
+            })
+            .collect(),
     };
 
     let response = v3::version_file::update_individual_files(
@@ -492,7 +494,8 @@ pub async fn update_individual_files(
         redis,
         web::Json(update_data),
         session_queue,
-    ).await?;
-    
+    )
+    .await?;
+
     Ok(response)
 }

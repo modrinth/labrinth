@@ -1,8 +1,8 @@
 use actix_web::test::{self, TestRequest};
 use bytes::Bytes;
 use chrono::{Duration, Utc};
-use labrinth::util::actix::{MultipartSegmentData,MultipartSegment, AppendsMultipart};
 use labrinth::models::pats::Scopes;
+use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 use serde_json::json;
 
 use crate::common::{database::*, environment::TestEnvironment, scopes::ScopeTest};
@@ -235,9 +235,7 @@ pub async fn project_version_create_scopes() {
         name: "basic-mod.jar".to_string(),
         filename: Some("basic-mod.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
-        data: MultipartSegmentData::Binary(
-            include_bytes!("../tests/files/basic-mod.jar").to_vec(),
-        ),
+        data: MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod.jar").to_vec()),
     };
 
     let req_gen = || {

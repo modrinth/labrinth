@@ -1,4 +1,6 @@
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
+use crate::database::models as db_models;
+use crate::database::models::ids as db_ids;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::ModCategory;
 use crate::database::models::thread_item::ThreadMessageBuilder;
@@ -24,20 +26,17 @@ use meilisearch_sdk::indexes::IndexesResults;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
-use crate::database::models as db_models;
-use crate::database::models::ids as db_ids;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-
     cfg.service(
         web::scope("project")
-        .route("{id}", web::get().to(project_get))
-        .route("projects", web::get().to(projects_get))
-        .route("{id}", web::patch().to(project_edit))
-        .service(
-            web::scope("{project_id}")
-            .route("versions", web::get().to(super::versions::version_list))
-        )
+            .route("{id}", web::get().to(project_get))
+            .route("projects", web::get().to(projects_get))
+            .route("{id}", web::patch().to(project_edit))
+            .service(
+                web::scope("{project_id}")
+                    .route("versions", web::get().to(super::versions::version_list)),
+            ),
     );
 }
 
@@ -100,7 +99,6 @@ pub async fn project_get(
     }
     Ok(HttpResponse::NotFound().body(""))
 }
-
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct EditProject {
@@ -478,7 +476,6 @@ pub async fn project_edit(
                 .execute(&mut *transaction)
                 .await?;
             }
-            
 
             if perms.contains(ProjectPermissions::EDIT_DETAILS) {
                 if new_project.categories.is_some() {
@@ -935,7 +932,6 @@ pub async fn project_search(
     Ok(HttpResponse::Ok().json(results))
 }
 
-
 pub async fn delete_from_index(
     id: ProjectId,
     config: web::Data<SearchConfig>,
@@ -950,4 +946,3 @@ pub async fn delete_from_index(
 
     Ok(())
 }
-

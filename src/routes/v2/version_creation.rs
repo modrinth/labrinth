@@ -2,19 +2,18 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::ImageId;
 use crate::models::projects::{
-    Dependency, FileType, GameVersion, Loader, ProjectId,
-    VersionId, VersionStatus, VersionType,
+    Dependency, FileType, Loader, ProjectId, VersionId, VersionStatus, VersionType,
 };
 use crate::queue::session::AuthQueue;
-use crate::routes::{v2_reroute, v3};
 use crate::routes::v3::project_creation::CreateError;
+use crate::routes::{v2_reroute, v3};
 use actix_multipart::Multipart;
 use actix_web::web::Data;
 use actix_web::{post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
-use serde_json::json;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -48,7 +47,7 @@ pub struct InitialVersionData {
     )]
     pub dependencies: Vec<Dependency>,
     #[validate(length(min = 1))]
-    pub game_versions: Vec<GameVersion>,
+    pub game_versions: Vec<String>,
     #[serde(alias = "version_type")]
     pub release_channel: VersionType,
     #[validate(length(min = 1))]
@@ -81,7 +80,6 @@ pub async fn version_create(
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
-    // TODO: should call this from the v3
     let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
         // Convert input data to V3 format
 
@@ -99,12 +97,19 @@ pub async fn version_create(
             }));
         }
         json["loaders"] = json!(loaders);
-
-    
-    }).await?;
+    })
+    .await?;
 
     // Call V3 project creation
-    let response= v3::version_creation::version_create(req, payload, client.clone(), redis.clone(), file_host, session_queue).await?;
+    let response = v3::version_creation::version_create(
+        req,
+        payload,
+        client.clone(),
+        redis.clone(),
+        file_host,
+        session_queue,
+    )
+    .await?;
 
     // Convert response to V2 forma
     match v2_reroute::extract_ok_json(response).await {
@@ -128,10 +133,10 @@ pub async fn version_create(
             }
             json["game_versions"] = json!(game_versions);
             json["loaders"] = json!(loaders);
-            
+
             Ok(HttpResponse::Ok().json(json))
-    },
-        Err(response) =>    Ok(response)
+        }
+        Err(response) => Ok(response),
     }
 }
 
@@ -147,6 +152,15 @@ pub async fn upload_file_to_version(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     // TODO: do we need to modify this?
-    let response= v3::version_creation::upload_file_to_version(req, url_data, payload, client.clone(), redis.clone(), file_host, session_queue).await?;
+    let response = v3::version_creation::upload_file_to_version(
+        req,
+        url_data,
+        payload,
+        client.clone(),
+        redis.clone(),
+        file_host,
+        session_queue,
+    )
+    .await?;
     Ok(response)
 }

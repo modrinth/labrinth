@@ -38,6 +38,6 @@ pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
         redis_pool.clone(),
         &mut clickhouse,
         file_host.clone(),
-        maxmind_reader.clone(),
+        maxmind_reader,
     )
 }

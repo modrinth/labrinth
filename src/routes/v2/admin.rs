@@ -30,7 +30,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("admin")
             .service(count_download)
             .service(trolley_webhook)
-            .service(force_reindex)
+            .service(force_reindex),
     );
 }
 
@@ -328,6 +328,6 @@ pub async fn force_reindex(
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
     use crate::search::indexing::index_projects;
-    index_projects(pool.as_ref().clone(), &config).await?;    
+    index_projects(pool.as_ref().clone(), &config).await?;
     Ok(HttpResponse::NoContent().finish())
 }

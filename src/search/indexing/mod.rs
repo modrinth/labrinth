@@ -39,7 +39,7 @@ pub async fn index_projects(pool: PgPool, config: &SearchConfig) -> Result<(), I
     additional_fields.append(&mut loader_fields);
 
     // Write Indices
-    add_projects(docs_to_add,  additional_fields, config).await?;
+    add_projects(docs_to_add, additional_fields, config).await?;
 
     Ok(())
 }
@@ -49,7 +49,6 @@ async fn create_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, IndexingError> {
-
     client
         .delete_index(name)
         .await?
@@ -122,12 +121,14 @@ async fn create_and_add_to_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<(), IndexingError> {
-    let index = create_index(client, name,  custom_rules).await?;
-   
+    let index = create_index(client, name, custom_rules).await?;
+
     let mut new_filterable_attributes = index.get_filterable_attributes().await?;
     new_filterable_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
-    index.set_filterable_attributes(new_filterable_attributes).await?;
-    
+    index
+        .set_filterable_attributes(new_filterable_attributes)
+        .await?;
+
     add_to_index(client, index, projects).await?;
     Ok(())
 }

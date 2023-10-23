@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::io::{Write, Cursor};
+use std::io::{Cursor, Write};
 
 use actix_web::test::{self, TestRequest};
 use labrinth::{
@@ -8,15 +8,12 @@ use labrinth::{
 };
 use serde_json::json;
 use sqlx::Executor;
-use zip::{write::FileOptions, ZipWriter, CompressionMethod};
+use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 use crate::common::database::USER_USER_PAT;
-use labrinth::util::actix::{MultipartSegmentData,MultipartSegment,AppendsMultipart};
+use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
-use super::{
-    environment::TestEnvironment,
-    request_data::get_public_project_creation_data,
-};
+use super::{environment::TestEnvironment, request_data::get_public_project_creation_data};
 
 pub const DUMMY_DATA_UPDATE: i64 = 1;
 
@@ -37,17 +34,11 @@ pub enum TestFile {
     DummyProjectBeta,
     BasicMod,
     BasicModDifferent,
-    // Randomly generates a valid .jar with a random hash. 
+    // Randomly generates a valid .jar with a random hash.
     // Unlike the other dummy jar files, this one is not a static file.
     // and BasicModRandom.bytes() will return a different file each time.
-    BasicModRandom {
-        filename: String,
-        bytes: Vec<u8>, 
-    },
-    BasicModpackRandom {
-        filename: String,
-        bytes: Vec<u8>, 
-    },
+    BasicModRandom { filename: String, bytes: Vec<u8> },
+    BasicModpackRandom { filename: String, bytes: Vec<u8> },
 }
 
 impl TestFile {
@@ -58,7 +49,7 @@ impl TestFile {
             "schemaVersion": 1,
             "id": filename,
             "version": "1.0.1",
-          
+
             "name": filename,
             "description": "Does nothing",
             "authors": [
@@ -69,10 +60,10 @@ impl TestFile {
               "sources": "https://www.modrinth.com",
               "issues": "https://www.modrinth.com"
             },
-          
+
             "license": "MIT",
             "icon": "none.png",
-          
+
             "environment": "client",
             "entrypoints": {
               "main": [
@@ -83,22 +74,24 @@ impl TestFile {
               "minecraft": ">=1.20-"
             }
           }
-        ).to_string();
+        )
+        .to_string();
 
         // Create a simulated zip file
         let mut cursor = Cursor::new(Vec::new());
         {
             let mut zip = ZipWriter::new(&mut cursor);
-            zip.start_file("fabric.mod.json", FileOptions::default().compression_method(CompressionMethod::Stored)).unwrap();
+            zip.start_file(
+                "fabric.mod.json",
+                FileOptions::default().compression_method(CompressionMethod::Stored),
+            )
+            .unwrap();
             zip.write_all(fabric_mod_json.as_bytes()).unwrap();
             zip.finish().unwrap();
         }
         let bytes = cursor.into_inner();
 
-        TestFile::BasicModRandom {
-            filename,
-            bytes,
-        }
+        TestFile::BasicModRandom { filename, bytes }
     }
 
     pub fn build_random_mrpack() -> Self {
@@ -115,24 +108,25 @@ impl TestFile {
                 "minecraft": "1.20.1"
             }
         }
-        ).to_string();
+        )
+        .to_string();
 
         // Create a simulated zip file
         let mut cursor = Cursor::new(Vec::new());
         {
             let mut zip = ZipWriter::new(&mut cursor);
-            zip.start_file("modrinth.index.json", FileOptions::default().compression_method(CompressionMethod::Stored)).unwrap();
+            zip.start_file(
+                "modrinth.index.json",
+                FileOptions::default().compression_method(CompressionMethod::Stored),
+            )
+            .unwrap();
             zip.write_all(modrinth_index_json.as_bytes()).unwrap();
             zip.finish().unwrap();
         }
         let bytes = cursor.into_inner();
 
-        TestFile::BasicModpackRandom {
-            filename,
-            bytes,
-        }
+        TestFile::BasicModpackRandom { filename, bytes }
     }
-
 }
 
 #[derive(Clone)]
@@ -447,8 +441,9 @@ impl TestFile {
             TestFile::BasicModDifferent => "mod",
             TestFile::BasicModRandom { .. } => "mod",
 
-            TestFile::BasicModpackRandom { .. } => "modpack"
-        }.to_string()
+            TestFile::BasicModpackRandom { .. } => "modpack",
+        }
+        .to_string()
     }
 }
 

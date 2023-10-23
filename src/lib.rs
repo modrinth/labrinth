@@ -179,7 +179,7 @@ pub fn app_setup(
 
     let reader = maxmind.clone();
     {
-        let reader_ref = reader.clone();
+        let reader_ref = reader;
         scheduler.run(std::time::Duration::from_secs(60 * 60 * 24), move || {
             let reader_ref = reader_ref.clone();
 

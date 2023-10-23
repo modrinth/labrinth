@@ -1,6 +1,8 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
-use crate::database::models::loader_fields::{LoaderFieldEnumValue, VersionField, LoaderField, Game};
+use crate::database::models::loader_fields::{
+    Game, LoaderField, LoaderFieldEnumValue, VersionField,
+};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
     DependencyBuilder, VersionBuilder, VersionFileBuilder,
@@ -13,14 +15,14 @@ use crate::models::notifications::NotificationBody;
 use crate::models::pack::PackFileHash;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    Dependency, DependencyType, FileType, Loader, ProjectId, Version, VersionFile,
-    VersionId, VersionStatus, VersionType, LoaderStruct,
+    Dependency, DependencyType, FileType, Loader, LoaderStruct, ProjectId, Version, VersionFile,
+    VersionId, VersionStatus, VersionType,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
-use crate::validate::{ValidationResult, validate_file};
+use crate::validate::{validate_file, ValidationResult};
 use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -249,9 +251,8 @@ async fn version_create_inner(
                 .await?
                 .name;
 
-                let game_id = project.inner.game_id;
-                game = Game::from_id(game_id, &mut *transaction).await?;
-                let all_loaders = models::loader_fields::Loader::list_id(game_id,&mut *transaction).await?;
+                let all_loaders = models::loader_fields::Loader::list(project.inner.game,&mut *transaction, redis).await?;
+                game = Some(project.inner.game);
 
                 let mut loader_ids = vec![];
                 let mut loaders = vec![];
@@ -271,14 +272,15 @@ async fn version_create_inner(
                     loader_ids.push(loader_id);
                     loaders.push(loader_create.loader.clone());
 
+                    let loader_fields = LoaderField::get_fields(loader_id, &mut *transaction, redis).await?;
+                    let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis).await?;
                     for (key, value) in loader_create.fields .iter() {
-                        // TODO: more efficient, multiselect
-                            let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction, &redis).await?.ok_or_else(|| {
-                                CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
-                            })?;
-                            let enum_variants = LoaderFieldEnumValue::list_optional(&loader_field.field_type, &mut *transaction, &redis).await?;
-                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, value.clone(), enum_variants).map_err(|s| CreateError::InvalidInput(s))?;
-                            version_fields.push(vf);
+                        let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
+                            CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
+                        })?;
+                        let enum_variants = loader_field_enum_values.remove(&loader_field.id).unwrap_or_default();
+                        let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field.clone(), value.clone(), enum_variants).map_err(CreateError::InvalidInput)?;
+                        version_fields.push(vf);
                     }
                 }
 
@@ -577,8 +579,11 @@ async fn upload_file_to_version_inner(
         }
     };
 
-    let project = models::Project::get_id(version.inner.project_id, &mut *transaction, &redis).await?
-    .ok_or_else(|| CreateError::InvalidInput("Version contained an invalid project id".to_string()))?;
+    let project = models::Project::get_id(version.inner.project_id, &mut *transaction, &redis)
+        .await?
+        .ok_or_else(|| {
+            CreateError::InvalidInput("Version contained an invalid project id".to_string())
+        })?;
 
     if !user.role.is_admin() {
         let team_member = models::TeamMember::get_from_user_id_project(
@@ -673,8 +678,6 @@ async fn upload_file_to_version_inner(
                 })
                 .collect();
 
-            let game = Game::from_id(project.inner.game_id, &mut *transaction).await?.ok_or_else(|| CreateError::InvalidInput("Version contained an invalid game id".to_string()))?;
-
             upload_file(
                 &mut field,
                 file_host,
@@ -684,7 +687,7 @@ async fn upload_file_to_version_inner(
                 &mut dependencies,
                 &cdn_url,
                 &content_disposition,
-                game,
+                project.inner.game,
                 project_id,
                 version_id.into(),
                 &version.version_fields,
@@ -737,17 +740,17 @@ pub async fn upload_file(
     dependencies: &mut Vec<DependencyBuilder>,
     cdn_url: &str,
     content_disposition: &actix_web::http::header::ContentDisposition,
-    game : Game,
+    game: Game,
     project_id: ProjectId,
     version_id: VersionId,
-    version_fields: &Vec<VersionField>,
+    version_fields: &[VersionField],
     project_type: &str,
     loaders: Vec<Loader>,
     ignore_primary: bool,
     force_primary: bool,
     file_type: Option<FileType>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    redis: &RedisPool
+    redis: &RedisPool,
 ) -> Result<(), CreateError> {
     let (file_name, file_extension) = get_name_ext(content_disposition)?;
 
@@ -787,7 +790,7 @@ pub async fn upload_file(
             "Duplicate files are not allowed to be uploaded to Modrinth!".to_string(),
         ));
     }
-    
+
     let validation_result = validate_file(
         game,
         data.clone().into(),
@@ -795,9 +798,9 @@ pub async fn upload_file(
         project_type.to_string(),
         loaders.clone(),
         file_type,
-        version_fields.clone(),
+        version_fields.to_vec(),
         &mut *transaction,
-        &redis,
+        redis,
     )
     .await?;
 

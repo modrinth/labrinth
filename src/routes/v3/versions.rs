@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::auth::{
-    filter_authorized_versions, get_user_from_headers, is_authorized,
-};
+use crate::auth::{filter_authorized_versions, get_user_from_headers, is_authorized};
 use crate::database;
-use crate::database::models::loader_fields::{LoaderField, VersionField, LoaderFieldEnumValue};
+use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField};
 use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
 use crate::database::models::Organization;
 use crate::database::redis::RedisPool;
@@ -13,7 +11,7 @@ use crate::models;
 use crate::models::ids::VersionId;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
-use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType, LoaderStruct};
+use crate::models::projects::{Dependency, FileType, LoaderStruct, VersionStatus, VersionType};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::img;
@@ -24,14 +22,22 @@ use sqlx::PgPool;
 use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-
-    cfg.route("version", web::post().to(super::version_creation::version_create));
-    cfg.route("{id}", web::post().to(super::version_creation::version_create));
+    cfg.route(
+        "version",
+        web::post().to(super::version_creation::version_create),
+    );
+    cfg.route(
+        "{id}",
+        web::post().to(super::version_creation::version_create),
+    );
 
     cfg.service(
         web::scope("version")
-        .route("{id}", web::patch().to(version_edit))
-        .route("{version_id}/file", web::post().to(super::version_creation::upload_file_to_version))
+            .route("{id}", web::patch().to(version_edit))
+            .route(
+                "{version_id}/file",
+                web::post().to(super::version_creation::upload_file_to_version),
+            ),
     );
 }
 #[derive(Serialize, Deserialize, Validate, Default, Debug)]
@@ -54,7 +60,6 @@ pub struct EditVersion {
         custom(function = "crate::util::validate::validate_deps")
     )]
     pub dependencies: Option<Vec<Dependency>>,
-    pub game_versions: Option<Vec<models::projects::GameVersion>>,
     pub loaders: Option<Vec<LoaderStruct>>,
     pub featured: Option<bool>,
     pub primary_file: Option<(String, String)>,
@@ -70,7 +75,8 @@ pub struct EditVersionFileType {
     pub file_type: Option<FileType>,
 }
 
-// TODO: Avoid this pattern
+// TODO: Avoid this 'helper' pattern here and similar fnunctoins- a macro might be the best bet here to ensure it's callable from both v2 and v3
+// (web::Path can't be recreated naturally)
 pub async fn version_edit(
     req: HttpRequest,
     info: web::Path<(VersionId,)>,
@@ -79,8 +85,16 @@ pub async fn version_edit(
     new_version: web::Json<serde_json::Value>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let new_version : EditVersion = serde_json::from_value(new_version.into_inner())?;
-    version_edit_helper(req, info.into_inner(), pool, redis, new_version, session_queue).await
+    let new_version: EditVersion = serde_json::from_value(new_version.into_inner())?;
+    version_edit_helper(
+        req,
+        info.into_inner(),
+        pool,
+        redis,
+        new_version,
+        session_queue,
+    )
+    .await
 }
 pub async fn version_edit_helper(
     req: HttpRequest,
@@ -89,7 +103,6 @@ pub async fn version_edit_helper(
     redis: web::Data<RedisPool>,
     new_version: EditVersion,
     session_queue: web::Data<AuthQueue>,
-    
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
         &req,
@@ -111,7 +124,6 @@ pub async fn version_edit_helper(
     let result = database::models::Version::get(id, &**pool, &redis).await?;
 
     if let Some(version_item) = result {
-
         let project_item =
             database::models::Project::get_id(version_item.inner.project_id, &**pool, &redis)
                 .await?;
@@ -288,23 +300,40 @@ pub async fn version_edit_helper(
                 for loader in loaders {
                     let loader_name = loader.loader.0.clone();
 
-                    let loader_id =
-                        database::models::loader_fields::Loader::get_id(&loader_name, &mut *transaction)
-                            .await?
-                            .ok_or_else(|| {
-                                ApiError::InvalidInput(
-                                    "No database entry for loader provided.".to_string(),
-                                )
-                            })?;
+                    let loader_id = database::models::loader_fields::Loader::get_id(
+                        &loader_name,
+                        &mut *transaction,
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInput("No database entry for loader provided.".to_string())
+                    })?;
                     loader_versions.push(LoaderVersion::new(loader_id, id));
-                    for (key, value) in loader.fields .iter() {
-                        // TODO: more efficient, multiselect
-                            let loader_field = LoaderField::get_field(&key, loader_id, &mut *transaction, &redis).await?.ok_or_else(|| {
-                                ApiError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
-                            })?;
-                            let enum_variants = LoaderFieldEnumValue::list_optional(&loader_field.field_type, &mut *transaction, &redis).await?;
-                            let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field, value.clone(), enum_variants).map_err(|s| ApiError::InvalidInput(s))?;
-                            version_fields.push(vf);
+                    let loader_fields =
+                        LoaderField::get_fields(loader_id, &mut *transaction, &redis).await?;
+                    let mut loader_field_enum_values =
+                        LoaderFieldEnumValue::list_many_loader_fields(
+                            &loader_fields,
+                            &mut *transaction,
+                            &redis,
+                        )
+                        .await?;
+
+                    for (key, value) in loader.fields.iter() {
+                        let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
+                            ApiError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
+                        })?;
+                        let enum_variants = loader_field_enum_values
+                            .remove(&loader_field.id)
+                            .unwrap_or_default();
+                        let vf: VersionField = VersionField::check_parse(
+                            version_id.into(),
+                            loader_field.clone(),
+                            value.clone(),
+                            enum_variants,
+                        )
+                        .map_err(ApiError::InvalidInput)?;
+                        version_fields.push(vf);
                     }
                 }
                 LoaderVersion::insert_many(loader_versions, &mut transaction).await?;
@@ -516,12 +545,11 @@ pub struct VersionListFilters {
     /*
         Loader fields to filter with:
         "game_versions": ["1.16.5", "1.17"]
-        
+
         Returns if it matches any of the values
     */
     pub loader_fields: Option<String>,
 }
-
 
 pub async fn version_list(
     req: HttpRequest,
@@ -551,10 +579,9 @@ pub async fn version_list(
             return Ok(HttpResponse::NotFound().body(""));
         }
 
-        let loader_field_filters = filters
-            .loader_fields
-            .as_ref()
-            .map(|x| serde_json::from_str::<HashMap<String, Vec<serde_json::Value>>>(x).unwrap_or_default());
+        let loader_field_filters = filters.loader_fields.as_ref().map(|x| {
+            serde_json::from_str::<HashMap<String, Vec<serde_json::Value>>>(x).unwrap_or_default()
+        });
         let loader_filters = filters
             .loaders
             .as_ref()
@@ -567,7 +594,7 @@ pub async fn version_list(
             .filter(|x| {
                 let mut bool = true;
 
-                // TODO: theres a lot of repeated logic here with the similar filterings in super::version_file
+                // TODO: theres a lot of repeated logic here with the similar filterings in super::version_file, abstract it
                 if let Some(version_type) = filters.version_type {
                     bool &= &*x.inner.version_type == version_type.as_str();
                 }
@@ -578,7 +605,7 @@ pub async fn version_list(
                 if let Some(loader_fields) = &loader_field_filters {
                     for (key, value) in loader_fields {
                         bool &= x.version_fields.iter().any(|y| {
-                            y.field_name == *key && value.contains(&y.value.serialize_internal()) 
+                            y.field_name == *key && value.contains(&y.value.serialize_internal())
                         });
                     }
                 }
@@ -625,7 +652,7 @@ pub async fn version_list(
             //         .iter()
             //         .find(|version| {
             //             // version.game_versions.contains(&filter.0.version)
-            //                 // && 
+            //                 // &&
             //                 version.loaders.contains(&filter.1.loader)
             //         })
             //         .map(|version| response.push(version.clone()))

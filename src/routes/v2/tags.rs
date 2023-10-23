@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::database::models::categories::{DonationPlatform, ProjectType, ReportType, Category};
+use crate::database::models::categories::{Category, DonationPlatform, ProjectType, ReportType};
 use crate::database::models::loader_fields::Game;
 use crate::database::redis::RedisPool;
 use crate::routes::v3;
-use crate::routes::v3::tags::{LoaderList, LoaderFieldsEnumQuery};
+use crate::routes::v3::tags::{LoaderFieldsEnumQuery, LoaderList};
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
@@ -64,7 +64,14 @@ pub async fn loader_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let response = v3::tags::loader_list(web::Query(LoaderList {game: Game::MinecraftJava.name().to_string()}), pool, redis).await?;
+    let response = v3::tags::loader_list(
+        web::Query(LoaderList {
+            game: Game::MinecraftJava.name().to_string(),
+        }),
+        pool,
+        redis,
+    )
+    .await?;
     Ok(response)
 }
 
@@ -89,7 +96,6 @@ pub async fn game_version_list(
     query: web::Query<GameVersionQuery>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: should cvall v3
     let mut filters = HashMap::new();
     if let Some(type_) = &query.type_ {
         filters.insert("type".to_string(), serde_json::json!(type_));
@@ -97,12 +103,18 @@ pub async fn game_version_list(
     if let Some(major) = query.major {
         filters.insert("major".to_string(), serde_json::json!(major));
     }
-    let response = v3::tags::loader_fields_list(pool, web::Query(LoaderFieldsEnumQuery {
-        game: Game::MinecraftJava.name().to_string(),
-        field: "game_version".to_string(),
-        filters: Some(filters),
-    }), redis).await?;
-    
+    let response = v3::tags::loader_fields_list(
+        pool,
+        web::Query(LoaderFieldsEnumQuery {
+            game: Game::MinecraftJava.name().to_string(),
+            field: "game_version".to_string(),
+            filters: Some(filters),
+        }),
+        redis,
+    )
+    .await?;
+
+    // TODO: parse v3 to v2
     Ok(response)
 }
 
@@ -201,12 +213,16 @@ pub async fn side_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: should cvall v3
-    let response = v3::tags::loader_fields_list(pool, web::Query(LoaderFieldsEnumQuery {
-        game: Game::MinecraftJava.name().to_string(),
-        field: "client_type".to_string(), // same as server_type
-        filters: None,
-    }), redis).await?;
-    
+    let response = v3::tags::loader_fields_list(
+        pool,
+        web::Query(LoaderFieldsEnumQuery {
+            game: Game::MinecraftJava.name().to_string(),
+            field: "client_type".to_string(), // same as server_type
+            filters: None,
+        }),
+        redis,
+    )
+    .await?;
+    // TODO: parse v3 to v2
     Ok(response)
 }

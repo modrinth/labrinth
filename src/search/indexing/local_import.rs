@@ -6,14 +6,16 @@ use futures::TryStreamExt;
 use log::info;
 
 use super::IndexingError;
-use crate::database::models::ProjectId;
 use crate::database::models::loader_fields::VersionField;
+use crate::database::models::ProjectId;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
-pub async fn index_local(pool: PgPool) -> Result<(Vec<UploadSearchProject>, Vec<String>), IndexingError> {
+pub async fn index_local(
+    pool: PgPool,
+) -> Result<(Vec<UploadSearchProject>, Vec<String>), IndexingError> {
     info!("Indexing local projects!");
-    let loader_field_keys : Arc<DashSet<String>> = Arc::new(DashSet::new());
+    let loader_field_keys: Arc<DashSet<String>> = Arc::new(DashSet::new());
     let uploads =
         sqlx::query!(
             "
@@ -146,5 +148,11 @@ pub async fn index_local(pool: PgPool) -> Result<(Vec<UploadSearchProject>, Vec<
 }})
             .try_collect::<Vec<_>>()
             .await?;
-    Ok((uploads, Arc::try_unwrap(loader_field_keys).unwrap_or_default().into_iter().collect()))
+    Ok((
+        uploads,
+        Arc::try_unwrap(loader_field_keys)
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+    ))
 }

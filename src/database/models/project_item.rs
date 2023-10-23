@@ -1,3 +1,4 @@
+use super::loader_fields::Game;
 use super::{ids::*, User};
 use crate::database::models;
 use crate::database::models::DatabaseError;
@@ -141,7 +142,7 @@ impl ModCategory {
 #[derive(Clone)]
 pub struct ProjectBuilder {
     pub project_id: ProjectId,
-    pub game_id : GameId,
+    pub game: Game,
     pub project_type_id: ProjectTypeId,
     pub team_id: TeamId,
     pub organization_id: Option<OrganizationId>,
@@ -174,7 +175,7 @@ impl ProjectBuilder {
     ) -> Result<ProjectId, DatabaseError> {
         let project_struct = Project {
             id: self.project_id,
-            game_id : self.game_id,
+            game: self.game,
             project_type: self.project_type_id,
             team_id: self.team_id,
             organization_id: self.organization_id,
@@ -249,7 +250,7 @@ impl ProjectBuilder {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Project {
     pub id: ProjectId,
-    pub game_id : GameId,
+    pub game: Game,
     pub project_type: ProjectTypeId,
     pub team_id: TeamId,
     pub organization_id: Option<OrganizationId>,
@@ -572,7 +573,7 @@ impl Project {
 
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
-                SELECT m.id id, m.game_id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
+                SELECT m.id id, g.name, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
                 m.icon_url icon_url, m.body body, m.published published,
                 m.updated updated, m.approved approved, m.queued, m.status status, m.requested_status requested_status,
                 m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
@@ -585,6 +586,7 @@ impl Project {
                 JSONB_AGG(DISTINCT jsonb_build_object('image_url', mg.image_url, 'featured', mg.featured, 'title', mg.title, 'description', mg.description, 'created', mg.created, 'ordering', mg.ordering)) filter (where mg.image_url is not null) gallery,
                 JSONB_AGG(DISTINCT jsonb_build_object('platform_id', md.joining_platform_id, 'platform_short', dp.short, 'platform_name', dp.name,'url', md.url)) filter (where md.joining_platform_id is not null) donations
                 FROM mods m
+                INNER JOIN games g ON g.id = m.game_id
                 INNER JOIN project_types pt ON pt.id = m.project_type
                 INNER JOIN threads t ON t.mod_id = m.id
                 LEFT JOIN mods_gallery mg ON mg.mod_id = m.id
@@ -594,7 +596,7 @@ impl Project {
                 LEFT JOIN categories c ON mc.joining_category_id = c.id
                 LEFT JOIN versions v ON v.mod_id = m.id AND v.status = ANY($3)
                 WHERE m.id = ANY($1) OR m.slug = ANY($2)
-                GROUP BY pt.id, t.id, m.id;
+                GROUP BY pt.id, t.id, m.id, g.name;
                 ",
                 &project_ids_parsed,
                 &remaining_strings.into_iter().map(|x| x.to_string().to_lowercase()).collect::<Vec<_>>(),
@@ -602,12 +604,12 @@ impl Project {
             )
                 .fetch_many(exec)
                 .try_filter_map(|e| async {
-                    Ok(e.right().map(|m| {
+                    Ok(e.right().and_then(|m| {
                         let id = m.id;
-                    QueryProject {
+                    Some(QueryProject {
                         inner: Project {
                             id: ProjectId(id),
-                            game_id: GameId(m.game_id),
+                            game: m.name.and_then(|g| Game::from_name(&g))?,
                             project_type: ProjectTypeId(m.project_type),
                             team_id: TeamId(m.team_id),
                             organization_id: m.organization_id.map(OrganizationId),
@@ -676,7 +678,7 @@ impl Project {
                                 m.donations.unwrap_or_default(),
                             ).ok().unwrap_or_default(),
                         thread_id: ThreadId(m.thread_id),
-                    }}))
+                    })}))
                 })
                 .try_collect::<Vec<QueryProject>>()
                 .await?;

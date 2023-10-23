@@ -2,7 +2,7 @@
 use serde_json::json;
 
 use super::dummy_data::{DummyImage, TestFile};
-use labrinth::util::actix::{MultipartSegmentData,MultipartSegment};
+use labrinth::util::actix::{MultipartSegment, MultipartSegmentData};
 
 pub struct ProjectCreationRequestData {
     pub slug: String,
@@ -21,7 +21,8 @@ pub fn get_public_project_creation_data(
     version_jar: Option<TestFile>,
 ) -> ProjectCreationRequestData {
     let json_data = get_public_project_creation_data_json(slug, version_jar.as_ref());
-    let multipart_data = get_public_project_creation_data_multipart(&json_data, version_jar.as_ref());
+    let multipart_data =
+        get_public_project_creation_data_multipart(&json_data, version_jar.as_ref());
     ProjectCreationRequestData {
         slug: slug.to_string(),
         jar: version_jar,
@@ -33,7 +34,7 @@ pub fn get_public_project_creation_data_json(
     slug: &str,
     version_jar: Option<&TestFile>,
 ) -> serde_json::Value {
-    let initial_versions = if let Some(ref jar) = version_jar {
+    let initial_versions = if let Some(jar) = version_jar {
         json!([{
             "file_parts": [jar.filename()],
             "version_number": "1.2.3",
@@ -79,7 +80,7 @@ pub fn get_public_project_creation_data_multipart(
         data: MultipartSegmentData::Text(serde_json::to_string(json_data).unwrap()),
     };
 
-    if let Some(ref jar) = version_jar {
+    if let Some(jar) = version_jar {
         // Basic file
         let file_segment = MultipartSegment {
             name: jar.filename(),
@@ -88,9 +89,9 @@ pub fn get_public_project_creation_data_multipart(
             data: MultipartSegmentData::Binary(jar.bytes()),
         };
 
-        vec![json_segment.clone(), file_segment]
+        vec![json_segment, file_segment]
     } else {
-        vec![json_segment.clone()]
+        vec![json_segment]
     }
 }
 

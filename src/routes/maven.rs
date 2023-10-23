@@ -1,4 +1,5 @@
-use crate::database::models::loader_fields::{Loader, Game, GameVersion};
+use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
+use crate::database::models::loader_fields::{Game, Loader};
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::{QueryFile, QueryVersion};
 use crate::database::redis::RedisPool;
@@ -179,7 +180,8 @@ async fn find_version(
         return Ok(exact_matches.get(0).map(|x| (*x).clone()));
     };
 
-    let db_loaders: HashSet<String> = Loader::list(Game::MinecraftJava.name(), pool, redis)
+    // Hardcoded to minecraft-java
+    let db_loaders: HashSet<String> = Loader::list(Game::MinecraftJava, pool, redis)
         .await?
         .into_iter()
         .map(|x| x.loader)
@@ -200,11 +202,16 @@ async fn find_version(
             }
 
             // For maven in particular, we will hardcode it to use GameVersions rather than generic loader fields, as this is minecraft-java exclusive
-            // TODO: should this also be changed to loader_fields?
             if !game_versions.is_empty() {
-                let version_game_versions = x.version_fields.clone().into_iter().find_map(|v| GameVersion::try_from_version_field(&v).ok());
+                let version_game_versions = x
+                    .version_fields
+                    .clone()
+                    .into_iter()
+                    .find_map(|v| MinecraftGameVersion::try_from_version_field(&v).ok());
                 if let Some(version_game_versions) = version_game_versions {
-                    bool &= version_game_versions.iter().any(|y| game_versions.contains(&y.version));
+                    bool &= version_game_versions
+                        .iter()
+                        .any(|y| game_versions.contains(&y.version));
                 }
             }
 

@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 
 const TAGS_NAMESPACE: &str = "tags";
 
-
 pub struct ProjectType {
     pub id: ProjectTypeId,
     pub name: String,
@@ -114,7 +113,6 @@ impl Category {
         Ok(result)
     }
 }
-
 
 impl DonationPlatform {
     pub async fn get_id<'a, E>(
@@ -271,4 +269,3 @@ impl ProjectType {
         Ok(result)
     }
 }
-

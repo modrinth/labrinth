@@ -1,5 +1,6 @@
+use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
+use crate::database::models::loader_fields::{Game, VersionField};
 use crate::database::models::DatabaseError;
-use crate::database::models::loader_fields::{Game, GameVersion, VersionField};
 use crate::database::redis::RedisPool;
 use crate::models::pack::PackFormat;
 use crate::models::projects::{FileType, Loader};
@@ -71,7 +72,7 @@ pub enum SupportedGameVersions {
     PastDate(DateTime<Utc>),
     Range(DateTime<Utc>, DateTime<Utc>),
     #[allow(dead_code)]
-    Custom(Vec<GameVersion>),
+    Custom(Vec<MinecraftGameVersion>),
 }
 
 pub trait Validator: Sync {
@@ -107,22 +108,26 @@ static VALIDATORS: &[&dyn Validator] = &[
 ];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
+#[allow(clippy::too_many_arguments)]
 pub async fn validate_file(
-    game : Game,
+    game: Game,
     data: bytes::Bytes,
     file_extension: String,
     project_type: String,
     loaders: Vec<Loader>,
     file_type: Option<FileType>,
-    version_fields : Vec<VersionField>,
+    version_fields: Vec<VersionField>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &RedisPool,
-) -> Result<ValidationResult, ValidationError>
- {
+) -> Result<ValidationResult, ValidationError> {
     match game {
-        Game::MinecraftJava =>  {
-            let game_versions = version_fields.into_iter().find_map(|v| GameVersion::try_from_version_field(&v).ok()).unwrap_or_default();
-            let all_game_versions = GameVersion::list_transaction(&mut *transaction, &redis).await?;
+        Game::MinecraftJava => {
+            let game_versions = version_fields
+                .into_iter()
+                .find_map(|v| MinecraftGameVersion::try_from_version_field(&v).ok())
+                .unwrap_or_default();
+            let all_game_versions =
+                MinecraftGameVersion::list_transaction(&mut *transaction, redis).await?;
             validate_minecraft_file(
                 data,
                 file_extension,
@@ -131,7 +136,8 @@ pub async fn validate_file(
                 game_versions,
                 all_game_versions,
                 file_type,
-            ).await
+            )
+            .await
         }
     }
 }
@@ -141,8 +147,8 @@ async fn validate_minecraft_file(
     file_extension: String,
     mut project_type: String,
     mut loaders: Vec<Loader>,
-    game_versions: Vec<GameVersion>, // 
-    all_game_versions: Vec<crate::database::models::loader_fields::GameVersion>,
+    game_versions: Vec<MinecraftGameVersion>,
+    all_game_versions: Vec<MinecraftGameVersion>,
     file_type: Option<FileType>,
 ) -> Result<ValidationResult, ValidationError> {
     actix_web::web::block(move || {
@@ -198,8 +204,8 @@ async fn validate_minecraft_file(
 
 // Write tests for this
 fn game_version_supported(
-    game_versions: &[GameVersion],
-    all_game_versions: &[crate::database::models::loader_fields::GameVersion],
+    game_versions: &[MinecraftGameVersion],
+    all_game_versions: &[MinecraftGameVersion],
     supported_game_versions: SupportedGameVersions,
 ) -> bool {
     match supported_game_versions {
@@ -220,7 +226,7 @@ fn game_version_supported(
         }),
         SupportedGameVersions::Custom(versions) => {
             let version_ids = versions.iter().map(|gv| gv.id).collect::<Vec<_>>();
-            let game_version_ids = game_versions.iter().map(|gv| gv.id).collect::<Vec<_>>();
+            let game_version_ids: Vec<_> = game_versions.iter().map(|gv| gv.id).collect::<Vec<_>>();
             version_ids.iter().any(|x| game_version_ids.contains(x))
         }
     }

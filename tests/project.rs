@@ -2,13 +2,13 @@ use actix_http::StatusCode;
 use actix_web::test;
 use bytes::Bytes;
 use chrono::{Duration, Utc};
-use labrinth::util::actix::{MultipartSegmentData,MultipartSegment, AppendsMultipart};
 use common::environment::{with_test_environment, TestEnvironment};
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::teams::ProjectPermissions;
+use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 use serde_json::json;
 
 use crate::common::database::*;
@@ -156,9 +156,7 @@ async fn test_add_remove_project() {
         name: "basic-mod.jar".to_string(),
         filename: Some("basic-mod.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
-        data: MultipartSegmentData::Binary(
-            include_bytes!("../tests/files/basic-mod.jar").to_vec(),
-        ),
+        data: MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod.jar").to_vec()),
     };
 
     // Differently named file, with the same content (for hash testing)
@@ -166,9 +164,7 @@ async fn test_add_remove_project() {
         name: "basic-mod-different.jar".to_string(),
         filename: Some("basic-mod-different.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
-        data: MultipartSegmentData::Binary(
-            include_bytes!("../tests/files/basic-mod.jar").to_vec(),
-        ),
+        data: MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod.jar").to_vec()),
     };
 
     // Differently named file, with different content
@@ -289,7 +285,6 @@ pub async fn test_patch_project() {
 
     let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
     let beta_project_slug = &test_env.dummy.as_ref().unwrap().project_beta.project_slug;
-
 
     // First, we do some patch requests that should fail.
     // Failure because the user is not authorized.
@@ -428,16 +423,25 @@ pub async fn test_patch_project() {
     // New slug does work
     let resp = api.get_project("newslug", USER_USER_PAT).await;
     let project: serde_json::Value = test::read_body_json(resp).await;
-    
+
     assert_eq!(project["slug"], json!(Some("newslug".to_string())));
     assert_eq!(project["title"], "New successful title");
     assert_eq!(project["description"], "New successful description");
     assert_eq!(project["body"], "New successful body");
     assert_eq!(project["categories"], json!(vec![DUMMY_CATEGORIES[0]]));
     assert_eq!(project["license"]["id"], "MIT");
-    assert_eq!(project["issues_url"], json!(Some("https://github.com".to_string())));
-    assert_eq!(project["discord_url"], json!(Some("https://discord.gg".to_string())));
-    assert_eq!(project["wiki_url"], json!(Some("https://wiki.com".to_string())));
+    assert_eq!(
+        project["issues_url"],
+        json!(Some("https://github.com".to_string()))
+    );
+    assert_eq!(
+        project["discord_url"],
+        json!(Some("https://discord.gg".to_string()))
+    );
+    assert_eq!(
+        project["wiki_url"],
+        json!(Some("https://wiki.com".to_string()))
+    );
     assert_eq!(project["client_side"], json!("optional"));
     assert_eq!(project["server_side"], json!("required"));
     assert_eq!(project["donation_urls"][0]["url"], "https://patreon.com");
@@ -536,13 +540,13 @@ async fn permissions_patch_project() {
                 };
                 PermissionsTest::new(&test_env)
                     .simple_project_permissions_test(edit_details, req_gen)
-                    .await.into_iter();
+                    .await
+                    .into_iter();
             }
         })
         .buffer_unordered(4)
         .collect::<Vec<_>>()
         .await;
-
 
     // Test with status and requested_status
     // This requires a project with a version, so we use alpha_project_id

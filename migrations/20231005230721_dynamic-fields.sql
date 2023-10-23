@@ -1,10 +1,11 @@
 CREATE TABLE games (
-	id int PRIMARY KEY,
-	name varchar(64)
+	id int PRIMARY KEY, -- Only used in db
+	name varchar(64),
+  CONSTRAINT unique_game_name UNIQUE (name)
 );
-
 INSERT INTO games(id, name) VALUES (1, 'minecraft-java');
 INSERT INTO games(id, name) VALUES (2, 'minecraft-bedrock');
+
 ALTER TABLE mods ADD COLUMN game_id integer REFERENCES games ON UPDATE CASCADE NOT NULL DEFAULT 1; -- all past ones are minecraft-java
 ALTER TABLE loaders ADD COLUMN game_id integer REFERENCES games ON UPDATE CASCADE NOT NULL DEFAULT 1; -- all past ones are minecraft-java
 

@@ -1,9 +1,7 @@
-use bytes::{BytesMut, Bytes};
 use actix_web::test::TestRequest;
+use bytes::{Bytes, BytesMut};
 
-
-
-// Multipart functionality for actix 
+// Multipart functionality for actix
 // Primarily for testing or some implementations of route-redirection
 // (actix-test does not innately support multipart)
 #[derive(Debug, Clone)]

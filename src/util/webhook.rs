@@ -1,4 +1,5 @@
-use crate::database::models::loader_fields::{GameVersion, VersionField};
+use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
+use crate::database::models::loader_fields::VersionField;
 use crate::database::redis::RedisPool;
 use crate::models::projects::ProjectId;
 use crate::routes::ApiError;
@@ -78,8 +79,8 @@ pub async fn send_discord_webhook(
     message: Option<String>,
 ) -> Result<(), ApiError> {
     // TODO: this currently uses Minecraft as it is a v2 webhook, and requires 'game_versions', a minecraft-java loader field.
-    // This should be updated to use the generic loader fields w/ discord from the project game
-    let all_game_versions = GameVersion::list(pool, redis).await?;
+    // TODO: This should be updated to use the generic loader fields w/ discord from the project game
+    let all_game_versions = MinecraftGameVersion::list(pool, redis).await?;
 
     let row =
         sqlx::query!(
@@ -221,10 +222,18 @@ pub async fn send_discord_webhook(
 
         // TODO: Modified to keep "Versions" as a field as it may be hardcoded. Ideally, this pushes all loader fields to the embed for v3
         // TODO: This might need some work to manually test
-        let version_fields = VersionField::from_query_json(project.id, project.loader_fields, project.version_fields, project.loader_field_enum_values);
-        let versions = version_fields.into_iter().find_map(|vf| GameVersion::try_from_version_field(&vf).ok()).unwrap_or_default();
-        
-        if versions.len() > 0 {
+        let version_fields = VersionField::from_query_json(
+            project.id,
+            project.loader_fields,
+            project.version_fields,
+            project.loader_field_enum_values,
+        );
+        let versions = version_fields
+            .into_iter()
+            .find_map(|vf| MinecraftGameVersion::try_from_version_field(&vf).ok())
+            .unwrap_or_default();
+
+        if !versions.is_empty() {
             let formatted_game_versions: String = get_gv_range(versions, all_game_versions);
             fields.push(DiscordEmbedField {
                 name: "Versions",
@@ -306,8 +315,8 @@ pub async fn send_discord_webhook(
 }
 
 fn get_gv_range(
-    mut game_versions: Vec<GameVersion>,
-    mut all_game_versions: Vec<GameVersion>,
+    mut game_versions: Vec<MinecraftGameVersion>,
+    mut all_game_versions: Vec<MinecraftGameVersion>,
 ) -> String {
     // both -> least to greatest
     game_versions.sort_by(|a, b| a.created.cmp(&b.created));

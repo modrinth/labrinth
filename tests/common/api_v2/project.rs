@@ -4,7 +4,11 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use bytes::Bytes;
-use labrinth::{models::projects::{Project, Version}, search::SearchResults, util::actix::AppendsMultipart};
+use labrinth::{
+    models::projects::{Project, Version},
+    search::SearchResults,
+    util::actix::AppendsMultipart,
+};
 use serde_json::json;
 
 use crate::common::{
@@ -81,7 +85,7 @@ impl ApiV2 {
         test::read_body_json(resp).await
     }
 
-    pub async fn get_version(&self, id : &str, pat: &str) -> ServiceResponse {
+    pub async fn get_version(&self, id: &str, pat: &str) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!("/v2/version/{id}"))
             .append_header(("Authorization", pat))
@@ -89,7 +93,7 @@ impl ApiV2 {
         self.call(req).await
     }
 
-    pub async fn get_version_deserialized(&self, id : &str, pat: &str) -> Version {
+    pub async fn get_version_deserialized(&self, id: &str, pat: &str) -> Version {
         let resp = self.get_version(id, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
@@ -200,8 +204,12 @@ impl ApiV2 {
         }
     }
 
-    pub async fn search_deserialized(&self, query : Option<&str>, facets : Option<serde_json::Value>, pat : &str) -> SearchResults {
-
+    pub async fn search_deserialized(
+        &self,
+        query: Option<&str>,
+        facets: Option<serde_json::Value>,
+        pat: &str,
+    ) -> SearchResults {
         let query_field = if let Some(query) = query {
             format!("&query={}", urlencoding::encode(query))
         } else {
@@ -224,4 +232,3 @@ impl ApiV2 {
         test::read_body_json(resp).await
     }
 }
-

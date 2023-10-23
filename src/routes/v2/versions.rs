@@ -8,11 +8,11 @@ use crate::database;
 use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
-use crate::models::ids::VersionId;
 use crate::models::ids::base62_impl::parse_base62;
+use crate::models::ids::VersionId;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
-use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType, LoaderStruct};
+use crate::models::projects::{Dependency, FileType, LoaderStruct, VersionStatus, VersionType};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3;
@@ -46,6 +46,7 @@ pub struct VersionListFilters {
     pub offset: Option<usize>,
 }
 
+// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 #[get("version")]
 pub async fn version_list(
     req: HttpRequest,
@@ -55,19 +56,19 @@ pub async fn version_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: move route to v3
-    // TODO: write tests for this, it didnt get caught by cargo test
     let loader_fields = if let Some(game_versions) = filters.game_versions {
         // TODO: extract this logic which is similar to the other v2->v3 version_file functions
         let mut loader_fields = HashMap::new();
-        serde_json::from_str::<Vec<String>>(&game_versions).ok().and_then(|versions| {
-            let mut game_versions: Vec<serde_json::Value> = vec![];
-            for gv in versions {
-                game_versions.push(serde_json::json!(gv.clone()));
-            }
-            loader_fields.insert("game_versions".to_string(), game_versions); 
-            serde_json::to_string(&loader_fields).ok()
-        })
+        serde_json::from_str::<Vec<String>>(&game_versions)
+            .ok()
+            .and_then(|versions| {
+                let mut game_versions: Vec<serde_json::Value> = vec![];
+                for gv in versions {
+                    game_versions.push(serde_json::json!(gv.clone()));
+                }
+                loader_fields.insert("game_versions".to_string(), game_versions);
+                serde_json::to_string(&loader_fields).ok()
+            })
     } else {
         None
     };
@@ -81,7 +82,9 @@ pub async fn version_list(
         offset: filters.offset,
     };
 
-    let response = v3::versions::version_list(req, info, web::Query(filters), pool, redis, session_queue).await?;
+    let response =
+        v3::versions::version_list(req, info, web::Query(filters), pool, redis, session_queue)
+            .await?;
 
     //TODO: Convert response to V2 format
     Ok(response)
@@ -197,7 +200,6 @@ pub async fn version_get(
         }
     }
 
-
     Ok(HttpResponse::NotFound().body(""))
 }
 
@@ -221,7 +223,7 @@ pub struct EditVersion {
         custom(function = "crate::util::validate::validate_deps")
     )]
     pub dependencies: Option<Vec<Dependency>>,
-    pub game_versions: Option<Vec<models::projects::GameVersion>>,
+    pub game_versions: Option<Vec<String>>,
     pub loaders: Option<Vec<models::projects::Loader>>,
     pub featured: Option<bool>,
     pub primary_file: Option<(String, String)>,
@@ -246,8 +248,6 @@ pub async fn version_edit(
     new_version: web::Json<EditVersion>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: Should call v3 route
-
     let new_version = new_version.into_inner();
     let new_version = v3::versions::EditVersion {
         name: new_version.name,
@@ -255,29 +255,38 @@ pub async fn version_edit(
         changelog: new_version.changelog,
         version_type: new_version.version_type,
         dependencies: new_version.dependencies,
-        game_versions: new_version.game_versions,
-        loaders: new_version.loaders.map(|l| l.into_iter().map(|l| LoaderStruct {
-            loader: l,
-            fields: HashMap::new(),
-        }).collect::<Vec<_>>()),
+        loaders: new_version.loaders.map(|l| {
+            l.into_iter()
+                .map(|l| LoaderStruct {
+                    loader: l,
+                    fields: HashMap::new(),
+                })
+                .collect::<Vec<_>>()
+        }),
         featured: new_version.featured,
         primary_file: new_version.primary_file,
         downloads: new_version.downloads,
         status: new_version.status,
-        file_types: new_version.file_types.map(|v| 
-            v.into_iter().map(|evft| 
-                v3::versions::EditVersionFileType {
-            algorithm: evft.algorithm,
-            hash: evft.hash,
-            file_type: evft.file_type,
-            }).collect::<Vec<_>>() 
-         )
-        };
-        // TODO: maybe should allow client server in loaders field? but probably not needed here
+        file_types: new_version.file_types.map(|v| {
+            v.into_iter()
+                .map(|evft| v3::versions::EditVersionFileType {
+                    algorithm: evft.algorithm,
+                    hash: evft.hash,
+                    file_type: evft.file_type,
+                })
+                .collect::<Vec<_>>()
+        }),
+    };
 
-    let response = v3::versions::version_edit(req, info, pool, redis, web::Json(serde_json::to_value(new_version)?), session_queue).await?;
-
-    // TODO: Convert response to V2 format    
+    let response = v3::versions::version_edit(
+        req,
+        info,
+        pool,
+        redis,
+        web::Json(serde_json::to_value(new_version)?),
+        session_queue,
+    )
+    .await?;
     Ok(response)
 }
 

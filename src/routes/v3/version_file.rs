@@ -1,8 +1,5 @@
 use super::ApiError;
-use crate::auth::{
-    get_user_from_headers,
-    is_authorized_version,
-};
+use crate::auth::{get_user_from_headers, is_authorized_version};
 use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
@@ -16,17 +13,15 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-
     cfg.service(
         web::scope("version_file")
-        .route("{version_id}/update",web::post().to(get_update_from_hash))
+            .route("{version_id}/update", web::post().to(get_update_from_hash)),
     );
     cfg.service(
         web::scope("version_files")
-        .route("update",web::post().to(update_files))
-        .route("update_individual",web::post().to(update_individual_files))
+            .route("update", web::post().to(update_files))
+            .route("update_individual", web::post().to(update_individual_files)),
     );
-
 }
 
 #[derive(Serialize, Deserialize)]
@@ -45,16 +40,15 @@ pub struct UpdateData {
     pub loaders: Option<Vec<String>>,
     pub version_types: Option<Vec<VersionType>>,
     /*
-        Loader fields to filter with:
-        "game_versions": ["1.16.5", "1.17"]
-        
-        Returns if it matches any of the values
-     */
-    pub loader_fields: Option<HashMap<String, Vec<serde_json::Value>>>,
+       Loader fields to filter with:
+       "game_versions": ["1.16.5", "1.17"]
 
+       Returns if it matches any of the values
+    */
+    pub loader_fields: Option<HashMap<String, Vec<serde_json::Value>>>,
 }
 
-// TODO: write tests for this
+// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 pub async fn get_update_from_hash(
     req: HttpRequest,
     info: web::Path<(String,)>,
@@ -103,11 +97,12 @@ pub async fn get_update_from_hash(
                         if let Some(loaders) = &update_data.loaders {
                             bool &= x.loaders.iter().any(|y| loaders.contains(y));
                         }
-                            
+
                         if let Some(loader_fields) = &update_data.loader_fields {
                             for (key, value) in loader_fields {
                                 bool &= x.version_fields.iter().any(|y| {
-                                    y.field_name == *key && value.contains(&y.value.serialize_internal()) 
+                                    y.field_name == *key
+                                        && value.contains(&y.value.serialize_internal())
                                 });
                             }
                         }
@@ -201,7 +196,8 @@ pub async fn update_files(
                     if let Some(loader_fields) = &update_data.loader_fields {
                         for (key, value) in loader_fields {
                             bool &= x.version_fields.iter().any(|y| {
-                                y.field_name == *key && value.contains(&y.value.serialize_internal()) 
+                                y.field_name == *key
+                                    && value.contains(&y.value.serialize_internal())
                             });
                         }
                     }
@@ -311,11 +307,11 @@ pub async fn update_individual_files(
                             if let Some(loader_fields) = &query_file.loader_fields {
                                 for (key, value) in loader_fields {
                                     bool &= x.version_fields.iter().any(|y| {
-                                        y.field_name == *key && value.contains(&y.value.serialize_internal()) 
+                                        y.field_name == *key
+                                            && value.contains(&y.value.serialize_internal())
                                     });
                                 }
                             }
-        
 
                             bool
                         })

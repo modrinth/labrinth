@@ -100,17 +100,16 @@ pub struct UploadSearchProject {
 
     #[serde(flatten)]
     /*
-        Version fields are stored as:
-            "loader_field": ["value1", "value2", ...]
-        By convention, first underline separates the loader from the field name,
-        and any subsequent underlines may be part of the field name.
-        eg:
-            "fabric_game_versions": ["1.21", "1.22"]
-            "fabric_client_side": ["required"]
-            "fabric_server_side": ["optional"]
-     */
-    pub loader_fields: HashMap<String, Vec<String>>
-
+       Version fields are stored as:
+           "loader_field": ["value1", "value2", ...]
+       By convention, first underline separates the loader from the field name,
+       and any subsequent underlines may be part of the field name.
+       eg:
+           "fabric_game_versions": ["1.21", "1.22"]
+           "fabric_client_side": ["required"]
+           "fabric_server_side": ["optional"]
+    */
+    pub loader_fields: HashMap<String, Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -145,7 +144,7 @@ pub struct ResultSearchProject {
     pub color: Option<u32>,
 
     #[serde(flatten)]
-    pub loader_fields: HashMap<String, Vec<String>>
+    pub loader_fields: HashMap<String, Vec<String>>,
 }
 
 pub fn get_sort_index(index: &str) -> Result<(&str, [&str; 1]), SearchError> {
