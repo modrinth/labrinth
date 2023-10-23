@@ -1,7 +1,7 @@
 use crate::common::database::*;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
 use crate::common::environment::TestEnvironment;
-use crate::common::request_data::ProjectCreationRequestData;
+use crate::common::request_data::{get_public_version_creation_data, ProjectCreationRequestData};
 use common::dummy_data::TestFile;
 use common::request_data;
 use futures::stream::StreamExt;
@@ -39,16 +39,14 @@ async fn search_projects() {
                 request_data::get_public_project_creation_data_json(&slug, Some(&jar));
             modify_json(&mut basic_project_json);
 
-            let basic_project_multipart = request_data::get_public_project_creation_data_multipart(
-                &basic_project_json,
-                Some(&jar),
-            );
+            let basic_project_multipart =
+                request_data::get_public_creation_data_multipart(&basic_project_json, Some(&jar));
             // Add a project- simple, should work.
             let req = api.add_public_project(
                 ProjectCreationRequestData {
-                    slug,
+                    slug: slug.clone(),
                     jar: Some(jar),
-                    segment_data: basic_project_multipart,
+                    segment_data: basic_project_multipart.clone(),
                 },
                 pat,
             );
@@ -171,6 +169,25 @@ async fn search_projects() {
         Box::new(modify_json),
     ));
 
+    // Test project 7 (testing the search bug)
+    // This project has an initial private forge version that is 1.20.3, and a fabric 1.20.5 version.
+    // This means that a search for fabric + 1.20.3 or forge + 1.20.5 should not return this project.
+    let id = 7;
+    let modify_json = |json: &mut serde_json::Value| {
+        json["categories"] = json!(DUMMY_CATEGORIES[5..6]);
+        json["client_side"] = json!("optional");
+        json["server_side"] = json!("required");
+        json["license_id"] = json!("LGPL-3.0-or-later");
+        json["initial_versions"][0]["loaders"] = json!(["forge"]);
+        json["initial_versions"][0]["game_versions"] = json!(["1.20.2"]);
+    };
+    project_creation_futures.push(create_async_future(
+        id,
+        USER_USER_PAT,
+        false,
+        Box::new(modify_json),
+    ));
+
     // Await all project creation
     // Returns a mapping of:
     // project id -> test id
@@ -181,15 +198,25 @@ async fn search_projects() {
             .collect(),
     );
 
+    // Create a second version for project 7
+    let project_7 = api
+        .get_project_deserialized(&format!("{test_name}-searchable-project-7"), USER_USER_PAT)
+        .await;
+    api.add_public_version(
+        get_public_version_creation_data(project_7.id, "1.0.0", TestFile::build_random_jar()),
+        USER_USER_PAT,
+    )
+    .await;
+
     // Pairs of:
     // 1. vec of search facets
     // 2. expected project ids to be returned by this search
     let pairs = vec![
-        (json!([["categories:fabric"]]), vec![0, 1, 2, 3, 4, 5, 6]),
-        (json!([["categories:forge"]]), vec![]),
+        (json!([["categories:fabric"]]), vec![0, 1, 2, 3, 4, 5, 6, 7]),
+        (json!([["categories:forge"]]), vec![7]),
         (
             json!([["categories:fabric", "categories:forge"]]),
-            vec![0, 1, 2, 3, 4, 5, 6],
+            vec![0, 1, 2, 3, 4, 5, 6, 7],
         ),
         (json!([["categories:fabric"], ["categories:forge"]]), vec![]),
         (
@@ -201,12 +228,23 @@ async fn search_projects() {
         ),
         (json!([["project_type:modpack"]]), vec![4]),
         (json!([["client_side:required"]]), vec![0, 2, 3]),
-        (json!([["server_side:required"]]), vec![0, 2, 3, 6]),
-        (json!([["open_source:true"]]), vec![0, 1, 2, 4, 5, 6]),
+        (json!([["server_side:required"]]), vec![0, 2, 3, 6, 7]),
+        (json!([["open_source:true"]]), vec![0, 1, 2, 4, 5, 6, 7]),
         (json!([["license:MIT"]]), vec![1, 2, 4]),
         (json!([[r#"title:'Mysterious Project'"#]]), vec![2, 3]),
-        (json!([["author:user"]]), vec![0, 1, 2, 4, 5]),
+        (json!([["author:user"]]), vec![0, 1, 2, 4, 5, 7]),
         (json!([["versions:1.20.5"]]), vec![4, 5]),
+        // text search
+        // bug fix
+        (
+            json!([
+                // Only the forge one has 1.20.2, so its true that this project 'has'
+                // 1.20.2 and a fabric version, but not true that it has a 1.20.2 fabric version.
+                ["categories:fabric"],
+                ["versions:1.20.2"]
+            ]),
+            vec![],
+        ),
     ];
     // TODO: versions, game versions
     // Untested:
@@ -227,7 +265,7 @@ async fn search_projects() {
             let test_name = test_name.clone();
             async move {
                 let projects = api
-                    .search_deserialized(Some(&test_name), Some(facets), USER_USER_PAT)
+                    .search_deserialized(Some(&test_name), Some(facets.clone()), USER_USER_PAT)
                     .await;
                 let mut found_project_ids: Vec<u64> = projects
                     .hits
@@ -236,6 +274,7 @@ async fn search_projects() {
                     .collect();
                 expected_project_ids.sort();
                 found_project_ids.sort();
+                println!("Facets : {:?}", facets);
                 assert_eq!(found_project_ids, expected_project_ids);
             }
         })
@@ -244,5 +283,3 @@ async fn search_projects() {
     // Cleanup test db
     test_env.cleanup().await;
 }
-
-// TODO: write a more specific test to ensure that the search bug is fixed completely

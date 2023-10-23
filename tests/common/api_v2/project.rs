@@ -14,7 +14,7 @@ use serde_json::json;
 use crate::common::{
     asserts::assert_status,
     database::MOD_USER_PAT,
-    request_data::{ImageData, ProjectCreationRequestData},
+    request_data::{ImageData, ProjectCreationRequestData, VersionCreationRequestData},
 };
 
 use super::ApiV2;
@@ -32,7 +32,7 @@ impl ApiV2 {
             .set_multipart(creation_data.segment_data)
             .to_request();
         let resp = self.call(req).await;
-        assert_status(resp, StatusCode::OK);
+        assert_status(&resp, StatusCode::OK);
 
         // Approve as a moderator.
         let req = TestRequest::patch()
@@ -45,7 +45,7 @@ impl ApiV2 {
             ))
             .to_request();
         let resp = self.call(req).await;
-        assert_status(resp, StatusCode::NO_CONTENT);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         let project = self
             .get_project_deserialized(&creation_data.slug, pat)
@@ -83,6 +83,38 @@ impl ApiV2 {
         let resp = self.get_project(id_or_slug, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
+    }
+
+    pub async fn add_public_version(
+        &self,
+        creation_data: VersionCreationRequestData,
+        pat: &str,
+    ) -> Version {
+        // Add a project.
+        let req = TestRequest::post()
+            .uri("/v2/version")
+            .append_header(("Authorization", pat))
+            .set_multipart(creation_data.segment_data)
+            .to_request();
+        let resp = self.call(req).await;
+        assert_status(&resp, StatusCode::OK);
+        let value: serde_json::Value = test::read_body_json(resp).await;
+        let version_id = value["id"].as_str().unwrap();
+
+        // // Approve as a moderator.
+        // let req = TestRequest::patch()
+        //     .uri(&format!("/v2/project/{}", creation_data.slug))
+        //     .append_header(("Authorization", MOD_USER_PAT))
+        //     .set_json(json!(
+        //         {
+        //             "status": "approved"
+        //         }
+        //     ))
+        //     .to_request();
+        // let resp = self.call(req).await;
+        // assert_status(resp, StatusCode::NO_CONTENT);
+
+        self.get_version_deserialized(version_id, pat).await
     }
 
     pub async fn get_version(&self, id: &str, pat: &str) -> ServiceResponse {
