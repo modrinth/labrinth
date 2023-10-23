@@ -355,7 +355,7 @@ impl Project {
                 ",
                 id as ProjectId
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             sqlx::query!(
