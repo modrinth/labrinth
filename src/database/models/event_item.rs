@@ -27,8 +27,24 @@ pub enum EventData {
 }
 
 pub struct Event {
-    id: EventId,
-    event_data: EventData,
+    pub id: EventId,
+    pub event_data: EventData,
+    pub time: DateTime<Utc>,
+}
+
+struct RawEvent {
+    pub id: EventId,
+    pub target_id: DynamicId,
+    pub triggerer_id: Option<DynamicId>,
+    pub event_type: EventType,
+    // #[serde::serde(flatten)] //TODO: is this necessary?
+    pub metadata: Option<serde_json::Value>,
+    pub created: Option<DateTime<Utc>>,
+}
+
+pub struct EventSelector {
+    pub id: DynamicId,
+    pub event_type: EventType,
 }
 
 impl Event {
@@ -37,7 +53,11 @@ impl Event {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Self, DatabaseError> {
         let id = generate_event_id(transaction).await?;
-        Ok(Self { id, event_data })
+        Ok(Self {
+            id,
+            event_data,
+            time: Default::default(),
+        })
     }
 }
 
@@ -97,24 +117,17 @@ impl TryFrom<RawEvent> for Event {
                         |v| v.try_into(),
                     )?,
                 },
+                time: value.created.map_or_else(
+                    || {
+                        Err(DatabaseError::UnexpectedNull(
+                            "the value of created should not be null".to_string(),
+                        ))
+                    },
+                    |c| Ok(c),
+                )?,
             },
         })
     }
-}
-
-struct RawEvent {
-    pub id: EventId,
-    pub target_id: DynamicId,
-    pub triggerer_id: Option<DynamicId>,
-    pub event_type: EventType,
-    // #[serde::serde(flatten)] //TODO: is this necessary?
-    pub metadata: Option<serde_json::Value>,
-    pub created: Option<DateTime<Utc>>,
-}
-
-pub struct EventSelector {
-    pub id: DynamicId,
-    pub event_type: EventType,
 }
 
 impl PgHasArrayType for EventType {
