@@ -378,6 +378,11 @@ impl From<PatId> for ids::PatId {
         ids::PatId(id.0 as u64)
     }
 }
+impl From<EventId> for ids::FeedItemId {
+    fn from(value: crate::database::models::ids::EventId) -> Self {
+        Self(value.0 as u64)
+    }
+}
 
 pub mod dynamic {
     use super::*;

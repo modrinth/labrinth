@@ -54,8 +54,8 @@ impl UserFollow {
             .collect_vec())
     }
 
-    pub async fn get_follows_from(
-        user_id: UserId,
+    pub async fn get_follows_from_follower(
+        follower_user_id: UserId,
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Vec<UserFollow>, DatabaseError> {
         let res = sqlx::query!(
@@ -63,7 +63,7 @@ impl UserFollow {
             SELECT follower_id, target_id FROM user_follows
             WHERE follower_id=$1
             ",
-            user_id.0
+            follower_user_id.0
         )
         .fetch_all(exec)
         .await?;
