@@ -382,7 +382,7 @@ impl From<PatId> for ids::PatId {
 pub mod dynamic {
     use super::*;
 
-    #[derive(sqlx::Type, PartialEq, Debug)]
+    #[derive(sqlx::Type, PartialEq, Debug, Clone)]
     #[sqlx(type_name = "id_type", rename_all = "snake_case")]
     pub enum IdType {
         ProjectId,
@@ -390,7 +390,7 @@ pub mod dynamic {
         OrganizationId,
     }
 
-    #[derive(sqlx::Type)]
+    #[derive(sqlx::Type, Clone)]
     #[sqlx(type_name = "dynamic_id")]
     pub struct DynamicId {
         pub id: i64,

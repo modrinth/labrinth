@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::postgres::{PgHasArrayType, PgTypeInfo};
 
-#[derive(sqlx::Type)]
+#[derive(sqlx::Type, Clone, Copy)]
 #[sqlx(type_name = "event_type", rename_all = "snake_case")]
 pub enum EventType {
     ProjectCreated,
@@ -112,6 +112,11 @@ struct RawEvent {
     pub created: Option<DateTime<Utc>>,
 }
 
+pub struct EventSelector {
+    pub id: DynamicId,
+    pub event_type: EventType,
+}
+
 impl PgHasArrayType for EventType {
     fn array_type_info() -> sqlx::postgres::PgTypeInfo {
         PgTypeInfo::with_name("event_type")
@@ -143,11 +148,19 @@ impl Event {
         .await
     }
 
-    pub async fn get_triggerer_feed(
-        triggerer_ids: &[DynamicId],
-        event_types: &[EventType],
+    pub async fn get_events(
+        target_selectors: &[EventSelector],
+        triggerer_selectors: &[EventSelector],
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Vec<Event>, DatabaseError> {
+        let (target_ids, target_event_types): (Vec<_>, Vec<_>) = target_selectors
+            .into_iter()
+            .map(|t| (t.id.clone(), t.event_type))
+            .unzip();
+        let (triggerer_ids, triggerer_event_types): (Vec<_>, Vec<_>) = triggerer_selectors
+            .into_iter()
+            .map(|t| (t.id.clone(), t.event_type))
+            .unzip();
         Ok(sqlx::query_as!(
             RawEvent,
             r#"
@@ -155,14 +168,21 @@ impl Event {
                 id,
                 target_id as "target_id: _",
                 triggerer_id as "triggerer_id: _",
-                type as "event_type: _",
+                event_type as "event_type: _",
                 metadata,
                 created
             FROM events e
-            WHERE triggerer_id=ANY($1) AND type=ANY($2)
+            WHERE 
+                ((target_id).id, (target_id).id_type, event_type) 
+                = ANY(SELECT * FROM UNNEST ($1::dynamic_id[], $2::event_type[]))
+            OR
+                ((triggerer_id).id, (triggerer_id).id_type, event_type) 
+                = ANY(SELECT * FROM UNNEST ($3::dynamic_id[], $4::event_type[]))
             "#,
+            &target_ids[..] as &[DynamicId],
+            &target_event_types[..] as &[EventType],
             &triggerer_ids[..] as &[DynamicId],
-            &event_types[..] as &[EventType]
+            &triggerer_event_types[..] as &[EventType]
         )
         .fetch_all(exec)
         .await?
@@ -200,10 +220,10 @@ impl RawEvent {
             INSERT INTO events (
                 id,
                 target_id.id,
-                target_id.type,
+                target_id.id_type,
                 triggerer_id.id,
-                triggerer_id.type,
-                type,
+                triggerer_id.id_type,
+                event_type,
                 metadata
             )
             SELECT * FROM UNNEST (
