@@ -1,5 +1,6 @@
 use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
+use crate::database::models::event_item::{CreatorId, Event, EventData};
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item, User};
 use crate::database::redis::RedisPool;
@@ -748,11 +749,15 @@ async fn project_create_inner(
             }
         }
 
+        let organization_id = project_create_data.organization_id;
+        insert_project_create_event(project_id, organization_id, &current_user, transaction)
+            .await?;
+
         let project_builder_actual = models::project_item::ProjectBuilder {
             project_id: project_id.into(),
             project_type_id,
             team_id,
-            organization_id: project_create_data.organization_id,
+            organization_id,
             title: project_create_data.title,
             description: project_create_data.description,
             body: project_create_data.body,
@@ -887,6 +892,27 @@ async fn project_create_inner(
 
         Ok(HttpResponse::Ok().json(response))
     }
+}
+
+async fn insert_project_create_event(
+    project_id: ProjectId,
+    organization_id: Option<models::OrganizationId>,
+    current_user: &crate::models::users::User,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), CreateError> {
+    let event = Event::new(
+        EventData::ProjectCreated {
+            project_id: project_id.into(),
+            creator_id: organization_id.map_or_else(
+                || CreatorId::User(current_user.id.into()),
+                |org| CreatorId::Organization(org),
+            ),
+        },
+        transaction,
+    )
+    .await?;
+    event.insert(transaction).await?;
+    Ok(())
 }
 
 async fn create_initial_version(

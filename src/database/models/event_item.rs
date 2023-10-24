@@ -2,7 +2,7 @@ use std::convert::{TryFrom, TryInto};
 
 use super::{
     dynamic::{DynamicId, IdType},
-    DatabaseError, EventId, OrganizationId, ProjectId, UserId,
+    generate_event_id, DatabaseError, EventId, OrganizationId, ProjectId, UserId,
 };
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -27,8 +27,18 @@ pub enum EventData {
 }
 
 pub struct Event {
-    pub id: EventId,
-    pub event_data: EventData,
+    id: EventId,
+    event_data: EventData,
+}
+
+impl Event {
+    pub async fn new(
+        event_data: EventData,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Self, DatabaseError> {
+        let id = generate_event_id(transaction).await?;
+        Ok(Self { id, event_data })
+    }
 }
 
 impl From<CreatorId> for DynamicId {
@@ -115,6 +125,13 @@ impl PgHasArrayType for DynamicId {
 }
 
 impl Event {
+    pub async fn insert(
+        self,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        Self::insert_many(vec![self], transaction).await
+    }
+
     pub async fn insert_many(
         events: Vec<Self>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -127,7 +144,8 @@ impl Event {
     }
 
     pub async fn get_triggerer_feed(
-        triggerer_id: DynamicId,
+        triggerer_ids: &[DynamicId],
+        event_types: &[EventType],
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Vec<Event>, DatabaseError> {
         Ok(sqlx::query_as!(
@@ -140,10 +158,11 @@ impl Event {
                 type as "event_type: _",
                 metadata,
                 created
-            FROM events 
-            WHERE triggerer_id=$1
+            FROM events e
+            WHERE triggerer_id=ANY($1) AND type=ANY($2)
             "#,
-            triggerer_id as DynamicId
+            &triggerer_ids[..] as &[DynamicId],
+            &event_types[..] as &[EventType]
         )
         .fetch_all(exec)
         .await?
@@ -206,6 +225,4 @@ impl RawEvent {
 
         Ok(())
     }
-
-    // pub async fn get_triggerer_feed(triggerer_id: DynamicId, exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,) -> Result<
 }
