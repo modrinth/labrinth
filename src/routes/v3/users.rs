@@ -23,6 +23,7 @@ use actix_web::{
     HttpRequest, HttpResponse,
 };
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 use database::models as db_models;
@@ -90,9 +91,16 @@ pub async fn user_unfollow(
     .await
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct FeedParameters {
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
 #[get("feed")]
 pub async fn current_user_feed(
     req: HttpRequest,
+    web::Query(params): web::Query<FeedParameters>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -126,7 +134,12 @@ pub async fn current_user_feed(
                 }),
         )
         .collect_vec();
-    let events = DBEvent::get_events(&[], &selectors, &**pool).await?;
+    let events = DBEvent::get_events(&[], &selectors, &**pool)
+        .await?
+        .into_iter()
+        .skip(params.offset.unwrap_or(0))
+        .take(params.offset.unwrap_or(usize::MAX))
+        .collect_vec();
 
     let mut feed_items: Vec<FeedItem> = Vec::new();
     let authorized_projects =

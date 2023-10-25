@@ -195,6 +195,7 @@ impl Event {
             OR
                 (triggerer_id, triggerer_id_type, event_type) 
                 = ANY(SELECT * FROM UNNEST ($4::bigint[], $5::text[], $6::text[]))
+            ORDER BY created DESC
             "#,
             &target_ids[..],
             &target_id_types[..] as &[IdType],
