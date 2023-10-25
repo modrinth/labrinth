@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM organization_follows WHERE follower_id=$1 AND target_id=$2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9d73bfe2094b88fb7bcb0ef47741c612370373c6263566fc870da4a82b8ded7b"
+}

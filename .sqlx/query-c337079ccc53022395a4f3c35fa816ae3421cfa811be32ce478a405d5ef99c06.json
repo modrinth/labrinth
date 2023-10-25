@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": " INSERT INTO user_follows (follower_id, target_id) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c337079ccc53022395a4f3c35fa816ae3421cfa811be32ce478a405d5ef99c06"
+}

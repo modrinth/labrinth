@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": " INSERT INTO organization_follows (follower_id, target_id) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e50f350a4eb67ddbbfec7597185af09e5db89675320111e8006587b2666e72a3"
+}
