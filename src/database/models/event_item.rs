@@ -1,5 +1,3 @@
-use std::convert::{TryFrom, TryInto};
-
 use super::{
     dynamic::{DynamicId, IdType},
     generate_event_id, DatabaseError, EventId, OrganizationId, ProjectId, UserId,
@@ -7,11 +5,19 @@ use super::{
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::postgres::{PgHasArrayType, PgTypeInfo};
+use std::convert::{TryFrom, TryInto};
 
 #[derive(sqlx::Type, Clone, Copy)]
-#[sqlx(type_name = "event_type", rename_all = "snake_case")]
+#[sqlx(type_name = "text")]
+#[sqlx(rename_all = "snake_case")]
 pub enum EventType {
     ProjectCreated,
+}
+
+impl PgHasArrayType for EventType {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        PgTypeInfo::with_name("_text")
+    }
 }
 
 pub enum CreatorId {
@@ -34,10 +40,11 @@ pub struct Event {
 
 struct RawEvent {
     pub id: EventId,
-    pub target_id: DynamicId,
-    pub triggerer_id: Option<DynamicId>,
+    pub target_id: i64,
+    pub target_id_type: IdType,
+    pub triggerer_id: Option<i64>,
+    pub triggerer_id_type: Option<IdType>,
     pub event_type: EventType,
-    // #[serde::serde(flatten)] //TODO: is this necessary?
     pub metadata: Option<serde_json::Value>,
     pub created: Option<DateTime<Utc>>,
 }
@@ -87,14 +94,20 @@ impl From<Event> for RawEvent {
             EventData::ProjectCreated {
                 project_id,
                 creator_id,
-            } => RawEvent {
-                id: value.id,
-                target_id: project_id.into(),
-                triggerer_id: Some(creator_id.into()),
-                event_type: EventType::ProjectCreated,
-                metadata: None,
-                created: None,
-            },
+            } => {
+                let target_id = DynamicId::from(project_id);
+                let triggerer_id = DynamicId::from(creator_id);
+                RawEvent {
+                    id: value.id,
+                    target_id: target_id.id,
+                    target_id_type: target_id.id_type,
+                    triggerer_id: Some(triggerer_id.id),
+                    triggerer_id_type: Some(triggerer_id.id_type),
+                    event_type: EventType::ProjectCreated,
+                    metadata: None,
+                    created: None,
+                }
+            }
         }
     }
 }
@@ -103,19 +116,24 @@ impl TryFrom<RawEvent> for Event {
     type Error = DatabaseError;
 
     fn try_from(value: RawEvent) -> Result<Self, Self::Error> {
+        let target_id = DynamicId {
+            id: value.target_id,
+            id_type: value.target_id_type,
+        };
+        let triggerer_id = match (value.triggerer_id, value.triggerer_id_type) {
+            (Some(id), Some(id_type)) => Some(DynamicId { id, id_type }),
+            _ => None,
+        };
         Ok(match value.event_type {
             EventType::ProjectCreated => Event {
                 id: value.id,
                 event_data: EventData::ProjectCreated {
-                    project_id: value.target_id.try_into()?,
-                    creator_id: value.triggerer_id.map_or_else(
-                        || {
-                            Err(DatabaseError::UnexpectedNull(
-                                "triggerer_id should not be null for project creation".to_string(),
-                            ))
-                        },
-                        |v| v.try_into(),
-                    )?,
+                    project_id: target_id.try_into()?,
+                    creator_id: triggerer_id.map_or_else(|| {
+                        Err(DatabaseError::UnexpectedNull(
+                            "Neither triggerer_id nor triggerer_id_type should be null for project creation".to_string(),
+                        ))
+                    }, |v| v.try_into())?,
                 },
                 time: value.created.map_or_else(
                     || {
@@ -127,18 +145,6 @@ impl TryFrom<RawEvent> for Event {
                 )?,
             },
         })
-    }
-}
-
-impl PgHasArrayType for EventType {
-    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
-        PgTypeInfo::with_name("event_type")
-    }
-}
-
-impl PgHasArrayType for DynamicId {
-    fn array_type_info() -> PgTypeInfo {
-        PgTypeInfo::with_name("dynamic_id")
     }
 }
 
@@ -166,35 +172,35 @@ impl Event {
         triggerer_selectors: &[EventSelector],
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Vec<Event>, DatabaseError> {
-        let (target_ids, target_event_types): (Vec<_>, Vec<_>) = target_selectors
-            .into_iter()
-            .map(|t| (t.id.clone(), t.event_type))
-            .unzip();
-        let (triggerer_ids, triggerer_event_types): (Vec<_>, Vec<_>) = triggerer_selectors
-            .into_iter()
-            .map(|t| (t.id.clone(), t.event_type))
-            .unzip();
+        let (target_ids, target_id_types, target_event_types) =
+            unzip_event_selectors(target_selectors);
+        let (triggerer_ids, triggerer_id_types, triggerer_event_types) =
+            unzip_event_selectors(triggerer_selectors);
         Ok(sqlx::query_as!(
             RawEvent,
             r#"
             SELECT 
                 id,
-                target_id as "target_id: _",
-                triggerer_id as "triggerer_id: _",
+                target_id,
+                target_id_type as "target_id_type: _",
+                triggerer_id,
+                triggerer_id_type as "triggerer_id_type: _",
                 event_type as "event_type: _",
                 metadata,
                 created
             FROM events e
             WHERE 
-                ((target_id).id, (target_id).id_type, event_type) 
-                = ANY(SELECT * FROM UNNEST ($1::dynamic_id[], $2::event_type[]))
+                (target_id, target_id_type, event_type) 
+                = ANY(SELECT * FROM UNNEST ($1::bigint[], $2::text[], $3::text[]))
             OR
-                ((triggerer_id).id, (triggerer_id).id_type, event_type) 
-                = ANY(SELECT * FROM UNNEST ($3::dynamic_id[], $4::event_type[]))
+                (triggerer_id, triggerer_id_type, event_type) 
+                = ANY(SELECT * FROM UNNEST ($4::bigint[], $5::text[], $6::text[]))
             "#,
-            &target_ids[..] as &[DynamicId],
+            &target_ids[..],
+            &target_id_types[..] as &[IdType],
             &target_event_types[..] as &[EventType],
-            &triggerer_ids[..] as &[DynamicId],
+            &triggerer_ids[..],
+            &triggerer_id_types[..] as &[IdType],
             &triggerer_event_types[..] as &[EventType]
         )
         .fetch_all(exec)
@@ -210,19 +216,23 @@ impl RawEvent {
         events: Vec<Self>,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), DatabaseError> {
-        let (ids, target_ids, triggerer_ids, event_types, metadata): (
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-        ) = events
+        let (
+            ids,
+            target_ids,
+            target_id_types,
+            triggerer_ids,
+            triggerer_id_types,
+            event_types,
+            metadata,
+        ): (Vec<_>, Vec<_>, Vec<_>, Vec<_>, Vec<_>, Vec<_>, Vec<_>) = events
             .into_iter()
             .map(|e| {
                 (
                     e.id.0,
                     e.target_id,
+                    e.target_id_type,
                     e.triggerer_id,
+                    e.triggerer_id_type,
                     e.event_type,
                     e.metadata,
                 )
@@ -232,24 +242,28 @@ impl RawEvent {
             "
             INSERT INTO events (
                 id,
-                target_id.id,
-                target_id.id_type,
-                triggerer_id.id,
-                triggerer_id.id_type,
+                target_id,
+                target_id_type,
+                triggerer_id,
+                triggerer_id_type,
                 event_type,
                 metadata
             )
             SELECT * FROM UNNEST (
                 $1::bigint[],
-                $2::dynamic_id[],
-                $3::dynamic_id[],
-                $4::event_type[],
-                $5::jsonb[]
+                $2::bigint[],
+                $3::text[],
+                $4::bigint[],
+                $5::text[],
+                $6::text[],
+                $7::jsonb[]
             )
             ",
             &ids[..],
-            &target_ids[..] as &[DynamicId],
-            &triggerer_ids[..] as &[Option<DynamicId>],
+            &target_ids[..],
+            &target_id_types[..] as &[IdType],
+            &triggerer_ids[..] as &[Option<i64>],
+            &triggerer_id_types[..] as &[Option<IdType>],
             &event_types[..] as &[EventType],
             &metadata[..] as &[Option<serde_json::Value>]
         )
@@ -258,4 +272,13 @@ impl RawEvent {
 
         Ok(())
     }
+}
+
+fn unzip_event_selectors(
+    target_selectors: &[EventSelector],
+) -> (Vec<i64>, Vec<IdType>, Vec<EventType>) {
+    target_selectors
+        .into_iter()
+        .map(|t| (t.id.id, t.id.id_type, t.event_type))
+        .multiunzip()
 }
