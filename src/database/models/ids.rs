@@ -454,17 +454,24 @@ impl From<OAuthClientAuthorizationId> for ids::OAuthClientAuthorizationId {
 
 pub mod dynamic {
     use super::*;
+    use sqlx::postgres::{PgHasArrayType, PgTypeInfo};
 
-    #[derive(sqlx::Type, PartialEq, Debug, Clone)]
-    #[sqlx(type_name = "id_type", rename_all = "snake_case")]
+    #[derive(sqlx::Type, PartialEq, Debug, Clone, Copy)]
+    #[sqlx(type_name = "text")]
+    #[sqlx(rename_all = "snake_case")]
     pub enum IdType {
         ProjectId,
         UserId,
         OrganizationId,
     }
 
-    #[derive(sqlx::Type, Clone)]
-    #[sqlx(type_name = "dynamic_id")]
+    impl PgHasArrayType for IdType {
+        fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+            PgTypeInfo::with_name("_text")
+        }
+    }
+
+    #[derive(Clone)]
     pub struct DynamicId {
         pub id: i64,
         pub id_type: IdType,
