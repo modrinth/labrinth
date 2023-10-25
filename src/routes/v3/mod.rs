@@ -1,3 +1,5 @@
+pub mod follow;
+pub mod organizations;
 pub mod users;
 
 pub use super::ApiError;
@@ -14,7 +16,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(hello_world))
             .configure(users::config)
             .configure(oauth::config)
-            .configure(oauth_clients::config),
+            .configure(oauth_clients::config)
+            .configure(organizations::config),
     );
 }
 
