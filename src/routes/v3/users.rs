@@ -2,10 +2,7 @@ use crate::{
     auth::get_user_from_headers,
     database::{
         self,
-        models::{
-            event_item::{EventData, EventSelector, EventType},
-            DatabaseError,
-        },
+        models::event_item::{EventData, EventSelector, EventType},
         redis::RedisPool,
     },
     models::{
@@ -26,6 +23,7 @@ use sqlx::PgPool;
 use database::models as db_models;
 use database::models::creator_follows::UserFollow as DBUserFollow;
 use database::models::event_item::Event as DBEvent;
+use database::models::user_item::User as DBUser;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -43,36 +41,24 @@ pub async fn user_follow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let (_, current_user) = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::USER_WRITE]),
+    crate::routes::v3::follow::follow(
+        req,
+        target_id,
+        pool,
+        redis,
+        session_queue,
+        |id, pool, redis| async move { DBUser::get(&id, &**pool, &redis).await },
+        |follower_id, target_id, pool| async move {
+            DBUserFollow {
+                follower_id,
+                target_id,
+            }
+            .insert(&**pool)
+            .await
+        },
+        "user",
     )
-    .await?;
-
-    let target_user = db_models::User::get(&target_id.into_inner(), &**pool, &redis)
-        .await?
-        .ok_or_else(|| ApiError::InvalidInput("The specified user does not exist!".to_string()))?;
-
-    DBUserFollow {
-        follower_id: current_user.id.into(),
-        target_id: target_user.id,
-    }
-    .insert(&**pool)
     .await
-    .map_err(|e| match e {
-        DatabaseError::Database(e)
-            if e.as_database_error()
-                .is_some_and(|e| e.is_unique_violation()) =>
-        {
-            ApiError::InvalidInput("You are already following this user!".to_string())
-        }
-        e => e.into(),
-    })?;
-
-    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("{id}/follow")]
@@ -83,22 +69,19 @@ pub async fn user_unfollow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let (_, current_user) = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::USER_WRITE]),
+    crate::routes::v3::follow::unfollow(
+        req,
+        target_id,
+        pool,
+        redis,
+        session_queue,
+        |id, pool, redis| async move { DBUser::get(&id, &**pool, &redis).await },
+        |follower_id, target_id, pool| async move {
+            DBUserFollow::unfollow(follower_id, target_id, &**pool).await
+        },
+        "organization",
     )
-    .await?;
-
-    let target_user = db_models::User::get(&target_id.into_inner(), &**pool, &redis)
-        .await?
-        .ok_or_else(|| ApiError::InvalidInput("The specified user does not exist!".to_string()))?;
-
-    DBUserFollow::unfollow(current_user.id.into(), target_user.id, &**pool).await?;
-
-    Ok(HttpResponse::NoContent().body(""))
+    .await
 }
 
 #[get("feed")]
@@ -156,5 +139,5 @@ pub async fn current_user_feed(
         }
     }
 
-    todo!();
+    Ok(HttpResponse::Ok().json(feed_items))
 }
