@@ -1,0 +1,69 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id,\n                target_id,\n                target_id_type as \"target_id_type: _\",\n                triggerer_id,\n                triggerer_id_type as \"triggerer_id_type: _\",\n                event_type as \"event_type: _\",\n                metadata,\n                created\n            FROM events e\n            WHERE \n                (target_id, target_id_type, event_type) \n                = ANY(SELECT * FROM UNNEST ($1::bigint[], $2::text[], $3::text[]))\n            OR\n                (triggerer_id, triggerer_id_type, event_type) \n                = ANY(SELECT * FROM UNNEST ($4::bigint[], $5::text[], $6::text[]))\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "target_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "target_id_type: _",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "triggerer_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "triggerer_id_type: _",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "event_type: _",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 7,
+        "name": "created",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array",
+        "TextArray",
+        "TextArray",
+        "Int8Array",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "5352e8689a9d78c6976842afa12da3a3c9a8a3eee6985b548207eea7debcaafb"
+}
