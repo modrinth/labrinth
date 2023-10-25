@@ -531,7 +531,7 @@ pub async fn organization_projects_get(
     let projects_data =
         crate::database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
 
-    let projects = filter_authorized_projects(projects_data, &current_user, &pool).await?;
+    let projects = filter_authorized_projects(projects_data, current_user.as_ref(), &pool).await?;
     Ok(HttpResponse::Ok().json(projects))
 }
 

@@ -141,7 +141,7 @@ pub async fn projects_get(
     .map(|x| x.1)
     .ok();
 
-    let projects = filter_authorized_projects(projects_data, &user_option, &pool).await?;
+    let projects = filter_authorized_projects(projects_data, user_option.as_ref(), &pool).await?;
 
     Ok(HttpResponse::Ok().json(projects))
 }
