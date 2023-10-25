@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::iter;
 
-const VERSIONS_NAMESPACE: &str = "versions";
+pub const VERSIONS_NAMESPACE: &str = "versions";
 const VERSION_FILES_NAMESPACE: &str = "versions_files";
 
 #[derive(Clone)]
@@ -253,7 +253,7 @@ impl VersionBuilder {
     }
 }
 
-#[derive(derive_new::new)]
+#[derive(derive_new::new, Serialize, Deserialize)]
 pub struct LoaderVersion {
     pub loader_id: LoaderId,
     pub version_id: VersionId,
@@ -726,7 +726,6 @@ impl Version {
                     .collect::<Vec<_>>(),
             )
             .await?;
-
         for file in files {
             if let Some(mut file) =
                 file.and_then(|x| serde_json::from_str::<Vec<SingleFile>>(&x).ok())

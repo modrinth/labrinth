@@ -9,6 +9,7 @@ use futures::TryStreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
+const LOADER_ID: &str = "loader_id";
 const LOADERS_LIST_NAMESPACE: &str = "loaders";
 const LOADER_FIELDS_NAMESPACE: &str = "loader_fields";
 const LOADER_FIELD_ENUMS_ID_NAMESPACE: &str = "loader_field_enums";
@@ -49,10 +50,19 @@ pub struct Loader {
 }
 
 impl Loader {
-    pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<LoaderId>, DatabaseError>
+    pub async fn get_id<'a, E>(
+        name: &str,
+        exec: E,
+        redis: &RedisPool,
+    ) -> Result<Option<LoaderId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let cached_id: Option<i32> = redis.get_deserialized_from_json(LOADER_ID, name).await?;
+        if let Some(cached_id) = cached_id {
+            return Ok(Some(LoaderId(cached_id)));
+        }
+
         let result = sqlx::query!(
             "
             SELECT id FROM loaders
@@ -61,9 +71,16 @@ impl Loader {
             name
         )
         .fetch_optional(exec)
-        .await?;
+        .await?
+        .map(|r| LoaderId(r.id));
 
-        Ok(result.map(|r| LoaderId(r.id)))
+        if let Some(result) = result {
+            redis
+                .set_serialized_to_json(LOADER_ID, name, &result.0, None)
+                .await?;
+        }
+
+        Ok(result)
     }
 
     pub async fn list<'a, E>(
@@ -310,10 +327,9 @@ impl LoaderField {
     }
 }
 
-// TODO: Should this return variants?
 impl LoaderFieldEnum {
     pub async fn get<'a, E>(
-        enum_name: &str,
+        enum_name: &str, // Note: NOT loader field name
         game_name: &str,
         exec: E,
         redis: &RedisPool,
@@ -735,7 +751,6 @@ impl VersionField {
 }
 
 impl VersionFieldValue {
-    // TODO: this could be combined with build
     // Build from user-submitted JSON data
     // value is the attempted value of the field, which will be tried to parse to the correct type
     // enum_array is the list of valid enum variants for the field, if it is an enum (see LoaderFieldEnumValue::list_many_loader_fields)
@@ -930,7 +945,8 @@ impl VersionFieldValue {
         }
     }
 
-    // For conversion to an interanl string, such as for search facets
+    // For conversion to an interanl string, such as for search facets or filtering
+    // No matter the type, it will be converted to a Vec<String>, whre the non-array types will have a single element
     pub fn as_search_strings(&self) -> Vec<String> {
         match self {
             VersionFieldValue::Integer(i) => vec![i.to_string()],
@@ -941,6 +957,30 @@ impl VersionFieldValue {
             VersionFieldValue::ArrayBoolean(v) => v.iter().map(|b| b.to_string()).collect(),
             VersionFieldValue::Enum(_, v) => vec![v.value.clone()],
             VersionFieldValue::ArrayEnum(_, v) => v.iter().map(|v| v.value.clone()).collect(),
+        }
+    }
+
+    pub fn contains_json_value(&self, value: &serde_json::Value) -> bool {
+        match self {
+            VersionFieldValue::Integer(i) => value.as_i64() == Some(*i as i64),
+            VersionFieldValue::Text(s) => value.as_str() == Some(s),
+            VersionFieldValue::Boolean(b) => value.as_bool() == Some(*b),
+            VersionFieldValue::ArrayInteger(v) => value
+                .as_i64()
+                .map(|i| v.contains(&(i as i32)))
+                .unwrap_or(false),
+            VersionFieldValue::ArrayText(v) => value
+                .as_str()
+                .map(|s| v.contains(&s.to_string()))
+                .unwrap_or(false),
+            VersionFieldValue::ArrayBoolean(v) => {
+                value.as_bool().map(|b| v.contains(&b)).unwrap_or(false)
+            }
+            VersionFieldValue::Enum(_, v) => value.as_str() == Some(&v.value),
+            VersionFieldValue::ArrayEnum(_, v) => value
+                .as_str()
+                .map(|s| v.iter().any(|v| v.value == s))
+                .unwrap_or(false),
         }
     }
 }

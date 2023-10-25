@@ -2,8 +2,9 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::ImageId;
 use crate::models::projects::{
-    Dependency, FileType, Loader, ProjectId, VersionId, VersionStatus, VersionType,
+    Dependency, FileType, Loader, ProjectId, Version, VersionId, VersionStatus, VersionType,
 };
+use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::CreateError;
 use crate::routes::{v2_reroute, v3};
@@ -111,30 +112,11 @@ pub async fn version_create(
     )
     .await?;
 
-    // Convert response to V2 forma
-    match v2_reroute::extract_ok_json(response).await {
-        Ok(mut json) => {
-            // Get game_versions out of loaders, and flatten loadedrs
-            let mut game_versions = Vec::new();
-            let mut loaders = Vec::new();
-            if let Some(loaders_json) = json["loaders"].as_array() {
-                for loader_json in loaders_json {
-                    if let Some(loader) = loader_json["loader"].as_str() {
-                        loaders.push(loader.to_string());
-                    }
-                    if let Some(game_versions_json) = loader_json["game_versions"].as_array() {
-                        for game_version_json in game_versions_json {
-                            if let Some(game_version) = game_version_json.as_str() {
-                                game_versions.push(game_version.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-            json["game_versions"] = json!(game_versions);
-            json["loaders"] = json!(loaders);
-
-            Ok(HttpResponse::Ok().json(json))
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Version>(response).await {
+        Ok(version) => {
+            let v2_version = LegacyVersion::from(version);
+            Ok(HttpResponse::Ok().json(v2_version))
         }
         Err(response) => Ok(response),
     }
@@ -151,7 +133,6 @@ pub async fn upload_file_to_version(
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
-    // TODO: do we need to modify this?
     let response = v3::version_creation::upload_file_to_version(
         req,
         url_data,

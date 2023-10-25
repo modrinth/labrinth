@@ -1,21 +1,21 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::auth::{
-    filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
-};
+use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
-use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::VersionId;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
-use crate::models::projects::{Dependency, FileType, LoaderStruct, VersionStatus, VersionType};
+use crate::models::projects::{
+    Dependency, FileType, LoaderStruct, Version, VersionStatus, VersionType,
+};
 use crate::models::teams::ProjectPermissions;
+use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
-use crate::routes::v3;
+use crate::routes::{v2_reroute, v3};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -46,7 +46,6 @@ pub struct VersionListFilters {
     pub offset: Option<usize>,
 }
 
-// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 #[get("version")]
 pub async fn version_list(
     req: HttpRequest,
@@ -86,8 +85,17 @@ pub async fn version_list(
         v3::versions::version_list(req, info, web::Query(filters), pool, redis, session_queue)
             .await?;
 
-    //TODO: Convert response to V2 format
-    Ok(response)
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Vec<Version>>(response).await {
+        Ok(versions) => {
+            let v2_versions = versions
+                .into_iter()
+                .map(LegacyVersion::from)
+                .collect::<Vec<_>>();
+            Ok(HttpResponse::Ok().json(v2_versions))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 // Given a project ID/slug and a version slug
@@ -100,41 +108,16 @@ pub async fn version_project_get(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner();
-
-    let result = database::models::Project::get(&id.0, &**pool, &redis).await?;
-
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
-
-    if let Some(project) = result {
-        if !is_authorized(&project.inner, &user_option, &pool).await? {
-            return Ok(HttpResponse::NotFound().body(""));
+    let response =
+        v3::versions::version_project_get_helper(req, id, pool, redis, session_queue).await?;
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Version>(response).await {
+        Ok(version) => {
+            let v2_version = LegacyVersion::from(version);
+            Ok(HttpResponse::Ok().json(v2_version))
         }
-
-        let versions =
-            database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
-
-        let id_opt = parse_base62(&id.1).ok();
-        let version = versions
-            .into_iter()
-            .find(|x| Some(x.inner.id.0 as u64) == id_opt || x.inner.version_number == id.1);
-
-        if let Some(version) = version {
-            if is_authorized_version(&version.inner, &user_option, &pool).await? {
-                return Ok(HttpResponse::Ok().json(models::projects::Version::from(version)));
-            }
-        }
+        Err(response) => Ok(response),
     }
-
-    Ok(HttpResponse::NotFound().body(""))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -150,26 +133,21 @@ pub async fn versions_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let version_ids = serde_json::from_str::<Vec<models::ids::VersionId>>(&ids.ids)?
-        .into_iter()
-        .map(|x| x.into())
-        .collect::<Vec<database::models::VersionId>>();
-    let versions_data = database::models::Version::get_many(&version_ids, &**pool, &redis).await?;
+    let ids = v3::versions::VersionIds { ids: ids.ids };
+    let response =
+        v3::versions::versions_get(req, web::Query(ids), pool, redis, session_queue).await?;
 
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::VERSION_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
-
-    let versions = filter_authorized_versions(versions_data, &user_option, &pool).await?;
-
-    Ok(HttpResponse::Ok().json(versions))
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Vec<Version>>(response).await {
+        Ok(versions) => {
+            let v2_versions = versions
+                .into_iter()
+                .map(LegacyVersion::from)
+                .collect::<Vec<_>>();
+            Ok(HttpResponse::Ok().json(v2_versions))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[get("{version_id}")]
@@ -181,26 +159,15 @@ pub async fn version_get(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let version_data = database::models::Version::get(id.into(), &**pool, &redis).await?;
-
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::VERSION_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
-
-    if let Some(data) = version_data {
-        if is_authorized_version(&data.inner, &user_option, &pool).await? {
-            return Ok(HttpResponse::Ok().json(models::projects::Version::from(data)));
+    let response = v3::versions::version_get_helper(req, id, pool, redis, session_queue).await?;
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Version>(response).await {
+        Ok(version) => {
+            let v2_version = LegacyVersion::from(version);
+            Ok(HttpResponse::Ok().json(v2_version))
         }
+        Err(response) => Ok(response),
     }
-
-    Ok(HttpResponse::NotFound().body(""))
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -249,20 +216,62 @@ pub async fn version_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let new_version = new_version.into_inner();
+
+    // TOOD: convert to loader, need to get loader first in case only game versions is passed
+    let new_loaders = if new_version.game_versions.is_some() || new_version.loaders.is_some() {
+        let old_version = database::models::Version::get((*info).0.into(), &**pool, &redis)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput("The specified version does not exist!".to_string())
+            })?;
+        let old_version = models::projects::Version::from(old_version);
+
+        // Which loaderes to use
+        let new_loader_strings: Vec<_> = if let Some(loaders) = new_version.loaders {
+            loaders.to_vec()
+        } else {
+            old_version
+                .loaders
+                .iter()
+                .map(|l| l.loader.clone())
+                .collect()
+        };
+
+        // calling V2 endpoint does not allow different loader fields for different loaders
+        // (V3 functionality) so we can just take the first loader
+        let mut fields = old_version
+            .loaders
+            .into_iter()
+            .next()
+            .map(|l| l.fields)
+            .unwrap_or_default();
+        if let Some(game_versions) = new_version.game_versions {
+            fields.insert(
+                "game_versions".to_string(),
+                serde_json::json!(game_versions),
+            );
+        }
+
+        Some(
+            new_loader_strings
+                .into_iter()
+                .map(|loader| LoaderStruct {
+                    loader,
+                    fields: fields.clone(),
+                })
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        None
+    };
+
     let new_version = v3::versions::EditVersion {
         name: new_version.name,
         version_number: new_version.version_number,
         changelog: new_version.changelog,
         version_type: new_version.version_type,
         dependencies: new_version.dependencies,
-        loaders: new_version.loaders.map(|l| {
-            l.into_iter()
-                .map(|l| LoaderStruct {
-                    loader: l,
-                    fields: HashMap::new(),
-                })
-                .collect::<Vec<_>>()
-        }),
+        loaders: new_loaders,
         featured: new_version.featured,
         primary_file: new_version.primary_file,
         downloads: new_version.downloads,

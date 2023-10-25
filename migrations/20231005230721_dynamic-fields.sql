@@ -6,12 +6,14 @@ CREATE TABLE games (
 INSERT INTO games(id, name) VALUES (1, 'minecraft-java');
 INSERT INTO games(id, name) VALUES (2, 'minecraft-bedrock');
 
-ALTER TABLE mods ADD COLUMN game_id integer REFERENCES games ON UPDATE CASCADE NOT NULL DEFAULT 1; -- all past ones are minecraft-java
-ALTER TABLE loaders ADD COLUMN game_id integer REFERENCES games ON UPDATE CASCADE NOT NULL DEFAULT 1; -- all past ones are minecraft-java
+ALTER TABLE loaders ADD CONSTRAINT unique_loader_name UNIQUE (loader);
+
+ALTER TABLE mods ADD COLUMN game_id integer REFERENCES games NOT NULL DEFAULT 1; -- all past ones are minecraft-java
+ALTER TABLE loaders ADD COLUMN game_id integer REFERENCES games NOT NULL DEFAULT 1; -- all past ones are minecraft-java
 
 CREATE TABLE loader_field_enums (
   id serial PRIMARY KEY,
-  game_id integer REFERENCES games ON UPDATE CASCADE NOT NULL DEFAULT 1,
+  game_id integer REFERENCES games NOT NULL DEFAULT 1,
   enum_name varchar(64) NOT NULL,
   ordering int NULL,
   hidable BOOLEAN NOT NULL DEFAULT FALSE
@@ -19,7 +21,7 @@ CREATE TABLE loader_field_enums (
 
 CREATE TABLE loader_field_enum_values (
   id serial PRIMARY KEY,
-  enum_id integer REFERENCES loader_field_enums ON UPDATE CASCADE NOT NULL,
+  enum_id integer REFERENCES loader_field_enums NOT NULL,
   value varchar(64) NOT NULL,
   ordering int NULL,
   created timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -34,13 +36,13 @@ CREATE TABLE loader_field_enum_values (
 
 CREATE TABLE loader_fields (
   id serial PRIMARY KEY,
-  loader_id integer REFERENCES loaders ON UPDATE CASCADE NOT NULL,
+  loader_id integer REFERENCES loaders NOT NULL,
   field varchar(64) NOT NULL,
   -- "integer", "text", "enum", "bool", 
   -- "array_integer", "array_text", "array_enum", "array_bool"
   field_type varchar(64) NOT NULL,
   -- only for enum
-  enum_type integer REFERENCES loader_field_enums ON UPDATE CASCADE NULL,
+  enum_type integer REFERENCES loader_field_enums NULL,
   optional BOOLEAN NOT NULL DEFAULT true,
   -- for int- min/max val, for text- min len, for enum- min items, for bool- nothing
   min_val integer NULL,
@@ -52,13 +54,12 @@ CREATE TABLE loader_fields (
 ALTER TABLE loaders ADD COLUMN hidable boolean NOT NULL default false;
 
 CREATE TABLE version_fields (
-  version_id bigint REFERENCES versions ON UPDATE CASCADE NOT NULL,
-  field_id integer REFERENCES loader_fields ON UPDATE CASCADE NOT NULL,
+  version_id bigint REFERENCES versions  NOT NULL,
+  field_id integer REFERENCES loader_fields  NOT NULL,
   -- for int/bool values
   int_value integer NULL,
-  enum_value integer REFERENCES loader_field_enum_values ON UPDATE CASCADE NULL,
-  string_value text NULL,
-  PRIMARY KEY (version_id, field_id)
+  enum_value integer REFERENCES loader_field_enum_values  NULL,
+  string_value text NULL
 );
 
 -- Convert side_types

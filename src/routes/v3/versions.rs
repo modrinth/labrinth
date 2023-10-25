@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::auth::{filter_authorized_versions, get_user_from_headers, is_authorized};
+use crate::auth::{
+    filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
+};
 use crate::database;
 use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField};
 use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
 use crate::database::models::Organization;
 use crate::database::redis::RedisPool;
 use crate::models;
+use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::VersionId;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
@@ -26,6 +29,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         "version",
         web::post().to(super::version_creation::version_create),
     );
+    cfg.route("versions", web::get().to(versions_get));
+
     cfg.route(
         "{id}",
         web::post().to(super::version_creation::version_create),
@@ -33,6 +38,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("version")
+            .route("{id}", web::get().to(version_get))
             .route("{id}", web::patch().to(version_edit))
             .route(
                 "{version_id}/file",
@@ -40,6 +46,135 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             ),
     );
 }
+
+// Given a project ID/slug and a version slug
+pub async fn version_project_get(
+    req: HttpRequest,
+    info: web::Path<(String, String)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let info = info.into_inner();
+    version_project_get_helper(req, info, pool, redis, session_queue).await
+}
+pub async fn version_project_get_helper(
+    req: HttpRequest,
+    id: (String, String),
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let result = database::models::Project::get(&id.0, &**pool, &redis).await?;
+
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+
+    if let Some(project) = result {
+        if !is_authorized(&project.inner, &user_option, &pool).await? {
+            return Ok(HttpResponse::NotFound().body(""));
+        }
+
+        let versions =
+            database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
+
+        let id_opt = parse_base62(&id.1).ok();
+        let version = versions
+            .into_iter()
+            .find(|x| Some(x.inner.id.0 as u64) == id_opt || x.inner.version_number == id.1);
+
+        if let Some(version) = version {
+            if is_authorized_version(&version.inner, &user_option, &pool).await? {
+                return Ok(HttpResponse::Ok().json(models::projects::Version::from(version)));
+            }
+        }
+    }
+
+    Ok(HttpResponse::NotFound().body(""))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VersionIds {
+    pub ids: String,
+}
+
+pub async fn versions_get(
+    req: HttpRequest,
+    web::Query(ids): web::Query<VersionIds>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let version_ids = serde_json::from_str::<Vec<models::ids::VersionId>>(&ids.ids)?
+        .into_iter()
+        .map(|x| x.into())
+        .collect::<Vec<database::models::VersionId>>();
+    let versions_data = database::models::Version::get_many(&version_ids, &**pool, &redis).await?;
+
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::VERSION_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+
+    let versions = filter_authorized_versions(versions_data, &user_option, &pool).await?;
+
+    Ok(HttpResponse::Ok().json(versions))
+}
+
+pub async fn version_get(
+    req: HttpRequest,
+    info: web::Path<(models::ids::VersionId,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let id = info.into_inner().0;
+    version_get_helper(req, id, pool, redis, session_queue).await
+}
+
+pub async fn version_get_helper(
+    req: HttpRequest,
+    id: models::ids::VersionId,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let version_data = database::models::Version::get(id.into(), &**pool, &redis).await?;
+
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::VERSION_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+
+    if let Some(data) = version_data {
+        if is_authorized_version(&data.inner, &user_option, &pool).await? {
+            return Ok(HttpResponse::Ok().json(models::projects::Version::from(data)));
+        }
+    }
+
+    Ok(HttpResponse::NotFound().body(""))
+}
+
 #[derive(Serialize, Deserialize, Validate, Default, Debug)]
 pub struct EditVersion {
     #[validate(
@@ -303,6 +438,7 @@ pub async fn version_edit_helper(
                     let loader_id = database::models::loader_fields::Loader::get_id(
                         &loader_name,
                         &mut *transaction,
+                        &redis,
                     )
                     .await?
                     .ok_or_else(|| {
@@ -318,7 +454,6 @@ pub async fn version_edit_helper(
                             &redis,
                         )
                         .await?;
-
                     for (key, value) in loader.fields.iter() {
                         let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
                             ApiError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
@@ -336,9 +471,9 @@ pub async fn version_edit_helper(
                         version_fields.push(vf);
                     }
                 }
+
                 LoaderVersion::insert_many(loader_versions, &mut transaction).await?;
                 VersionField::insert_many(version_fields, &mut transaction).await?;
-
                 database::models::Project::update_loaders(
                     version_item.inner.project_id,
                     &mut transaction,
@@ -535,7 +670,7 @@ pub async fn version_edit_helper(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct VersionListFilters {
     pub loaders: Option<String>,
     pub featured: Option<bool>,
@@ -594,22 +729,23 @@ pub async fn version_list(
             .filter(|x| {
                 let mut bool = true;
 
-                // TODO: theres a lot of repeated logic here with the similar filterings in super::version_file, abstract it
                 if let Some(version_type) = filters.version_type {
                     bool &= &*x.inner.version_type == version_type.as_str();
                 }
                 if let Some(loaders) = &loader_filters {
                     bool &= x.loaders.iter().any(|y| loaders.contains(y));
                 }
-
                 if let Some(loader_fields) = &loader_field_filters {
-                    for (key, value) in loader_fields {
-                        bool &= x.version_fields.iter().any(|y| {
-                            y.field_name == *key && value.contains(&y.value.serialize_internal())
-                        });
+                    for (key, values) in loader_fields {
+                        bool &= if let Some(x_vf) =
+                            x.version_fields.iter().find(|y| y.field_name == *key)
+                        {
+                            values.iter().any(|v| x_vf.value.contains_json_value(v))
+                        } else {
+                            true
+                        };
                     }
                 }
-
                 bool
             })
             .collect::<Vec<_>>();

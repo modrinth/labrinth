@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use super::ApiError;
 use crate::database::models::categories::{Category, DonationPlatform, ProjectType, ReportType};
-use crate::database::models::loader_fields::Game;
+use crate::database::models::loader_fields::{Game, LoaderFieldEnumValue};
 use crate::database::redis::RedisPool;
-use crate::routes::v3;
 use crate::routes::v3::tags::{LoaderFieldsEnumQuery, LoaderList};
+use crate::routes::{v2_reroute, v3};
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
@@ -27,10 +27,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CategoryData {
-    icon: String,
-    name: String,
-    project_type: String,
-    header: String,
+    pub icon: String,
+    pub name: String,
+    pub project_type: String,
+    pub header: String,
 }
 
 #[get("category")]
@@ -75,7 +75,7 @@ pub async fn loader_list(
     Ok(response)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct GameVersionQueryData {
     pub version: String,
     pub version_type: String,
@@ -106,16 +106,41 @@ pub async fn game_version_list(
     let response = v3::tags::loader_fields_list(
         pool,
         web::Query(LoaderFieldsEnumQuery {
-            game: Game::MinecraftJava.name().to_string(),
-            field: "game_version".to_string(),
+            loader: "fabric".to_string(),
+            loader_field: "game_versions".to_string(),
             filters: Some(filters),
         }),
         redis,
     )
     .await?;
 
-    // TODO: parse v3 to v2
-    Ok(response)
+    // Convert to V2 format
+    Ok(
+        match v2_reroute::extract_ok_json::<Vec<LoaderFieldEnumValue>>(response).await {
+            Ok(fields) => {
+                let fields = fields
+                    .into_iter()
+                    .map(|f| GameVersionQueryData {
+                        version: f.value,
+                        version_type: f
+                            .metadata
+                            .get("type")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        date: f.created,
+                        major: f
+                            .metadata
+                            .get("major")
+                            .and_then(|m| m.as_bool())
+                            .unwrap_or_default(),
+                    })
+                    .collect::<Vec<_>>();
+                HttpResponse::Ok().json(fields)
+            }
+            Err(response) => response,
+        },
+    )
 }
 
 #[derive(serde::Serialize)]
@@ -216,13 +241,22 @@ pub async fn side_type_list(
     let response = v3::tags::loader_fields_list(
         pool,
         web::Query(LoaderFieldsEnumQuery {
-            game: Game::MinecraftJava.name().to_string(),
-            field: "client_type".to_string(), // same as server_type
+            loader: "fabric".to_string(),            // same for minecraft loader
+            loader_field: "client_side".to_string(), // same as server_side
             filters: None,
         }),
         redis,
     )
     .await?;
-    // TODO: parse v3 to v2
-    Ok(response)
+
+    // Convert to V2 format
+    Ok(
+        match v2_reroute::extract_ok_json::<Vec<LoaderFieldEnumValue>>(response).await {
+            Ok(fields) => {
+                let fields = fields.into_iter().map(|f| f.value).collect::<Vec<_>>();
+                HttpResponse::Ok().json(fields)
+            }
+            Err(response) => response,
+        },
+    )
 }

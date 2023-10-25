@@ -1,6 +1,8 @@
+use crate::database::models::version_item;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-
+use crate::models::projects::Project;
+use crate::models::v2::projects::LegacyProject;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::CreateError;
 use crate::routes::{v2_reroute, v3};
@@ -86,10 +88,14 @@ pub async fn project_create(
     .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json(response).await {
-        Ok(mut json) => {
-            v2_reroute::set_side_types_from_versions(&mut json, &**client, &redis).await?;
-            Ok(HttpResponse::Ok().json(json))
+    match v2_reroute::extract_ok_json::<Project>(response).await {
+        Ok(project) => {
+            let version_item = match project.versions.first() {
+                Some(vid) => version_item::Version::get((*vid).into(), &**client, &redis).await?,
+                None => None,
+            };
+            let project = LegacyProject::from(project, version_item);
+            Ok(HttpResponse::Ok().json(project))
         }
         Err(response) => Ok(response),
     }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::auth::{filter_authorized_projects, get_user_from_headers};
+use crate::auth::get_user_from_headers;
 use crate::database::models::team_item::TeamMember;
 use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::database::redis::RedisPool;
@@ -9,10 +9,12 @@ use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::organizations::OrganizationId;
 use crate::models::pats::Scopes;
+use crate::models::projects::Project;
 use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
+use crate::models::v2::projects::LegacyProject;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::CreateError;
-use crate::routes::ApiError;
+use crate::routes::{v2_reroute, v3, ApiError};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
@@ -499,40 +501,23 @@ pub async fn organization_projects_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let info = info.into_inner().0;
-    let current_user = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::ORGANIZATION_READ, Scopes::PROJECT_READ]),
+    let response = v3::organizations::organization_projects_get(
+        req,
+        info,
+        pool.clone(),
+        redis.clone(),
+        session_queue,
     )
-    .await
-    .map(|x| x.1)
-    .ok();
-
-    let possible_organization_id: Option<u64> = parse_base62(&info).ok();
-    use futures::TryStreamExt;
-
-    let project_ids = sqlx::query!(
-        "
-        SELECT m.id FROM organizations o
-        INNER JOIN mods m ON m.organization_id = o.id
-        WHERE (o.id = $1 AND $1 IS NOT NULL) OR (o.title = $2 AND $2 IS NOT NULL)
-        ",
-        possible_organization_id.map(|x| x as i64),
-        info
-    )
-    .fetch_many(&**pool)
-    .try_filter_map(|e| async { Ok(e.right().map(|m| crate::database::models::ProjectId(m.id))) })
-    .try_collect::<Vec<crate::database::models::ProjectId>>()
     .await?;
 
-    let projects_data =
-        crate::database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
-
-    let projects = filter_authorized_projects(projects_data, &current_user, &pool).await?;
-    Ok(HttpResponse::Ok().json(projects))
+    // Convert v3 projects to v2
+    match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
+        Ok(project) => {
+            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+            Ok(HttpResponse::Ok().json(legacy_projects))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[derive(Deserialize)]

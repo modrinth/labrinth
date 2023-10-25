@@ -796,7 +796,7 @@ impl FileType {
 }
 
 /// A project loader
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct Loader(pub String);
 
@@ -809,7 +809,6 @@ pub struct SearchRequest {
     pub index: Option<String>,
     pub limit: Option<String>,
 
-    // TODO: implement fully with explanation
     pub new_filters: Option<String>,
 
     // TODO: Deprecated values below. WILL BE REMOVED V3!

@@ -1,16 +1,15 @@
 use super::ApiError;
-use crate::auth::{
-    filter_authorized_projects, filter_authorized_versions, get_user_from_headers,
-    is_authorized_version,
-};
+use crate::auth::{get_user_from_headers, is_authorized_version};
+use crate::database;
+
 use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;
-use crate::models::projects::VersionType;
+use crate::models::projects::{Project, Version, VersionType};
 use crate::models::teams::ProjectPermissions;
+use crate::models::v2::projects::{LegacyProject, LegacyVersion};
 use crate::queue::session::AuthQueue;
-use crate::routes::v3;
 use crate::routes::v3::version_file::{default_algorithm, HashQuery};
-use crate::{database, models};
+use crate::routes::{v2_reroute, v3};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -44,38 +43,17 @@ pub async fn get_version_from_hash(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::VERSION_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
-    let hash = info.into_inner().0.to_lowercase();
-    let file = database::models::Version::get_file_from_hash(
-        hash_query.algorithm.clone(),
-        hash,
-        hash_query.version_id.map(|x| x.into()),
-        &**pool,
-        &redis,
-    )
-    .await?;
-    if let Some(file) = file {
-        let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
-        if let Some(version) = version {
-            if !is_authorized_version(&version.inner, &user_option, &pool).await? {
-                return Ok(HttpResponse::NotFound().body(""));
-            }
+    let response =
+        v3::version_file::get_version_from_hash(req, info, pool, redis, hash_query, session_queue)
+            .await;
 
-            Ok(HttpResponse::Ok().json(models::projects::Version::from(version)))
-        } else {
-            Ok(HttpResponse::NotFound().body(""))
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Version>(response?).await {
+        Ok(version) => {
+            let v2_version = LegacyVersion::from(version);
+            Ok(HttpResponse::Ok().json(v2_version))
         }
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(response) => Ok(response),
     }
 }
 
@@ -250,14 +228,13 @@ pub async fn delete_file(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct UpdateData {
     pub loaders: Option<Vec<String>>,
     pub game_versions: Option<Vec<String>>,
     pub version_types: Option<Vec<VersionType>>,
 }
 
-// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 #[post("{version_id}/update")]
 pub async fn get_update_from_hash(
     req: HttpRequest,
@@ -274,7 +251,9 @@ pub async fn get_update_from_hash(
     for gv in update_data.game_versions.into_iter().flatten() {
         game_versions.push(serde_json::json!(gv.clone()));
     }
-    loader_fields.insert("game_versions".to_string(), game_versions);
+    if !game_versions.is_empty() {
+        loader_fields.insert("game_versions".to_string(), game_versions);
+    }
     let update_data = v3::version_file::UpdateData {
         loaders: update_data.loaders.clone(),
         version_types: update_data.version_types.clone(),
@@ -292,7 +271,14 @@ pub async fn get_update_from_hash(
     )
     .await?;
 
-    Ok(response)
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Version>(response).await {
+        Ok(version) => {
+            let v2_version = LegacyVersion::from(version);
+            Ok(HttpResponse::Ok().json(v2_version))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 // Requests above with multiple versions below
@@ -312,44 +298,34 @@ pub async fn get_versions_from_hashes(
     file_data: web::Json<FileHashes>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::VERSION_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
-
-    let files = database::models::Version::get_files_from_hash(
-        file_data.algorithm.clone(),
-        &file_data.hashes,
-        &**pool,
-        &redis,
+    let file_data = file_data.into_inner();
+    let file_data = v3::version_file::FileHashes {
+        algorithm: file_data.algorithm,
+        hashes: file_data.hashes,
+    };
+    let response = v3::version_file::get_versions_from_hashes(
+        req,
+        pool,
+        redis,
+        web::Json(file_data),
+        session_queue,
     )
     .await?;
 
-    let version_ids = files.iter().map(|x| x.version_id).collect::<Vec<_>>();
-    let versions_data = filter_authorized_versions(
-        database::models::Version::get_many(&version_ids, &**pool, &redis).await?,
-        &user_option,
-        &pool,
-    )
-    .await?;
-
-    let mut response = HashMap::new();
-
-    for version in versions_data {
-        for file in files.iter().filter(|x| x.version_id == version.id.into()) {
-            if let Some(hash) = file.hashes.get(&file_data.algorithm) {
-                response.insert(hash.clone(), version.clone());
-            }
+    // Convert to V2
+    match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {
+        Ok(versions) => {
+            let v2_versions = versions
+                .into_iter()
+                .map(|(hash, version)| {
+                    let v2_version = LegacyVersion::from(version);
+                    (hash, v2_version)
+                })
+                .collect::<HashMap<_, _>>();
+            Ok(HttpResponse::Ok().json(v2_versions))
         }
+        Err(response) => Ok(response),
     }
-
-    Ok(HttpResponse::Ok().json(response))
 }
 
 #[post("project")]
@@ -360,45 +336,46 @@ pub async fn get_projects_from_hashes(
     file_data: web::Json<FileHashes>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
-
-    let files = database::models::Version::get_files_from_hash(
-        file_data.algorithm.clone(),
-        &file_data.hashes,
-        &**pool,
-        &redis,
+    let file_data = file_data.into_inner();
+    let file_data = v3::version_file::FileHashes {
+        algorithm: file_data.algorithm,
+        hashes: file_data.hashes,
+    };
+    let response = v3::version_file::get_projects_from_hashes(
+        req,
+        pool.clone(),
+        redis.clone(),
+        web::Json(file_data),
+        session_queue,
     )
     .await?;
 
-    let project_ids = files.iter().map(|x| x.project_id).collect::<Vec<_>>();
+    // Convert to V2
+    match v2_reroute::extract_ok_json::<HashMap<String, Project>>(response).await {
+        Ok(projects_hashes) => {
+            let hash_to_project_id = projects_hashes
+                .iter()
+                .map(|(hash, project)| {
+                    let project_id = project.id;
+                    (hash.clone(), project_id)
+                })
+                .collect::<HashMap<_, _>>();
+            let legacy_projects =
+                LegacyProject::from_many(projects_hashes.into_values().collect(), &**pool, &redis)
+                    .await?;
+            let legacy_projects_hashes = hash_to_project_id
+                .into_iter()
+                .filter_map(|(hash, project_id)| {
+                    let legacy_project =
+                        legacy_projects.iter().find(|x| x.id == project_id)?.clone();
+                    Some((hash.to_string(), legacy_project))
+                })
+                .collect::<HashMap<_, _>>();
 
-    let projects_data = filter_authorized_projects(
-        database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?,
-        &user_option,
-        &pool,
-    )
-    .await?;
-
-    let mut response = HashMap::new();
-
-    for project in projects_data {
-        for file in files.iter().filter(|x| x.project_id == project.id.into()) {
-            if let Some(hash) = file.hashes.get(&file_data.algorithm) {
-                response.insert(hash.clone(), project.clone());
-            }
+            Ok(HttpResponse::Ok().json(legacy_projects_hashes))
         }
+        Err(response) => Ok(response),
     }
-
-    Ok(HttpResponse::Ok().json(response))
 }
 
 #[derive(Deserialize)]
@@ -411,7 +388,6 @@ pub struct ManyUpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 
-// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 #[post("update")]
 pub async fn update_files(
     req: HttpRequest,
@@ -426,7 +402,9 @@ pub async fn update_files(
     for gv in update_data.game_versions.into_iter().flatten() {
         game_versions.push(serde_json::json!(gv.clone()));
     }
-    loader_fields.insert("game_versions".to_string(), game_versions);
+    if !game_versions.is_empty() {
+        loader_fields.insert("game_versions".to_string(), game_versions);
+    }
     let update_data = v3::version_file::ManyUpdateData {
         loaders: update_data.loaders.clone(),
         version_types: update_data.version_types.clone(),
@@ -438,10 +416,24 @@ pub async fn update_files(
     let response =
         v3::version_file::update_files(req, pool, redis, web::Json(update_data), session_queue)
             .await?;
-    Ok(response)
+
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {
+        Ok(returned_versions) => {
+            let v3_versions = returned_versions
+                .into_iter()
+                .map(|(hash, version)| {
+                    let v2_version = LegacyVersion::from(version);
+                    (hash, v2_version)
+                })
+                .collect::<HashMap<_, _>>();
+            Ok(HttpResponse::Ok().json(v3_versions))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct FileUpdateData {
     pub hash: String,
     pub loaders: Option<Vec<String>>,
@@ -456,7 +448,6 @@ pub struct ManyFileUpdateData {
     pub hashes: Vec<FileUpdateData>,
 }
 
-// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 #[post("update_individual")]
 pub async fn update_individual_files(
     req: HttpRequest,
@@ -477,7 +468,9 @@ pub async fn update_individual_files(
                 for gv in x.game_versions.into_iter().flatten() {
                     game_versions.push(serde_json::json!(gv.clone()));
                 }
-                loader_fields.insert("game_versions".to_string(), game_versions);
+                if !game_versions.is_empty() {
+                    loader_fields.insert("game_versions".to_string(), game_versions);
+                }
                 v3::version_file::FileUpdateData {
                     hash: x.hash.clone(),
                     loaders: x.loaders.clone(),
@@ -497,5 +490,18 @@ pub async fn update_individual_files(
     )
     .await?;
 
-    Ok(response)
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {
+        Ok(returned_versions) => {
+            let v3_versions = returned_versions
+                .into_iter()
+                .map(|(hash, version)| {
+                    let v2_version = LegacyVersion::from(version);
+                    (hash, v2_version)
+                })
+                .collect::<HashMap<_, _>>();
+            Ok(HttpResponse::Ok().json(v3_versions))
+        }
+        Err(response) => Ok(response),
+    }
 }

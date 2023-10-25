@@ -5,7 +5,7 @@ use actix_web::{
 };
 use bytes::Bytes;
 use labrinth::{
-    models::projects::{Project, Version},
+    models::v2::projects::{LegacyProject, LegacyVersion},
     search::SearchResults,
     util::actix::AppendsMultipart,
 };
@@ -14,7 +14,7 @@ use serde_json::json;
 use crate::common::{
     asserts::assert_status,
     database::MOD_USER_PAT,
-    request_data::{ImageData, ProjectCreationRequestData, VersionCreationRequestData},
+    request_data::{ImageData, ProjectCreationRequestData},
 };
 
 use super::ApiV2;
@@ -24,7 +24,7 @@ impl ApiV2 {
         &self,
         creation_data: ProjectCreationRequestData,
         pat: &str,
-    ) -> (Project, Vec<Version>) {
+    ) -> (LegacyProject, Vec<LegacyVersion>) {
         // Add a project.
         let req = TestRequest::post()
             .uri("/v2/project")
@@ -57,7 +57,7 @@ impl ApiV2 {
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
-        let versions: Vec<Version> = test::read_body_json(resp).await;
+        let versions: Vec<LegacyVersion> = test::read_body_json(resp).await;
 
         (project, versions)
     }
@@ -79,54 +79,8 @@ impl ApiV2 {
             .to_request();
         self.call(req).await
     }
-    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {
+    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> LegacyProject {
         let resp = self.get_project(id_or_slug, pat).await;
-        assert_eq!(resp.status(), 200);
-        test::read_body_json(resp).await
-    }
-
-    pub async fn add_public_version(
-        &self,
-        creation_data: VersionCreationRequestData,
-        pat: &str,
-    ) -> Version {
-        // Add a project.
-        let req = TestRequest::post()
-            .uri("/v2/version")
-            .append_header(("Authorization", pat))
-            .set_multipart(creation_data.segment_data)
-            .to_request();
-        let resp = self.call(req).await;
-        assert_status(&resp, StatusCode::OK);
-        let value: serde_json::Value = test::read_body_json(resp).await;
-        let version_id = value["id"].as_str().unwrap();
-
-        // // Approve as a moderator.
-        // let req = TestRequest::patch()
-        //     .uri(&format!("/v2/project/{}", creation_data.slug))
-        //     .append_header(("Authorization", MOD_USER_PAT))
-        //     .set_json(json!(
-        //         {
-        //             "status": "approved"
-        //         }
-        //     ))
-        //     .to_request();
-        // let resp = self.call(req).await;
-        // assert_status(resp, StatusCode::NO_CONTENT);
-
-        self.get_version_deserialized(version_id, pat).await
-    }
-
-    pub async fn get_version(&self, id: &str, pat: &str) -> ServiceResponse {
-        let req = TestRequest::get()
-            .uri(&format!("/v2/version/{id}"))
-            .append_header(("Authorization", pat))
-            .to_request();
-        self.call(req).await
-    }
-
-    pub async fn get_version_deserialized(&self, id: &str, pat: &str) -> Version {
-        let resp = self.get_version(id, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
@@ -135,36 +89,12 @@ impl ApiV2 {
         &self,
         user_id_or_username: &str,
         pat: &str,
-    ) -> Vec<Project> {
+    ) -> Vec<LegacyProject> {
         let req = test::TestRequest::get()
             .uri(&format!("/v2/user/{}/projects", user_id_or_username))
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
-        assert_eq!(resp.status(), 200);
-        test::read_body_json(resp).await
-    }
-
-    pub async fn get_version_from_hash(
-        &self,
-        hash: &str,
-        algorithm: &str,
-        pat: &str,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v2/version_file/{hash}?algorithm={algorithm}"))
-            .append_header(("Authorization", pat))
-            .to_request();
-        self.call(req).await
-    }
-
-    pub async fn get_version_from_hash_deserialized(
-        &self,
-        hash: &str,
-        algorithm: &str,
-        pat: &str,
-    ) -> Version {
-        let resp = self.get_version_from_hash(hash, algorithm, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }

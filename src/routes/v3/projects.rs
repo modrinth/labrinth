@@ -28,6 +28,7 @@ use sqlx::PgPool;
 use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
+    cfg.route("projects_random", web::get().to(random_projects_get));
     cfg.service(
         web::scope("project")
             .route("{id}", web::get().to(project_get))
@@ -35,9 +36,52 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("{id}", web::patch().to(project_edit))
             .service(
                 web::scope("{project_id}")
-                    .route("versions", web::get().to(super::versions::version_list)),
+                    .route("versions", web::get().to(super::versions::version_list))
+                    .route(
+                        "version/{slug}",
+                        web::get().to(super::versions::version_project_get),
+                    ),
             ),
     );
+}
+
+#[derive(Deserialize, Validate)]
+pub struct RandomProjects {
+    #[validate(range(min = 1, max = 100))]
+    pub count: u32,
+}
+
+pub async fn random_projects_get(
+    web::Query(count): web::Query<RandomProjects>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+) -> Result<HttpResponse, ApiError> {
+    count
+        .validate()
+        .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
+
+    let project_ids = sqlx::query!(
+        "
+            SELECT id FROM mods TABLESAMPLE SYSTEM_ROWS($1) WHERE status = ANY($2)
+            ",
+        count.count as i32,
+        &*crate::models::projects::ProjectStatus::iterator()
+            .filter(|x| x.is_searchable())
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
+    )
+    .fetch_many(&**pool)
+    .try_filter_map(|e| async { Ok(e.right().map(|m| db_ids::ProjectId(m.id))) })
+    .try_collect::<Vec<_>>()
+    .await?;
+
+    let projects_data = db_models::Project::get_many_ids(&project_ids, &**pool, &redis)
+        .await?
+        .into_iter()
+        .map(Project::from)
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(projects_data))
 }
 
 #[derive(Serialize, Deserialize)]

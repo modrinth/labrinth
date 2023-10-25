@@ -9,9 +9,10 @@ use crate::models::projects::Project;
 use crate::models::users::{
     Badges, Payout, PayoutStatus, RecipientStatus, Role, UserId, UserPayoutData,
 };
+use crate::models::v2::projects::LegacyProject;
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
-use crate::routes::ApiError;
+use crate::routes::{v2_reroute, v3, ApiError};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
@@ -116,39 +117,16 @@ pub async fn projects_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::PROJECT_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
+    let response =
+        v3::users::projects_list(req, info, pool.clone(), redis.clone(), session_queue).await?;
 
-    let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
-
-    if let Some(id) = id_option.map(|x| x.id) {
-        let user_id: UserId = id.into();
-
-        let can_view_private = user
-            .map(|y| y.role.is_mod() || y.id == user_id)
-            .unwrap_or(false);
-
-        let project_data = User::get_projects(id, &**pool, &redis).await?;
-
-        let response: Vec<_> =
-            crate::database::Project::get_many_ids(&project_data, &**pool, &redis)
-                .await?
-                .into_iter()
-                .filter(|x| can_view_private || x.inner.status.is_searchable())
-                .map(Project::from)
-                .collect();
-
-        Ok(HttpResponse::Ok().json(response))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
+    // Convert to V2 projects
+    match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
+        Ok(project) => {
+            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+            Ok(HttpResponse::Ok().json(legacy_projects))
+        }
+        Err(response) => Ok(response),
     }
 }
 

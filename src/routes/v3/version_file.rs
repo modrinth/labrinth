@@ -1,5 +1,8 @@
 use super::ApiError;
-use crate::auth::{get_user_from_headers, is_authorized_version};
+use crate::auth::{
+    filter_authorized_projects, filter_authorized_versions, get_user_from_headers,
+    is_authorized_version,
+};
 use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
@@ -15,13 +18,59 @@ use std::collections::HashMap;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("version_file")
-            .route("{version_id}/update", web::post().to(get_update_from_hash)),
+            .route("version_id", web::get().to(get_version_from_hash))
+            .route("{version_id}/update", web::post().to(get_update_from_hash))
+            .route("project", web::post().to(get_projects_from_hashes)),
     );
     cfg.service(
         web::scope("version_files")
             .route("update", web::post().to(update_files))
-            .route("update_individual", web::post().to(update_individual_files)),
+            .route("update_individual", web::post().to(update_individual_files))
+            .route("", web::post().to(get_versions_from_hashes)),
     );
+}
+
+pub async fn get_version_from_hash(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    hash_query: web::Query<HashQuery>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::VERSION_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+    let hash = info.into_inner().0.to_lowercase();
+    let file = database::models::Version::get_file_from_hash(
+        hash_query.algorithm.clone(),
+        hash,
+        hash_query.version_id.map(|x| x.into()),
+        &**pool,
+        &redis,
+    )
+    .await?;
+    if let Some(file) = file {
+        let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
+        if let Some(version) = version {
+            if !is_authorized_version(&version.inner, &user_option, &pool).await? {
+                return Ok(HttpResponse::NotFound().body(""));
+            }
+
+            Ok(HttpResponse::Ok().json(models::projects::Version::from(version)))
+        } else {
+            Ok(HttpResponse::NotFound().body(""))
+        }
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,7 +84,7 @@ pub fn default_algorithm() -> String {
     "sha1".into()
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct UpdateData {
     pub loaders: Option<Vec<String>>,
     pub version_types: Option<Vec<VersionType>>,
@@ -48,7 +97,6 @@ pub struct UpdateData {
     pub loader_fields: Option<HashMap<String, Vec<serde_json::Value>>>,
 }
 
-// TODO: Requires testing for v2 and v3 (errors were uncaught by cargo test)
 pub async fn get_update_from_hash(
     req: HttpRequest,
     info: web::Path<(String,)>,
@@ -88,7 +136,6 @@ pub async fn get_update_from_hash(
                     .into_iter()
                     .filter(|x| {
                         let mut bool = true;
-
                         if let Some(version_types) = &update_data.version_types {
                             bool &= version_types
                                 .iter()
@@ -97,13 +144,15 @@ pub async fn get_update_from_hash(
                         if let Some(loaders) = &update_data.loaders {
                             bool &= x.loaders.iter().any(|y| loaders.contains(y));
                         }
-
                         if let Some(loader_fields) = &update_data.loader_fields {
-                            for (key, value) in loader_fields {
-                                bool &= x.version_fields.iter().any(|y| {
-                                    y.field_name == *key
-                                        && value.contains(&y.value.serialize_internal())
-                                });
+                            for (key, values) in loader_fields {
+                                bool &= if let Some(x_vf) =
+                                    x.version_fields.iter().find(|y| y.field_name == *key)
+                                {
+                                    values.iter().any(|v| x_vf.value.contains_json_value(v))
+                                } else {
+                                    true
+                                };
                             }
                         }
                         bool
@@ -122,6 +171,109 @@ pub async fn get_update_from_hash(
     }
 
     Ok(HttpResponse::NotFound().body(""))
+}
+
+// Requests above with multiple versions below
+#[derive(Deserialize)]
+pub struct FileHashes {
+    #[serde(default = "default_algorithm")]
+    pub algorithm: String,
+    pub hashes: Vec<String>,
+}
+
+pub async fn get_versions_from_hashes(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    file_data: web::Json<FileHashes>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::VERSION_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+
+    let files = database::models::Version::get_files_from_hash(
+        file_data.algorithm.clone(),
+        &file_data.hashes,
+        &**pool,
+        &redis,
+    )
+    .await?;
+
+    let version_ids = files.iter().map(|x| x.version_id).collect::<Vec<_>>();
+    let versions_data = filter_authorized_versions(
+        database::models::Version::get_many(&version_ids, &**pool, &redis).await?,
+        &user_option,
+        &pool,
+    )
+    .await?;
+
+    let mut response = HashMap::new();
+
+    for version in versions_data {
+        for file in files.iter().filter(|x| x.version_id == version.id.into()) {
+            if let Some(hash) = file.hashes.get(&file_data.algorithm) {
+                response.insert(hash.clone(), version.clone());
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn get_projects_from_hashes(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    file_data: web::Json<FileHashes>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+
+    let files = database::models::Version::get_files_from_hash(
+        file_data.algorithm.clone(),
+        &file_data.hashes,
+        &**pool,
+        &redis,
+    )
+    .await?;
+
+    let project_ids = files.iter().map(|x| x.project_id).collect::<Vec<_>>();
+
+    let projects_data = filter_authorized_projects(
+        database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?,
+        &user_option,
+        &pool,
+    )
+    .await?;
+
+    let mut response = HashMap::new();
+
+    for project in projects_data {
+        for file in files.iter().filter(|x| x.project_id == project.id.into()) {
+            if let Some(hash) = file.hashes.get(&file_data.algorithm) {
+                response.insert(hash.clone(), project.clone());
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 #[derive(Deserialize)]
@@ -183,6 +335,7 @@ pub async fn update_files(
                 .iter()
                 .filter(|x| x.inner.project_id == file.project_id)
                 .filter(|x| {
+                    // TODO: Behaviour here is repeated in a few other filtering places, should be abstracted
                     let mut bool = true;
 
                     if let Some(version_types) = &update_data.version_types {
@@ -194,11 +347,14 @@ pub async fn update_files(
                         bool &= x.loaders.iter().any(|y| loaders.contains(y));
                     }
                     if let Some(loader_fields) = &update_data.loader_fields {
-                        for (key, value) in loader_fields {
-                            bool &= x.version_fields.iter().any(|y| {
-                                y.field_name == *key
-                                    && value.contains(&y.value.serialize_internal())
-                            });
+                        for (key, values) in loader_fields {
+                            bool &= if let Some(x_vf) =
+                                x.version_fields.iter().find(|y| y.field_name == *key)
+                            {
+                                values.iter().any(|v| x_vf.value.contains_json_value(v))
+                            } else {
+                                true
+                            };
                         }
                     }
 
@@ -305,11 +461,14 @@ pub async fn update_individual_files(
                                 bool &= x.loaders.iter().any(|y| loaders.contains(y));
                             }
                             if let Some(loader_fields) = &query_file.loader_fields {
-                                for (key, value) in loader_fields {
-                                    bool &= x.version_fields.iter().any(|y| {
-                                        y.field_name == *key
-                                            && value.contains(&y.value.serialize_internal())
-                                    });
+                                for (key, values) in loader_fields {
+                                    bool &= if let Some(x_vf) =
+                                        x.version_fields.iter().find(|y| y.field_name == *key)
+                                    {
+                                        values.iter().any(|v| x_vf.value.contains_json_value(v))
+                                    } else {
+                                        true
+                                    };
                                 }
                             }
 

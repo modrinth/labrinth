@@ -50,6 +50,7 @@ impl TemporaryDatabase {
     // This means that dbs will only 'remain' if a test fails (for examination of the db), and will be cleaned up otherwise.
     pub async fn create(max_connections: Option<u32>) -> Self {
         let temp_database_name = generate_random_name("labrinth_tests_db_");
+        println!("Creating temporary database: {}", &temp_database_name);
 
         let database_url = dotenvy::var("DATABASE_URL").expect("No database URL");
 

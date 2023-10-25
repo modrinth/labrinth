@@ -11,6 +11,7 @@ use crate::models::projects::{
     SideType,
 };
 use crate::models::teams::ProjectPermissions;
+use crate::models::v2::projects::LegacyProject;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::{delete_from_index, ProjectIds};
 use crate::routes::{v2_reroute, v3, ApiError};
@@ -20,7 +21,6 @@ use crate::util::validate::validation_errors_to_string;
 use crate::{database, search};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
-use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
@@ -65,6 +65,7 @@ pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
+    // TODO: make this nicer
     // Search now uses loader_fields instead of explicit 'client_side' and 'server_side' fields
     // Loader fields are:
     // (loader)_(field):(value)
@@ -75,18 +76,18 @@ pub async fn project_search(
 
         // "versions:x" => "fabric_game_versions:x", "forge_game_versions:x" ...
         // They are put in the same array- considered to be 'or'
-        let mut v2_loaders = vec!["fabric", "forge"]; // TODO: populate
+        let mut v2_loaders: Vec<String> = Vec::new();
         {
             let client = meilisearch_sdk::Client::new(&*config.address, &*config.key);
             let index = info.index.as_deref().unwrap_or("relevance");
             let meilisearch_index = client.get_index(search::get_sort_index(index)?.0).await?;
             let filterable_fields = meilisearch_index.get_filterable_attributes().await?;
-            // Only keep v2 loaders that are filterable
-            v2_loaders.retain(|x| {
-                filterable_fields
-                    .iter()
-                    .any(|f| f.starts_with(&format!("{}_game_versions", x)))
-            });
+            for field in filterable_fields {
+                if field.ends_with("_game_versions") {
+                    let loader = field.split('_').next().unwrap_or("");
+                    v2_loaders.push(loader.to_string());
+                }
+            }
         }
         Some(
             facets
@@ -133,6 +134,9 @@ pub async fn project_search(
     };
 
     let results = search_for_project(&info, &config).await?;
+
+    // TODO: convert to v2 format-we may need a new v2 struct for this for 'original' format
+
     Ok(HttpResponse::Ok().json(results))
 }
 
@@ -148,32 +152,22 @@ pub async fn random_projects_get(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    count
-        .validate()
-        .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
+    let count = v3::projects::RandomProjects { count: count.count };
 
-    let project_ids = sqlx::query!(
-        "
-            SELECT id FROM mods TABLESAMPLE SYSTEM_ROWS($1) WHERE status = ANY($2)
-            ",
-        count.count as i32,
-        &*crate::models::projects::ProjectStatus::iterator()
-            .filter(|x| x.is_searchable())
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>(),
-    )
-    .fetch_many(&**pool)
-    .try_filter_map(|e| async { Ok(e.right().map(|m| db_ids::ProjectId(m.id))) })
-    .try_collect::<Vec<_>>()
-    .await?;
-
-    let projects_data = db_models::Project::get_many_ids(&project_ids, &**pool, &redis)
-        .await?
-        .into_iter()
-        .map(Project::from)
-        .collect::<Vec<_>>();
-
-    Ok(HttpResponse::Ok().json(projects_data))
+    let response =
+        v3::projects::random_projects_get(web::Query(count), pool.clone(), redis.clone()).await?;
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Project>(response).await {
+        Ok(project) => {
+            let version_item = match project.versions.first() {
+                Some(vid) => version_item::Version::get((*vid).into(), &**pool, &redis).await?,
+                None => None,
+            };
+            let project = LegacyProject::from(project, version_item);
+            Ok(HttpResponse::Ok().json(project))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[get("projects")]
@@ -184,8 +178,6 @@ pub async fn projects_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // Convert V2 data to V3 data
-
     // Call V3 project creation
     let response = v3::projects::projects_get(
         req,
@@ -196,16 +188,11 @@ pub async fn projects_get(
     )
     .await?;
 
-    // Convert response to V2 forma
-    match v2_reroute::extract_ok_json(response).await {
-        Ok(mut json) => {
-            if let Some(projects) = json.as_array_mut() {
-                for project in projects {
-                    // We need versions
-                    v2_reroute::set_side_types_from_versions(project, &**pool, &redis).await?;
-                }
-            }
-            Ok(HttpResponse::Ok().json(json))
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
+        Ok(project) => {
+            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+            Ok(HttpResponse::Ok().json(legacy_projects))
         }
         Err(response) => Ok(response),
     }
@@ -225,12 +212,15 @@ pub async fn project_get(
     let response =
         v3::projects::project_get(req, info, pool.clone(), redis.clone(), session_queue).await?;
 
-    // Convert response to V2 forma
-    match v2_reroute::extract_ok_json(response).await {
-        Ok(mut json) => {
-            v2_reroute::set_side_types_from_versions(&mut json, &**pool, &redis).await?;
-
-            Ok(HttpResponse::Ok().json(json))
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Project>(response).await {
+        Ok(project) => {
+            let version_item = match project.versions.first() {
+                Some(vid) => version_item::Version::get((*vid).into(), &**pool, &redis).await?,
+                None => None,
+            };
+            let project = LegacyProject::from(project, version_item);
+            Ok(HttpResponse::Ok().json(project))
         }
         Err(response) => Ok(response),
     }
@@ -452,6 +442,7 @@ pub async fn project_edit(
     let client_side = v2_new_project.client_side.clone();
     let server_side = v2_new_project.server_side.clone();
     let new_slug = v2_new_project.slug.clone();
+
     let new_project = v3::projects::EditProject {
         title: v2_new_project.title,
         description: v2_new_project.description,
