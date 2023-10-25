@@ -115,7 +115,7 @@ impl OAuthClientAuthorization {
             user_id.0,
             scopes.bits() as i64,
         )
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
 
         Ok(())

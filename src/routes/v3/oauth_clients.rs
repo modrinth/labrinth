@@ -258,7 +258,7 @@ pub async fn oauth_client_edit(
 
         let mut transaction = pool.begin().await?;
         updated_client
-            .update_editable_fields(&mut transaction)
+            .update_editable_fields(&mut *transaction)
             .await?;
 
         if let Some(redirects) = redirect_uris {
@@ -376,11 +376,11 @@ async fn edit_redirects(
         &mut *transaction,
     )
     .await?;
-    OAuthClient::insert_redirect_uris(&redirects_to_add, &mut *transaction).await?;
+    OAuthClient::insert_redirect_uris(&redirects_to_add, &mut **transaction).await?;
 
     let mut redirects_to_remove = existing_client.redirect_uris.clone();
     redirects_to_remove.retain(|r| !updated_redirects.contains(&r.uri));
-    OAuthClient::remove_redirect_uris(redirects_to_remove.iter().map(|r| r.id), &mut *transaction)
+    OAuthClient::remove_redirect_uris(redirects_to_remove.iter().map(|r| r.id), &mut **transaction)
         .await?;
 
     Ok(())

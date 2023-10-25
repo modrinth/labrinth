@@ -157,7 +157,7 @@ async fn process_oauth_access_tokens(
         &ids[..],
         Utc::now()
     )
-    .execute(&mut *transaction)
+    .execute(&mut **transaction)
     .await?;
     Ok(())
 }

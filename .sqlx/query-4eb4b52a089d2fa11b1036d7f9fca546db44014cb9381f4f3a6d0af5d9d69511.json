@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                auths.id,\n                auths.client_id,\n                auths.user_id,\n                auths.scopes,\n                auths.created,\n                clients.name as client_name,\n                clients.icon_url as client_icon_url,\n                clients.created_by as client_created_by\n            FROM oauth_client_authorizations auths\n            JOIN oauth_clients clients ON clients.id = auths.client_id\n            WHERE user_id=$1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "client_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "scopes",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "created",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "client_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "client_icon_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "client_created_by",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "4eb4b52a089d2fa11b1036d7f9fca546db44014cb9381f4f3a6d0af5d9d69511"
+}
