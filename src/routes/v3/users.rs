@@ -26,6 +26,7 @@ use itertools::Itertools;
 use sqlx::PgPool;
 
 use database::models as db_models;
+use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
 use database::models::creator_follows::UserFollow as DBUserFollow;
 use database::models::event_item::Event as DBEvent;
 use database::models::user_item::User as DBUser;
@@ -106,7 +107,9 @@ pub async fn current_user_feed(
     .await?;
 
     let followed_users =
-        DBUserFollow::get_follows_from_follower(current_user.id.into(), &**pool).await?;
+        DBUserFollow::get_follows_by_follower(current_user.id.into(), &**pool).await?;
+    let followed_organizations =
+        DBOrganizationFollow::get_follows_by_follower(current_user.id.into(), &**pool).await?;
 
     let selectors = followed_users
         .into_iter()
@@ -114,6 +117,14 @@ pub async fn current_user_feed(
             id: follow.target_id.into(),
             event_type: EventType::ProjectCreated,
         })
+        .chain(
+            followed_organizations
+                .into_iter()
+                .map(|follow| EventSelector {
+                    id: follow.target_id.into(),
+                    event_type: EventType::ProjectCreated,
+                }),
+        )
         .collect_vec();
     let events = DBEvent::get_events(&[], &selectors, &**pool).await?;
 

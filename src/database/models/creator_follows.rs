@@ -69,7 +69,7 @@ macro_rules! impl_follow {
                 Ok(res.into_iter().map(|r| r.into()).collect_vec())
             }
 
-            pub async fn get_follows_from_follower(
+            pub async fn get_follows_by_follower(
                 follower_user_id: UserId,
                 exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
             ) -> Result<Vec<$target_struct>, DatabaseError> {
