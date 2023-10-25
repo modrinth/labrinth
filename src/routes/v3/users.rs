@@ -1,5 +1,7 @@
+use std::{collections::HashMap, iter::FromIterator};
+
 use crate::{
-    auth::get_user_from_headers,
+    auth::{filter_authorized_projects, get_user_from_headers},
     database::{
         self,
         models::event_item::{EventData, EventSelector, EventType},
@@ -7,7 +9,10 @@ use crate::{
     },
     models::{
         feed_item::{FeedItem, FeedItemBody},
+        ids::ProjectId,
         pats::Scopes,
+        projects::Project,
+        users::User,
     },
     queue::session::AuthQueue,
     routes::ApiError,
@@ -113,20 +118,22 @@ pub async fn current_user_feed(
     let events = DBEvent::get_events(&[], &selectors, &**pool).await?;
 
     let mut feed_items: Vec<FeedItem> = Vec::new();
+    let authorized_projects =
+        prefetch_authorized_event_projects(&events, &pool, &redis, &current_user).await?;
     for event in events {
-        let body = match event.event_data {
-            EventData::ProjectCreated {
-                project_id,
-                creator_id,
-            } => {
-                let project = db_models::Project::get_id(project_id, &**pool, &redis).await?;
-                project.map(|p| FeedItemBody::ProjectCreated {
-                    project_id: project_id.into(),
-                    creator_id: creator_id.into(),
-                    project_title: p.inner.title,
-                })
-            }
-        };
+        let body =
+            match event.event_data {
+                EventData::ProjectCreated {
+                    project_id,
+                    creator_id,
+                } => authorized_projects.get(&project_id.into()).map(|p| {
+                    FeedItemBody::ProjectCreated {
+                        project_id: project_id.into(),
+                        creator_id: creator_id.into(),
+                        project_title: p.title.clone(),
+                    }
+                }),
+            };
 
         if let Some(body) = body {
             let feed_item = FeedItem {
@@ -140,4 +147,27 @@ pub async fn current_user_feed(
     }
 
     Ok(HttpResponse::Ok().json(feed_items))
+}
+
+async fn prefetch_authorized_event_projects(
+    events: &[db_models::Event],
+    pool: &web::Data<PgPool>,
+    redis: &RedisPool,
+    current_user: &User,
+) -> Result<HashMap<ProjectId, Project>, ApiError> {
+    let project_ids = events
+        .iter()
+        .filter_map(|e| match &e.event_data {
+            EventData::ProjectCreated {
+                project_id,
+                creator_id: _,
+            } => Some(project_id.clone()),
+        })
+        .collect_vec();
+    let projects = db_models::Project::get_many_ids(&project_ids, &***pool, &redis).await?;
+    let authorized_projects =
+        filter_authorized_projects(projects, Some(&current_user), &pool).await?;
+    Ok(HashMap::<ProjectId, Project>::from_iter(
+        authorized_projects.into_iter().map(|p| (p.id, p)),
+    ))
 }

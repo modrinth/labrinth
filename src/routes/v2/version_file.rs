@@ -427,7 +427,7 @@ pub async fn get_projects_from_hashes(
 
     let projects_data = filter_authorized_projects(
         database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?,
-        &user_option,
+        user_option.as_ref(),
         &pool,
     )
     .await?;
