@@ -12,11 +12,11 @@ use crate::database::models::event_item as DBEvent;
 #[serde(into = "Base62Id")]
 pub struct FeedItemId(pub u64);
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CreatorId {
-    User(UserId),
-    Organization(OrganizationId),
+    User { id: UserId },
+    Organization { id: OrganizationId },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -26,7 +26,7 @@ pub struct FeedItem {
     pub time: DateTime<Utc>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FeedItemBody {
     ProjectCreated {
@@ -39,10 +39,10 @@ pub enum FeedItemBody {
 impl From<crate::database::models::event_item::CreatorId> for CreatorId {
     fn from(value: crate::database::models::event_item::CreatorId) -> Self {
         match value {
-            DBEvent::CreatorId::User(user_id) => CreatorId::User(user_id.into()),
-            DBEvent::CreatorId::Organization(organization_id) => {
-                CreatorId::Organization(organization_id.into())
-            }
+            DBEvent::CreatorId::User(user_id) => CreatorId::User { id: user_id.into() },
+            DBEvent::CreatorId::Organization(organization_id) => CreatorId::Organization {
+                id: organization_id.into(),
+            },
         }
     }
 }

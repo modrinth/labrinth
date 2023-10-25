@@ -22,6 +22,7 @@ pub struct ImageData {
 pub fn get_public_project_creation_data(
     slug: &str,
     version_jar: Option<DummyJarFile>,
+    organization_id: Option<&str>,
 ) -> ProjectCreationRequestData {
     let initial_versions = if let Some(ref jar) = version_jar {
         json!([{
@@ -51,7 +52,8 @@ pub fn get_public_project_creation_data(
             "initial_versions": initial_versions,
             "is_draft": is_draft,
             "categories": [],
-            "license_id": "MIT"
+            "license_id": "MIT",
+            "organization_id": organization_id
         }
     );
 

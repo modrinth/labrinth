@@ -80,3 +80,13 @@ fn generate_multipart(data: impl IntoIterator<Item = MultipartSegment>) -> (Stri
 
     (boundary, Bytes::from(payload))
 }
+
+pub trait TestRequestExtensions {
+    fn append_auth(self, pat: &str) -> TestRequest;
+}
+
+impl TestRequestExtensions for TestRequest {
+    fn append_auth(self, pat: &str) -> TestRequest {
+        self.append_header((reqwest::header::AUTHORIZATION, pat))
+    }
+}

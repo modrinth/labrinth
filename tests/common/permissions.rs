@@ -849,7 +849,7 @@ async fn create_dummy_project(test_env: &TestEnvironment) -> (String, String) {
     // Create a very simple project
     let slug = generate_random_name("test_project");
 
-    let creation_data = request_data::get_public_project_creation_data(&slug, None);
+    let creation_data = request_data::get_public_project_creation_data(&slug, None, None);
     let (project, _) = api.add_public_project(creation_data, ADMIN_USER_PAT).await;
     let project_id = project.id.to_string();
     let team_id = project.team.to_string();

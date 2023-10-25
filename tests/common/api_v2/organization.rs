@@ -1,3 +1,4 @@
+use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
@@ -6,7 +7,7 @@ use bytes::Bytes;
 use labrinth::models::{organizations::Organization, projects::Project};
 use serde_json::json;
 
-use crate::common::request_data::ImageData;
+use crate::common::{asserts::assert_status, request_data::ImageData};
 
 use super::ApiV2;
 
@@ -42,8 +43,7 @@ impl ApiV2 {
         pat: &str,
     ) -> Organization {
         let resp = self.get_organization(id_or_title, pat).await;
-        assert_eq!(resp.status(), 200);
-        test::read_body_json(resp).await
+        deser_organization(resp).await
     }
 
     pub async fn get_organization_projects(&self, id_or_title: &str, pat: &str) -> ServiceResponse {
@@ -149,4 +149,9 @@ impl ApiV2 {
 
         self.call(req).await
     }
+}
+
+pub async fn deser_organization(response: ServiceResponse) -> Organization {
+    assert_status(&response, StatusCode::OK);
+    test::read_body_json(response).await
 }

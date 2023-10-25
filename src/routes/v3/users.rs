@@ -36,7 +36,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("user")
             .service(user_follow)
-            .service(user_unfollow),
+            .service(user_unfollow)
+            .service(current_user_feed),
     );
 }
 
