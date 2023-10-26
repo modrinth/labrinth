@@ -67,6 +67,11 @@ pub struct GetOAuthClientsRequest {
     pub ids: Vec<String>,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct DeleteOAuthClientQueryParam {
+    pub client_id: String,
+}
+
 impl From<DBOAuthClient> for OAuthClient {
     fn from(value: DBOAuthClient) -> Self {
         Self {

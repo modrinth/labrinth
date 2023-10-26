@@ -27,7 +27,7 @@ impl ApiV3 {
     ) -> ServiceResponse {
         let max_scopes = max_scopes.bits();
         let req = TestRequest::post()
-            .uri("/v3/oauth_app")
+            .uri("/v3/oauth/app")
             .append_header((AUTHORIZATION, pat))
             .set_json(json!({
                 "name": name,
@@ -76,7 +76,7 @@ impl ApiV3 {
         pat: &str,
     ) -> ServiceResponse {
         let req = TestRequest::patch()
-            .uri(&format!("/v3/oauth_app/{}", client_id))
+            .uri(&format!("/v3/oauth/app/{}", client_id))
             .set_json(edit)
             .append_header((AUTHORIZATION, pat))
             .to_request();
@@ -86,7 +86,7 @@ impl ApiV3 {
 
     pub async fn delete_oauth_client(&self, client_id: &str, pat: &str) -> ServiceResponse {
         let req = TestRequest::delete()
-            .uri(&format!("/v3/oauth_app/{}", client_id))
+            .uri(&format!("/v3/oauth/app/{}", client_id))
             .append_header((AUTHORIZATION, pat))
             .to_request();
 
@@ -95,7 +95,10 @@ impl ApiV3 {
 
     pub async fn revoke_oauth_authorization(&self, client_id: &str, pat: &str) -> ServiceResponse {
         let req = TestRequest::delete()
-            .uri(&format!("/v3/user/oauth_authorizations/{}", client_id))
+            .uri(&format!(
+                "/v3/oauth/authorizations?client_id={}",
+                urlencoding::encode(client_id)
+            ))
             .append_header((AUTHORIZATION, pat))
             .to_request();
         self.call(req).await
@@ -103,7 +106,7 @@ impl ApiV3 {
 
     pub async fn get_user_oauth_authorizations(&self, pat: &str) -> Vec<OAuthClientAuthorization> {
         let req = TestRequest::get()
-            .uri("/v3/user/oauth_authorizations")
+            .uri("/v3/oauth/authorizations")
             .append_header((AUTHORIZATION, pat))
             .to_request();
         let resp = self.call(req).await;

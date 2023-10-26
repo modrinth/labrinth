@@ -2,7 +2,7 @@ use std::{collections::HashSet, fmt::Display};
 
 use actix_web::{
     delete, get, patch, post,
-    web::{self},
+    web::{self, scope},
     HttpRequest, HttpResponse,
 };
 use chrono::Utc;
@@ -14,7 +14,9 @@ use sqlx::PgPool;
 use validator::Validate;
 
 use super::ApiError;
-use crate::auth::checks::ValidateAllAuthorized;
+use crate::{
+    auth::checks::ValidateAllAuthorized, models::oauth_clients::DeleteOAuthClientQueryParam,
+};
 use crate::{
     auth::{checks::ValidateAuthorized, get_user_from_headers},
     database::{
@@ -39,14 +41,17 @@ use crate::{
 use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(oauth_client_create);
-    cfg.service(oauth_client_edit);
-    cfg.service(oauth_client_delete);
-    cfg.service(get_client);
-    cfg.service(get_clients);
     cfg.service(get_user_clients);
-    cfg.service(get_user_oauth_authorizations);
-    cfg.service(revoke_oauth_authorization);
+    cfg.service(
+        scope("oauth")
+            .service(oauth_client_create)
+            .service(oauth_client_edit)
+            .service(oauth_client_delete)
+            .service(get_client)
+            .service(get_clients)
+            .service(get_user_oauth_authorizations)
+            .service(revoke_oauth_authorization),
+    );
 }
 
 #[get("user/{user_id}/oauth_apps")]
@@ -86,7 +91,7 @@ pub async fn get_user_clients(
     }
 }
 
-#[get("/oauth/app/{id}")]
+#[get("app/{id}")]
 pub async fn get_client(
     req: HttpRequest,
     id: web::Path<String>,
@@ -102,7 +107,7 @@ pub async fn get_client(
     }
 }
 
-#[get("/oauth/apps")]
+#[get("apps")]
 pub async fn get_clients(
     req: HttpRequest,
     info: web::Json<GetOAuthClientsRequest>,
@@ -136,7 +141,7 @@ pub struct NewOAuthApp {
     pub redirect_uris: Vec<String>,
 }
 
-#[post("oauth_app")]
+#[post("app")]
 pub async fn oauth_client_create<'a>(
     req: HttpRequest,
     new_oauth_app: web::Json<NewOAuthApp>,
@@ -190,7 +195,7 @@ pub async fn oauth_client_create<'a>(
     }))
 }
 
-#[delete("oauth_app/{id}")]
+#[delete("app/{id}")]
 pub async fn oauth_client_delete<'a>(
     req: HttpRequest,
     client_id: web::Path<String>,
@@ -239,7 +244,7 @@ pub struct OAuthClientEdit {
     pub redirect_uris: Option<Vec<String>>,
 }
 
-#[patch("oauth_app/{id}")]
+#[patch("app/{id}")]
 pub async fn oauth_client_edit(
     req: HttpRequest,
     client_id: web::Path<String>,
@@ -310,7 +315,7 @@ pub async fn oauth_client_edit(
     }
 }
 
-#[get("user/oauth_authorizations")]
+#[get("authorizations")]
 pub async fn get_user_oauth_authorizations(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -336,10 +341,10 @@ pub async fn get_user_oauth_authorizations(
     Ok(HttpResponse::Ok().json(mapped))
 }
 
-#[delete("user/oauth_authorizations/{client_id}")]
+#[delete("authorizations")]
 pub async fn revoke_oauth_authorization(
     req: HttpRequest,
-    info: web::Path<String>,
+    info: web::Query<DeleteOAuthClientQueryParam>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -354,7 +359,7 @@ pub async fn revoke_oauth_authorization(
     .await?
     .1;
 
-    let client_id = models::ids::OAuthClientId::parse(&info.into_inner())?;
+    let client_id = models::ids::OAuthClientId::parse(&info.into_inner().client_id)?;
 
     OAuthClientAuthorization::remove(client_id.into(), current_user.id.into(), &**pool).await?;
 
