@@ -72,16 +72,11 @@ pub async fn init_oauth(
         &session_queue,
         Some(&[Scopes::USER_AUTH_WRITE]),
     )
-    .await
-    .map_err(OAuthError::error)?
+    .await?
     .1;
 
-    let client_id: OAuthClientId = models::ids::OAuthClientId::parse(&oauth_info.client_id)
-        .map_err(OAuthError::error)?
-        .into();
-    let client = DBOAuthClient::get(client_id, &**pool)
-        .await
-        .map_err(OAuthError::error)?;
+    let client_id: OAuthClientId = models::ids::OAuthClientId::parse(&oauth_info.client_id)?.into();
+    let client = DBOAuthClient::get(client_id, &**pool).await?;
 
     if let Some(client) = client {
         let redirect_uri = ValidatedRedirectUri::validate(
@@ -214,12 +209,8 @@ pub async fn request_token(
     pool: Data<PgPool>,
     redis: Data<RedisPool>,
 ) -> Result<HttpResponse, OAuthError> {
-    let req_client_id = models::ids::OAuthClientId::parse(&req_params.client_id)
-        .map_err(OAuthError::error)?
-        .into();
-    let client = DBOAuthClient::get(req_client_id, &**pool)
-        .await
-        .map_err(OAuthError::error)?;
+    let req_client_id = models::ids::OAuthClientId::parse(&req_params.client_id)?.into();
+    let client = DBOAuthClient::get(req_client_id, &**pool).await?;
     if let Some(client) = client {
         authenticate_client_token_request(&req, &client)?;
 
@@ -230,8 +221,7 @@ pub async fn request_token(
             |f| matches!(f, Flow::OAuthAuthorizationCodeSupplied { .. }),
             &redis,
         )
-        .await
-        .map_err(OAuthError::error)?;
+        .await?;
         if let Some(Flow::OAuthAuthorizationCodeSupplied {
             user_id,
             client_id,
@@ -261,10 +251,8 @@ pub async fn request_token(
 
             let scopes = scopes - Scopes::restricted();
 
-            let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
-            let token_id = generate_oauth_access_token_id(&mut transaction)
-                .await
-                .map_err(OAuthError::error)?;
+            let mut transaction = pool.begin().await?;
+            let token_id = generate_oauth_access_token_id(&mut transaction).await?;
             let token = generate_access_token();
             let token_hash = OAuthAccessToken::hash_token(&token);
             let time_until_expiration = OAuthAccessToken {
@@ -279,10 +267,9 @@ pub async fn request_token(
                 user_id,
             }
             .insert(&mut *transaction)
-            .await
-            .map_err(OAuthError::error)?;
+            .await?;
 
-            transaction.commit().await.map_err(OAuthError::error)?;
+            transaction.commit().await?;
 
             // IETF RFC6749 Section 5.1 (https://datatracker.ietf.org/doc/html/rfc6749#section-5.1)
             Ok(HttpResponse::Ok()
@@ -318,8 +305,7 @@ pub async fn accept_or_reject_client_scopes(
         &session_queue,
         Some(&[Scopes::USER_OAUTH_AUTHORIZATIONS_WRITE]),
     )
-    .await
-    .map_err(OAuthError::error)?
+    .await?
     .1;
 
     let flow = Flow::take_if(
@@ -327,8 +313,7 @@ pub async fn accept_or_reject_client_scopes(
         |f| matches!(f, Flow::InitOAuthAppApproval { .. }),
         &redis,
     )
-    .await
-    .map_err(OAuthError::error)?;
+    .await?;
     if let Some(Flow::InitOAuthAppApproval {
         user_id,
         client_id,
@@ -343,19 +328,16 @@ pub async fn accept_or_reject_client_scopes(
         }
 
         if accept {
-            let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
+            let mut transaction = pool.begin().await?;
 
             let auth_id = match existing_authorization_id {
                 Some(id) => id,
-                None => generate_oauth_client_authorization_id(&mut transaction)
-                    .await
-                    .map_err(OAuthError::error)?,
+                None => generate_oauth_client_authorization_id(&mut transaction).await?,
             };
             OAuthClientAuthorization::upsert(auth_id, client_id, user_id, scopes, &mut transaction)
-                .await
-                .map_err(OAuthError::error)?;
+                .await?;
 
-            transaction.commit().await.map_err(OAuthError::error)?;
+            transaction.commit().await?;
 
             init_oauth_code_flow(
                 user_id,
@@ -383,7 +365,7 @@ fn authenticate_client_token_request(
     req: &HttpRequest,
     client: &DBOAuthClient,
 ) -> Result<(), OAuthError> {
-    let client_secret = extract_authorization_header(req).map_err(OAuthError::error)?;
+    let client_secret = extract_authorization_header(req)?;
     let hashed_client_secret = DBOAuthClient::hash_secret(client_secret);
     if client.secret_hash != hashed_client_secret {
         Err(OAuthError::error(

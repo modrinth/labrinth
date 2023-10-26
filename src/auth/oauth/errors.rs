@@ -15,6 +15,15 @@ pub struct OAuthError {
     pub valid_redirect_uri: Option<ValidatedRedirectUri>,
 }
 
+impl<T> From<T> for OAuthError
+where
+    T: Into<OAuthErrorType>,
+{
+    fn from(value: T) -> Self {
+        OAuthError::error(value.into())
+    }
+}
+
 impl OAuthError {
     /// The OAuth request failed either because of an invalid redirection URI
     /// or before we could validate the one we were given, so return an error
