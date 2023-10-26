@@ -330,7 +330,7 @@ pub async fn get_user_oauth_authorizations(
     let authorizations =
         OAuthClientAuthorization::get_all_for_user(current_user.id.into(), &**pool).await?;
 
-    let mapped: Vec<models::oauth_clients::OAuthClientAuthorizationInfo> =
+    let mapped: Vec<models::oauth_clients::OAuthClientAuthorization> =
         authorizations.into_iter().map(|a| a.into()).collect_vec();
 
     Ok(HttpResponse::Ok().json(mapped))

@@ -5,7 +5,7 @@ use actix_web::{
 };
 use labrinth::{
     models::{
-        oauth_clients::{GetOAuthClientsRequest, OAuthClient, OAuthClientAuthorizationInfo},
+        oauth_clients::{GetOAuthClientsRequest, OAuthClient, OAuthClientAuthorization},
         pats::Scopes,
     },
     routes::v3::oauth_clients::OAuthClientEdit,
@@ -101,10 +101,7 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_user_oauth_authorizations(
-        &self,
-        pat: &str,
-    ) -> Vec<OAuthClientAuthorizationInfo> {
+    pub async fn get_user_oauth_authorizations(&self, pat: &str) -> Vec<OAuthClientAuthorization> {
         let req = TestRequest::get()
             .uri("/v3/user/oauth_authorizations")
             .append_header((AUTHORIZATION, pat))

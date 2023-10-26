@@ -5,6 +5,10 @@ use super::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::database::models::oauth_client_authorization_item::OAuthClientAuthorization as DBOAuthClientAuthorization;
+use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
+use crate::database::models::oauth_client_item::OAuthRedirectUri as DBOAuthRedirectUri;
+
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
@@ -50,15 +54,12 @@ pub struct OAuthClient {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct OAuthClientAuthorizationInfo {
+pub struct OAuthClientAuthorization {
     pub id: OAuthClientAuthorizationId,
-    pub client_id: OAuthClientId,
+    pub app_id: OAuthClientId,
     pub user_id: UserId,
     pub scopes: Scopes,
     pub created: DateTime<Utc>,
-    pub client_name: String,
-    pub client_icon_url: Option<String>,
-    pub client_created_by: UserId,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -66,8 +67,8 @@ pub struct GetOAuthClientsRequest {
     pub ids: Vec<String>,
 }
 
-impl From<crate::database::models::oauth_client_item::OAuthClient> for OAuthClient {
-    fn from(value: crate::database::models::oauth_client_item::OAuthClient) -> Self {
+impl From<DBOAuthClient> for OAuthClient {
+    fn from(value: DBOAuthClient) -> Self {
         Self {
             id: value.id.into(),
             name: value.name,
@@ -79,8 +80,8 @@ impl From<crate::database::models::oauth_client_item::OAuthClient> for OAuthClie
     }
 }
 
-impl From<crate::database::models::oauth_client_item::OAuthRedirectUri> for OAuthRedirectUri {
-    fn from(value: crate::database::models::oauth_client_item::OAuthRedirectUri) -> Self {
+impl From<DBOAuthRedirectUri> for OAuthRedirectUri {
+    fn from(value: DBOAuthRedirectUri) -> Self {
         Self {
             id: value.id.into(),
             client_id: value.client_id.into(),
@@ -89,17 +90,14 @@ impl From<crate::database::models::oauth_client_item::OAuthRedirectUri> for OAut
     }
 }
 
-impl From<crate::database::models::oauth_client_authorization_item::OAuthClientAuthorizationWithClientInfo> for OAuthClientAuthorizationInfo {
-    fn from(value: crate::database::models::oauth_client_authorization_item::OAuthClientAuthorizationWithClientInfo) -> Self {
+impl From<DBOAuthClientAuthorization> for OAuthClientAuthorization {
+    fn from(value: DBOAuthClientAuthorization) -> Self {
         Self {
             id: value.id.into(),
-            client_id: value.client_id.into(),
+            app_id: value.client_id.into(),
             user_id: value.user_id.into(),
             scopes: value.scopes,
             created: value.created,
-            client_name: value.client_name,
-            client_icon_url: value.client_icon_url,
-            client_created_by: value.client_created_by.into(),
         }
     }
 }

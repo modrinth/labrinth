@@ -15,15 +15,24 @@ pub struct OAuthClientAuthorization {
     pub created: DateTime<Utc>,
 }
 
-pub struct OAuthClientAuthorizationWithClientInfo {
-    pub id: OAuthClientAuthorizationId,
-    pub client_id: OAuthClientId,
-    pub user_id: UserId,
-    pub scopes: Scopes,
-    pub created: DateTime<Utc>,
-    pub client_name: String,
-    pub client_icon_url: Option<String>,
-    pub client_created_by: UserId,
+struct AuthorizationQueryResult {
+    id: i64,
+    client_id: i64,
+    user_id: i64,
+    scopes: i64,
+    created: DateTime<Utc>,
+}
+
+impl From<AuthorizationQueryResult> for OAuthClientAuthorization {
+    fn from(value: AuthorizationQueryResult) -> Self {
+        OAuthClientAuthorization {
+            id: OAuthClientAuthorizationId(value.id),
+            client_id: OAuthClientId(value.client_id),
+            user_id: UserId(value.user_id),
+            scopes: Scopes::from_postgres(value.scopes),
+            created: value.created,
+        }
+    }
 }
 
 impl OAuthClientAuthorization {
@@ -32,7 +41,8 @@ impl OAuthClientAuthorization {
         user_id: UserId,
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Option<OAuthClientAuthorization>, DatabaseError> {
-        let value = sqlx::query!(
+        let value = sqlx::query_as!(
+            AuthorizationQueryResult,
             "
             SELECT id, client_id, user_id, scopes, created
             FROM oauth_client_authorizations
@@ -44,32 +54,18 @@ impl OAuthClientAuthorization {
         .fetch_optional(exec)
         .await?;
 
-        Ok(value.map(|r| OAuthClientAuthorization {
-            id: OAuthClientAuthorizationId(r.id),
-            client_id: OAuthClientId(r.client_id),
-            user_id: UserId(r.user_id),
-            scopes: Scopes::from_postgres(r.scopes),
-            created: r.created,
-        }))
+        Ok(value.map(|r| r.into()))
     }
 
     pub async fn get_all_for_user(
         user_id: UserId,
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
-    ) -> Result<Vec<OAuthClientAuthorizationWithClientInfo>, DatabaseError> {
-        let results = sqlx::query!(
+    ) -> Result<Vec<OAuthClientAuthorization>, DatabaseError> {
+        let results = sqlx::query_as!(
+            AuthorizationQueryResult,
             "
-            SELECT 
-                auths.id,
-                auths.client_id,
-                auths.user_id,
-                auths.scopes,
-                auths.created,
-                clients.name as client_name,
-                clients.icon_url as client_icon_url,
-                clients.created_by as client_created_by
-            FROM oauth_client_authorizations auths
-            JOIN oauth_clients clients ON clients.id = auths.client_id
+            SELECT id, client_id, user_id, scopes, created
+            FROM oauth_client_authorizations
             WHERE user_id=$1
             ",
             user_id.0
@@ -77,19 +73,7 @@ impl OAuthClientAuthorization {
         .fetch_all(exec)
         .await?;
 
-        Ok(results
-            .into_iter()
-            .map(|r| OAuthClientAuthorizationWithClientInfo {
-                id: OAuthClientAuthorizationId(r.id),
-                client_id: OAuthClientId(r.client_id),
-                user_id: UserId(r.user_id),
-                scopes: Scopes::from_postgres(r.scopes),
-                created: r.created,
-                client_name: r.client_name,
-                client_icon_url: r.client_icon_url,
-                client_created_by: UserId(r.client_created_by),
-            })
-            .collect_vec())
+        Ok(results.into_iter().map(|r| r.into()).collect_vec())
     }
 
     pub async fn upsert(
