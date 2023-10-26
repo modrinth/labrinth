@@ -303,7 +303,7 @@ pub async fn accept_or_reject_client_scopes(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::USER_OAUTH_AUTHORIZATIONS_WRITE]),
+        Some(&[Scopes::SESSION_ACCESS]),
     )
     .await?
     .1;

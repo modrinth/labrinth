@@ -103,19 +103,8 @@ bitflags::bitflags! {
         // delete an organization
         const ORGANIZATION_DELETE = 1 << 38;
 
-        // create an OAuth client
-        const OAUTH_CLIENT_CREATE = 1 << 39;
-        // get OAuth clients
-        const OAUTH_CLIENT_READ = 1 << 40;
-        // modify an OAuth client
-        const OAUTH_CLIENT_WRITE = 1 << 41;
-        // delete an OAuth client
-        const OAUTH_CLIENT_DELETE = 1 << 42;
-
-        // read a user's OAuth authorizations
-        const USER_OAUTH_AUTHORIZATIONS_READ = 1 << 43;
-        // write a user's OAuth authorizations
-        const USER_OAUTH_AUTHORIZATIONS_WRITE = 1 << 44;
+        // only accessible by modrinth-issued sessions
+        const SESSION_ACCESS = 1 << 39;
 
         const NONE = 0b0;
     }
@@ -132,15 +121,10 @@ impl Scopes {
             | Scopes::PAT_DELETE
             | Scopes::SESSION_READ
             | Scopes::SESSION_DELETE
+            | Scopes::SESSION_ACCESS
             | Scopes::USER_AUTH_WRITE
             | Scopes::USER_DELETE
             | Scopes::PERFORM_ANALYTICS
-            | Scopes::OAUTH_CLIENT_CREATE
-            | Scopes::OAUTH_CLIENT_READ
-            | Scopes::OAUTH_CLIENT_WRITE
-            | Scopes::OAUTH_CLIENT_DELETE
-            | Scopes::USER_OAUTH_AUTHORIZATIONS_READ
-            | Scopes::USER_OAUTH_AUTHORIZATIONS_WRITE
     }
 
     pub fn is_restricted(&self) -> bool {
