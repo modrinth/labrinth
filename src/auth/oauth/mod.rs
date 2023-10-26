@@ -42,7 +42,7 @@ pub fn config(cfg: &mut ServiceConfig) {
 
 #[derive(Serialize, Deserialize)]
 pub struct OAuthInit {
-    pub client_id: String,
+    pub client_id: OAuthClientId,
     pub redirect_uri: Option<String>,
     pub scope: Option<String>,
     pub state: Option<String>,
@@ -75,7 +75,7 @@ pub async fn init_oauth(
     .await?
     .1;
 
-    let client_id: OAuthClientId = models::ids::OAuthClientId::parse(&oauth_info.client_id)?.into();
+    let client_id = oauth_info.client_id;
     let client = DBOAuthClient::get(client_id, &**pool).await?;
 
     if let Some(client) = client {
@@ -189,7 +189,7 @@ pub struct TokenRequest {
     pub grant_type: String,
     pub code: String,
     pub redirect_uri: Option<String>,
-    pub client_id: String,
+    pub client_id: models::ids::OAuthClientId,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -209,8 +209,8 @@ pub async fn request_token(
     pool: Data<PgPool>,
     redis: Data<RedisPool>,
 ) -> Result<HttpResponse, OAuthError> {
-    let req_client_id = models::ids::OAuthClientId::parse(&req_params.client_id)?.into();
-    let client = DBOAuthClient::get(req_client_id, &**pool).await?;
+    let req_client_id = req_params.client_id;
+    let client = DBOAuthClient::get(req_client_id.into(), &**pool).await?;
     if let Some(client) = client {
         authenticate_client_token_request(&req, &client)?;
 
@@ -231,7 +231,7 @@ pub async fn request_token(
         }) = flow
         {
             // https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
-            if req_client_id != client_id {
+            if req_client_id != client_id.into() {
                 return Err(OAuthError::error(OAuthErrorType::UnauthorizedClient));
             }
 
@@ -285,7 +285,7 @@ pub async fn request_token(
         }
     } else {
         Err(OAuthError::error(OAuthErrorType::InvalidClientId(
-            req_client_id,
+            req_client_id.into(),
         )))
     }
 }

@@ -64,12 +64,12 @@ pub struct OAuthClientAuthorization {
 
 #[derive(Deserialize, Serialize)]
 pub struct GetOAuthClientsRequest {
-    pub ids: Vec<String>,
+    pub ids: Vec<OAuthClientId>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct DeleteOAuthClientQueryParam {
-    pub client_id: String,
+    pub client_id: OAuthClientId,
 }
 
 impl From<DBOAuthClient> for OAuthClient {

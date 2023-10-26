@@ -1,12 +1,10 @@
 use chrono::{DateTime, Utc};
-use futures::TryStreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
-use crate::models::{ids::base62_impl::parse_base62, pats::Scopes};
-
 use super::{DatabaseError, OAuthClientId, OAuthRedirectUriId, UserId};
+use crate::models::pats::Scopes;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct OAuthRedirectUri {
@@ -76,17 +74,6 @@ impl OAuthClient {
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Option<OAuthClient>, DatabaseError> {
         Ok(Self::get_many(&[id], exec).await?.into_iter().next())
-    }
-
-    pub async fn get_many_str(
-        ids: &[impl ToString],
-        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
-    ) -> Result<Vec<OAuthClient>, DatabaseError> {
-        let ids = ids
-            .iter()
-            .flat_map(|x| parse_base62(&x.to_string()).map(|x| OAuthClientId(x as i64)))
-            .collect::<Vec<_>>();
-        Self::get_many(&ids, exec).await
     }
 
     pub async fn get_many(

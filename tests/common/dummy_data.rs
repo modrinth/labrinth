@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use actix_http::StatusCode;
 use actix_web::test::{self, TestRequest};
 use labrinth::{
     models::projects::Project,
@@ -13,6 +14,7 @@ use crate::common::{actix::AppendsMultipart, database::USER_USER_PAT};
 
 use super::{
     actix::{MultipartSegment, MultipartSegmentData},
+    asserts::assert_status,
     database::USER_USER_ID,
     environment::TestEnvironment,
     get_json_val_str,
@@ -324,6 +326,7 @@ pub async fn get_project_beta(test_env: &TestEnvironment) -> (Project, Version) 
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
+    assert_status(&resp, StatusCode::OK);
     let project: Project = test::read_body_json(resp).await;
 
     // Get project's versions
@@ -332,6 +335,7 @@ pub async fn get_project_beta(test_env: &TestEnvironment) -> (Project, Version) 
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
+    assert_status(&resp, StatusCode::OK);
     let versions: Vec<Version> = test::read_body_json(resp).await;
     let version = versions.into_iter().next().unwrap();
 

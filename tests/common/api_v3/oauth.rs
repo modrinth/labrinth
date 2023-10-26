@@ -93,25 +93,11 @@ impl ApiV3 {
                     grant_type: "authorization_code".to_string(),
                     code: auth_code,
                     redirect_uri: original_redirect_uri,
-                    client_id,
+                    client_id: serde_json::from_str(&format!("\"{}\"", client_id)).unwrap(),
                 })
                 .to_request(),
         )
         .await
-    }
-
-    pub async fn get_oauth_access_token(
-        &self,
-        auth_code: String,
-        original_redirect_uri: Option<String>,
-        client_id: String,
-        client_secret: &str,
-    ) -> String {
-        let response = self
-            .oauth_token(auth_code, original_redirect_uri, client_id, client_secret)
-            .await;
-        let token_resp: TokenResponse = test::read_body_json(response).await;
-        token_resp.access_token
     }
 }
 
