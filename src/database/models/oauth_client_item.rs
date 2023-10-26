@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
+use futures::TryStreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
-use crate::models::pats::Scopes;
+use crate::models::{ids::base62_impl::parse_base62, pats::Scopes};
 
 use super::{DatabaseError, OAuthClientId, OAuthRedirectUriId, UserId};
 
@@ -40,26 +41,29 @@ struct ClientQueryResult {
 
 macro_rules! select_clients_with_predicate {
     ($predicate:tt, $param:ident) => {
+        // The columns in this query have nullability type hints, because for some reason
+        // the combination of the JOIN and filter using ANY makes sqlx think all columns are nullable
+        // https://docs.rs/sqlx/latest/sqlx/macro.query.html#force-nullable
         sqlx::query_as!(
             ClientQueryResult,
-            "
+            r#"
             SELECT
-                clients.id,
-                clients.name,
-                clients.icon_url,
-                clients.max_scopes,
-                clients.secret_hash,
-                clients.created,
-                clients.created_by,
-                uris.uri_ids,
-                uris.uri_vals
+                clients.id as "id!",
+                clients.name as "name!",
+                clients.icon_url as "icon_url?",
+                clients.max_scopes as "max_scopes!",
+                clients.secret_hash as "secret_hash!",
+                clients.created as "created!",
+                clients.created_by as "created_by!",
+                uris.uri_ids as "uri_ids?",
+                uris.uri_vals as "uri_vals?"
             FROM oauth_clients clients
             LEFT JOIN (
                 SELECT client_id, array_agg(id) as uri_ids, array_agg(uri) as uri_vals
                 FROM oauth_client_redirect_uris
                 GROUP BY client_id
             ) uris ON clients.id = uris.client_id
-            "
+            "#
                 + $predicate,
             $param
         )
@@ -71,12 +75,32 @@ impl OAuthClient {
         id: OAuthClientId,
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Option<OAuthClient>, DatabaseError> {
-        let client_id_param = id.0;
-        let value = select_clients_with_predicate!("WHERE clients.id = $1", client_id_param)
-            .fetch_optional(exec)
-            .await?;
+        Ok(Self::get_many(&[id], exec).await?.into_iter().next())
+    }
 
-        Ok(value.map(|r| r.into()))
+    pub async fn get_many_str(
+        ids: &[impl ToString],
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    ) -> Result<Vec<OAuthClient>, DatabaseError> {
+        let ids = ids
+            .iter()
+            .flat_map(|x| parse_base62(&x.to_string()).map(|x| OAuthClientId(x as i64)))
+            .collect::<Vec<_>>();
+        Self::get_many(&ids, exec).await
+    }
+
+    pub async fn get_many(
+        ids: &[OAuthClientId],
+        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    ) -> Result<Vec<OAuthClient>, DatabaseError> {
+        let ids = ids.into_iter().map(|id| id.0).collect_vec();
+        let ids_ref: &[i64] = &ids;
+        let results =
+            select_clients_with_predicate!("WHERE clients.id = ANY($1::bigint[])", ids_ref)
+                .fetch_all(exec)
+                .await?;
+
+        Ok(results.into_iter().map(|r| r.into()).collect_vec())
     }
 
     pub async fn get_all_user_clients(

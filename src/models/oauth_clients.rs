@@ -61,6 +61,11 @@ pub struct OAuthClientAuthorizationInfo {
     pub client_created_by: UserId,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct GetOAuthClientsRequest {
+    pub ids: Vec<String>,
+}
+
 impl From<crate::database::models::oauth_client_item::OAuthClient> for OAuthClient {
     fn from(value: crate::database::models::oauth_client_item::OAuthClient) -> Self {
         Self {

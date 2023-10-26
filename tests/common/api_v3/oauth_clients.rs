@@ -5,7 +5,7 @@ use actix_web::{
 };
 use labrinth::{
     models::{
-        oauth_clients::{OAuthClient, OAuthClientAuthorizationInfo, OAuthClientCreationResult},
+        oauth_clients::{GetOAuthClientsRequest, OAuthClient, OAuthClientAuthorizationInfo},
         pats::Scopes,
     },
     routes::v3::oauth_clients::OAuthClientEdit,
@@ -48,6 +48,25 @@ impl ApiV3 {
         assert_status(&resp, StatusCode::OK);
 
         test::read_body_json(resp).await
+    }
+
+    pub async fn get_oauth_client(&self, client_id: String, pat: &str) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri(&format!("/v3/oauth/app/{}", client_id))
+            .append_header((AUTHORIZATION, pat))
+            .to_request();
+
+        self.call(req).await
+    }
+
+    pub async fn get_oauth_clients(&self, clients: Vec<String>, pat: &str) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri("/v3/oauth/apps")
+            .set_json(GetOAuthClientsRequest { ids: clients })
+            .append_header((AUTHORIZATION, pat))
+            .to_request();
+
+        self.call(req).await
     }
 
     pub async fn edit_oauth_client(

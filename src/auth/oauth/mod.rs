@@ -103,7 +103,7 @@ pub async fn init_oauth(
                 })
             })?;
 
-        if !client.max_scopes.contains(requested_scopes) || requested_scopes.is_restricted() {
+        if !client.max_scopes.contains(requested_scopes) {
             return Err(OAuthError::redirect(
                 OAuthErrorType::ScopesTooBroad,
                 &oauth_info.state,

@@ -22,6 +22,7 @@ pub mod version_item;
 pub use collection_item::Collection;
 pub use ids::*;
 pub use image_item::Image;
+pub use oauth_client_item::OAuthClient;
 pub use organization_item::Organization;
 pub use project_item::Project;
 pub use team_item::Team;

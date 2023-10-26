@@ -14,8 +14,9 @@ use sqlx::PgPool;
 use validator::Validate;
 
 use super::ApiError;
+use crate::auth::checks::ValidateAllAuthorized;
 use crate::{
-    auth::get_user_from_headers,
+    auth::{checks::ValidateAuthorized, get_user_from_headers},
     database::{
         models::{
             generate_oauth_client_id, generate_oauth_redirect_id,
@@ -25,7 +26,11 @@ use crate::{
         },
         redis::RedisPool,
     },
-    models::{self, oauth_clients::OAuthClientCreationResult, pats::Scopes},
+    models::{
+        self,
+        oauth_clients::{GetOAuthClientsRequest, OAuthClientCreationResult},
+        pats::Scopes,
+    },
     queue::session::AuthQueue,
     routes::v2::project_creation::CreateError,
     util::validate::validation_errors_to_string,
@@ -37,6 +42,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(oauth_client_create);
     cfg.service(oauth_client_edit);
     cfg.service(oauth_client_delete);
+    cfg.service(get_client);
+    cfg.service(get_clients);
     cfg.service(get_user_clients);
     cfg.service(get_user_oauth_authorizations);
     cfg.service(revoke_oauth_authorization);
@@ -63,10 +70,10 @@ pub async fn get_user_clients(
     let target_user = User::get(&info.into_inner(), &**pool, &redis).await?;
 
     if let Some(target_user) = target_user {
-        let target_user_id: models::ids::UserId = target_user.id.into();
-        current_user.validate_can_interact_with_oauth_client(target_user_id)?;
-
         let clients = OAuthClient::get_all_user_clients(target_user.id, &**pool).await?;
+        clients
+            .iter()
+            .validate_all_authorized(Some(&current_user))?;
 
         let response = clients
             .into_iter()
@@ -77,6 +84,35 @@ pub async fn get_user_clients(
     } else {
         Ok(HttpResponse::NotFound().body(""))
     }
+}
+
+#[get("/oauth/app/{id}")]
+pub async fn get_client(
+    req: HttpRequest,
+    id: web::Path<String>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let clients = get_clients_inner(&[id.into_inner()], req, pool, redis, session_queue).await?;
+    if let Some(client) = clients.into_iter().next() {
+        Ok(HttpResponse::Ok().json(client))
+    } else {
+        Ok(HttpResponse::NotFound().body(""))
+    }
+}
+
+#[get("/oauth/apps")]
+pub async fn get_clients(
+    req: HttpRequest,
+    info: web::Json<GetOAuthClientsRequest>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let clients =
+        get_clients_inner(&info.into_inner().ids, req, pool, redis, session_queue).await?;
+    Ok(HttpResponse::Ok().json(clients))
 }
 
 #[derive(Deserialize, Validate)]
@@ -174,7 +210,7 @@ pub async fn oauth_client_delete<'a>(
 
     let client = get_oauth_client_from_str_id(client_id.into_inner(), &**pool).await?;
     if let Some(client) = client {
-        current_user.validate_can_interact_with_oauth_client(client.created_by.into())?;
+        client.validate_authorized(Some(&current_user))?;
         OAuthClient::remove(client.id, &**pool).await?;
 
         Ok(HttpResponse::NoContent().body(""))
@@ -236,7 +272,7 @@ pub async fn oauth_client_edit(
     if let Some(existing_client) =
         get_oauth_client_from_str_id(client_id.into_inner(), &**pool).await?
     {
-        current_user.validate_can_interact_with_oauth_client(existing_client.created_by.into())?;
+        existing_client.validate_authorized(Some(&current_user))?;
 
         let mut updated_client = existing_client.clone();
         let OAuthClientEdit {
@@ -385,4 +421,29 @@ async fn edit_redirects(
         .await?;
 
     Ok(())
+}
+
+pub async fn get_clients_inner(
+    ids: &[String],
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<Vec<models::oauth_clients::OAuthClient>, ApiError> {
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::OAUTH_CLIENT_READ]),
+    )
+    .await?
+    .1;
+
+    let clients = OAuthClient::get_many_str(&ids, &**pool).await?;
+    clients
+        .iter()
+        .validate_all_authorized(Some(&current_user))?;
+
+    Ok(clients.into_iter().map(|c| c.into()).collect_vec())
 }

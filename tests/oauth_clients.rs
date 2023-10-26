@@ -7,7 +7,10 @@ use common::{
     get_json_val_str,
 };
 use labrinth::{
-    models::{oauth_clients::OAuthClientCreationResult, pats::Scopes},
+    models::{
+        oauth_clients::{OAuthClient, OAuthClientCreationResult},
+        pats::Scopes,
+    },
     routes::v3::oauth_clients::OAuthClientEdit,
 };
 
@@ -81,6 +84,40 @@ async fn create_oauth_client_with_restricted_scopes_fails() {
             .await;
 
         assert_status(&resp, StatusCode::BAD_REQUEST);
+    })
+    .await;
+}
+
+#[actix_rt::test]
+async fn get_oauth_client_for_client_creator_succeeds() {
+    with_test_environment(|env| async move {
+        let DummyOAuthClientAlpha { client_id, .. } =
+            env.dummy.as_ref().unwrap().oauth_client_alpha.clone();
+
+        let resp = env
+            .v3
+            .get_oauth_client(client_id.clone(), USER_USER_PAT)
+            .await;
+
+        assert_status(&resp, StatusCode::OK);
+        let client: OAuthClient = test::read_body_json(resp).await;
+        assert_eq!(get_json_val_str(client.id), client_id);
+    })
+    .await;
+}
+
+#[actix_rt::test]
+async fn get_oauth_client_for_unrelated_user_fails() {
+    with_test_environment(|env| async move {
+        let DummyOAuthClientAlpha { client_id, .. } =
+            env.dummy.as_ref().unwrap().oauth_client_alpha.clone();
+
+        let resp = env
+            .v3
+            .get_oauth_client(client_id.clone(), FRIEND_USER_PAT)
+            .await;
+
+        assert_status(&resp, StatusCode::UNAUTHORIZED);
     })
     .await;
 }
