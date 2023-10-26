@@ -24,7 +24,7 @@ impl ApiV3 {
         max_scopes: Scopes,
         redirect_uris: Vec<String>,
         pat: &str,
-    ) -> OAuthClientCreationResult {
+    ) -> ServiceResponse {
         let max_scopes = max_scopes.bits();
         let req = TestRequest::post()
             .uri("/v3/oauth_app")
@@ -36,10 +36,7 @@ impl ApiV3 {
             }))
             .to_request();
 
-        let resp = self.call(req).await;
-        assert_status(&resp, StatusCode::OK);
-
-        test::read_body_json(resp).await
+        self.call(req).await
     }
 
     pub async fn get_user_oauth_clients(&self, user_id: &str, pat: &str) -> Vec<OAuthClient> {

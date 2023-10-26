@@ -133,7 +133,7 @@ impl AuthQueue {
 
             PersonalAccessToken::clear_cache(clear_cache_pats, redis).await?;
 
-            process_oauth_access_tokens(oauth_access_token_queue, &mut transaction).await?;
+            update_oauth_access_token_last_used(oauth_access_token_queue, &mut transaction).await?;
 
             transaction.commit().await?;
         }
@@ -142,7 +142,7 @@ impl AuthQueue {
     }
 }
 
-async fn process_oauth_access_tokens(
+async fn update_oauth_access_token_last_used(
     oauth_access_token_queue: HashSet<OAuthAccessTokenId>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<(), DatabaseError> {

@@ -93,6 +93,7 @@ pub struct NewOAuthApp {
     )]
     pub icon_url: Option<String>,
 
+    #[validate(custom(function = "crate::util::validate::validate_no_restricted_scopes"))]
     pub max_scopes: Scopes,
 
     #[validate(length(min = 1))]

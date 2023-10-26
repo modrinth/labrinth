@@ -1,11 +1,15 @@
 use actix_http::StatusCode;
+use actix_web::test;
 use common::{
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},
     dummy_data::DummyOAuthClientAlpha,
     environment::with_test_environment,
     get_json_val_str,
 };
-use labrinth::{models::pats::Scopes, routes::v3::oauth_clients::OAuthClientEdit};
+use labrinth::{
+    models::{oauth_clients::OAuthClientCreationResult, pats::Scopes},
+    routes::v3::oauth_clients::OAuthClientEdit,
+};
 
 use crate::common::{asserts::assert_status, database::USER_USER_ID_PARSED};
 
@@ -19,15 +23,17 @@ async fn can_create_edit_get_oauth_client() {
             "https://modrinth.com".to_string(),
             "https://modrinth.com/a".to_string(),
         ];
-        let creation_result = env
+        let resp = env
             .v3
             .add_oauth_client(
                 client_name.clone(),
-                Scopes::all(),
+                Scopes::all() - Scopes::restricted(),
                 redirect_uris.clone(),
                 FRIEND_USER_PAT,
             )
             .await;
+        assert_status(&resp, StatusCode::OK);
+        let creation_result: OAuthClientCreationResult = test::read_body_json(resp).await;
         let client_id = get_json_val_str(creation_result.client.id);
 
         let icon_url = Some("https://modrinth.com/icon".to_string());
@@ -57,6 +63,24 @@ async fn can_create_edit_get_oauth_client() {
         assert_eq!(2, clients[0].redirect_uris.len());
         assert_eq!(edited_redirect_uris[0], clients[0].redirect_uris[0].uri);
         assert_eq!(edited_redirect_uris[1], clients[0].redirect_uris[1].uri);
+    })
+    .await;
+}
+
+#[actix_rt::test]
+async fn create_oauth_client_with_restricted_scopes_fails() {
+    with_test_environment(|env| async move {
+        let resp = env
+            .v3
+            .add_oauth_client(
+                "test_client".to_string(),
+                Scopes::restricted(),
+                vec!["https://modrinth.com".to_string()],
+                FRIEND_USER_PAT,
+            )
+            .await;
+
+        assert_status(&resp, StatusCode::BAD_REQUEST);
     })
     .await;
 }

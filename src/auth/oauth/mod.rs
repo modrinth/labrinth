@@ -103,7 +103,7 @@ pub async fn init_oauth(
                 })
             })?;
 
-        if !client.max_scopes.contains(requested_scopes) {
+        if !client.max_scopes.contains(requested_scopes) || requested_scopes.is_restricted() {
             return Err(OAuthError::redirect(
                 OAuthErrorType::ScopesTooBroad,
                 &oauth_info.state,
@@ -258,6 +258,8 @@ pub async fn request_token(
                     ),
                 ));
             }
+
+            let scopes = scopes - Scopes::restricted();
 
             let mut transaction = pool.begin().await.map_err(OAuthError::error)?;
             let token_id = generate_oauth_access_token_id(&mut transaction)
