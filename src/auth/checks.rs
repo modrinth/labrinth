@@ -80,7 +80,7 @@ pub async fn is_authorized(
 
 pub async fn filter_authorized_projects(
     projects: Vec<QueryProject>,
-    current_user: Option<&User>,
+    user_option: Option<&User>,
     pool: &web::Data<PgPool>,
 ) -> Result<Vec<crate::models::projects::Project>, ApiError> {
     let mut return_projects = Vec::new();
@@ -88,16 +88,16 @@ pub async fn filter_authorized_projects(
 
     for project in projects {
         if !project.inner.status.is_hidden()
-            || current_user.map(|x| x.role.is_mod()).unwrap_or(false)
+            || user_option.map(|x| x.role.is_mod()).unwrap_or(false)
         {
             return_projects.push(project.into());
-        } else if current_user.is_some() {
+        } else if user_option.is_some() {
             check_projects.push(project);
         }
     }
 
     if !check_projects.is_empty() {
-        if let Some(user) = current_user {
+        if let Some(user) = user_option {
             let user_id: models::ids::UserId = user.id.into();
 
             use futures::TryStreamExt;
