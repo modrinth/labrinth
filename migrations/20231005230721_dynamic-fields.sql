@@ -13,7 +13,6 @@ ALTER TABLE loaders ADD COLUMN game_id integer REFERENCES games NOT NULL DEFAULT
 
 CREATE TABLE loader_field_enums (
   id serial PRIMARY KEY,
-  game_id integer REFERENCES games NOT NULL DEFAULT 1,
   enum_name varchar(64) NOT NULL,
   ordering int NULL,
   hidable BOOLEAN NOT NULL DEFAULT FALSE
@@ -115,4 +114,3 @@ ALTER TABLE loader_field_enum_values DROP COLUMN original_id;
 
 -- drop 'minecraft-java' as default
 ALTER TABLE loaders ALTER COLUMN game_id DROP DEFAULT;
-ALTER TABLE loader_field_enums ALTER COLUMN game_id DROP DEFAULT;

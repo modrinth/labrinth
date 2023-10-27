@@ -11,7 +11,7 @@ use serde_json::json;
 use crate::database::redis::RedisPool;
 
 use super::{
-    loader_fields::{Game, LoaderFieldEnum, LoaderFieldEnumValue, VersionField, VersionFieldValue},
+    loader_fields::{LoaderFieldEnum, LoaderFieldEnumValue, VersionField, VersionFieldValue},
     DatabaseError, LoaderFieldEnumValueId,
 };
 
@@ -40,12 +40,11 @@ impl MinecraftGameVersion {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let game_name = Game::MinecraftJava.name();
-        let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, game_name, exec, redis)
+        let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, exec, redis)
             .await?
             .ok_or_else(|| {
                 DatabaseError::SchemaError(format!(
-                    "Could not find game version enum for '{game_name}'"
+                    "Could not find game version enum."
                 ))
             })?;
         let game_version_enum_values =
@@ -61,13 +60,12 @@ impl MinecraftGameVersion {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &RedisPool,
     ) -> Result<Vec<MinecraftGameVersion>, DatabaseError> {
-        let game_name = Game::MinecraftJava.name();
         let game_version_enum =
-            LoaderFieldEnum::get(Self::FIELD_NAME, game_name, &mut *transaction, redis)
+            LoaderFieldEnum::get(Self::FIELD_NAME, &mut *transaction, redis)
                 .await?
                 .ok_or_else(|| {
                     DatabaseError::SchemaError(format!(
-                        "Could not find game version enum for '{game_name}'"
+                        "Could not find game version enum."
                     ))
                 })?;
         let game_version_enum_values =
@@ -178,8 +176,7 @@ impl<'a> MinecraftGameVersionBuilder<'a> {
     where
         E: sqlx::Executor<'b, Database = sqlx::Postgres> + Copy,
     {
-        let game_name = Game::MinecraftJava.name();
-        let game_versions_enum = LoaderFieldEnum::get("game_versions", game_name, exec, redis)
+        let game_versions_enum = LoaderFieldEnum::get("game_versions", exec, redis)
             .await?
             .ok_or(DatabaseError::SchemaError(
                 "Missing loaders field: 'game_versions'".to_string(),

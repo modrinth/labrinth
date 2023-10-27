@@ -191,7 +191,6 @@ impl LoaderFieldType {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct LoaderFieldEnum {
     pub id: LoaderFieldEnumId,
-    pub game: Game,
     pub enum_name: String,
     pub ordering: Option<i32>,
     pub hidable: bool,
@@ -322,7 +321,6 @@ impl LoaderField {
 impl LoaderFieldEnum {
     pub async fn get<'a, E>(
         enum_name: &str, // Note: NOT loader field name
-        game_name: &str,
         exec: E,
         redis: &RedisPool,
     ) -> Result<Option<LoaderFieldEnum>, DatabaseError>
@@ -332,7 +330,7 @@ impl LoaderFieldEnum {
         let cached_enum = redis
             .get_deserialized_from_json(
                 LOADER_FIELD_ENUMS_ID_NAMESPACE,
-                format!("{}_{}", game_name, enum_name),
+                enum_name
             )
             .await?;
         if let Some(cached_enum) = cached_enum {
@@ -341,12 +339,10 @@ impl LoaderFieldEnum {
 
         let result = sqlx::query!(
             "
-            SELECT lfe.id, g.name, lfe.enum_name, lfe.ordering, lfe.hidable 
+            SELECT lfe.id, lfe.enum_name, lfe.ordering, lfe.hidable 
             FROM loader_field_enums lfe
-            INNER JOIN games g ON lfe.game_id = g.id
-            WHERE g.name = $1 AND lfe.enum_name = $2
+            WHERE lfe.enum_name = $1
             ",
-            game_name,
             enum_name
         )
         .fetch_optional(exec)
@@ -354,7 +350,6 @@ impl LoaderFieldEnum {
         .and_then(|l| {
             Some(LoaderFieldEnum {
                 id: LoaderFieldEnumId(l.id),
-                game: l.name.and_then(|n| Game::from_name(&n))?,
                 enum_name: l.enum_name,
                 ordering: l.ordering,
                 hidable: l.hidable,
@@ -364,7 +359,7 @@ impl LoaderFieldEnum {
         redis
             .set_serialized_to_json(
                 LOADER_FIELD_ENUMS_ID_NAMESPACE,
-                format!("{}_{}", game_name, enum_name),
+                enum_name,
                 &result,
                 None,
             )
