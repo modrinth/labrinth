@@ -10,7 +10,7 @@ use crate::models::ids::VersionId;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    Dependency, FileType, LoaderStruct, Version, VersionStatus, VersionType,
+    Dependency, FileType, Version, VersionStatus, VersionType,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::v2::projects::LegacyVersion;
@@ -217,53 +217,13 @@ pub async fn version_edit(
 ) -> Result<HttpResponse, ApiError> {
     let new_version = new_version.into_inner();
 
-    // TOOD: convert to loader, need to get loader first in case only game versions is passed
-    let new_loaders = if new_version.game_versions.is_some() || new_version.loaders.is_some() {
-        let old_version = database::models::Version::get((*info).0.into(), &**pool, &redis)
-            .await?
-            .ok_or_else(|| {
-                ApiError::InvalidInput("The specified version does not exist!".to_string())
-            })?;
-        let old_version = models::projects::Version::from(old_version);
-
-        // Which loaderes to use
-        let new_loader_strings: Vec<_> = if let Some(loaders) = new_version.loaders {
-            loaders.to_vec()
-        } else {
-            old_version
-                .loaders
-                .iter()
-                .map(|l| l.loader.clone())
-                .collect()
-        };
-
-        // calling V2 endpoint does not allow different loader fields for different loaders
-        // (V3 functionality) so we can just take the first loader
-        let mut fields = old_version
-            .loaders
-            .into_iter()
-            .next()
-            .map(|l| l.fields)
-            .unwrap_or_default();
-        if let Some(game_versions) = new_version.game_versions {
-            fields.insert(
-                "game_versions".to_string(),
-                serde_json::json!(game_versions),
-            );
-        }
-
-        Some(
-            new_loader_strings
-                .into_iter()
-                .map(|loader| LoaderStruct {
-                    loader,
-                    fields: fields.clone(),
-                })
-                .collect::<Vec<_>>(),
-        )
-    } else {
-        None
-    };
+    let mut fields = HashMap::new();
+    if new_version.game_versions.is_some() {
+        fields.insert(
+            "game_versions".to_string(),
+            serde_json::json!(new_version.game_versions),
+        );
+    }
 
     let new_version = v3::versions::EditVersion {
         name: new_version.name,
@@ -271,7 +231,7 @@ pub async fn version_edit(
         changelog: new_version.changelog,
         version_type: new_version.version_type,
         dependencies: new_version.dependencies,
-        loaders: new_loaders,
+        loaders: new_version.loaders,
         featured: new_version.featured,
         primary_file: new_version.primary_file,
         downloads: new_version.downloads,
@@ -285,6 +245,7 @@ pub async fn version_edit(
                 })
                 .collect::<Vec<_>>()
         }),
+        fields,
     };
 
     let response = v3::versions::version_edit(

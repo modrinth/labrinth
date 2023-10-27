@@ -36,8 +36,7 @@ CREATE TABLE loader_field_enum_values (
 
 CREATE TABLE loader_fields (
   id serial PRIMARY KEY,
-  loader_id integer REFERENCES loaders NOT NULL,
-  field varchar(64) NOT NULL,
+  field varchar(64) UNIQUE NOT NULL,
   -- "integer", "text", "enum", "bool", 
   -- "array_integer", "array_text", "array_enum", "array_bool"
   field_type varchar(64) NOT NULL,
@@ -46,9 +45,13 @@ CREATE TABLE loader_fields (
   optional BOOLEAN NOT NULL DEFAULT true,
   -- for int- min/max val, for text- min len, for enum- min items, for bool- nothing
   min_val integer NULL,
-  max_val integer NULL,
+  max_val integer NULL
+);
 
-  CONSTRAINT unique_field_name_per_loader UNIQUE (loader_id, field)
+CREATE TABLE loader_fields_loaders (
+  loader_id integer REFERENCES loaders NOT NULL,
+  loader_field_id integer REFERENCES loader_fields NOT NULL,
+  CONSTRAINT unique_loader_field UNIQUE (loader_id, loader_field_id)
 );
 
 ALTER TABLE loaders ADD COLUMN hidable boolean NOT NULL default false;
@@ -66,8 +69,11 @@ CREATE TABLE version_fields (
 INSERT INTO loader_field_enums (id, enum_name, hidable) VALUES (1, 'side_types', true);
 INSERT INTO loader_field_enum_values (original_id, enum_id, value) SELECT id, 1, name FROM side_types st;
 
-INSERT INTO loader_fields (loader_id, field, field_type, enum_type, optional, min_val, max_val) SELECT l.id, 'client_side', 'enum', 1, false, 1, 1 FROM loaders l;
-INSERT INTO loader_fields (loader_id, field, field_type, enum_type, optional, min_val, max_val) SELECT l.id, 'server_side', 'enum', 1, false, 1, 1 FROM loaders l;
+INSERT INTO loader_fields (field, field_type, enum_type, optional, min_val, max_val) SELECT 'client_side', 'enum', 1, false, 1, 1;
+INSERT INTO loader_fields ( field, field_type, enum_type, optional, min_val, max_val) SELECT 'server_side', 'enum', 1, false, 1, 1;
+
+INSERT INTO loader_fields_loaders (loader_id, loader_field_id) SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf  WHERE lf.field = 'client_side' AND l.loader = ANY( ARRAY['forge', 'fabric', 'quilt', 'modloader','rift','liteloader', 'neoforge']);
+INSERT INTO loader_fields_loaders (loader_id, loader_field_id) SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf  WHERE lf.field = 'server_side' AND l.loader = ANY( ARRAY['forge', 'fabric', 'quilt', 'modloader','rift','liteloader', 'neoforge']);
 
 INSERT INTO version_fields (version_id, field_id, enum_value) 
 SELECT v.id, 1, m.client_side 
@@ -92,7 +98,7 @@ INSERT INTO loader_field_enums (id, enum_name, hidable) VALUES (2, 'game_version
 INSERT INTO loader_field_enum_values (original_id, enum_id, value, created, metadata)
 SELECT id, 2, version, created, json_build_object('type', type, 'major', major) FROM game_versions;
 
-INSERT INTO loader_fields (loader_id, field, field_type, enum_type, optional, min_val) SELECT l.id, 'game_versions', 'array_enum', 2, false, 1 FROM loaders l;
+INSERT INTO loader_fields (field, field_type, enum_type, optional, min_val) VALUES('game_versions', 'array_enum', 2, false, 1);
 
 INSERT INTO version_fields(version_id, field_id, enum_value) 
 SELECT gvv.joining_version_id, 2, lfev.id 

@@ -479,22 +479,18 @@ pub struct Version {
     pub files: Vec<VersionFile>,
     /// A list of projects that this version depends on.
     pub dependencies: Vec<Dependency>,
-    /// The loaders that this version works on
-    pub loaders: Vec<LoaderStruct>,
-}
 
-// A loader and its associated loader VersionFields
-#[derive(Serialize, Deserialize, Validate, Clone, Debug)]
-pub struct LoaderStruct {
-    pub loader: Loader,
+    /// The loaders that this version works on
+    pub loaders: Vec<Loader>,
 
     // All other fields are loader-specific VersionFields
+    // These are flattened during serialization
     #[serde(deserialize_with = "skip_nulls")]
     #[serde(flatten)]
     pub fields: HashMap<String, serde_json::Value>,
 }
 
-fn skip_nulls<'de, D>(deserializer: D) -> Result<HashMap<String, serde_json::Value>, D::Error>
+pub fn skip_nulls<'de, D>(deserializer: D) -> Result<HashMap<String, serde_json::Value>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -505,31 +501,7 @@ where
 
 impl From<QueryVersion> for Version {
     fn from(data: QueryVersion) -> Version {
-        let v = data.inner;
-
-        let loader_names: Vec<Loader> = data.loaders.into_iter().map(Loader).collect();
-        let mut loaders: HashMap<String, LoaderStruct> = HashMap::new();
-        for loader in loader_names {
-            loaders.insert(
-                loader.0.clone(),
-                LoaderStruct {
-                    loader,
-                    fields: HashMap::new(),
-                },
-            );
-        }
-        for version_field in data.version_fields {
-            if let Some(loader_struct) = loaders.get_mut(&version_field.loader_name) {
-                // Only add the internal component of the field for display
-                // "ie": "game_versions",["1.2.3"] instead of "game_versions",ArrayEnum(...)
-                loader_struct.fields.insert(
-                    version_field.field_name,
-                    version_field.value.serialize_internal(),
-                );
-            }
-        }
-        let loaders = loaders.into_values().collect();
-
+        let v = data.inner;        
         Version {
             id: v.id.into(),
             project_id: v.project_id.into(),
@@ -573,7 +545,10 @@ impl From<QueryVersion> for Version {
                     dependency_type: DependencyType::from_string(d.dependency_type.as_str()),
                 })
                 .collect(),
-            loaders,
+            loaders: data.loaders.into_iter().map(Loader).collect(),
+            // Only add the internal component of the field for display
+            // "ie": "game_versions",["1.2.3"] instead of "game_versions",ArrayEnum(...)
+            fields: data.version_fields.into_iter().map(|vf| (vf.field_name, vf.value.serialize_internal())).collect()
         }
     }
 }
@@ -802,7 +777,7 @@ pub struct Loader(pub String);
 
 // These fields must always succeed parsing; deserialize errors aren't
 // processed correctly (don't return JSON errors)
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SearchRequest {
     pub query: Option<String>,
     pub offset: Option<String>,

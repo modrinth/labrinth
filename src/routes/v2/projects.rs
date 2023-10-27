@@ -7,7 +7,7 @@ use crate::models;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    DonationLink, Loader, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest,
+    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest,
     SideType,
 };
 use crate::models::teams::ProjectPermissions;
@@ -18,12 +18,13 @@ use crate::routes::{v2_reroute, v3, ApiError};
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use crate::{database, search};
+use crate::database;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -67,63 +68,33 @@ pub async fn project_search(
 ) -> Result<HttpResponse, SearchError> {
     // TODO: make this nicer
     // Search now uses loader_fields instead of explicit 'client_side' and 'server_side' fields
-    // Loader fields are:
-    // (loader)_(field):(value)
-    // The first _ by convention is used to separate the loader from the field
-    // For each v2 loader, we create a loader field facet for each of these fields that are now loader fields
+    // While the backend for this has changed, it doesnt affect much
+    // in the API calls except that 'versions:x' is now 'game_versions:x'
     let facets: Option<Vec<Vec<String>>> = if let Some(facets) = info.facets {
         let facets = serde_json::from_str::<Vec<Vec<&str>>>(&facets)?;
-
-        // "versions:x" => "fabric_game_versions:x", "forge_game_versions:x" ...
-        // They are put in the same array- considered to be 'or'
-        let mut v2_loaders: Vec<String> = Vec::new();
-        {
-            let client = meilisearch_sdk::Client::new(&*config.address, &*config.key);
-            let index = info.index.as_deref().unwrap_or("relevance");
-            let meilisearch_index = client.get_index(search::get_sort_index(index)?.0).await?;
-            let filterable_fields = meilisearch_index.get_filterable_attributes().await?;
-            for field in filterable_fields {
-                if field.ends_with("_game_versions") {
-                    let loader = field.split('_').next().unwrap_or("");
-                    v2_loaders.push(loader.to_string());
-                }
-            }
-        }
         Some(
             facets
                 .into_iter()
                 .map(|facet| {
                     facet
                         .into_iter()
-                        .flat_map(|facet| {
+                        .map(|facet| {
                             let version = match facet.split(':').nth(1) {
                                 Some(version) => version,
-                                None => return vec![facet.to_string()],
+                                None => return facet.to_string(),
                             };
 
                             if facet.starts_with("versions:") {
-                                v2_loaders
-                                    .iter()
-                                    .map(|loader| format!("{}_game_versions:{}", loader, version))
-                                    .collect::<Vec<_>>()
-                            } else if facet.starts_with("client_side:") {
-                                v2_loaders
-                                    .iter()
-                                    .map(|loader| format!("{}_client_side:{}", loader, version))
-                                    .collect::<Vec<_>>()
-                            } else if facet.starts_with("server_side:") {
-                                v2_loaders
-                                    .iter()
-                                    .map(|loader| format!("{}_server_side:{}", loader, version))
-                                    .collect::<Vec<_>>()
+                                format!("game_versions:{}", version)
                             } else {
-                                vec![facet.to_string()]
+                                facet.to_string()
                             }
                         })
                         .collect::<Vec<_>>()
                 })
                 .collect(),
         )
+
     } else {
         None
     };
@@ -485,25 +456,17 @@ pub async fn project_edit(
         let version_ids = project_item.map(|x| x.versions).unwrap_or_default();
         let versions = version_item::Version::get_many(&version_ids, &**pool, &redis).await?;
         for version in versions {
-            let loaders: Result<Vec<_>, _> = version
-                .loaders
-                .into_iter()
-                .map(|l| {
-                    serde_json::from_value(json!({
-                        "loader": Loader(l),
-                        "client_side": client_side,
-                        "server_side": server_side,
-                    }))
-                })
-                .collect();
 
+            let mut fields = HashMap::new();
+            fields.insert("client_side".to_string(), json!(client_side));
+            fields.insert("server_side".to_string(), json!(server_side));
             response = v3::versions::version_edit_helper(
                 req.clone(),
                 (version.inner.id.into(),),
                 pool.clone(),
                 redis.clone(),
                 v3::versions::EditVersion {
-                    loaders: Some(loaders?),
+                    fields,
                     ..Default::default()
                 },
                 session_queue.clone(),

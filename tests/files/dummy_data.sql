@@ -40,20 +40,15 @@ VALUES (2, '1.20.4', '{"type":"beta","major":false}');
 INSERT INTO loader_field_enum_values(enum_id, value, metadata)
 VALUES (2, '1.20.5', '{"type":"release","major":true}');
 
-INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
-VALUES (1, 'game_versions', 'array_enum', 2);
-INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
-VALUES (2, 'game_versions', 'array_enum', 2);
+INSERT INTO loader_fields_loaders(loader_id, loader_field_id) 
+SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf WHERE lf.field = 'game_versions' OR lf.field = 'client_side' OR lf.field = 'server_side';
 
--- Side-types 
-INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
-VALUES (1, 'client_side', 'enum', 1);
-INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
-VALUES (1, 'server_side', 'enum', 1);
-INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
-VALUES (2, 'client_side', 'enum', 1);
-INSERT INTO loader_fields(loader_id, field, field_type, enum_type)
-VALUES (2, 'server_side', 'enum', 1);
+-- INSERT INTO loader_fields(field, field_type, enum_type)
+-- VALUES ('game_versions', 'array_enum', 2);
+-- INSERT INTO loader_fields(field, field_type, enum_type)
+-- VALUES ('client_side', 'enum', 1);
+-- INSERT INTO loader_fields(field, field_type, enum_type)
+-- VALUES ('server_side', 'enum', 1);
 
 INSERT INTO categories (id, category, project_type) VALUES
     (1, 'combat', 1),

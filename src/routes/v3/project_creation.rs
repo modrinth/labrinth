@@ -8,7 +8,7 @@ use crate::database::models::{self, image_item, User};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
-use crate::models::ids::ImageId;
+use crate::models::ids::{ImageId, OrganizationId};
 use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
 use crate::models::projects::{
@@ -142,7 +142,7 @@ impl actix_web::ResponseError for CreateError {
     }
 }
 
-fn default_project_type() -> String {
+pub fn default_project_type() -> String {
     "mod".to_string()
 }
 
@@ -151,7 +151,7 @@ fn default_requested_status() -> ProjectStatus {
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
-struct ProjectCreateData {
+pub struct ProjectCreateData {
     #[validate(
         length(min = 3, max = 64),
         custom(function = "crate::util::validate::validate_name")
@@ -249,7 +249,7 @@ struct ProjectCreateData {
     pub uploaded_images: Vec<ImageId>,
 
     /// The id of the organization to create the project in
-    pub organization_id: Option<models::ids::OrganizationId>,
+    pub organization_id: Option<OrganizationId>,
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -607,12 +607,7 @@ async fn project_create_inner(
                 created_version.version_id.into(),
                 &created_version.version_fields,
                 &project_create_data.project_type,
-                version_data
-                    .loaders
-                    .clone()
-                    .into_iter()
-                    .map(|l| l.loader)
-                    .collect(),
+                version_data.loaders.clone(),
                 version_data.primary_file.is_some(),
                 version_data.primary_file.as_deref() == Some(name),
                 None,
@@ -734,7 +729,7 @@ async fn project_create_inner(
             game,
             project_type_id,
             team_id,
-            organization_id: project_create_data.organization_id,
+            organization_id: project_create_data.organization_id.map(|x| x.into()),
             title: project_create_data.title,
             description: project_create_data.description,
             body: project_create_data.body,
@@ -888,59 +883,32 @@ async fn create_initial_version(
     // Randomly generate a new id to be used for the version
     let version_id: VersionId = models::generate_version_id(transaction).await?.into();
 
-    // let game_versions = version_data
-    //     .game_versions
-    //     .iter()
-    //     .map(|x| {
-    //         all_game_versions
-    //             .iter()
-    //             .find(|y| y.version == x.0)
-    //             .ok_or_else(|| CreateError::InvalidGameVersion(x.0.clone()))
-    //             .map(|y| y.id)
-    //     })
-    //     .collect::<Result<Vec<models::GameVersionId>, CreateError>>()?;
-
-    let mut loader_ids = vec![];
-    let mut loaders = vec![];
-    let mut version_fields = vec![];
-    for loader_create in version_data.loaders.iter() {
-        let loader_name = loader_create.loader.0.clone();
-        // Confirm loader from list of loaders
-        let loader_id = all_loaders
-            .iter()
-            .find(|y| y.loader == loader_name && y.supported_project_types.contains(project_type))
-            .ok_or_else(|| CreateError::InvalidLoader(loader_name.clone()))
-            .map(|y| y.id)?;
-
-        loader_ids.push(loader_id);
-        loaders.push(loader_create.loader.clone());
-
-        let loader_fields = LoaderField::get_fields(loader_id, &mut *transaction, redis).await?;
-        let mut loader_field_enum_values =
-            LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis)
-                .await?;
-
-        for (key, value) in loader_create.fields.iter() {
-            let loader_field = loader_fields
+    let loaders = version_data
+        .loaders
+        .iter()
+        .map(|x| {
+            all_loaders
                 .iter()
-                .find(|lf| &lf.field == key)
-                .ok_or_else(|| {
-                    CreateError::InvalidInput(format!(
-                        "Loader field '{key}' does not exist for loader '{loader_name}'"
-                    ))
-                })?;
-            let enum_variants = loader_field_enum_values
-                .remove(&loader_field.id)
-                .unwrap_or_default();
-            let vf: VersionField = VersionField::check_parse(
-                version_id.into(),
-                loader_field.clone(),
-                value.clone(),
-                enum_variants,
-            )
-            .map_err(CreateError::InvalidInput)?;
-            version_fields.push(vf);
-        }
+                .find(|y| {
+                    y.loader == x.0
+                        && y.supported_project_types
+                            .contains(&project_type.to_string())
+                })
+                .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
+                .map(|y| y.id)
+        })
+        .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
+
+    let loader_fields = LoaderField::get_fields(&mut *transaction, redis).await?;
+    let mut version_fields = vec![];
+    let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis).await?;
+    for (key, value) in version_data.fields .iter() {
+        let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
+            CreateError::InvalidInput(format!("Loader field '{key}' does not exist!"))
+        })?;
+        let enum_variants = loader_field_enum_values.remove(&loader_field.id).unwrap_or_default();
+        let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field.clone(), value.clone(), enum_variants).map_err(CreateError::InvalidInput)?;
+        version_fields.push(vf);
     }
 
     let dependencies = version_data
@@ -963,7 +931,7 @@ async fn create_initial_version(
         changelog: version_data.version_body.clone().unwrap_or_default(),
         files: Vec::new(),
         dependencies,
-        loaders: loader_ids,
+        loaders,
         version_fields,
         featured: version_data.featured,
         status: VersionStatus::Listed,

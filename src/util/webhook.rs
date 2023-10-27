@@ -99,11 +99,10 @@ pub async fn send_discord_webhook(
                 'enum_value', vf.enum_value,
                 'string_value', vf.string_value
                 )
-            ) version_fields,
+            ) filter (where vf.field_id is not null) version_fields,
             JSONB_AGG(
                 DISTINCT jsonb_build_object(
                     'lf_id', lf.id,
-                    'l_id', lf.loader_id,
                     'loader_name', lo.loader,
                     'field', lf.field,
                     'field_type', lf.field_type,
@@ -112,7 +111,7 @@ pub async fn send_discord_webhook(
                     'max_val', lf.max_val,
                     'optional', lf.optional
                 )
-            ) loader_fields,
+            ) filter (where lf.id is not null) loader_fields,
             JSONB_AGG(
                 DISTINCT jsonb_build_object(
                     'id', lfev.id,
@@ -122,7 +121,7 @@ pub async fn send_discord_webhook(
                     'created', lfev.created,
                     'metadata', lfev.metadata
                 )  
-            ) loader_field_enum_values
+            ) filter (where lfev.id is not null) loader_field_enum_values
             FROM mods m
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id AND mc.is_additional = FALSE
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id

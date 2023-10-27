@@ -528,11 +528,10 @@ impl Version {
                     'enum_value', vf.enum_value,
                     'string_value', vf.string_value
                     )
-                ) version_fields,
+                ) filter (where vf.field_id is not null) version_fields,
                 JSONB_AGG(
                     DISTINCT jsonb_build_object(
                         'lf_id', lf.id,
-                        'l_id', lf.loader_id,
                         'loader_name', l.loader,
                         'field', lf.field,
                         'field_type', lf.field_type,
@@ -541,7 +540,7 @@ impl Version {
                         'max_val', lf.max_val,
                         'optional', lf.optional
                     )
-                ) loader_fields,
+                ) filter (where lf.id is not null) loader_fields,
                 JSONB_AGG(
                     DISTINCT jsonb_build_object(
                         'id', lfev.id,
@@ -551,8 +550,8 @@ impl Version {
                         'created', lfev.created,
                         'metadata', lfev.metadata
                     )  
-                ) loader_field_enum_values
-                                
+                ) filter (where lfev.id is not null) loader_field_enum_values
+                                    
                 FROM versions v
                 LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id
                 LEFT OUTER JOIN loaders l on lv.loader_id = l.id

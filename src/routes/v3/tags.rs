@@ -51,7 +51,6 @@ pub async fn loader_list(
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct LoaderFieldsEnumQuery {
-    pub loader: String,
     pub loader_field: String,
     pub filters: Option<HashMap<String, Value>>, // For metadata
 }
@@ -63,18 +62,12 @@ pub async fn loader_fields_list(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let query = query.into_inner();
-    let loader_id = Loader::get_id(&query.loader, &**pool, &redis)
-        .await?
-        .ok_or_else(|| {
-            ApiError::InvalidInput(format!("'{}' was not a valid loader.", query.loader))
-        })?;
-
-    let loader_field = LoaderField::get_field(&query.loader_field, loader_id, &**pool, &redis)
+    let loader_field = LoaderField::get_field(&query.loader_field, &**pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput(format!(
-                "'{}' was not a valid loader field for loader {}.",
-                query.loader_field, query.loader
+                "'{}' was not a valid loader field.",
+                query.loader_field
             ))
         })?;
 

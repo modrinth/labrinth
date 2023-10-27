@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use validator::Validate;
 
-fn default_requested_status() -> VersionStatus {
+pub fn default_requested_status() -> VersionStatus {
     VersionStatus::Listed
 }
 
@@ -81,23 +81,27 @@ pub async fn version_create(
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
-    let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
+    let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |legacy_create : InitialVersionData| {
         // Convert input data to V3 format
+        let mut fields = HashMap::new();
+        fields.insert("game_versions".to_string(), json!(legacy_create.game_versions));
 
-        // Loader fields are now a struct, containing all versionfields
-        // loaders: ["fabric"]
-        // game_versions: ["1.16.5", "1.17"]
-        // -> becomes ->
-        // loaders: [{"loader": "fabric", "game_versions": ["1.16.5", "1.17"]}]
-        let mut loaders = vec![];
-        for loader in json["loaders"].as_array().unwrap_or(&Vec::new()) {
-            let loader = loader.as_str().unwrap_or("");
-            loaders.push(json!({
-                "loader": loader,
-                "game_versions": json["game_versions"].as_array(),
-            }));
-        }
-        json["loaders"] = json!(loaders);
+        Ok(v3::version_creation::InitialVersionData {
+            project_id: legacy_create.project_id,
+            file_parts: legacy_create.file_parts,
+            version_number: legacy_create.version_number,
+            version_title: legacy_create.version_title,
+            version_body: legacy_create.version_body,
+            dependencies: legacy_create.dependencies,
+            release_channel: legacy_create.release_channel,
+            loaders: legacy_create.loaders,
+            featured: legacy_create.featured,
+            primary_file: legacy_create.primary_file,
+            status: legacy_create.status,
+            file_types: legacy_create.file_types,
+            uploaded_images: legacy_create.uploaded_images,
+            fields,
+        })
     })
     .await?;
 

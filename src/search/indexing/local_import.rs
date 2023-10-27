@@ -35,11 +35,10 @@ pub async fn index_local(
                 'enum_value', vf.enum_value,
                 'string_value', vf.string_value
                 )
-            ) version_fields,
+            ) filter (where vf.field_id is not null) version_fields,
             JSONB_AGG(
                 DISTINCT jsonb_build_object(
                     'lf_id', lf.id,
-                    'l_id', lf.loader_id,
                     'loader_name', lo.loader,
                     'field', lf.field,
                     'field_type', lf.field_type,
@@ -48,7 +47,7 @@ pub async fn index_local(
                     'max_val', lf.max_val,
                     'optional', lf.optional
                 )
-            ) loader_fields,
+            ) filter (where lf.id is not null) loader_fields,
             JSONB_AGG(
                 DISTINCT jsonb_build_object(
                     'id', lfev.id,
@@ -58,7 +57,7 @@ pub async fn index_local(
                     'created', lfev.created,
                     'metadata', lfev.metadata
                 )  
-            ) loader_field_enum_values
+            ) filter (where lfev.id is not null) loader_field_enum_values
 
             
             FROM versions v
@@ -98,9 +97,7 @@ pub async fn index_local(
                     let version_fields = VersionField::from_query_json(m.id, m.loader_fields, m.version_fields, m.loader_field_enum_values);
 
                     let loader_fields : HashMap<String, Vec<String>> = version_fields.into_iter().map(|vf| {
-                        let key = format!("{}_{}", vf.loader_name, vf.field_name);
-                        let value = vf.value.as_search_strings();
-                        (key, value)
+                        (vf.field_name, vf.value.as_search_strings())
                     }).collect();
 
                     for v in loader_fields.keys().cloned() {

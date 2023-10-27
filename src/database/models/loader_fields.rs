@@ -141,8 +141,6 @@ impl Loader {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct LoaderField {
     pub id: LoaderFieldId,
-    pub loader_id: LoaderId,
-    pub loader_name: String,
     pub field: String,
     pub field_type: LoaderFieldType,
     pub optional: bool,
@@ -214,7 +212,6 @@ pub struct LoaderFieldEnumValue {
 pub struct VersionField {
     pub version_id: VersionId,
     pub field_id: LoaderFieldId,
-    pub loader_name: String,
     pub field_name: String,
     pub value: VersionFieldValue,
 }
@@ -265,21 +262,21 @@ pub struct SideType {
 impl LoaderField {
     pub async fn get_field<'a, E>(
         field: &str,
-        loader_id: LoaderId,
         exec: E,
         redis: &RedisPool,
     ) -> Result<Option<LoaderField>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let fields = Self::get_fields(loader_id, exec, redis).await?;
+        let fields = Self::get_fields(exec, redis).await?;
         Ok(fields.into_iter().find(|f| f.field == field))
     }
 
     // Gets all fields for a given loader
     // Returns all as this there are probably relatively few fields per loader
+    // TODO: in the future, this should be to get all fields in relation to something
+    // - e.g. get all fields for a given game? 
     pub async fn get_fields<'a, E>(
-        loader_id: LoaderId,
         exec: E,
         redis: &RedisPool,
     ) -> Result<Vec<LoaderField>, DatabaseError>
@@ -287,7 +284,7 @@ impl LoaderField {
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let cached_fields = redis
-            .get_deserialized_from_json(LOADER_FIELDS_NAMESPACE, &loader_id.0)
+            .get_deserialized_from_json(LOADER_FIELDS_NAMESPACE, 0) // 0 => whatever we search for fields by
             .await?;
         if let Some(cached_fields) = cached_fields {
             return Ok(cached_fields);
@@ -295,22 +292,17 @@ impl LoaderField {
 
         let result = sqlx::query!(
             "
-            SELECT lf.id, lf.loader_id, lf.field, lf.field_type, lf.optional, lf.min_val, lf.max_val, lf.enum_type, l.loader
+            SELECT lf.id, lf.field, lf.field_type, lf.optional, lf.min_val, lf.max_val, lf.enum_type
             FROM loader_fields lf
-            INNER JOIN loaders l ON lf.loader_id = l.id
-            WHERE loader_id = $1
             ",
-            loader_id.0,
         )
         .fetch_many(exec)
         .try_filter_map(|e| async {
             Ok(e.right().and_then(
                 |r| Some(LoaderField {
                     id: LoaderFieldId(r.id),
-                    loader_id: LoaderId(r.loader_id),
                     field_type: LoaderFieldType::build(&r.field_type, r.enum_type)?,
                     field: r.field,
-                    loader_name: r.loader,
                     optional: r.optional,
                     min_val: r.min_val,
                     max_val: r.max_val
@@ -320,7 +312,7 @@ impl LoaderField {
         .await?;
 
         redis
-            .set_serialized_to_json(LOADER_FIELDS_NAMESPACE, &loader_id.0, &result, None)
+            .set_serialized_to_json(LOADER_FIELDS_NAMESPACE, &0, &result, None)
             .await?;
 
         Ok(result)
@@ -630,7 +622,6 @@ impl VersionField {
         Ok(VersionField {
             version_id,
             field_id: loader_field.id,
-            loader_name: loader_field.loader_name,
             field_name: loader_field.field,
             value,
         })
@@ -645,9 +636,7 @@ impl VersionField {
         #[derive(Deserialize, Debug)]
         struct JsonLoaderField {
             lf_id: i32,
-            l_id: i32,
             field: String,
-            loader_name: String,
             field_type: String,
             enum_type: Option<i32>,
             min_val: Option<i32>,
@@ -674,15 +663,15 @@ impl VersionField {
         }
 
         let query_loader_fields: Vec<JsonLoaderField> = loader_fields
-            .and_then(|x| serde_json::from_value(x).ok())
-            .unwrap_or_default();
+        .and_then(|x| serde_json::from_value(x).unwrap())
+        .unwrap_or_default();
         let query_version_field_combined: Vec<JsonVersionField> = version_fields
-            .and_then(|x| serde_json::from_value(x).ok())
-            .unwrap_or_default();
+        .and_then(|x| serde_json::from_value(x).unwrap())
+        .unwrap_or_default();
         let query_loader_field_enum_values: Vec<JsonLoaderFieldEnumValue> =
             loader_field_enum_values
-                .and_then(|x| serde_json::from_value(x).ok())
-                .unwrap_or_default();
+            .and_then(|x| serde_json::from_value(x).unwrap())
+            .unwrap_or_default();
         let version_id = VersionId(version_id);
         query_loader_fields
             .into_iter()
@@ -693,9 +682,7 @@ impl VersionField {
                 };
                 let loader_field = LoaderField {
                     id: LoaderFieldId(q.lf_id),
-                    loader_id: LoaderId(q.l_id),
                     field: q.field.clone(),
-                    loader_name: q.loader_name.clone(),
                     field_type: loader_field_type,
                     optional: q.optional,
                     min_val: q.min_val,
@@ -743,7 +730,6 @@ impl VersionField {
         Ok(VersionField {
             version_id,
             field_id: loader_field.id,
-            loader_name: loader_field.loader_name,
             field_name: loader_field.field,
             value,
         })

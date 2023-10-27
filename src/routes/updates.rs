@@ -99,16 +99,11 @@ pub async fn forge_updates(
         // For forge in particular, we will hardcode it to use GameVersions rather than generic loader fields, as this is minecraft-java exclusive
         // Will have duplicates between game_versions (for non-forge loaders), but that's okay as
         // before v3 this was stored to the project and not the version
-        let game_version_values: Vec<serde_json::Value> = version
-            .loaders
+        let game_versions: Vec<String> = version
+            .fields
             .iter()
-            .filter_map(|x| x.fields.get(MinecraftGameVersion::FIELD_NAME).cloned())
-            .collect();
-        let game_versions: Vec<String> = game_version_values
-            .into_iter()
-            .filter_map(|v| serde_json::from_value::<Vec<String>>(v).ok())
-            .flatten()
-            .collect();
+            .find(|(key , _)| key.as_str() == MinecraftGameVersion::FIELD_NAME)
+            .and_then(| (_, value) | serde_json::from_value::<Vec<String>>(value.clone()).ok()).unwrap_or_default();
 
         if version.version_type == VersionType::Release {
             for game_version in &game_versions {

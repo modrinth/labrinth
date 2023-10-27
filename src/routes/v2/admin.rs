@@ -322,7 +322,7 @@ pub async fn trolley_webhook(
     Ok(HttpResponse::NoContent().finish())
 }
 
-#[post("/_force_reindex")]
+#[post("/_force_reindex", guard = "admin_key_guard")]
 pub async fn force_reindex(
     pool: web::Data<PgPool>,
     config: web::Data<SearchConfig>,

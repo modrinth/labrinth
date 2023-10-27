@@ -4,6 +4,7 @@ use super::ApiError;
 use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
+use crate::models::projects::{skip_nulls, Loader};
 use crate::database;
 use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField};
 use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
@@ -14,7 +15,7 @@ use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::VersionId;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
-use crate::models::projects::{Dependency, FileType, LoaderStruct, VersionStatus, VersionType};
+use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::img;
@@ -30,11 +31,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::post().to(super::version_creation::version_create),
     );
     cfg.route("versions", web::get().to(versions_get));
-
-    cfg.route(
-        "{id}",
-        web::post().to(super::version_creation::version_create),
-    );
 
     cfg.service(
         web::scope("version")
@@ -195,12 +191,19 @@ pub struct EditVersion {
         custom(function = "crate::util::validate::validate_deps")
     )]
     pub dependencies: Option<Vec<Dependency>>,
-    pub loaders: Option<Vec<LoaderStruct>>,
+    pub loaders: Option<Vec<Loader>>,
     pub featured: Option<bool>,
     pub primary_file: Option<(String, String)>,
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
     pub file_types: Option<Vec<EditVersionFileType>>,
+    
+    // Flattened loader fields
+    // All other fields are loader-specific VersionFields
+    // These are flattened during serialization
+    #[serde(deserialize_with = "skip_nulls")]
+    #[serde(flatten)]
+    pub fields: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -249,6 +252,7 @@ pub async fn version_edit_helper(
     .await?
     .1;
 
+    println!("Inner fields: {:?}", new_version.fields);
     new_version
         .validate()
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
@@ -376,39 +380,70 @@ pub async fn version_edit_helper(
                 }
             }
 
-            // if let Some(game_versions) = &new_version.game_versions {
-            //     sqlx::query!(
-            //         "
-            //         DELETE FROM game_versions_versions WHERE joining_version_id = $1
-            //         ",
-            //         id as database::models::ids::VersionId,
-            //     )
-            //     .execute(&mut *transaction)
-            //     .await?;
+            if new_version.fields.len() > 0 {
+                println!("more than one field.");
+                let version_fields_names = new_version
+                    .fields
+                    .keys()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>();
+                println!("Resetting the following fields: {:?}", version_fields_names);
 
-            //     let mut version_versions = Vec::new();
-            //     for game_version in game_versions {
-            //         let game_version_id = database::models::categories::GameVersion::get_id(
-            //             &game_version.0,
-            //             &mut *transaction,
-            //         )
-            //         .await?
-            //         .ok_or_else(|| {
-            //             ApiError::InvalidInput(
-            //                 "No database entry for game version provided.".to_string(),
-            //             )
-            //         })?;
+                let loader_fields = LoaderField::get_fields(
+                    &mut *transaction,
+                    &redis,
+                ).await?.into_iter().filter(|lf| version_fields_names.contains(&lf.field)).collect::<Vec<LoaderField>>();
 
-            //         version_versions.push(VersionVersion::new(game_version_id, id));
-            //     }
-            //     VersionVersion::insert_many(version_versions, &mut transaction).await?;
+                println!("Fetched fields: {:?}", loader_fields);
 
-            //     database::models::Project::update_game_versions(
-            //         version_item.inner.project_id,
-            //         &mut transaction,
-            //     )
-            //     .await?;
-            // }
+                let loader_field_ids = loader_fields.iter().map(|lf| lf.id.0).collect::<Vec<i32>>();
+                sqlx::query!(
+                    "
+                    DELETE FROM version_fields 
+                    WHERE version_id = $1
+                    AND field_id = ANY($2)
+                    ",
+                    id as database::models::ids::VersionId,
+                    &loader_field_ids
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                let mut loader_field_enum_values =
+                LoaderFieldEnumValue::list_many_loader_fields(
+                    &loader_fields,
+                    &mut *transaction,
+                    &redis,
+                )
+                .await?;
+
+            println!("Variants: {:?}", loader_field_enum_values);
+
+                // TODO: This should check if loader supports project type like the version_creation route
+                let mut version_fields = Vec::new();
+                for (vf_name, vf_value) in new_version.fields {
+                    println!("Iterating: {:?} {:?}", vf_name, vf_value);
+                    let loader_field = loader_fields.iter().find(|lf| lf.field == vf_name).ok_or_else(|| {
+                        ApiError::InvalidInput(format!("Loader field '{vf_name}' does not exist."))
+                    })?;
+                    println!("Found loader field: {:?}", loader_field);
+                    let enum_variants = loader_field_enum_values
+                        .remove(&loader_field.id)
+                        .unwrap_or_default();
+                    println!("Enum variants: {:?}", enum_variants);
+                    let vf: VersionField = VersionField::check_parse(
+                        version_id.into(),
+                        loader_field.clone(),
+                        vf_value.clone(),
+                        enum_variants,
+                    )
+                    .map_err(ApiError::InvalidInput)?;
+                println!("Parsed version field: {:?}", vf);
+                    version_fields.push(vf);
+                }
+                println!("Parsed version fields: {:?}", version_fields);
+                VersionField::insert_many(version_fields, &mut transaction).await?;
+            }
 
             if let Some(loaders) = &new_version.loaders {
                 sqlx::query!(
@@ -420,60 +455,20 @@ pub async fn version_edit_helper(
                 .execute(&mut *transaction)
                 .await?;
 
-                sqlx::query!(
-                    "
-                    DELETE FROM version_fields WHERE version_id = $1
-                    ",
-                    id as database::models::ids::VersionId,
-                )
-                .execute(&mut *transaction)
-                .await?;
-
-                // TODO: This should check if loader supports project type like the version_creation route
                 let mut loader_versions = Vec::new();
-                let mut version_fields = Vec::new();
                 for loader in loaders {
-                    let loader_name = loader.loader.0.clone();
-
-                    let loader_id = database::models::loader_fields::Loader::get_id(
-                        &loader_name,
-                        &mut *transaction,
-                        &redis,
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        ApiError::InvalidInput("No database entry for loader provided.".to_string())
-                    })?;
+                    let loader_id =
+                        database::models::loader_fields::Loader::get_id(&loader.0, &mut *transaction, &redis)
+                            .await?
+                            .ok_or_else(|| {
+                                ApiError::InvalidInput(
+                                    "No database entry for loader provided.".to_string(),
+                                )
+                            })?;
                     loader_versions.push(LoaderVersion::new(loader_id, id));
-                    let loader_fields =
-                        LoaderField::get_fields(loader_id, &mut *transaction, &redis).await?;
-                    let mut loader_field_enum_values =
-                        LoaderFieldEnumValue::list_many_loader_fields(
-                            &loader_fields,
-                            &mut *transaction,
-                            &redis,
-                        )
-                        .await?;
-                    for (key, value) in loader.fields.iter() {
-                        let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
-                            ApiError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
-                        })?;
-                        let enum_variants = loader_field_enum_values
-                            .remove(&loader_field.id)
-                            .unwrap_or_default();
-                        let vf: VersionField = VersionField::check_parse(
-                            version_id.into(),
-                            loader_field.clone(),
-                            value.clone(),
-                            enum_variants,
-                        )
-                        .map_err(ApiError::InvalidInput)?;
-                        version_fields.push(vf);
-                    }
                 }
-
                 LoaderVersion::insert_many(loader_versions, &mut transaction).await?;
-                VersionField::insert_many(version_fields, &mut transaction).await?;
+
                 database::models::Project::update_loaders(
                     version_item.inner.project_id,
                     &mut transaction,

@@ -1,20 +1,136 @@
 use crate::database::models::version_item;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models::projects::Project;
+use crate::models;
+use crate::models::ids::ImageId;
+use crate::routes::v3::project_creation::default_project_type;
+use crate::models::projects::{Project, DonationLink, ProjectStatus, SideType};
 use crate::models::v2::projects::LegacyProject;
 use crate::queue::session::AuthQueue;
-use crate::routes::v3::project_creation::CreateError;
+use crate::routes::v3::project_creation::{CreateError, NewGalleryItem};
 use crate::routes::{v2_reroute, v3};
 use actix_multipart::Multipart;
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
+use serde::{Serialize, Deserialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
+
+use validator::Validate;
+use std::collections::HashMap;
 use std::sync::Arc;
+
+use super::version_creation::InitialVersionData;
 
 pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
     cfg.service(project_create);
+}
+
+pub fn default_requested_status() -> ProjectStatus {
+    ProjectStatus::Approved
+}
+
+#[derive(Serialize, Deserialize, Validate, Clone)]
+struct ProjectCreateData {
+    #[validate(
+        length(min = 3, max = 64),
+        custom(function = "crate::util::validate::validate_name")
+    )]
+    #[serde(alias = "mod_name")]
+    /// The title or name of the project.
+    pub title: String,
+    #[validate(length(min = 1, max = 64))]
+    #[serde(default = "default_project_type")]
+    /// The project type of this mod
+    pub project_type: String,
+    #[validate(
+        length(min = 3, max = 64),
+        regex = "crate::util::validate::RE_URL_SAFE"
+    )]
+    #[serde(alias = "mod_slug")]
+    /// The slug of a project, used for vanity URLs
+    pub slug: String,
+    #[validate(length(min = 3, max = 255))]
+    #[serde(alias = "mod_description")]
+    /// A short description of the project.
+    pub description: String,
+    #[validate(length(max = 65536))]
+    #[serde(alias = "mod_body")]
+    /// A long description of the project, in markdown.
+    pub body: String,
+
+    /// The support range for the client project
+    pub client_side: SideType,
+    /// The support range for the server project
+    pub server_side: SideType,
+
+    #[validate(length(max = 32))]
+    #[validate]
+    /// A list of initial versions to upload with the created project
+    pub initial_versions: Vec<InitialVersionData>,
+    #[validate(length(max = 3))]
+    /// A list of the categories that the project is in.
+    pub categories: Vec<String>,
+    #[validate(length(max = 256))]
+    #[serde(default = "Vec::new")]
+    /// A list of the categories that the project is in.
+    pub additional_categories: Vec<String>,
+
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    /// An optional link to where to submit bugs or issues with the project.
+    pub issues_url: Option<String>,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    /// An optional link to the source code for the project.
+    pub source_url: Option<String>,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    /// An optional link to the project's wiki page or other relevant information.
+    pub wiki_url: Option<String>,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    /// An optional link to the project's license page
+    pub license_url: Option<String>,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    /// An optional link to the project's discord.
+    pub discord_url: Option<String>,
+    /// An optional list of all donation links the project has\
+    #[validate]
+    pub donation_urls: Option<Vec<DonationLink>>,
+
+    /// An optional boolean. If true, the project will be created as a draft.
+    pub is_draft: Option<bool>,
+
+    /// The license id that the project follows
+    pub license_id: String,
+
+    #[validate(length(max = 64))]
+    #[validate]
+    /// The multipart names of the gallery items to upload
+    pub gallery_items: Option<Vec<NewGalleryItem>>,
+    #[serde(default = "default_requested_status")]
+    /// The status of the mod to be set once it is approved
+    pub requested_status: ProjectStatus,
+
+    // Associations to uploaded images in body/description
+    #[validate(length(max = 10))]
+    #[serde(default)]
+    pub uploaded_images: Vec<ImageId>,
+
+    /// The id of the organization to create the project in
+    pub organization_id: Option<models::ids::OrganizationId>,
 }
 
 #[post("project")]
@@ -27,52 +143,61 @@ pub async fn project_create(
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     // Convert V2 multipart payload to V3 multipart payload
-    let mut saved_slug = None;
-    let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |json| {
-        // Save slug for out of closure
-        saved_slug = Some(json["slug"].as_str().unwrap_or("").to_string());
-
+    let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |legacy_create : ProjectCreateData | {
+       
         // Set game name (all v2 projects are minecraft-java)
-        json["game_name"] = json!("minecraft-java");
-
-        // Loader fields are now a struct, containing all versionfields
-        // loaders: ["fabric"]
-        // game_versions: ["1.16.5", "1.17"]
-        // -> becomes ->
-        // loaders: [{"loader": "fabric", "game_versions": ["1.16.5", "1.17"]}]
+        let game_name = "minecraft-java".to_string();
 
         // Side types will be applied to each version
-        let client_side = json["client_side"]
-            .as_str()
-            .unwrap_or("required")
-            .to_string();
-        let server_side = json["server_side"]
-            .as_str()
-            .unwrap_or("required")
-            .to_string();
-        json["client_side"] = json!(null);
-        json["server_side"] = json!(null);
+        let client_side = legacy_create.client_side;
+        let server_side = legacy_create.server_side;
 
-        if let Some(versions) = json["initial_versions"].as_array_mut() {
-            for version in versions {
-                // Construct loader object with version fields
-                // V2 fields becoming loader fields are:
-                // - client_side
-                // - server_side
-                // - game_versions
-                let mut loaders = vec![];
-                for loader in version["loaders"].as_array().unwrap_or(&Vec::new()) {
-                    let loader = loader.as_str().unwrap_or("");
-                    loaders.push(json!({
-                        "loader": loader,
-                        "game_versions": version["game_versions"].as_array(),
-                        "client_side": client_side,
-                        "server_side": server_side,
-                    }));
-                }
-                version["loaders"] = json!(loaders);
-            }
-        }
+        let initial_versions = legacy_create.initial_versions.into_iter().map(|v| {
+            let mut fields = HashMap::new();
+            fields.insert("client_side".to_string(), json!(client_side));
+            fields.insert("server_side".to_string(), json!(server_side));
+            fields.insert("game_versions".to_string(), json!(v.game_versions));
+
+            v3::version_creation::InitialVersionData {
+                project_id: v.project_id, 
+                file_parts: v.file_parts,
+                version_number: v.version_number,
+                version_title: v.version_title,
+                version_body: v.version_body,
+                dependencies: v.dependencies,
+                release_channel: v.release_channel,
+                loaders: v.loaders,
+                featured: v.featured,
+                primary_file: v.primary_file,
+                status: v.status,
+                file_types: v.file_types,
+                uploaded_images: v.uploaded_images,
+                fields,
+            }   
+        });
+        Ok(v3::project_creation::ProjectCreateData {
+            title: legacy_create.title,
+            project_type: legacy_create.project_type,
+            slug: legacy_create.slug,
+            description: legacy_create.description,
+            body: legacy_create.body,
+            game_name,
+            initial_versions: initial_versions.collect(),
+            categories: legacy_create.categories,
+            additional_categories: legacy_create.additional_categories,
+            issues_url: legacy_create.issues_url,
+            source_url: legacy_create.source_url,
+            wiki_url: legacy_create.wiki_url,
+            license_url: legacy_create.license_url,
+            discord_url: legacy_create.discord_url,
+            donation_urls: legacy_create.donation_urls,
+            is_draft: legacy_create.is_draft,
+            license_id: legacy_create.license_id,
+            gallery_items: legacy_create.gallery_items,
+            requested_status: legacy_create.requested_status,
+            uploaded_images: legacy_create.uploaded_images,
+            organization_id: legacy_create.organization_id,
+        })
     })
     .await?;
 

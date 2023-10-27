@@ -15,9 +15,10 @@ use crate::models::notifications::NotificationBody;
 use crate::models::pack::PackFileHash;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    Dependency, DependencyType, FileType, Loader, LoaderStruct, ProjectId, Version, VersionFile,
+    Dependency, DependencyType, FileType, Loader, ProjectId, Version, VersionFile,
     VersionId, VersionStatus, VersionType,
 };
+use crate::models::projects::skip_nulls;
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::routes::read_from_field;
@@ -66,7 +67,7 @@ pub struct InitialVersionData {
     #[serde(alias = "version_type")]
     pub release_channel: VersionType,
     #[validate(length(min = 1))]
-    pub loaders: Vec<LoaderStruct>,
+    pub loaders: Vec<Loader>,
     pub featured: bool,
     pub primary_file: Option<String>,
     #[serde(default = "default_requested_status")]
@@ -77,6 +78,13 @@ pub struct InitialVersionData {
     #[validate(length(max = 10))]
     #[serde(default)]
     pub uploaded_images: Vec<ImageId>,
+
+    // Flattened loader fields
+    // All other fields are loader-specific VersionFields
+    // These are flattened during serialization
+    #[serde(deserialize_with = "skip_nulls")]
+    #[serde(flatten)]
+    pub fields: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -254,35 +262,31 @@ async fn version_create_inner(
                 let all_loaders = models::loader_fields::Loader::list(project.inner.game,&mut *transaction, redis).await?;
                 game = Some(project.inner.game);
 
-                let mut loader_ids = vec![];
-                let mut loaders = vec![];
+                let loader_fields = LoaderField::get_fields(&mut *transaction, redis).await?;
                 let mut version_fields = vec![];
-                for loader_create in version_create_data.loaders.iter() {
-                    let loader_name = loader_create.loader.0.clone();
-
-                    // Confirm loader from list of loaders
-                    let loader_id = all_loaders
-                    .iter()
-                    .find(|y| {
-                        y.loader == loader_name && y.supported_project_types.contains(&project_type)
-                    })
-                    .ok_or_else(|| CreateError::InvalidLoader(loader_name.clone()))
-                    .map(|y| y.id)?;
-
-                    loader_ids.push(loader_id);
-                    loaders.push(loader_create.loader.clone());
-
-                    let loader_fields = LoaderField::get_fields(loader_id, &mut *transaction, redis).await?;
-                    let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis).await?;
-                    for (key, value) in loader_create.fields .iter() {
-                        let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
-                            CreateError::InvalidInput(format!("Loader field '{key}' does not exist for loader '{loader_name}'"))
-                        })?;
-                        let enum_variants = loader_field_enum_values.remove(&loader_field.id).unwrap_or_default();
-                        let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field.clone(), value.clone(), enum_variants).map_err(CreateError::InvalidInput)?;
-                        version_fields.push(vf);
-                    }
+                let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis).await?;
+                for (key, value) in version_create_data.fields .iter() {
+                    let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
+                        CreateError::InvalidInput(format!("Loader field '{key}' does not exist!"))
+                    })?;
+                    let enum_variants = loader_field_enum_values.remove(&loader_field.id).unwrap_or_default();
+                    let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field.clone(), value.clone(), enum_variants).map_err(CreateError::InvalidInput)?;
+                    version_fields.push(vf);
                 }
+
+                let loaders = version_create_data
+                    .loaders
+                    .iter()
+                    .map(|x| {
+                        all_loaders
+                            .iter()
+                            .find(|y| {
+                                y.loader == x.0 && y.supported_project_types.contains(&project_type)
+                            })
+                            .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
+                            .map(|y| y.id)
+                    })
+                    .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
 
                 let dependencies = version_create_data
                     .dependencies
@@ -304,7 +308,7 @@ async fn version_create_inner(
                     changelog: version_create_data.version_body.clone().unwrap_or_default(),
                     files: Vec::new(),
                     dependencies,
-                    loaders: loader_ids,
+                    loaders,
                     version_fields,
                     version_type: version_create_data.release_channel.to_string(),
                     featured: version_create_data.featured,
@@ -352,7 +356,7 @@ async fn version_create_inner(
                 version.version_id.into(),
                 &version.version_fields,
                 &project_type,
-                version_data.loaders.into_iter().map(|l|l.loader).collect(),
+                version_data.loaders,
                 version_data.primary_file.is_some(),
                 version_data.primary_file.as_deref() == Some(name),
                 version_data.file_types.get(name).copied().flatten(),
@@ -452,6 +456,7 @@ async fn version_create_inner(
             .collect::<Vec<_>>(),
         dependencies: version_data.dependencies,
         loaders: version_data.loaders,
+        fields: version_data.fields,
     };
 
     let project_id = builder.project_id;

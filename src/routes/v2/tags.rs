@@ -106,7 +106,6 @@ pub async fn game_version_list(
     let response = v3::tags::loader_fields_list(
         pool,
         web::Query(LoaderFieldsEnumQuery {
-            loader: "fabric".to_string(),
             loader_field: "game_versions".to_string(),
             filters: Some(filters),
         }),
@@ -241,7 +240,6 @@ pub async fn side_type_list(
     let response = v3::tags::loader_fields_list(
         pool,
         web::Query(LoaderFieldsEnumQuery {
-            loader: "fabric".to_string(),            // same for minecraft loader
             loader_field: "client_side".to_string(), // same as server_side
             filters: None,
         }),
