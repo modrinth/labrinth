@@ -7,7 +7,7 @@ use bytes::Bytes;
 use labrinth::models::{organizations::Organization, projects::Project};
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, request_data::ImageData};
+use crate::common::{asserts::assert_status, get_json_val_str, request_data::ImageData};
 
 use super::ApiV2;
 
@@ -27,6 +27,12 @@ impl ApiV2 {
             }))
             .to_request();
         self.call(req).await
+    }
+
+    pub async fn create_default_organization(&self, pat: &str) -> String {
+        let resp = self.create_organization("test", "desc", pat).await;
+        let organization = deser_organization(resp).await;
+        get_json_val_str(organization.id).to_string()
     }
 
     pub async fn get_organization(&self, id_or_title: &str, pat: &str) -> ServiceResponse {

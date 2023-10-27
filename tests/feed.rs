@@ -1,20 +1,15 @@
+use crate::common::{asserts::assert_feed_contains_project_created, dummy_data::DummyProjectAlpha};
 use assert_matches::assert_matches;
 use common::{
-    api_v2::organization::deser_organization,
     database::{FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},
     environment::with_test_environment,
-    request_data::get_public_project_creation_data,
 };
 use labrinth::models::feed_item::FeedItemBody;
-
-use crate::common::{
-    asserts::assert_feed_contains_project_created, dummy_data::DummyProjectAlpha, get_json_val_str,
-};
 
 mod common;
 
 #[actix_rt::test]
-async fn user_feed_before_following_user_shows_no_projects() {
+async fn get_feed_before_following_user_shows_no_projects() {
     with_test_environment(|env| async move {
         let feed = env.v3.get_feed(FRIEND_USER_PAT).await;
 
@@ -24,7 +19,7 @@ async fn user_feed_before_following_user_shows_no_projects() {
 }
 
 #[actix_rt::test]
-async fn user_feed_after_following_user_shows_previously_created_public_projects() {
+async fn get_feed_after_following_user_shows_previously_created_public_projects() {
     with_test_environment(|env| async move {
         let DummyProjectAlpha {
             project_id: alpha_project_id,
@@ -44,19 +39,11 @@ async fn user_feed_after_following_user_shows_previously_created_public_projects
 }
 
 #[actix_rt::test]
-async fn user_feed_when_following_user_that_creates_project_as_org_only_shows_event_when_following_org(
+async fn get_feed_when_following_user_that_creates_project_as_org_only_shows_event_when_following_org(
 ) {
     with_test_environment(|env| async move {
-        let resp = env.v2
-            .create_organization("test", "desc", USER_USER_PAT)
-            .await;
-        let organization = deser_organization(resp).await;
-        let org_id = get_json_val_str(organization.id);
-        let project_create_data = get_public_project_creation_data("thisisaslug", None, Some(&org_id));
-        let (project, _) = env
-            .v2
-            .add_public_project(project_create_data, USER_USER_PAT)
-            .await;
+        let org_id = env.v2.create_default_organization(USER_USER_PAT).await;
+        let project = env.v2.add_default_org_project(&org_id, USER_USER_PAT).await;
 
         env.v3.follow_user(USER_USER_ID, FRIEND_USER_PAT).await;
         let feed = env.v3.get_feed(FRIEND_USER_PAT).await;
@@ -67,6 +54,34 @@ async fn user_feed_when_following_user_that_creates_project_as_org_only_shows_ev
         let feed = env.v3.get_feed(FRIEND_USER_PAT).await;
         assert_eq!(feed.len(), 2);
         assert_feed_contains_project_created(&feed, project.id);
+    })
+    .await;
+}
+
+#[actix_rt::test]
+async fn get_feed_after_unfollowing_user_no_longer_shows_feed_items() {
+    with_test_environment(|env| async move {
+        env.v3.follow_user(USER_USER_ID, FRIEND_USER_PAT).await;
+
+        env.v3.unfollow_user(USER_USER_ID, FRIEND_USER_PAT).await;
+        let feed = env.v3.get_feed(FRIEND_USER_PAT).await;
+
+        assert_eq!(feed.len(), 0);
+    })
+    .await;
+}
+
+#[actix_rt::test]
+async fn get_feed_after_unfollowing_organization_no_longer_shows_feed_items() {
+    with_test_environment(|env| async move {
+        let org_id = env.v2.create_default_organization(USER_USER_PAT).await;
+        env.v2.add_default_org_project(&org_id, USER_USER_PAT).await;
+        env.v3.follow_organization(&org_id, FRIEND_USER_PAT).await;
+
+        env.v3.unfollow_organization(&org_id, FRIEND_USER_PAT).await;
+        let feed = env.v3.get_feed(FRIEND_USER_PAT).await;
+
+        assert_eq!(feed.len(), 0);
     })
     .await;
 }

@@ -11,12 +11,19 @@ use crate::common::{
     actix::AppendsMultipart,
     asserts::assert_status,
     database::MOD_USER_PAT,
-    request_data::{ImageData, ProjectCreationRequestData},
+    request_data::{get_public_project_creation_data, ImageData, ProjectCreationRequestData},
 };
 
 use super::ApiV2;
 
 impl ApiV2 {
+    pub async fn add_default_org_project(&self, org_id: &str, pat: &str) -> Project {
+        let project_create_data =
+            get_public_project_creation_data("thisisaslug", None, Some(org_id));
+        let (project, _) = self.add_public_project(project_create_data, pat).await;
+        project
+    }
+
     pub async fn add_public_project(
         &self,
         creation_data: ProjectCreationRequestData,
