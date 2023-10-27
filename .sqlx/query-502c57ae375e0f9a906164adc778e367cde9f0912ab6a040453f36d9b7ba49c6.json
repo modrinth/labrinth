@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                id,\n                target_id,\n                target_id_type as \"target_id_type: _\",\n                triggerer_id,\n                triggerer_id_type as \"triggerer_id_type: _\",\n                event_type as \"event_type: _\",\n                metadata,\n                created\n            FROM events e\n            WHERE \n                (target_id, target_id_type, event_type) \n                = ANY(SELECT * FROM UNNEST ($1::bigint[], $2::text[], $3::text[]))\n            OR\n                (triggerer_id, triggerer_id_type, event_type) \n                = ANY(SELECT * FROM UNNEST ($4::bigint[], $5::text[], $6::text[]))\n            ",
+  "query": "\n            SELECT \n                id,\n                target_id,\n                target_id_type as \"target_id_type: _\",\n                triggerer_id,\n                triggerer_id_type as \"triggerer_id_type: _\",\n                event_type as \"event_type: _\",\n                metadata,\n                created\n            FROM events e\n            WHERE \n                (target_id, target_id_type, event_type) \n                = ANY(SELECT * FROM UNNEST ($1::bigint[], $2::text[], $3::text[]))\n            OR\n                (triggerer_id, triggerer_id_type, event_type) \n                = ANY(SELECT * FROM UNNEST ($4::bigint[], $5::text[], $6::text[]))\n            ORDER BY created DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -65,5 +65,5 @@
       false
     ]
   },
-  "hash": "5352e8689a9d78c6976842afa12da3a3c9a8a3eee6985b548207eea7debcaafb"
+  "hash": "502c57ae375e0f9a906164adc778e367cde9f0912ab6a040453f36d9b7ba49c6"
 }
