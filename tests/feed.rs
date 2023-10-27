@@ -7,7 +7,9 @@ use common::{
 };
 use labrinth::models::feed_item::FeedItemBody;
 
-use crate::common::dummy_data::DummyProjectAlpha;
+use crate::common::{
+    asserts::assert_feed_contains_project_created, dummy_data::DummyProjectAlpha, get_json_val_str,
+};
 
 mod common;
 
@@ -45,13 +47,12 @@ async fn user_feed_after_following_user_shows_previously_created_public_projects
 async fn user_feed_when_following_user_that_creates_project_as_org_only_shows_event_when_following_org(
 ) {
     with_test_environment(|env| async move {
-        let resp = env
-            .v2
-            .create_organization("test", "desc", USER_USER_ID)
+        let resp = env.v2
+            .create_organization("test", "desc", USER_USER_PAT)
             .await;
         let organization = deser_organization(resp).await;
-        let org_id = organization.id.to_string();
-        let project_create_data = get_public_project_creation_data("a", None, Some(&org_id));
+        let org_id = get_json_val_str(organization.id);
+        let project_create_data = get_public_project_creation_data("thisisaslug", None, Some(&org_id));
         let (project, _) = env
             .v2
             .add_public_project(project_create_data, USER_USER_PAT)
@@ -64,8 +65,8 @@ async fn user_feed_when_following_user_that_creates_project_as_org_only_shows_ev
 
         env.v3.follow_organization(&org_id, FRIEND_USER_PAT).await;
         let feed = env.v3.get_feed(FRIEND_USER_PAT).await;
-        assert_eq!(feed.len(), 1);
-        assert_matches!(feed[0].body, FeedItemBody::ProjectCreated { project_id, .. } if project_id == project.id);
+        assert_eq!(feed.len(), 2);
+        assert_feed_contains_project_created(&feed, project.id);
     })
     .await;
 }

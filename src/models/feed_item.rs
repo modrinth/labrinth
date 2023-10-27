@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::database::models::event_item as DBEvent;
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct FeedItemId(pub u64);
@@ -19,7 +19,7 @@ pub enum CreatorId {
     Organization { id: OrganizationId },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FeedItem {
     pub id: FeedItemId,
     pub body: FeedItemBody,

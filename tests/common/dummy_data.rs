@@ -21,7 +21,7 @@ use super::{
     request_data::get_public_project_creation_data,
 };
 
-pub const DUMMY_DATA_UPDATE: i64 = 3;
+pub const DUMMY_DATA_UPDATE: i64 = 4;
 
 #[allow(dead_code)]
 pub const DUMMY_CATEGORIES: &[&str] = &[

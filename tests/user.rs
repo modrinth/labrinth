@@ -25,7 +25,7 @@ pub async fn get_user_projects_after_creating_project_returns_new_project() {
 
         let (project, _) = api
             .add_public_project(
-                get_public_project_creation_data("slug", Some(DummyJarFile::BasicMod)),
+                get_public_project_creation_data("slug", Some(DummyJarFile::BasicMod), None),
                 USER_USER_PAT,
             )
             .await;
@@ -44,7 +44,7 @@ pub async fn get_user_projects_after_deleting_project_shows_removal() {
         let api = test_env.v2;
         let (project, _) = api
             .add_public_project(
-                get_public_project_creation_data("iota", Some(DummyJarFile::BasicMod)),
+                get_public_project_creation_data("iota", Some(DummyJarFile::BasicMod), None),
                 USER_USER_PAT,
             )
             .await;

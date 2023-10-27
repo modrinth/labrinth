@@ -245,7 +245,7 @@ struct ProjectCreateData {
     pub uploaded_images: Vec<ImageId>,
 
     /// The id of the organization to create the project in
-    pub organization_id: Option<models::ids::OrganizationId>,
+    pub organization_id: Option<crate::models::ids::OrganizationId>,
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -749,7 +749,7 @@ async fn project_create_inner(
             }
         }
 
-        let organization_id = project_create_data.organization_id;
+        let organization_id = project_create_data.organization_id.map(|id| id.into());
         insert_project_create_event(project_id, organization_id, &current_user, transaction)
             .await?;
 
