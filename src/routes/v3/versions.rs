@@ -252,7 +252,6 @@ pub async fn version_edit_helper(
     .await?
     .1;
 
-    println!("Inner fields: {:?}", new_version.fields);
     new_version
         .validate()
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
@@ -381,20 +380,17 @@ pub async fn version_edit_helper(
             }
 
             if new_version.fields.len() > 0 {
-                println!("more than one field.");
                 let version_fields_names = new_version
                     .fields
                     .keys()
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>();
-                println!("Resetting the following fields: {:?}", version_fields_names);
 
                 let loader_fields = LoaderField::get_fields(
                     &mut *transaction,
                     &redis,
                 ).await?.into_iter().filter(|lf| version_fields_names.contains(&lf.field)).collect::<Vec<LoaderField>>();
 
-                println!("Fetched fields: {:?}", loader_fields);
 
                 let loader_field_ids = loader_fields.iter().map(|lf| lf.id.0).collect::<Vec<i32>>();
                 sqlx::query!(
@@ -417,20 +413,14 @@ pub async fn version_edit_helper(
                 )
                 .await?;
 
-            println!("Variants: {:?}", loader_field_enum_values);
-
-                // TODO: This should check if loader supports project type like the version_creation route
                 let mut version_fields = Vec::new();
                 for (vf_name, vf_value) in new_version.fields {
-                    println!("Iterating: {:?} {:?}", vf_name, vf_value);
                     let loader_field = loader_fields.iter().find(|lf| lf.field == vf_name).ok_or_else(|| {
                         ApiError::InvalidInput(format!("Loader field '{vf_name}' does not exist."))
                     })?;
-                    println!("Found loader field: {:?}", loader_field);
                     let enum_variants = loader_field_enum_values
                         .remove(&loader_field.id)
                         .unwrap_or_default();
-                    println!("Enum variants: {:?}", enum_variants);
                     let vf: VersionField = VersionField::check_parse(
                         version_id.into(),
                         loader_field.clone(),
@@ -438,10 +428,8 @@ pub async fn version_edit_helper(
                         enum_variants,
                     )
                     .map_err(ApiError::InvalidInput)?;
-                println!("Parsed version field: {:?}", vf);
                     version_fields.push(vf);
                 }
-                println!("Parsed version fields: {:?}", version_fields);
                 VersionField::insert_many(version_fields, &mut transaction).await?;
             }
 
@@ -469,11 +457,7 @@ pub async fn version_edit_helper(
                 }
                 LoaderVersion::insert_many(loader_versions, &mut transaction).await?;
 
-                database::models::Project::update_loaders(
-                    version_item.inner.project_id,
-                    &mut transaction,
-                )
-                .await?;
+                crate::database::models::Project::clear_cache(version_item.inner.project_id, None, None, &redis).await?;
             }
 
             if let Some(featured) = &new_version.featured {

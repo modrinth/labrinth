@@ -497,7 +497,6 @@ async fn version_create_inner(
         }
     }
 
-    models::Project::update_loaders(project_id, &mut *transaction).await?;
     models::Project::clear_cache(project_id, None, Some(true), redis).await?;
 
     Ok(HttpResponse::Ok().json(response))

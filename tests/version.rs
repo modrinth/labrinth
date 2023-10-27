@@ -221,7 +221,6 @@ async fn version_updates() {
             assert_eq!(versions.len(), 0);
         }
 
-        println!("version types: {:?}", version_types);
         // update_individual_files
         let hashes = vec![FileUpdateData {
             hash: alpha_version_hash.to_string(),

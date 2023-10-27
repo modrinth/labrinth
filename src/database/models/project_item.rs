@@ -242,8 +242,6 @@ impl ProjectBuilder {
             .collect_vec();
         ModCategory::insert_many(mod_categories, &mut *transaction).await?;
 
-        Project::update_loaders(self.project_id, &mut *transaction).await?;
-
         Ok(self.project_id)
     }
 }
@@ -563,7 +561,6 @@ impl Project {
                 }
             }
         }
-
         if !remaining_strings.is_empty() {
             let project_ids_parsed: Vec<i64> = remaining_strings
                 .iter()
@@ -579,7 +576,8 @@ impl Project {
                 m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
                 m.team_id team_id, m.organization_id organization_id, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
                 pt.name project_type_name, m.webhook_sent, m.color,
-                t.id thread_id, m.monetization_status monetization_status, m.loaders loaders, m.game_versions game_versions,
+                t.id thread_id, m.monetization_status monetization_status,
+                ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,
                 JSONB_AGG(DISTINCT jsonb_build_object('id', v.id, 'date_published', v.date_published)) filter (where v.id is not null) versions,
@@ -595,6 +593,8 @@ impl Project {
                 LEFT JOIN mods_categories mc ON mc.joining_mod_id = m.id
                 LEFT JOIN categories c ON mc.joining_category_id = c.id
                 LEFT JOIN versions v ON v.mod_id = m.id AND v.status = ANY($3)
+                LEFT JOIN loaders_versions lv ON lv.version_id = v.id
+                LEFT JOIN loaders l on lv.loader_id = l.id
                 WHERE m.id = ANY($1) OR m.slug = ANY($2)
                 GROUP BY pt.id, t.id, m.id, g.name;
                 ",
@@ -644,7 +644,7 @@ impl Project {
                             monetization_status: MonetizationStatus::from_string(
                                 &m.monetization_status,
                             ),
-                            loaders: m.loaders,
+                            loaders: m.loaders.unwrap_or_default(),
                         },
                         project_type: m.project_type_name,
                         categories: m.categories.unwrap_or_default(),
@@ -752,31 +752,6 @@ impl Project {
             .set_serialized_to_json(PROJECTS_DEPENDENCIES_NAMESPACE, id.0, &dependencies, None)
             .await?;
         Ok(dependencies)
-    }
-
-    pub async fn update_loaders(
-        id: ProjectId,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), sqlx::error::Error> {
-        sqlx::query!(
-            "
-            UPDATE mods
-            SET loaders = (
-                SELECT COALESCE(ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null), array[]::varchar[])
-                FROM versions v
-                     INNER JOIN loaders_versions lv ON lv.version_id = v.id
-                     INNER JOIN loaders l on lv.loader_id = l.id
-                WHERE v.mod_id = mods.id AND v.status != ALL($2)
-            )
-            WHERE id = $1
-            ",
-            id as ProjectId,
-            &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>()
-        )
-            .execute(&mut *transaction)
-            .await?;
-
-        Ok(())
     }
 
     pub async fn clear_cache(

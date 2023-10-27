@@ -456,11 +456,7 @@ impl Version {
         .execute(&mut *transaction)
         .await?;
 
-        crate::database::models::Project::update_loaders(
-            ProjectId(project_id.mod_id),
-            &mut *transaction,
-        )
-        .await?;
+        crate::database::models::Project::clear_cache(ProjectId(project_id.mod_id), None, None, redis).await?;
 
         Ok(Some(()))
     }

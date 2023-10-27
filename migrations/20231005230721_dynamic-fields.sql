@@ -105,6 +105,8 @@ SELECT gvv.joining_version_id, 2, lfev.id
 FROM game_versions_versions gvv INNER JOIN loader_field_enum_values lfev ON gvv.game_version_id = lfev.original_id
 WHERE lfev.enum_id = 2;
 
+ALTER TABLE mods DROP COLUMN loaders;
+ALTER TABLE mods DROP COLUMN game_versions;
 DROP TABLE game_versions_versions;
 DROP TABLE game_versions;
 
