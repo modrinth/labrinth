@@ -43,7 +43,7 @@ impl DonationUrl {
             &platform_ids[..],
             &urls[..],
         )
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
 
         Ok(())
@@ -100,7 +100,7 @@ impl GalleryItem {
             &descriptions[..] as &[Option<String>],
             &orderings[..]
         )
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
 
         Ok(())
@@ -132,7 +132,7 @@ impl ModCategory {
             &category_ids[..],
             &is_additionals[..]
         )
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
 
         Ok(())
@@ -323,7 +323,7 @@ impl Project {
             self.color.map(|x| x as i32),
             self.monetization_status.as_str(),
         )
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
 
         Ok(())
@@ -334,7 +334,7 @@ impl Project {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
-        let project = Self::get_id(id, &mut *transaction, redis).await?;
+        let project = Self::get_id(id, &mut **transaction, redis).await?;
 
         if let Some(project) = project {
             Project::clear_cache(id, project.inner.slug, Some(true), redis).await?;
@@ -346,7 +346,7 @@ impl Project {
                 ",
                 id as ProjectId
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             sqlx::query!(
@@ -356,7 +356,7 @@ impl Project {
                 ",
                 id as ProjectId
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             sqlx::query!(
@@ -366,7 +366,7 @@ impl Project {
                 ",
                 id as ProjectId,
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             sqlx::query!(
@@ -376,7 +376,7 @@ impl Project {
                 ",
                 id as ProjectId,
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             sqlx::query!(
@@ -386,7 +386,7 @@ impl Project {
                 ",
                 id as ProjectId,
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             sqlx::query!(
@@ -396,7 +396,7 @@ impl Project {
                 ",
                 id as ProjectId,
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             for version in project.versions {
@@ -409,7 +409,7 @@ impl Project {
                 ",
                 id as ProjectId,
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             sqlx::query!(
@@ -420,7 +420,7 @@ impl Project {
                 ",
                 id as ProjectId,
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             models::Thread::remove_full(project.thread_id, transaction).await?;
@@ -432,7 +432,7 @@ impl Project {
                 ",
                 id as ProjectId,
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             models::TeamMember::clear_cache(project.inner.team_id, redis).await?;
@@ -445,7 +445,7 @@ impl Project {
                 ",
                 project.inner.team_id as TeamId,
             )
-            .fetch_many(&mut *transaction)
+            .fetch_many(&mut **transaction)
             .try_filter_map(|e| async { Ok(e.right().map(|x| UserId(x.user_id))) })
             .try_collect::<Vec<_>>()
             .await?;
@@ -459,7 +459,7 @@ impl Project {
                 ",
                 project.inner.team_id as TeamId,
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             Ok(Some(()))

@@ -234,7 +234,7 @@ pub async fn trolley_webhook(
                                         ",
                                         user.id.0
                                     )
-                                    .execute(&mut transaction)
+                                    .execute(&mut *transaction)
                                     .await?;
                                 } else {
                                     sqlx::query!(
@@ -248,7 +248,7 @@ pub async fn trolley_webhook(
                                         recipient.status.map(|x| x.as_str()),
                                         user.id.0
                                     )
-                                        .execute(&mut transaction).await?;
+                                        .execute(&mut *transaction).await?;
                                 }
 
                                 transaction.commit().await?;
@@ -290,7 +290,7 @@ pub async fn trolley_webhook(
                                     payout.amount,
                                     payout.user_id,
                                 )
-                                .execute(&mut transaction)
+                                .execute(&mut *transaction)
                                 .await?;
                             }
 
@@ -303,7 +303,7 @@ pub async fn trolley_webhook(
                                 payment.status.as_str(),
                                 payment.id,
                             )
-                            .execute(&mut transaction)
+                            .execute(&mut *transaction)
                             .await?;
 
                             transaction.commit().await?;

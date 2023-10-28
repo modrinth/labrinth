@@ -861,7 +861,7 @@ pub async fn bulk_edit_project_categories(
             project_id as db_ids::ProjectId,
             is_additional
         )
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
 
         let mut mod_categories = Vec::new();
