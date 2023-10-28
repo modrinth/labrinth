@@ -81,7 +81,7 @@ impl TestEnvironment {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(resp, StatusCode::NO_CONTENT);
+        assert_status(&resp, StatusCode::NO_CONTENT);
     }
 }
 

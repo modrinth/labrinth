@@ -42,3 +42,11 @@ pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
         maxmind_reader.clone(),
     )
 }
+
+pub fn get_json_val_str(val: impl serde::Serialize) -> String {
+    serde_json::to_value(val)
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string()
+}

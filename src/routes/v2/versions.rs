@@ -306,6 +306,7 @@ pub struct EditVersion {
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
     pub file_types: Option<Vec<EditVersionFileType>>,
+    pub ordering: Option<Option<i32>>, //TODO: How do you actually pass this in json?
 }
 
 #[derive(Serialize, Deserialize)]
@@ -682,6 +683,20 @@ pub async fn version_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
+            }
+
+            if let Some(ordering) = &new_version.ordering {
+                sqlx::query!(
+                    "
+                    UPDATE versions
+                    SET ordering = $1
+                    WHERE (id = $2)
+                    ",
+                    ordering.to_owned() as Option<i32>,
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await?;
             }
 
             // delete any images no longer in the changelog
