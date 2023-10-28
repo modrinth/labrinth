@@ -4,7 +4,6 @@ use super::ApiError;
 use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
-use crate::models::projects::{skip_nulls, Loader};
 use crate::database;
 use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField};
 use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
@@ -15,6 +14,7 @@ use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::VersionId;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
+use crate::models::projects::{skip_nulls, Loader};
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
@@ -197,7 +197,7 @@ pub struct EditVersion {
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
     pub file_types: Option<Vec<EditVersionFileType>>,
-    
+
     // Flattened loader fields
     // All other fields are loader-specific VersionFields
     // These are flattened during serialization
@@ -379,18 +379,18 @@ pub async fn version_edit_helper(
                 }
             }
 
-            if new_version.fields.len() > 0 {
+            if !new_version.fields.is_empty() {
                 let version_fields_names = new_version
                     .fields
                     .keys()
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>();
 
-                let loader_fields = LoaderField::get_fields(
-                    &mut *transaction,
-                    &redis,
-                ).await?.into_iter().filter(|lf| version_fields_names.contains(&lf.field)).collect::<Vec<LoaderField>>();
-
+                let loader_fields = LoaderField::get_fields(&mut *transaction, &redis)
+                    .await?
+                    .into_iter()
+                    .filter(|lf| version_fields_names.contains(&lf.field))
+                    .collect::<Vec<LoaderField>>();
 
                 let loader_field_ids = loader_fields.iter().map(|lf| lf.id.0).collect::<Vec<i32>>();
                 sqlx::query!(
@@ -405,8 +405,7 @@ pub async fn version_edit_helper(
                 .execute(&mut *transaction)
                 .await?;
 
-                let mut loader_field_enum_values =
-                LoaderFieldEnumValue::list_many_loader_fields(
+                let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(
                     &loader_fields,
                     &mut *transaction,
                     &redis,
@@ -415,9 +414,14 @@ pub async fn version_edit_helper(
 
                 let mut version_fields = Vec::new();
                 for (vf_name, vf_value) in new_version.fields {
-                    let loader_field = loader_fields.iter().find(|lf| lf.field == vf_name).ok_or_else(|| {
-                        ApiError::InvalidInput(format!("Loader field '{vf_name}' does not exist."))
-                    })?;
+                    let loader_field = loader_fields
+                        .iter()
+                        .find(|lf| lf.field == vf_name)
+                        .ok_or_else(|| {
+                            ApiError::InvalidInput(format!(
+                                "Loader field '{vf_name}' does not exist."
+                            ))
+                        })?;
                     let enum_variants = loader_field_enum_values
                         .remove(&loader_field.id)
                         .unwrap_or_default();
@@ -445,19 +449,26 @@ pub async fn version_edit_helper(
 
                 let mut loader_versions = Vec::new();
                 for loader in loaders {
-                    let loader_id =
-                        database::models::loader_fields::Loader::get_id(&loader.0, &mut *transaction, &redis)
-                            .await?
-                            .ok_or_else(|| {
-                                ApiError::InvalidInput(
-                                    "No database entry for loader provided.".to_string(),
-                                )
-                            })?;
+                    let loader_id = database::models::loader_fields::Loader::get_id(
+                        &loader.0,
+                        &mut *transaction,
+                        &redis,
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInput("No database entry for loader provided.".to_string())
+                    })?;
                     loader_versions.push(LoaderVersion::new(loader_id, id));
                 }
                 LoaderVersion::insert_many(loader_versions, &mut transaction).await?;
 
-                crate::database::models::Project::clear_cache(version_item.inner.project_id, None, None, &redis).await?;
+                crate::database::models::Project::clear_cache(
+                    version_item.inner.project_id,
+                    None,
+                    None,
+                    &redis,
+                )
+                .await?;
             }
 
             if let Some(featured) = &new_version.featured {

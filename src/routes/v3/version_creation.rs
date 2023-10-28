@@ -14,11 +14,11 @@ use crate::models::images::{Image, ImageContext, ImageId};
 use crate::models::notifications::NotificationBody;
 use crate::models::pack::PackFileHash;
 use crate::models::pats::Scopes;
-use crate::models::projects::{
-    Dependency, DependencyType, FileType, Loader, ProjectId, Version, VersionFile,
-    VersionId, VersionStatus, VersionType,
-};
 use crate::models::projects::skip_nulls;
+use crate::models::projects::{
+    Dependency, DependencyType, FileType, Loader, ProjectId, Version, VersionFile, VersionId,
+    VersionStatus, VersionType,
+};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::util::routes::read_from_field;
@@ -202,8 +202,11 @@ async fn version_create_inner(
                 let project_id: models::ProjectId = version_create_data.project_id.unwrap().into();
 
                 // Ensure that the project this version is being added to exists
-                let project = models::Project::get_id(project_id, &mut *transaction, redis).await?
-                .ok_or_else(|| CreateError::InvalidInput("An invalid project id was supplied".to_string()))?;
+                let project = models::Project::get_id(project_id, &mut *transaction, redis)
+                    .await?
+                    .ok_or_else(|| {
+                        CreateError::InvalidInput("An invalid project id was supplied".to_string())
+                    })?;
 
                 // Check that the user creating this version is a team member
                 // of the project the version is being added to.
@@ -259,18 +262,41 @@ async fn version_create_inner(
                 .await?
                 .name;
 
-                let all_loaders = models::loader_fields::Loader::list(project.inner.game,&mut *transaction, redis).await?;
+                let all_loaders = models::loader_fields::Loader::list(
+                    project.inner.game,
+                    &mut *transaction,
+                    redis,
+                )
+                .await?;
                 game = Some(project.inner.game);
 
                 let loader_fields = LoaderField::get_fields(&mut *transaction, redis).await?;
                 let mut version_fields = vec![];
-                let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis).await?;
-                for (key, value) in version_create_data.fields .iter() {
-                    let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
-                        CreateError::InvalidInput(format!("Loader field '{key}' does not exist!"))
-                    })?;
-                    let enum_variants = loader_field_enum_values.remove(&loader_field.id).unwrap_or_default();
-                    let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field.clone(), value.clone(), enum_variants).map_err(CreateError::InvalidInput)?;
+                let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(
+                    &loader_fields,
+                    &mut *transaction,
+                    redis,
+                )
+                .await?;
+                for (key, value) in version_create_data.fields.iter() {
+                    let loader_field = loader_fields
+                        .iter()
+                        .find(|lf| &lf.field == key)
+                        .ok_or_else(|| {
+                            CreateError::InvalidInput(format!(
+                                "Loader field '{key}' does not exist!"
+                            ))
+                        })?;
+                    let enum_variants = loader_field_enum_values
+                        .remove(&loader_field.id)
+                        .unwrap_or_default();
+                    let vf: VersionField = VersionField::check_parse(
+                        version_id.into(),
+                        loader_field.clone(),
+                        value.clone(),
+                        enum_variants,
+                    )
+                    .map_err(CreateError::InvalidInput)?;
                     version_fields.push(vf);
                 }
 

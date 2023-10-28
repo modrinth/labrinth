@@ -274,7 +274,7 @@ impl LoaderField {
     // Gets all fields for a given loader
     // Returns all as this there are probably relatively few fields per loader
     // TODO: in the future, this should be to get all fields in relation to something
-    // - e.g. get all fields for a given game? 
+    // - e.g. get all fields for a given game?
     pub async fn get_fields<'a, E>(
         exec: E,
         redis: &RedisPool,
@@ -297,15 +297,16 @@ impl LoaderField {
         )
         .fetch_many(exec)
         .try_filter_map(|e| async {
-            Ok(e.right().and_then(
-                |r| Some(LoaderField {
+            Ok(e.right().and_then(|r| {
+                Some(LoaderField {
                     id: LoaderFieldId(r.id),
                     field_type: LoaderFieldType::build(&r.field_type, r.enum_type)?,
                     field: r.field,
                     optional: r.optional,
                     min_val: r.min_val,
-                    max_val: r.max_val
-            })))
+                    max_val: r.max_val,
+                })
+            }))
         })
         .try_collect::<Vec<LoaderField>>()
         .await?;
@@ -328,10 +329,7 @@ impl LoaderFieldEnum {
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let cached_enum = redis
-            .get_deserialized_from_json(
-                LOADER_FIELD_ENUMS_ID_NAMESPACE,
-                enum_name
-            )
+            .get_deserialized_from_json(LOADER_FIELD_ENUMS_ID_NAMESPACE, enum_name)
             .await?;
         if let Some(cached_enum) = cached_enum {
             return Ok(cached_enum);
@@ -346,23 +344,15 @@ impl LoaderFieldEnum {
             enum_name
         )
         .fetch_optional(exec)
-        .await?
-        .and_then(|l| {
-            Some(LoaderFieldEnum {
+        .await?.map(|l| LoaderFieldEnum {
                 id: LoaderFieldEnumId(l.id),
                 enum_name: l.enum_name,
                 ordering: l.ordering,
                 hidable: l.hidable,
-            })
-        });
+            });
 
         redis
-            .set_serialized_to_json(
-                LOADER_FIELD_ENUMS_ID_NAMESPACE,
-                enum_name,
-                &result,
-                None,
-            )
+            .set_serialized_to_json(LOADER_FIELD_ENUMS_ID_NAMESPACE, enum_name, &result, None)
             .await?;
 
         Ok(result)
@@ -658,15 +648,15 @@ impl VersionField {
         }
 
         let query_loader_fields: Vec<JsonLoaderField> = loader_fields
-        .and_then(|x| serde_json::from_value(x).unwrap())
-        .unwrap_or_default();
-        let query_version_field_combined: Vec<JsonVersionField> = version_fields
-        .and_then(|x| serde_json::from_value(x).unwrap())
-        .unwrap_or_default();
-        let query_loader_field_enum_values: Vec<JsonLoaderFieldEnumValue> =
-            loader_field_enum_values
             .and_then(|x| serde_json::from_value(x).unwrap())
             .unwrap_or_default();
+        let query_version_field_combined: Vec<JsonVersionField> = version_fields
+            .and_then(|x| serde_json::from_value(x).unwrap())
+            .unwrap_or_default();
+        let query_loader_field_enum_values: Vec<JsonLoaderFieldEnumValue> =
+            loader_field_enum_values
+                .and_then(|x| serde_json::from_value(x).unwrap())
+                .unwrap_or_default();
         let version_id = VersionId(version_id);
         query_loader_fields
             .into_iter()

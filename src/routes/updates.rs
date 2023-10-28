@@ -102,8 +102,9 @@ pub async fn forge_updates(
         let game_versions: Vec<String> = version
             .fields
             .iter()
-            .find(|(key , _)| key.as_str() == MinecraftGameVersion::FIELD_NAME)
-            .and_then(| (_, value) | serde_json::from_value::<Vec<String>>(value.clone()).ok()).unwrap_or_default();
+            .find(|(key, _)| key.as_str() == MinecraftGameVersion::FIELD_NAME)
+            .and_then(|(_, value)| serde_json::from_value::<Vec<String>>(value.clone()).ok())
+            .unwrap_or_default();
 
         if version.version_type == VersionType::Release {
             for game_version in &game_versions {

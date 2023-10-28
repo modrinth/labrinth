@@ -818,7 +818,7 @@ async fn project_create_inner(
             slug: project_builder.slug.clone(),
             project_type: project_create_data.project_type.clone(),
             team: team_id.into(),
-            organization: project_create_data.organization_id.map(|x| x.into()),
+            organization: project_create_data.organization_id,
             title: project_builder.title.clone(),
             description: project_builder.description.clone(),
             body: project_builder.body.clone(),
@@ -901,13 +901,26 @@ async fn create_initial_version(
 
     let loader_fields = LoaderField::get_fields(&mut *transaction, redis).await?;
     let mut version_fields = vec![];
-    let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis).await?;
-    for (key, value) in version_data.fields .iter() {
-        let loader_field = loader_fields.iter().find(|lf| &lf.field == key).ok_or_else(|| {
-            CreateError::InvalidInput(format!("Loader field '{key}' does not exist!"))
-        })?;
-        let enum_variants = loader_field_enum_values.remove(&loader_field.id).unwrap_or_default();
-        let vf: VersionField = VersionField::check_parse(version_id.into(), loader_field.clone(), value.clone(), enum_variants).map_err(CreateError::InvalidInput)?;
+    let mut loader_field_enum_values =
+        LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis)
+            .await?;
+    for (key, value) in version_data.fields.iter() {
+        let loader_field = loader_fields
+            .iter()
+            .find(|lf| &lf.field == key)
+            .ok_or_else(|| {
+                CreateError::InvalidInput(format!("Loader field '{key}' does not exist!"))
+            })?;
+        let enum_variants = loader_field_enum_values
+            .remove(&loader_field.id)
+            .unwrap_or_default();
+        let vf: VersionField = VersionField::check_parse(
+            version_id.into(),
+            loader_field.clone(),
+            value.clone(),
+            enum_variants,
+        )
+        .map_err(CreateError::InvalidInput)?;
         version_fields.push(vf);
     }
 

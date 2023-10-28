@@ -233,18 +233,13 @@ pub struct LegacyVersion {
 impl From<Version> for LegacyVersion {
     fn from(data: Version) -> Self {
         let mut game_versions = Vec::new();
-        if let Some(value) = data
-        .fields
-        .get("game_versions")
-        .and_then(|v| v.as_array())
-        {
+        if let Some(value) = data.fields.get("game_versions").and_then(|v| v.as_array()) {
             for gv in value {
                 if let Some(game_version) = gv.as_str() {
                     game_versions.push(game_version.to_string());
                 }
             }
         }
-
 
         Self {
             id: data.id,

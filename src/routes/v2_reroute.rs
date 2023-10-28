@@ -33,10 +33,10 @@ pub async fn alter_actix_multipart<T, U>(
     mut multipart: Multipart,
     mut headers: HeaderMap,
     mut closure: impl FnMut(T) -> Result<U, CreateError>,
-) -> Result<Multipart, CreateError> 
-where 
+) -> Result<Multipart, CreateError>
+where
     T: serde::de::DeserializeOwned,
-    U: serde::Serialize
+    U: serde::Serialize,
 {
     let mut segments: Vec<MultipartSegment> = Vec::new();
 
@@ -56,7 +56,7 @@ where
 
         {
             let json_value: T = serde_json::from_slice(&buffer)?;
-            let json_value : U = closure(json_value)?;
+            let json_value: U = closure(json_value)?;
             buffer = serde_json::to_vec(&json_value)?;
         }
 

@@ -1,4 +1,5 @@
 use crate::auth::{get_user_from_headers, is_authorized};
+use crate::database;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::{image_item, project_item, version_item};
 use crate::database::redis::RedisPool;
@@ -7,8 +8,7 @@ use crate::models;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest,
-    SideType,
+    DonationLink, MonetizationStatus, Project, ProjectId, ProjectStatus, SearchRequest, SideType,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::v2::projects::LegacyProject;
@@ -18,7 +18,6 @@ use crate::routes::{v2_reroute, v3, ApiError};
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use crate::database;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -94,7 +93,6 @@ pub async fn project_search(
                 })
                 .collect(),
         )
-
     } else {
         None
     };
@@ -456,7 +454,6 @@ pub async fn project_edit(
         let version_ids = project_item.map(|x| x.versions).unwrap_or_default();
         let versions = version_item::Version::get_many(&version_ids, &**pool, &redis).await?;
         for version in versions {
-
             let mut fields = HashMap::new();
             fields.insert("client_side".to_string(), json!(client_side));
             fields.insert("server_side".to_string(), json!(server_side));

@@ -9,9 +9,7 @@ use crate::models;
 use crate::models::ids::VersionId;
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
-use crate::models::projects::{
-    Dependency, FileType, Version, VersionStatus, VersionType,
-};
+use crate::models::projects::{Dependency, FileType, Version, VersionStatus, VersionType};
 use crate::models::teams::ProjectPermissions;
 use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;

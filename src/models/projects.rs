@@ -501,7 +501,7 @@ where
 
 impl From<QueryVersion> for Version {
     fn from(data: QueryVersion) -> Version {
-        let v = data.inner;        
+        let v = data.inner;
         Version {
             id: v.id.into(),
             project_id: v.project_id.into(),
@@ -548,7 +548,11 @@ impl From<QueryVersion> for Version {
             loaders: data.loaders.into_iter().map(Loader).collect(),
             // Only add the internal component of the field for display
             // "ie": "game_versions",["1.2.3"] instead of "game_versions",ArrayEnum(...)
-            fields: data.version_fields.into_iter().map(|vf| (vf.field_name, vf.value.serialize_internal())).collect()
+            fields: data
+                .version_fields
+                .into_iter()
+                .map(|vf| (vf.field_name, vf.value.serialize_internal()))
+                .collect(),
         }
     }
 }

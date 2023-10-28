@@ -3,22 +3,22 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::ImageId;
-use crate::routes::v3::project_creation::default_project_type;
-use crate::models::projects::{Project, DonationLink, ProjectStatus, SideType};
+use crate::models::projects::{DonationLink, Project, ProjectStatus, SideType};
 use crate::models::v2::projects::LegacyProject;
 use crate::queue::session::AuthQueue;
+use crate::routes::v3::project_creation::default_project_type;
 use crate::routes::v3::project_creation::{CreateError, NewGalleryItem};
 use crate::routes::{v2_reroute, v3};
 use actix_multipart::Multipart;
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
 
-use validator::Validate;
 use std::collections::HashMap;
 use std::sync::Arc;
+use validator::Validate;
 
 use super::version_creation::InitialVersionData;
 
@@ -143,62 +143,65 @@ pub async fn project_create(
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     // Convert V2 multipart payload to V3 multipart payload
-    let payload = v2_reroute::alter_actix_multipart(payload, req.headers().clone(), |legacy_create : ProjectCreateData | {
-       
-        // Set game name (all v2 projects are minecraft-java)
-        let game_name = "minecraft-java".to_string();
+    let payload = v2_reroute::alter_actix_multipart(
+        payload,
+        req.headers().clone(),
+        |legacy_create: ProjectCreateData| {
+            // Set game name (all v2 projects are minecraft-java)
+            let game_name = "minecraft-java".to_string();
 
-        // Side types will be applied to each version
-        let client_side = legacy_create.client_side;
-        let server_side = legacy_create.server_side;
+            // Side types will be applied to each version
+            let client_side = legacy_create.client_side;
+            let server_side = legacy_create.server_side;
 
-        let initial_versions = legacy_create.initial_versions.into_iter().map(|v| {
-            let mut fields = HashMap::new();
-            fields.insert("client_side".to_string(), json!(client_side));
-            fields.insert("server_side".to_string(), json!(server_side));
-            fields.insert("game_versions".to_string(), json!(v.game_versions));
+            let initial_versions = legacy_create.initial_versions.into_iter().map(|v| {
+                let mut fields = HashMap::new();
+                fields.insert("client_side".to_string(), json!(client_side));
+                fields.insert("server_side".to_string(), json!(server_side));
+                fields.insert("game_versions".to_string(), json!(v.game_versions));
 
-            v3::version_creation::InitialVersionData {
-                project_id: v.project_id, 
-                file_parts: v.file_parts,
-                version_number: v.version_number,
-                version_title: v.version_title,
-                version_body: v.version_body,
-                dependencies: v.dependencies,
-                release_channel: v.release_channel,
-                loaders: v.loaders,
-                featured: v.featured,
-                primary_file: v.primary_file,
-                status: v.status,
-                file_types: v.file_types,
-                uploaded_images: v.uploaded_images,
-                fields,
-            }   
-        });
-        Ok(v3::project_creation::ProjectCreateData {
-            title: legacy_create.title,
-            project_type: legacy_create.project_type,
-            slug: legacy_create.slug,
-            description: legacy_create.description,
-            body: legacy_create.body,
-            game_name,
-            initial_versions: initial_versions.collect(),
-            categories: legacy_create.categories,
-            additional_categories: legacy_create.additional_categories,
-            issues_url: legacy_create.issues_url,
-            source_url: legacy_create.source_url,
-            wiki_url: legacy_create.wiki_url,
-            license_url: legacy_create.license_url,
-            discord_url: legacy_create.discord_url,
-            donation_urls: legacy_create.donation_urls,
-            is_draft: legacy_create.is_draft,
-            license_id: legacy_create.license_id,
-            gallery_items: legacy_create.gallery_items,
-            requested_status: legacy_create.requested_status,
-            uploaded_images: legacy_create.uploaded_images,
-            organization_id: legacy_create.organization_id,
-        })
-    })
+                v3::version_creation::InitialVersionData {
+                    project_id: v.project_id,
+                    file_parts: v.file_parts,
+                    version_number: v.version_number,
+                    version_title: v.version_title,
+                    version_body: v.version_body,
+                    dependencies: v.dependencies,
+                    release_channel: v.release_channel,
+                    loaders: v.loaders,
+                    featured: v.featured,
+                    primary_file: v.primary_file,
+                    status: v.status,
+                    file_types: v.file_types,
+                    uploaded_images: v.uploaded_images,
+                    fields,
+                }
+            });
+            Ok(v3::project_creation::ProjectCreateData {
+                title: legacy_create.title,
+                project_type: legacy_create.project_type,
+                slug: legacy_create.slug,
+                description: legacy_create.description,
+                body: legacy_create.body,
+                game_name,
+                initial_versions: initial_versions.collect(),
+                categories: legacy_create.categories,
+                additional_categories: legacy_create.additional_categories,
+                issues_url: legacy_create.issues_url,
+                source_url: legacy_create.source_url,
+                wiki_url: legacy_create.wiki_url,
+                license_url: legacy_create.license_url,
+                discord_url: legacy_create.discord_url,
+                donation_urls: legacy_create.donation_urls,
+                is_draft: legacy_create.is_draft,
+                license_id: legacy_create.license_id,
+                gallery_items: legacy_create.gallery_items,
+                requested_status: legacy_create.requested_status,
+                uploaded_images: legacy_create.uploaded_images,
+                organization_id: legacy_create.organization_id,
+            })
+        },
+    )
     .await?;
 
     // Call V3 project creation

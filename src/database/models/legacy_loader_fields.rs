@@ -43,9 +43,7 @@ impl MinecraftGameVersion {
         let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, exec, redis)
             .await?
             .ok_or_else(|| {
-                DatabaseError::SchemaError(format!(
-                    "Could not find game version enum."
-                ))
+                DatabaseError::SchemaError("Could not find game version enum.".to_string())
             })?;
         let game_version_enum_values =
             LoaderFieldEnumValue::list(game_version_enum.id, exec, redis).await?;
@@ -60,14 +58,11 @@ impl MinecraftGameVersion {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &RedisPool,
     ) -> Result<Vec<MinecraftGameVersion>, DatabaseError> {
-        let game_version_enum =
-            LoaderFieldEnum::get(Self::FIELD_NAME, &mut *transaction, redis)
-                .await?
-                .ok_or_else(|| {
-                    DatabaseError::SchemaError(format!(
-                        "Could not find game version enum."
-                    ))
-                })?;
+        let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, &mut *transaction, redis)
+            .await?
+            .ok_or_else(|| {
+                DatabaseError::SchemaError("Could not find game version enum.".to_string())
+            })?;
         let game_version_enum_values =
             LoaderFieldEnumValue::list(game_version_enum.id, &mut *transaction, redis).await?;
         Ok(game_version_enum_values
