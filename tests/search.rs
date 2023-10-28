@@ -44,9 +44,9 @@ async fn search_projects() {
             // Add a project- simple, should work.
             let req = api.add_public_project(
                 ProjectCreationRequestData {
-                    slug: slug.clone(),
+                    slug,
                     jar: Some(jar),
-                    segment_data: basic_project_multipart.clone(),
+                    segment_data: basic_project_multipart,
                 },
                 pat,
             );

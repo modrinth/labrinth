@@ -344,12 +344,13 @@ impl LoaderFieldEnum {
             enum_name
         )
         .fetch_optional(exec)
-        .await?.map(|l| LoaderFieldEnum {
-                id: LoaderFieldEnumId(l.id),
-                enum_name: l.enum_name,
-                ordering: l.ordering,
-                hidable: l.hidable,
-            });
+        .await?
+        .map(|l| LoaderFieldEnum {
+            id: LoaderFieldEnumId(l.id),
+            enum_name: l.enum_name,
+            ordering: l.ordering,
+            hidable: l.hidable,
+        });
 
         redis
             .set_serialized_to_json(LOADER_FIELD_ENUMS_ID_NAMESPACE, enum_name, &result, None)

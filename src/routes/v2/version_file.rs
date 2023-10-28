@@ -368,7 +368,7 @@ pub async fn get_projects_from_hashes(
                 .filter_map(|(hash, project_id)| {
                     let legacy_project =
                         legacy_projects.iter().find(|x| x.id == project_id)?.clone();
-                    Some((hash.to_string(), legacy_project))
+                    Some((hash, legacy_project))
                 })
                 .collect::<HashMap<_, _>>();
 
