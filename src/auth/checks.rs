@@ -23,8 +23,7 @@ where
 {
     fn validate_all_authorized(self, user_option: Option<&User>) -> Result<(), ApiError> {
         self.into_iter()
-            .map(|c| c.validate_authorized(user_option.clone()))
-            .collect()
+            .try_for_each(|c| c.validate_authorized(user_option))
     }
 }
 

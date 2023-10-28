@@ -80,7 +80,7 @@ impl OAuthClient {
         ids: &[OAuthClientId],
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Vec<OAuthClient>, DatabaseError> {
-        let ids = ids.into_iter().map(|id| id.0).collect_vec();
+        let ids = ids.iter().map(|id| id.0).collect_vec();
         let ids_ref: &[i64] = &ids;
         let results =
             select_clients_with_predicate!("WHERE clients.id = ANY($1::bigint[])", ids_ref)
