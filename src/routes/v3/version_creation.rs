@@ -202,7 +202,7 @@ async fn version_create_inner(
                 let project_id: models::ProjectId = version_create_data.project_id.unwrap().into();
 
                 // Ensure that the project this version is being added to exists
-                let project = models::Project::get_id(project_id, &mut *transaction, redis)
+                let project = models::Project::get_id(project_id, &mut **transaction, redis)
                     .await?
                     .ok_or_else(|| {
                         CreateError::InvalidInput("An invalid project id was supplied".to_string())
@@ -213,14 +213,14 @@ async fn version_create_inner(
                 let team_member = models::TeamMember::get_from_user_id_project(
                     project_id,
                     user.id.into(),
-                    &mut *transaction,
+                    &mut **transaction,
                 )
                 .await?;
 
                 // Get organization attached, if exists, and the member project permissions
                 let organization = models::Organization::get_associated_organization_project_id(
                     project_id,
-                    &mut *transaction,
+                    &mut **transaction,
                 )
                 .await?;
 
@@ -228,7 +228,7 @@ async fn version_create_inner(
                     models::TeamMember::get_from_user_id(
                         organization.team_id,
                         user.id.into(),
-                        &mut *transaction,
+                        &mut **transaction,
                     )
                     .await?
                 } else {
@@ -258,23 +258,23 @@ async fn version_create_inner(
                 ",
                     project_id as models::ProjectId,
                 )
-                .fetch_one(&mut *transaction)
+                .fetch_one(&mut **transaction)
                 .await?
                 .name;
 
                 let all_loaders = models::loader_fields::Loader::list(
                     project.inner.game,
-                    &mut *transaction,
+                    &mut **transaction,
                     redis,
                 )
                 .await?;
                 game = Some(project.inner.game);
 
-                let loader_fields = LoaderField::get_fields(&mut *transaction, redis).await?;
+                let loader_fields = LoaderField::get_fields(&mut **transaction, redis).await?;
                 let mut version_fields = vec![];
                 let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(
                     &loader_fields,
-                    &mut *transaction,
+                    &mut **transaction,
                     redis,
                 )
                 .await?;
@@ -360,7 +360,7 @@ async fn version_create_inner(
             ",
                 version.project_id as models::ProjectId,
             )
-            .fetch_one(&mut *transaction)
+            .fetch_one(&mut **transaction)
             .await?
             .name;
 
@@ -424,7 +424,7 @@ async fn version_create_inner(
         ",
         builder.project_id as crate::database::models::ids::ProjectId
     )
-    .fetch_many(&mut *transaction)
+    .fetch_many(&mut **transaction)
     .try_filter_map(|e| async { Ok(e.right().map(|m| models::ids::UserId(m.follower_id))) })
     .try_collect::<Vec<models::ids::UserId>>()
     .await?;
@@ -490,7 +490,7 @@ async fn version_create_inner(
 
     for image_id in version_data.uploaded_images {
         if let Some(db_image) =
-            image_item::Image::get(image_id.into(), &mut *transaction, redis).await?
+            image_item::Image::get(image_id.into(), &mut **transaction, redis).await?
         {
             let image: Image = db_image.into();
             if !matches!(image.context, ImageContext::Report { .. })
@@ -511,7 +511,7 @@ async fn version_create_inner(
                 version_id.0 as i64,
                 image_id.0 as i64
             )
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
 
             image_item::Image::clear_cache(image.id.into(), redis).await?;
@@ -609,7 +609,7 @@ async fn upload_file_to_version_inner(
         }
     };
 
-    let project = models::Project::get_id(version.inner.project_id, &mut *transaction, &redis)
+    let project = models::Project::get_id(version.inner.project_id, &mut **transaction, &redis)
         .await?
         .ok_or_else(|| {
             CreateError::InvalidInput("Version contained an invalid project id".to_string())
@@ -619,7 +619,7 @@ async fn upload_file_to_version_inner(
         let team_member = models::TeamMember::get_from_user_id_project(
             version.inner.project_id,
             user.id.into(),
-            &mut *transaction,
+            &mut **transaction,
         )
         .await?;
 
@@ -633,7 +633,7 @@ async fn upload_file_to_version_inner(
             models::TeamMember::get_from_user_id(
                 organization.team_id,
                 user.id.into(),
-                &mut *transaction,
+                &mut **transaction,
             )
             .await?
         } else {
@@ -664,7 +664,7 @@ async fn upload_file_to_version_inner(
         ",
         version.inner.project_id as models::ProjectId,
     )
-    .fetch_one(&mut *transaction)
+    .fetch_one(&mut **transaction)
     .await?
     .name;
 
@@ -810,7 +810,7 @@ pub async fn upload_file(
         "sha1",
         project_id.0 as i64
     )
-    .fetch_one(&mut *transaction)
+    .fetch_one(&mut **transaction)
     .await?
     .exists
     .unwrap_or(false);
@@ -856,7 +856,7 @@ pub async fn upload_file(
                     ",
                 &*hashes
             )
-            .fetch_all(&mut *transaction)
+            .fetch_all(&mut **transaction)
             .await?;
 
             for file in &format.files {

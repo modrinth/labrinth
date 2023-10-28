@@ -429,7 +429,7 @@ async fn project_create_inner(
                 ",
                 slug_project_id as models::ids::ProjectId
             )
-            .fetch_one(&mut *transaction)
+            .fetch_one(&mut **transaction)
             .await
             .map_err(|e| CreateError::DatabaseError(e.into()))?;
 
@@ -445,7 +445,7 @@ async fn project_create_inner(
                 ",
                 create_data.slug
             )
-            .fetch_one(&mut *transaction)
+            .fetch_one(&mut **transaction)
             .await
             .map_err(|e| CreateError::DatabaseError(e.into()))?;
 
@@ -460,7 +460,7 @@ async fn project_create_inner(
             CreateError::InvalidInput(format!("Game '{game_name}' is currently unsupported."))
         })?;
         let all_loaders =
-            models::loader_fields::Loader::list(game, &mut *transaction, redis).await?;
+            models::loader_fields::Loader::list(game, &mut **transaction, redis).await?;
 
         // Create VersionBuilders for the versions specified in `initial_versions`
         versions = Vec::with_capacity(create_data.initial_versions.len());
@@ -493,7 +493,7 @@ async fn project_create_inner(
 
     let project_type_id = models::categories::ProjectType::get_id(
         project_create_data.project_type.as_str(),
-        &mut *transaction,
+        &mut **transaction,
     )
     .await?
     .ok_or_else(|| {
@@ -649,7 +649,7 @@ async fn project_create_inner(
             let id = models::categories::Category::get_id_project(
                 category,
                 project_type_id,
-                &mut *transaction,
+                &mut **transaction,
             )
             .await?
             .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
@@ -662,7 +662,7 @@ async fn project_create_inner(
             let id = models::categories::Category::get_id_project(
                 category,
                 project_type_id,
-                &mut *transaction,
+                &mut **transaction,
             )
             .await?
             .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
@@ -706,7 +706,7 @@ async fn project_create_inner(
         if let Some(urls) = &project_create_data.donation_urls {
             for url in urls {
                 let platform_id =
-                    models::categories::DonationPlatform::get_id(&url.id, &mut *transaction)
+                    models::categories::DonationPlatform::get_id(&url.id, &mut **transaction)
                         .await?
                         .ok_or_else(|| {
                             CreateError::InvalidInput(format!(
@@ -771,7 +771,7 @@ async fn project_create_inner(
 
         for image_id in project_create_data.uploaded_images {
             if let Some(db_image) =
-                image_item::Image::get(image_id.into(), &mut *transaction, redis).await?
+                image_item::Image::get(image_id.into(), &mut **transaction, redis).await?
             {
                 let image: Image = db_image.into();
                 if !matches!(image.context, ImageContext::Project { .. })
@@ -792,7 +792,7 @@ async fn project_create_inner(
                     id as models::ids::ProjectId,
                     image_id.0 as i64
                 )
-                .execute(&mut *transaction)
+                .execute(&mut **transaction)
                 .await?;
 
                 image_item::Image::clear_cache(image.id.into(), redis).await?;
@@ -899,10 +899,10 @@ async fn create_initial_version(
         })
         .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
 
-    let loader_fields = LoaderField::get_fields(&mut *transaction, redis).await?;
+    let loader_fields = LoaderField::get_fields(&mut **transaction, redis).await?;
     let mut version_fields = vec![];
     let mut loader_field_enum_values =
-        LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut *transaction, redis)
+        LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut **transaction, redis)
             .await?;
     for (key, value) in version_data.fields.iter() {
         let loader_field = loader_fields
