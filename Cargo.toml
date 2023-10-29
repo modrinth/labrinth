@@ -107,5 +107,8 @@ lettre = "0.10.4"
 
 derive-new = "0.5.9"
 
+atom_syndication = { version = "0.12.2", default-features = false }
+comrak = { version = "0.19.0", default-features = false }
+
 [dev-dependencies]
 actix-http = "3.4.0"
