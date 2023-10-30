@@ -906,7 +906,7 @@ impl std::cmp::Ord for QueryVersion {
 
 impl std::cmp::PartialOrd for QueryVersion {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
@@ -928,7 +928,7 @@ impl std::cmp::Ord for Version {
 
 impl std::cmp::PartialOrd for Version {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
