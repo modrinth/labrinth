@@ -848,7 +848,7 @@ async fn project_create_inner(
             slug: project_builder.slug.clone(),
             project_type: project_create_data.project_type.clone(),
             team: team_id.into(),
-            organization: project_create_data.organization_id.map(|x| x.into()),
+            organization: project_create_data.organization_id,
             title: project_builder.title.clone(),
             description: project_builder.description.clone(),
             body: project_builder.body.clone(),
@@ -905,7 +905,7 @@ async fn insert_project_create_event(
             project_id: project_id.into(),
             creator_id: organization_id.map_or_else(
                 || CreatorId::User(current_user.id.into()),
-                |org| CreatorId::Organization(org),
+                CreatorId::Organization,
             ),
         },
         transaction,

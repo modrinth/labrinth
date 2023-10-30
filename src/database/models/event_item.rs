@@ -141,7 +141,7 @@ impl TryFrom<RawEvent> for Event {
                             "the value of created should not be null".to_string(),
                         ))
                     },
-                    |c| Ok(c),
+                    Ok,
                 )?,
             },
         })
@@ -176,7 +176,7 @@ impl Event {
             unzip_event_selectors(target_selectors);
         let (triggerer_ids, triggerer_id_types, triggerer_event_types) =
             unzip_event_selectors(triggerer_selectors);
-        Ok(sqlx::query_as!(
+        sqlx::query_as!(
             RawEvent,
             r#"
             SELECT 
@@ -208,7 +208,7 @@ impl Event {
         .await?
         .into_iter()
         .map(|r| r.try_into())
-        .collect::<Result<Vec<_>, _>>()?)
+        .collect::<Result<Vec<_>, _>>()
     }
 }
 
@@ -279,7 +279,7 @@ fn unzip_event_selectors(
     target_selectors: &[EventSelector],
 ) -> (Vec<i64>, Vec<IdType>, Vec<EventType>) {
     target_selectors
-        .into_iter()
+        .iter()
         .map(|t| (t.id.id, t.id.id_type, t.event_type))
         .multiunzip()
 }

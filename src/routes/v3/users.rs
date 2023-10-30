@@ -182,16 +182,16 @@ async fn prefetch_authorized_event_projects(
 ) -> Result<HashMap<ProjectId, Project>, ApiError> {
     let project_ids = events
         .iter()
-        .filter_map(|e| match &e.event_data {
+        .map(|e| match &e.event_data {
             EventData::ProjectCreated {
                 project_id,
                 creator_id: _,
-            } => Some(project_id.clone()),
+            } => *project_id,
         })
         .collect_vec();
-    let projects = db_models::Project::get_many_ids(&project_ids, &***pool, &redis).await?;
+    let projects = db_models::Project::get_many_ids(&project_ids, &***pool, redis).await?;
     let authorized_projects =
-        filter_authorized_projects(projects, Some(&current_user), &pool).await?;
+        filter_authorized_projects(projects, Some(current_user), pool).await?;
     Ok(HashMap::<ProjectId, Project>::from_iter(
         authorized_projects.into_iter().map(|p| (p.id, p)),
     ))
