@@ -54,21 +54,6 @@ macro_rules! impl_follow {
                 Ok(())
             }
 
-            pub async fn get_followers(
-                target_id: $target_id_type,
-                exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
-            ) -> Result<Vec<$target_struct>, DatabaseError> {
-                let res = sqlx::query_as!(
-                    FollowQuery,
-                    "SELECT follower_id, target_id FROM " + $table_name + " WHERE target_id=$1",
-                    target_id.0
-                )
-                .fetch_all(exec)
-                .await?;
-
-                Ok(res.into_iter().map(|r| r.into()).collect_vec())
-            }
-
             pub async fn get_follows_by_follower(
                 follower_user_id: UserId,
                 exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,

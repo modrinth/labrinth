@@ -4,7 +4,7 @@ use common::{
     database::{FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},
     environment::with_test_environment,
 };
-use labrinth::models::feed_item::FeedItemBody;
+use labrinth::models::feeds::FeedItemBody;
 
 mod common;
 

@@ -190,10 +190,10 @@ impl Event {
                 created
             FROM events e
             WHERE 
-                (target_id, target_id_type, event_type) 
+                (target_id, target_id_type, event_type)
                 = ANY(SELECT * FROM UNNEST ($1::bigint[], $2::text[], $3::text[]))
             OR
-                (triggerer_id, triggerer_id_type, event_type) 
+                (triggerer_id, triggerer_id_type, event_type)
                 = ANY(SELECT * FROM UNNEST ($4::bigint[], $5::text[], $6::text[]))
             ORDER BY created DESC
             "#,

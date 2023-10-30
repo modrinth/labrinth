@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 pub use super::collections::CollectionId;
-pub use super::feed_item::FeedItemId;
+pub use super::feeds::FeedItemId;
 pub use super::images::ImageId;
 pub use super::notifications::NotificationId;
 pub use super::oauth_clients::OAuthClientAuthorizationId;

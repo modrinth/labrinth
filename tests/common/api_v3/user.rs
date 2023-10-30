@@ -3,7 +3,7 @@ use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
-use labrinth::models::feed_item::FeedItem;
+use labrinth::models::feeds::FeedItem;
 
 use crate::common::{actix::TestRequestExtensions, asserts::assert_status};
 

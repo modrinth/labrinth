@@ -8,7 +8,7 @@ use crate::{
         redis::RedisPool,
     },
     models::{
-        feed_item::{FeedItem, FeedItemBody},
+        feeds::{FeedItem, FeedItemBody},
         ids::ProjectId,
         pats::Scopes,
         projects::Project,
