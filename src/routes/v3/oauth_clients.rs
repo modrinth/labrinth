@@ -138,7 +138,6 @@ pub struct NewOAuthApp {
     #[validate(custom(function = "crate::util::validate::validate_no_restricted_scopes"))]
     pub max_scopes: Scopes,
 
-    #[validate(length(min = 1))]
     pub redirect_uris: Vec<String>,
 }
 
