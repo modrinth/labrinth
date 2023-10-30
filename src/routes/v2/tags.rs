@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::database::models::categories::{Category, DonationPlatform, ProjectType, ReportType};
 use crate::database::models::loader_fields::{Game, LoaderFieldEnumValue};
 use crate::database::redis::RedisPool;
 use crate::routes::v3::tags::{LoaderFieldsEnumQuery, LoaderList};
@@ -38,18 +37,10 @@ pub async fn category_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let results = Category::list(&**pool, &redis)
-        .await?
-        .into_iter()
-        .map(|x| CategoryData {
-            icon: x.icon,
-            name: x.category,
-            project_type: x.project_type,
-            header: x.header,
-        })
-        .collect::<Vec<_>>();
-
-    Ok(HttpResponse::Ok().json(results))
+    v3::tags::category_list(
+        pool,
+        redis,
+    ).await
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -150,17 +141,7 @@ pub struct License {
 
 #[get("license")]
 pub async fn license_list() -> HttpResponse {
-    let licenses = spdx::identifiers::LICENSES;
-    let mut results: Vec<License> = Vec::with_capacity(licenses.len());
-
-    for (short, name, _) in licenses {
-        results.push(License {
-            short: short.to_string(),
-            name: name.to_string(),
-        });
-    }
-
-    HttpResponse::Ok().json(results)
+    v3::tags::license_list().await
 }
 
 #[derive(serde::Serialize)]
@@ -171,27 +152,9 @@ pub struct LicenseText {
 
 #[get("license/{id}")]
 pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, ApiError> {
-    let license_id = params.into_inner().0;
-
-    if license_id == *crate::models::projects::DEFAULT_LICENSE_ID {
-        return Ok(HttpResponse::Ok().json(LicenseText {
-            title: "All Rights Reserved".to_string(),
-            body: "All rights reserved unless explicitly stated.".to_string(),
-        }));
-    }
-
-    if let Some(license) = spdx::license_id(&license_id) {
-        return Ok(HttpResponse::Ok().json(LicenseText {
-            title: license.full_name.to_string(),
-            body: license.text().to_string(),
-        }));
-    }
-
-    Err(ApiError::InvalidInput(
-        "Invalid SPDX identifier specified".to_string(),
-    ))
+    v3::tags::license_text(params).await
 }
-
+    
 #[derive(serde::Serialize)]
 pub struct DonationPlatformQueryData {
     short: String,
@@ -203,15 +166,10 @@ pub async fn donation_platform_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let results: Vec<DonationPlatformQueryData> = DonationPlatform::list(&**pool, &redis)
-        .await?
-        .into_iter()
-        .map(|x| DonationPlatformQueryData {
-            short: x.short,
-            name: x.name,
-        })
-        .collect();
-    Ok(HttpResponse::Ok().json(results))
+    v3::tags::donation_platform_list(
+        pool,
+        redis,
+    ).await
 }
 
 #[get("report_type")]
@@ -219,8 +177,10 @@ pub async fn report_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let results = ReportType::list(&**pool, &redis).await?;
-    Ok(HttpResponse::Ok().json(results))
+    v3::tags::report_type_list(
+        pool,
+        redis,
+    ).await
 }
 
 #[get("project_type")]
@@ -228,8 +188,10 @@ pub async fn project_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let results = ProjectType::list(&**pool, &redis).await?;
-    Ok(HttpResponse::Ok().json(results))
+    v3::tags::project_type_list(
+        pool,
+        redis,
+    ).await
 }
 
 #[get("side_type")]

@@ -1,11 +1,6 @@
 use super::ApiError;
-use crate::auth::{get_user_from_headers, is_authorized_version};
-use crate::database;
-
 use crate::database::redis::RedisPool;
-use crate::models::pats::Scopes;
 use crate::models::projects::{Project, Version, VersionType};
-use crate::models::teams::ProjectPermissions;
 use crate::models::v2::projects::{LegacyProject, LegacyVersion};
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::version_file::{default_algorithm, HashQuery};
@@ -57,11 +52,6 @@ pub async fn get_version_from_hash(
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct DownloadRedirect {
-    pub url: String,
-}
-
 // under /api/v1/version_file/{hash}/download
 #[get("{version_id}/download")]
 pub async fn download_version(
@@ -72,44 +62,8 @@ pub async fn download_version(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::VERSION_READ]),
-    )
-    .await
-    .map(|x| x.1)
-    .ok();
-
-    let hash = info.into_inner().0.to_lowercase();
-    let file = database::models::Version::get_file_from_hash(
-        hash_query.algorithm.clone(),
-        hash,
-        hash_query.version_id.map(|x| x.into()),
-        &**pool,
-        &redis,
-    )
-    .await?;
-
-    if let Some(file) = file {
-        let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
-
-        if let Some(version) = version {
-            if !is_authorized_version(&version.inner, &user_option, &pool).await? {
-                return Ok(HttpResponse::NotFound().body(""));
-            }
-
-            Ok(HttpResponse::TemporaryRedirect()
-                .append_header(("Location", &*file.url))
-                .json(DownloadRedirect { url: file.url }))
-        } else {
-            Ok(HttpResponse::NotFound().body(""))
-        }
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
+    v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue)
+        .await
 }
 
 // under /api/v1/version_file/{hash}
@@ -122,110 +76,7 @@ pub async fn delete_file(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::VERSION_WRITE]),
-    )
-    .await?
-    .1;
-
-    let hash = info.into_inner().0.to_lowercase();
-
-    let file = database::models::Version::get_file_from_hash(
-        hash_query.algorithm.clone(),
-        hash,
-        hash_query.version_id.map(|x| x.into()),
-        &**pool,
-        &redis,
-    )
-    .await?;
-
-    if let Some(row) = file {
-        if !user.role.is_admin() {
-            let team_member = database::models::TeamMember::get_from_user_id_version(
-                row.version_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::Database)?;
-
-            let organization =
-                database::models::Organization::get_associated_organization_project_id(
-                    row.project_id,
-                    &**pool,
-                )
-                .await
-                .map_err(ApiError::Database)?;
-
-            let organization_team_member = if let Some(organization) = &organization {
-                database::models::TeamMember::get_from_user_id_organization(
-                    organization.id,
-                    user.id.into(),
-                    &**pool,
-                )
-                .await
-                .map_err(ApiError::Database)?
-            } else {
-                None
-            };
-
-            let permissions = ProjectPermissions::get_permissions_by_role(
-                &user.role,
-                &team_member,
-                &organization_team_member,
-            )
-            .unwrap_or_default();
-
-            if !permissions.contains(ProjectPermissions::DELETE_VERSION) {
-                return Err(ApiError::CustomAuthentication(
-                    "You don't have permission to delete this file!".to_string(),
-                ));
-            }
-        }
-
-        let version = database::models::Version::get(row.version_id, &**pool, &redis).await?;
-        if let Some(version) = version {
-            if version.files.len() < 2 {
-                return Err(ApiError::InvalidInput(
-                    "Versions must have at least one file uploaded to them".to_string(),
-                ));
-            }
-
-            database::models::Version::clear_cache(&version, &redis).await?;
-        }
-
-        let mut transaction = pool.begin().await?;
-
-        sqlx::query!(
-            "
-            DELETE FROM hashes
-            WHERE file_id = $1
-            ",
-            row.id.0
-        )
-        .execute(&mut *transaction)
-        .await?;
-
-        sqlx::query!(
-            "
-            DELETE FROM files
-            WHERE files.id = $1
-            ",
-            row.id.0,
-        )
-        .execute(&mut *transaction)
-        .await?;
-
-        transaction.commit().await?;
-
-        Ok(HttpResponse::NoContent().body(""))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
+    v3::version_file::delete_file(req, info, pool, redis, hash_query, session_queue).await
 }
 
 #[derive(Serialize, Deserialize)]

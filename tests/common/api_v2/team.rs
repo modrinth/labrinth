@@ -124,6 +124,9 @@ impl ApiV2 {
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
+        println!("resp: {:?}", resp.response().body());
+        assert_eq!(resp.status(), 200);
+        println!("Got past");
         test::read_body_json(resp).await
     }
 

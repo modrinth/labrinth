@@ -1,16 +1,10 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::auth::get_user_from_headers;
-use crate::database;
-use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::VersionId;
-use crate::models::images::ImageContext;
-use crate::models::pats::Scopes;
 use crate::models::projects::{Dependency, FileType, Version, VersionStatus, VersionType};
-use crate::models::teams::ProjectPermissions;
 use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v2_reroute, v3};
@@ -273,92 +267,17 @@ pub async fn version_schedule(
     scheduling_data: web::Json<SchedulingData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::VERSION_WRITE]),
-    )
-    .await?
-    .1;
-
-    if scheduling_data.time < Utc::now() {
-        return Err(ApiError::InvalidInput(
-            "You cannot schedule a version to be released in the past!".to_string(),
-        ));
-    }
-
-    if !scheduling_data.requested_status.can_be_requested() {
-        return Err(ApiError::InvalidInput(
-            "Specified requested status cannot be requested!".to_string(),
-        ));
-    }
-
-    let string = info.into_inner().0;
-    let result = database::models::Version::get(string.into(), &**pool, &redis).await?;
-
-    if let Some(version_item) = result {
-        let team_member = database::models::TeamMember::get_from_user_id_project(
-            version_item.inner.project_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await?;
-
-        let organization_item =
-            database::models::Organization::get_associated_organization_project_id(
-                version_item.inner.project_id,
-                &**pool,
-            )
-            .await
-            .map_err(ApiError::Database)?;
-
-        let organization_team_member = if let Some(organization) = &organization_item {
-            database::models::TeamMember::get_from_user_id(
-                organization.team_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await?
-        } else {
-            None
-        };
-
-        let permissions = ProjectPermissions::get_permissions_by_role(
-            &user.role,
-            &team_member,
-            &organization_team_member,
-        )
-        .unwrap_or_default();
-
-        if !user.role.is_mod() && !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
-            return Err(ApiError::CustomAuthentication(
-                "You do not have permission to edit this version's scheduling data!".to_string(),
-            ));
-        }
-
-        let mut transaction = pool.begin().await?;
-        sqlx::query!(
-            "
-            UPDATE versions
-            SET status = $1, date_published = $2
-            WHERE (id = $3)
-            ",
-            VersionStatus::Scheduled.as_str(),
-            scheduling_data.time,
-            version_item.inner.id as database::models::ids::VersionId,
-        )
-        .execute(&mut *transaction)
-        .await?;
-
-        database::models::Version::clear_cache(&version_item, &redis).await?;
-        transaction.commit().await?;
-
-        Ok(HttpResponse::NoContent().body(""))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
+    v3::versions::version_schedule(
+        req,
+        info,
+        pool,
+        redis,
+        web::Json(v3::versions::SchedulingData {
+            time: scheduling_data.time,
+            requested_status: scheduling_data.requested_status,
+        }),
+        session_queue,
+    ).await
 }
 
 #[delete("{version_id}")]
@@ -369,81 +288,5 @@ pub async fn version_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::VERSION_DELETE]),
-    )
-    .await?
-    .1;
-    let id = info.into_inner().0;
-
-    let version = database::models::Version::get(id.into(), &**pool, &redis)
-        .await?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified version does not exist!".to_string())
-        })?;
-
-    if !user.role.is_admin() {
-        let team_member = database::models::TeamMember::get_from_user_id_project(
-            version.inner.project_id,
-            user.id.into(),
-            &**pool,
-        )
-        .await
-        .map_err(ApiError::Database)?;
-
-        let organization =
-            Organization::get_associated_organization_project_id(version.inner.project_id, &**pool)
-                .await?;
-
-        let organization_team_member = if let Some(organization) = &organization {
-            database::models::TeamMember::get_from_user_id(
-                organization.team_id,
-                user.id.into(),
-                &**pool,
-            )
-            .await?
-        } else {
-            None
-        };
-        let permissions = ProjectPermissions::get_permissions_by_role(
-            &user.role,
-            &team_member,
-            &organization_team_member,
-        )
-        .unwrap_or_default();
-
-        if !permissions.contains(ProjectPermissions::DELETE_VERSION) {
-            return Err(ApiError::CustomAuthentication(
-                "You do not have permission to delete versions in this team".to_string(),
-            ));
-        }
-    }
-
-    let mut transaction = pool.begin().await?;
-    let context = ImageContext::Version {
-        version_id: Some(version.inner.id.into()),
-    };
-    let uploaded_images =
-        database::models::Image::get_many_contexted(context, &mut transaction).await?;
-    for image in uploaded_images {
-        image_item::Image::remove(image.id, &mut transaction, &redis).await?;
-    }
-
-    let result =
-        database::models::Version::remove_full(version.inner.id, &redis, &mut transaction).await?;
-
-    database::models::Project::clear_cache(version.inner.project_id, None, Some(true), &redis)
-        .await?;
-
-    transaction.commit().await?;
-
-    if result.is_some() {
-        Ok(HttpResponse::NoContent().body(""))
-    } else {
-        Ok(HttpResponse::NotFound().body(""))
-    }
+    v3::versions::version_delete(req, info, pool, redis, session_queue).await
 }
