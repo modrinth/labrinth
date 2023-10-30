@@ -319,7 +319,7 @@ impl VersionVersion {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Version {
     pub id: VersionId,
     pub project_id: ProjectId,
@@ -856,7 +856,7 @@ impl Version {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct QueryVersion {
     pub inner: Version,
 
@@ -866,7 +866,7 @@ pub struct QueryVersion {
     pub dependencies: Vec<QueryDependency>,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct QueryDependency {
     pub project_id: Option<ProjectId>,
     pub version_id: Option<VersionId>,
@@ -874,7 +874,7 @@ pub struct QueryDependency {
     pub dependency_type: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct QueryFile {
     pub id: FileId,
     pub url: String,
@@ -896,4 +896,85 @@ pub struct SingleFile {
     pub primary: bool,
     pub size: u32,
     pub file_type: Option<FileType>,
+}
+
+impl std::cmp::Ord for QueryVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.inner.cmp(&other.inner)
+    }
+}
+
+impl std::cmp::PartialOrd for QueryVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl std::cmp::Ord for Version {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let ordering_order = match (self.ordering, other.ordering) {
+            (None, None) => Ordering::Equal,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(_), None) => Ordering::Less,
+            (Some(a), Some(b)) => a.cmp(&b),
+        };
+
+        match ordering_order {
+            Ordering::Equal => self.date_published.cmp(&other.date_published),
+            ordering => ordering,
+        }
+    }
+}
+
+impl std::cmp::PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Months;
+
+    use super::*;
+
+    #[test]
+    fn test_version_sorting() {
+        let versions = vec![
+            get_version(4, None, months_ago(6)),
+            get_version(3, None, months_ago(7)),
+            get_version(2, Some(1), months_ago(6)),
+            get_version(1, Some(0), months_ago(4)),
+            get_version(0, Some(0), months_ago(5)),
+        ];
+
+        let sorted = versions.iter().cloned().sorted().collect_vec();
+
+        let expected_sorted_ids = vec![0, 1, 2, 3, 4];
+        let actual_sorted_ids = sorted.iter().map(|v| v.id.0).collect_vec();
+        assert_eq!(expected_sorted_ids, actual_sorted_ids);
+    }
+
+    fn months_ago(months: u32) -> DateTime<Utc> {
+        Utc::now().checked_sub_months(Months::new(months)).unwrap()
+    }
+
+    fn get_version(id: i64, ordering: Option<i32>, date_published: DateTime<Utc>) -> Version {
+        Version {
+            id: VersionId(id),
+            ordering,
+            date_published,
+            project_id: ProjectId(0),
+            author_id: UserId(0),
+            name: Default::default(),
+            version_number: Default::default(),
+            changelog: Default::default(),
+            changelog_url: Default::default(),
+            downloads: Default::default(),
+            version_type: Default::default(),
+            featured: Default::default(),
+            status: VersionStatus::Listed,
+            requested_status: Default::default(),
+        }
+    }
 }

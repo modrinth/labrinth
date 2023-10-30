@@ -115,7 +115,7 @@ pub async fn version_list(
             .cloned()
             .collect::<Vec<_>>();
 
-        versions.sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
+        versions.sort();
 
         // Attempt to populate versions with "auto featured" versions
         if response.is_empty() && !versions.is_empty() && filters.featured.unwrap_or(false) {
@@ -155,7 +155,7 @@ pub async fn version_list(
             }
         }
 
-        response.sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
+        response.sort();
         response.dedup_by(|a, b| a.inner.id == b.inner.id);
 
         let response = filter_authorized_versions(response, &user_option, &pool).await?;

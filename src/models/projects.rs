@@ -732,7 +732,7 @@ impl DependencyType {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum FileType {
     RequiredResourcePack,
