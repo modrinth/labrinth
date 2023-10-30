@@ -3,7 +3,6 @@ use crate::{auth::oauth, util::cors::default_cors};
 use actix_web::{web, HttpResponse};
 use serde_json::json;
 
-pub mod follow;
 pub mod oauth_clients;
 pub mod organizations;
 pub mod users;

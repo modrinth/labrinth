@@ -1,5 +1,7 @@
 use crate::{
-    database::{self, redis::RedisPool},
+    auth::get_user_from_headers,
+    database::{self, models::DatabaseError, redis::RedisPool},
+    models::pats::Scopes,
     queue::session::AuthQueue,
     routes::ApiError,
 };
@@ -29,24 +31,38 @@ pub async fn organization_follow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    crate::routes::v3::follow::follow(
-        req,
-        target_id,
-        pool,
-        redis,
-        session_queue,
-        |id, pool, redis| async move { DBOrganization::get(&id, &**pool, &redis).await },
-        |follower_id, target_id, pool| async move {
-            DBOrganizationFollow {
-                follower_id,
-                target_id,
-            }
-            .insert(&**pool)
-            .await
-        },
-        "organization",
+    let (_, current_user) = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_WRITE]),
     )
+    .await?;
+
+    let target = DBOrganization::get(&target_id, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified organization does not exist!".to_string())
+        })?;
+
+    DBOrganizationFollow {
+        follower_id: current_user.id.into(),
+        target_id: target.id,
+    }
+    .insert(&**pool)
     .await
+    .map_err(|e| match e {
+        DatabaseError::Database(e)
+            if e.as_database_error()
+                .is_some_and(|e| e.is_unique_violation()) =>
+        {
+            ApiError::InvalidInput("You are already following this organization!".to_string())
+        }
+        e => e.into(),
+    })?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }
 
 #[delete("{id}/follow")]
@@ -57,17 +73,22 @@ pub async fn organization_unfollow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    crate::routes::v3::follow::unfollow(
-        req,
-        target_id,
-        pool,
-        redis,
-        session_queue,
-        |id, pool, redis| async move { DBOrganization::get(&id, &**pool, &redis).await },
-        |follower_id, target_id, pool| async move {
-            DBOrganizationFollow::unfollow(follower_id, target_id, &**pool).await
-        },
-        "organization",
+    let (_, current_user) = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_WRITE]),
     )
-    .await
+    .await?;
+
+    let target = DBOrganization::get(&target_id, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified organization does not exist!".to_string())
+        })?;
+
+    DBOrganizationFollow::unfollow(current_user.id.into(), target.id.into(), &**pool).await?;
+
+    Ok(HttpResponse::NoContent().body(""))
 }
