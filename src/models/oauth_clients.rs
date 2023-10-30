@@ -33,8 +33,10 @@ pub struct OAuthRedirectUri {
 
 #[derive(Serialize, Deserialize)]
 pub struct OAuthClientCreationResult {
-    pub client_secret: String,
+    #[serde(flatten)]
     pub client: OAuthClient,
+
+    pub client_secret: String,
 }
 
 #[derive(Deserialize, Serialize)]

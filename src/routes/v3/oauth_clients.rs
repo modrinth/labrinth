@@ -138,7 +138,6 @@ pub struct NewOAuthApp {
     #[validate(custom(function = "crate::util::validate::validate_no_restricted_scopes"))]
     pub max_scopes: Scopes,
 
-    #[validate(length(min = 1))]
     pub redirect_uris: Vec<String>,
 }
 
@@ -435,7 +434,7 @@ pub async fn get_clients_inner(
     .await?
     .1;
 
-    let ids: Vec<OAuthClientId> = ids.into_iter().map(|i| (*i).into()).collect();
+    let ids: Vec<OAuthClientId> = ids.iter().map(|i| (*i).into()).collect();
     let clients = OAuthClient::get_many(&ids, &**pool).await?;
     clients
         .iter()
