@@ -19,15 +19,10 @@ use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegment
 
 use super::{environment::TestEnvironment, request_data::get_public_project_creation_data};
 
-use crate::common::{actix::AppendsMultipart, database::USER_USER_PAT};
-
 use super::{
-    actix::{MultipartSegment, MultipartSegmentData},
     asserts::assert_status,
     database::USER_USER_ID,
-    environment::TestEnvironment,
     get_json_val_str,
-    request_data::get_public_project_creation_data,
 };
 
 pub const DUMMY_DATA_UPDATE: i64 = 3;
@@ -180,10 +175,10 @@ pub struct DummyData {
 
 impl DummyData {
     pub fn new(
-        project_alpha: Project,
-        project_alpha_version: Version,
-        project_beta: Project,
-        project_beta_version: Version,
+        project_alpha: LegacyProject,
+        project_alpha_version: LegacyVersion,
+        project_beta: LegacyProject,
+        project_beta_version: LegacyVersion,
         organization_zeta: Organization,
         oauth_client_alpha: OAuthClient,
     ) -> Self {
@@ -456,14 +451,6 @@ pub async fn get_organization_zeta(test_env: &TestEnvironment) -> Organization {
     let organization: Organization = test::read_body_json(resp).await;
 
     organization
-}
-
-pub async fn get_oauth_client_alpha(test_env: &TestEnvironment) -> OAuthClient {
-    let oauth_clients = test_env
-        .v3
-        .get_user_oauth_clients(USER_USER_ID, USER_USER_PAT)
-        .await;
-    oauth_clients.into_iter().next().unwrap()
 }
 
 pub async fn get_oauth_client_alpha(test_env: &TestEnvironment) -> OAuthClient {
