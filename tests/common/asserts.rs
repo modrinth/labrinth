@@ -17,3 +17,10 @@ pub fn assert_version_ids(
         .collect_vec();
     assert_eq!(version_ids, expected_ids);
 }
+
+pub fn assert_any_status_except(
+    response: &actix_web::dev::ServiceResponse,
+    status: actix_http::StatusCode,
+) {
+    assert_ne!(response.status(), status, "{:#?}", response.response());
+}
