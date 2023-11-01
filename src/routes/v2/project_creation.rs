@@ -6,6 +6,7 @@ use crate::database::models::{self, image_item, User};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::{FileHost, FileHostingError};
 use crate::models::error::ApiError;
+use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::ImageId;
 use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
@@ -418,16 +419,14 @@ async fn project_create_inner(
             .validate()
             .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
 
-        let slug_project_id_option: Option<ProjectId> =
-            serde_json::from_str(&format!("\"{}\"", create_data.slug)).ok();
+        let slug_project_id_option: Option<u64> = parse_base62(&create_data.slug).ok();
 
         if let Some(slug_project_id) = slug_project_id_option {
-            let slug_project_id: models::ids::ProjectId = slug_project_id.into();
             let results = sqlx::query!(
                 "
                 SELECT EXISTS(SELECT 1 FROM mods WHERE id=$1)
                 ",
-                slug_project_id as models::ids::ProjectId
+                slug_project_id as i64
             )
             .fetch_one(&mut **transaction)
             .await
@@ -991,6 +990,7 @@ async fn create_initial_version(
         status: VersionStatus::Listed,
         version_type: version_data.release_channel.to_string(),
         requested_status: None,
+        ordering: version_data.ordering,
     };
 
     Ok(version)
