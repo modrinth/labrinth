@@ -34,11 +34,6 @@ pub enum FeedItemBody {
         creator_id: CreatorId,
         project_title: String,
     },
-    ProjectUpdated {
-        project_id: ProjectId,
-        updater_id: CreatorId,
-        project_title: String,
-    },
     VersionCreated {
         project_id: ProjectId,
         version_id: VersionId,

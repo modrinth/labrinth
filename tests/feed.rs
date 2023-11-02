@@ -1,6 +1,6 @@
 use crate::common::{
     asserts::{
-        assert_feed_contains_project_created, assert_feed_contains_project_updated,
+        assert_feed_contains_project_created,
         assert_feed_contains_version_created,
     },
     dummy_data::DummyProjectAlpha,
@@ -69,36 +69,6 @@ async fn get_feed_after_following_user_shows_previously_created_public_versions(
         );
         assert_feed_contains_version_created(&feed, v.id);
         // Notably, this should *not* have a projectupdated from the publishing.
-    })
-    .await
-}
-
-#[actix_rt::test]
-async fn get_feed_after_following_user_shows_previously_edited_public_versions() {
-    with_test_environment(|env| async move {
-        let DummyProjectAlpha {
-            project_id: alpha_project_id,
-            ..
-        } = env.dummy.as_ref().unwrap().project_alpha.clone();
-
-        // Empty patch
-        env.v2
-            .edit_project(&alpha_project_id, serde_json::json!({}), USER_USER_PAT)
-            .await;
-
-        env.v3.follow_user(USER_USER_ID, FRIEND_USER_PAT).await;
-
-        let feed = env.v3.get_feed(FRIEND_USER_PAT).await;
-
-        assert_eq!(feed.len(), 2);
-        assert_feed_contains_project_created(
-            &feed,
-            ProjectId(parse_base62(&alpha_project_id).unwrap()),
-        );
-        assert_feed_contains_project_updated(
-            &feed,
-            ProjectId(parse_base62(&alpha_project_id).unwrap()),
-        );
     })
     .await
 }

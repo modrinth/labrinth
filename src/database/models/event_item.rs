@@ -13,7 +13,6 @@ use std::convert::{TryFrom, TryInto};
 pub enum EventType {
     ProjectPublished,
     VersionCreated,
-    ProjectUpdated,
 }
 
 impl PgHasArrayType for EventType {
@@ -37,10 +36,6 @@ pub enum EventData {
     VersionCreated {
         version_id: VersionId,
         creator_id: CreatorId,
-    },
-    ProjectUpdated {
-        project_id: ProjectId,
-        updater_id: CreatorId,
     },
 }
 
@@ -138,23 +133,6 @@ impl From<Event> for RawEvent {
                     created: None,
                 }
             }
-            EventData::ProjectUpdated {
-                project_id,
-                updater_id,
-            } => {
-                let target_id = DynamicId::from(project_id);
-                let triggerer_id = DynamicId::from(updater_id);
-                RawEvent {
-                    id: value.id,
-                    target_id: target_id.id,
-                    target_id_type: target_id.id_type,
-                    triggerer_id: Some(triggerer_id.id),
-                    triggerer_id_type: Some(triggerer_id.id_type),
-                    event_type: EventType::ProjectUpdated,
-                    metadata: None,
-                    created: None,
-                }
-            }
         }
     }
 }
@@ -188,14 +166,6 @@ impl TryFrom<RawEvent> for Event {
                     creator_id: triggerer_id.map_or_else(|| {
                         Err(DatabaseError::UnexpectedNull(
                             "Neither triggerer_id nor triggerer_id_type should be null for version creation".to_string(),
-                        ))
-                    }, |v| v.try_into())?,
-                },
-                EventType::ProjectUpdated => EventData::ProjectUpdated {
-                    project_id: target_id.try_into()?,
-                    updater_id: triggerer_id.map_or_else(|| {
-                        Err(DatabaseError::UnexpectedNull(
-                            "Neither triggerer_id nor triggerer_id_type should be null for project update".to_string(),
                         ))
                     }, |v| v.try_into())?,
                 },

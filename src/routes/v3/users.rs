@@ -143,12 +143,9 @@ pub async fn current_user_feed(
     // - Projects created by organizations you follow
     // - Versions created by users you follow
     // - Versions created by organizations you follow
-    // - Projects updated by users you follow
-    // - Projects updated by organizations you follow
     let event_types = [
         EventType::ProjectPublished,
         EventType::VersionCreated,
-        EventType::ProjectUpdated,
     ];
     let selectors = followed_users
         .into_iter()
@@ -198,16 +195,6 @@ pub async fn current_user_feed(
                     FeedItemBody::ProjectPublished {
                         project_id: project_id.into(),
                         creator_id: creator_id.into(),
-                        project_title: p.title.clone(),
-                    }
-                }),
-                EventData::ProjectUpdated {
-                    project_id,
-                    updater_id,
-                } => authorized_projects.get(&project_id.into()).map(|p| {
-                    FeedItemBody::ProjectUpdated {
-                        project_id: project_id.into(),
-                        updater_id: updater_id.into(),
                         project_title: p.title.clone(),
                     }
                 }),
@@ -261,10 +248,6 @@ async fn prefetch_authorized_event_projects(
                 project_id,
                 creator_id: _,
             } => Some(*project_id),
-            EventData::ProjectUpdated {
-                project_id,
-                updater_id: _,
-            } => Some(*project_id),
             EventData::VersionCreated { .. } => None,
         })
         .collect_vec();
@@ -298,7 +281,6 @@ async fn prefetch_authorized_event_versions(
                 creator_id: _,
             } => Some(*version_id),
             EventData::ProjectPublished { .. } => None,
-            EventData::ProjectUpdated { .. } => None,
         })
         .collect_vec();
     let versions = db_models::Version::get_many(&version_ids, &***pool, redis).await?;

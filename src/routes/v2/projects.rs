@@ -1136,16 +1136,6 @@ pub async fn project_edit(
             )
             .await?;
 
-            if project_item.inner.status.is_searchable() {
-                insert_project_update_event(
-                    project_item.inner.id.into(),
-                    project_item.inner.organization_id,
-                    &user,
-                    &mut transaction,
-                )
-                .await?;
-            }
-
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
@@ -1492,16 +1482,6 @@ pub async fn projects_edit(
                 project.inner.id as db_ids::ProjectId,
             )
             .execute(&mut *transaction)
-            .await?;
-        }
-
-        if project.inner.status.is_searchable() {
-            insert_project_update_event(
-                project.inner.id.into(),
-                project.inner.organization_id,
-                &user,
-                &mut transaction,
-            )
             .await?;
         }
 
@@ -2594,27 +2574,6 @@ pub async fn delete_from_index(
         index.delete_document(id.to_string()).await?;
     }
 
-    Ok(())
-}
-
-async fn insert_project_update_event(
-    project_id: ProjectId,
-    organization_id: Option<OrganizationId>,
-    current_user: &crate::models::users::User,
-    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-) -> Result<(), ApiError> {
-    let event = Event::new(
-        EventData::ProjectUpdated {
-            project_id: project_id.into(),
-            updater_id: organization_id.map_or_else(
-                || CreatorId::User(current_user.id.into()),
-                CreatorId::Organization,
-            ),
-        },
-        transaction,
-    )
-    .await?;
-    event.insert(transaction).await?;
     Ok(())
 }
 
