@@ -7,11 +7,11 @@ use itertools::Itertools;
 use sqlx::postgres::{PgHasArrayType, PgTypeInfo};
 use std::convert::{TryFrom, TryInto};
 
-#[derive(sqlx::Type, Clone, Copy)]
+#[derive(sqlx::Type, Clone, Copy, Debug)]
 #[sqlx(type_name = "text")]
 #[sqlx(rename_all = "snake_case")]
 pub enum EventType {
-    ProjectCreated,
+    ProjectPublished,
     VersionCreated,
     ProjectUpdated,
 }
@@ -30,7 +30,7 @@ pub enum CreatorId {
 
 #[derive(Debug)]
 pub enum EventData {
-    ProjectCreated {
+    ProjectPublished {
         project_id: ProjectId,
         creator_id: CreatorId,
     },
@@ -104,7 +104,7 @@ impl TryFrom<DynamicId> for CreatorId {
 impl From<Event> for RawEvent {
     fn from(value: Event) -> Self {
         match value.event_data {
-            EventData::ProjectCreated {
+            EventData::ProjectPublished {
                 project_id,
                 creator_id,
             } => {
@@ -116,7 +116,7 @@ impl From<Event> for RawEvent {
                     target_id_type: target_id.id_type,
                     triggerer_id: Some(triggerer_id.id),
                     triggerer_id_type: Some(triggerer_id.id_type),
-                    event_type: EventType::ProjectCreated,
+                    event_type: EventType::ProjectPublished,
                     metadata: None,
                     created: None,
                 }
@@ -175,11 +175,11 @@ impl TryFrom<RawEvent> for Event {
         let event = Event {
             id : value.id,
             event_data : match value.event_type {
-                EventType::ProjectCreated => EventData::ProjectCreated {
+                EventType::ProjectPublished => EventData::ProjectPublished {
                     project_id: target_id.try_into()?,
                     creator_id: triggerer_id.map_or_else(|| {
                         Err(DatabaseError::UnexpectedNull(
-                            "Neither triggerer_id nor triggerer_id_type should be null for project creation".to_string(),
+                            "Neither triggerer_id nor triggerer_id_type should be null for project publishing".to_string(),
                         ))
                     }, |v| v.try_into())?,
                 },
@@ -242,7 +242,8 @@ impl Event {
             unzip_event_selectors(target_selectors);
         let (triggerer_ids, triggerer_id_types, triggerer_event_types) =
             unzip_event_selectors(triggerer_selectors);
-        sqlx::query_as!(
+
+        let r = sqlx::query_as!(
             RawEvent,
             r#"
             SELECT 
@@ -274,7 +275,9 @@ impl Event {
         .await?
         .into_iter()
         .map(|r| r.try_into())
-        .collect::<Result<Vec<_>, _>>()
+        .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(r)
     }
 }
 

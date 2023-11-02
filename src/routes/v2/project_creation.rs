@@ -1,6 +1,5 @@
 use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
-use crate::database::models::event_item::{CreatorId, Event, EventData};
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item, User};
 use crate::database::redis::RedisPool;
@@ -14,7 +13,7 @@ use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, SideType, VersionId,
     VersionStatus,
 };
-use crate::models::teams::ProjectPermissions;
+use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
@@ -453,6 +452,29 @@ async fn project_create_inner(
             }
         }
 
+        // If organization_id is set, make sure the user is a member of the organization
+        if let Some(organization_id) = create_data.organization_id {
+            let organization_team_member =
+                models::team_item::TeamMember::get_from_user_id_organization(
+                    organization_id.into(),
+                    current_user.id.into(),
+                    &mut **transaction,
+                )
+                .await?;
+
+            let permissions = OrganizationPermissions::get_permissions_by_role(
+                &current_user.role,
+                &organization_team_member,
+            )
+            .unwrap_or_default();
+
+            if !permissions.contains(OrganizationPermissions::ADD_PROJECT) {
+                return Err(CreateError::CustomAuthenticationError(
+                    "You do not have permission to add projects to this organization!".to_string(),
+                ));
+            }
+        }
+
         // Create VersionBuilders for the versions specified in `initial_versions`
         versions = Vec::with_capacity(create_data.initial_versions.len());
         for (i, data) in create_data.initial_versions.iter().enumerate() {
@@ -749,9 +771,6 @@ async fn project_create_inner(
         }
 
         let organization_id = project_create_data.organization_id.map(|id| id.into());
-        insert_project_create_event(project_id, organization_id, &current_user, transaction)
-            .await?;
-
         let project_builder_actual = models::project_item::ProjectBuilder {
             project_id: project_id.into(),
             project_type_id,
@@ -891,27 +910,6 @@ async fn project_create_inner(
 
         Ok(HttpResponse::Ok().json(response))
     }
-}
-
-async fn insert_project_create_event(
-    project_id: ProjectId,
-    organization_id: Option<models::OrganizationId>,
-    current_user: &crate::models::users::User,
-    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-) -> Result<(), CreateError> {
-    let event = Event::new(
-        EventData::ProjectCreated {
-            project_id: project_id.into(),
-            creator_id: organization_id.map_or_else(
-                || CreatorId::User(current_user.id.into()),
-                CreatorId::Organization,
-            ),
-        },
-        transaction,
-    )
-    .await?;
-    event.insert(transaction).await?;
-    Ok(())
 }
 
 async fn create_initial_version(

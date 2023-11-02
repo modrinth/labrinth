@@ -31,5 +31,17 @@ pub fn assert_feed_contains_project_created(
     feed: &[FeedItem],
     expected_project_id: labrinth::models::projects::ProjectId,
 ) {
-    assert!(feed.iter().any(|fi| matches!(fi.body, FeedItemBody::ProjectCreated { project_id, .. } if project_id == expected_project_id)), "{:#?}", &feed);
+    assert!(feed.iter().any(|fi| matches!(fi.body, FeedItemBody::ProjectPublished { project_id, .. } if project_id == expected_project_id)), "{:#?}", &feed);
+}
+pub fn assert_feed_contains_project_updated(
+    feed: &[FeedItem],
+    expected_project_id: labrinth::models::projects::ProjectId,
+) {
+    assert!(feed.iter().any(|fi| matches!(fi.body, FeedItemBody::ProjectUpdated { project_id, .. } if project_id == expected_project_id)), "{:#?}", &feed);
+}
+pub fn assert_feed_contains_version_created(
+    feed: &[FeedItem],
+    expected_version_id: labrinth::models::projects::VersionId,
+) {
+    assert!(feed.iter().any(|fi| matches!(fi.body, FeedItemBody::VersionCreated { version_id, .. } if version_id == expected_version_id)), "{:#?}", &feed);
 }

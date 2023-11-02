@@ -977,7 +977,6 @@ async fn insert_version_create_event(
     current_user: &crate::models::users::User,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<(), CreateError> {
-    println!("Adding version create event");
     let event = Event::new(
         EventData::VersionCreated {
             version_id: version_id.into(),

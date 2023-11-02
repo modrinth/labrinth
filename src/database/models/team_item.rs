@@ -390,6 +390,32 @@ impl TeamMember {
         }
     }
 
+    pub async fn get_owner_id<'a, 'b, E>(
+        id: TeamId,
+        executor: E,
+    ) -> Result<Option<UserId>, super::DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let result = sqlx::query!(
+            "
+            SELECT user_id
+            FROM team_members
+            WHERE (team_id = $1 AND role = $2)
+            ",
+            id as TeamId,
+            crate::models::teams::OWNER_ROLE,
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        if let Some(m) = result {
+            Ok(Some(UserId(m.user_id)))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn insert(
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,

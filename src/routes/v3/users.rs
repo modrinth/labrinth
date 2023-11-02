@@ -146,7 +146,7 @@ pub async fn current_user_feed(
     // - Projects updated by users you follow
     // - Projects updated by organizations you follow
     let event_types = [
-        EventType::ProjectCreated,
+        EventType::ProjectPublished,
         EventType::VersionCreated,
         EventType::ProjectUpdated,
     ];
@@ -172,8 +172,6 @@ pub async fn current_user_feed(
         .take(params.offset.unwrap_or(usize::MAX))
         .collect_vec();
 
-    println!("ALL EVENTS: {:#?}", events);
-
     let mut feed_items: Vec<FeedItem> = Vec::new();
     let authorized_versions =
         prefetch_authorized_event_versions(&events, &pool, &redis, &current_user).await?;
@@ -190,22 +188,14 @@ pub async fn current_user_feed(
     )
     .await?;
 
-    println!(
-        "All authorized versoins: {:#?}",
-        serde_json::to_string(&authorized_versions).unwrap()
-    );
-    println!(
-        "All authorized projects: {:#?}",
-        serde_json::to_string(&authorized_projects).unwrap()
-    );
     for event in events {
         let body =
             match event.event_data {
-                EventData::ProjectCreated {
+                EventData::ProjectPublished {
                     project_id,
                     creator_id,
                 } => authorized_projects.get(&project_id.into()).map(|p| {
-                    FeedItemBody::ProjectCreated {
+                    FeedItemBody::ProjectPublished {
                         project_id: project_id.into(),
                         creator_id: creator_id.into(),
                         project_title: p.title.clone(),
@@ -225,18 +215,9 @@ pub async fn current_user_feed(
                     version_id,
                     creator_id,
                 } => {
-                    println!("Making version ev");
                     let authorized_version = authorized_versions.get(&version_id.into());
                     let authorized_project =
                         authorized_version.and_then(|v| authorized_projects.get(&v.project_id));
-                    println!(
-                        "av: {:#?}",
-                        serde_json::to_string(&authorized_version).unwrap()
-                    );
-                    println!(
-                        "ap: {:#?}",
-                        serde_json::to_string(&authorized_project).unwrap()
-                    );
                     if let (Some(authorized_version), Some(authorized_project)) =
                         (authorized_version, authorized_project)
                     {
@@ -276,7 +257,7 @@ async fn prefetch_authorized_event_projects(
     let mut project_ids = events
         .iter()
         .filter_map(|e| match &e.event_data {
-            EventData::ProjectCreated {
+            EventData::ProjectPublished {
                 project_id,
                 creator_id: _,
             } => Some(*project_id),
@@ -316,7 +297,7 @@ async fn prefetch_authorized_event_versions(
                 version_id,
                 creator_id: _,
             } => Some(*version_id),
-            EventData::ProjectCreated { .. } => None,
+            EventData::ProjectPublished { .. } => None,
             EventData::ProjectUpdated { .. } => None,
         })
         .collect_vec();

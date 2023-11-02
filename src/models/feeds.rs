@@ -29,7 +29,7 @@ pub struct FeedItem {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FeedItemBody {
-    ProjectCreated {
+    ProjectPublished {
         project_id: ProjectId,
         creator_id: CreatorId,
         project_title: String,

@@ -4,7 +4,7 @@ use crate::database::models::event_item::{CreatorId, EventData};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
-use crate::database::models::{image_item, Event};
+use crate::database::models::{image_item, team_item, Event};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
@@ -25,13 +25,14 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
-use db_ids::OrganizationId;
+use db_ids::{OrganizationId, UserId};
 use futures::TryStreamExt;
 use meilisearch_sdk::indexes::IndexesResults;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
+use team_item::TeamMember;
 use validator::Validate;
 
 use database::models as db_models;
@@ -528,6 +529,21 @@ pub async fn project_edit(
                     )
                     .execute(&mut *transaction)
                     .await?;
+
+                    // On publish event, we send out notification using team *owner* as publishing user, at the time of mod approval
+                    // (even though 'user' is the mod and doing the publishing)
+                    let owner_id =
+                        TeamMember::get_owner_id(project_item.inner.team_id, &mut *transaction)
+                            .await?;
+                    if let Some(owner_id) = owner_id {
+                        insert_project_publish_event(
+                            id.into(),
+                            project_item.inner.organization_id,
+                            owner_id,
+                            &mut transaction,
+                        )
+                        .await?;
+                    }
                 }
 
                 if status.is_searchable() && !project_item.inner.webhook_sent {
@@ -1120,13 +1136,15 @@ pub async fn project_edit(
             )
             .await?;
 
-            insert_project_update_event(
-                id.into(),
-                project_item.inner.organization_id,
-                &user,
-                &mut transaction,
-            )
-            .await?;
+            if project_item.inner.status.is_searchable() {
+                insert_project_update_event(
+                    project_item.inner.id.into(),
+                    project_item.inner.organization_id,
+                    &user,
+                    &mut transaction,
+                )
+                .await?;
+            }
 
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
@@ -1477,13 +1495,15 @@ pub async fn projects_edit(
             .await?;
         }
 
-        insert_project_update_event(
-            project.inner.id.into(),
-            project.inner.organization_id,
-            &user,
-            &mut transaction,
-        )
-        .await?;
+        if project.inner.status.is_searchable() {
+            insert_project_update_event(
+                project.inner.id.into(),
+                project.inner.organization_id,
+                &user,
+                &mut transaction,
+            )
+            .await?;
+        }
 
         db_models::Project::clear_cache(project.inner.id, project.inner.slug, None, &redis).await?;
     }
@@ -2590,6 +2610,25 @@ async fn insert_project_update_event(
                 || CreatorId::User(current_user.id.into()),
                 CreatorId::Organization,
             ),
+        },
+        transaction,
+    )
+    .await?;
+    event.insert(transaction).await?;
+    Ok(())
+}
+
+async fn insert_project_publish_event(
+    project_id: ProjectId,
+    organization_id: Option<OrganizationId>,
+    owner_id: UserId,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), ApiError> {
+    let event = Event::new(
+        EventData::ProjectPublished {
+            project_id: project_id.into(),
+            creator_id: organization_id
+                .map_or_else(|| CreatorId::User(owner_id), CreatorId::Organization),
         },
         transaction,
     )

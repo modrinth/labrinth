@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT user_id\n            FROM team_members\n            WHERE (team_id = $1 AND role = $2)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0be48b74255947b8550eb98dfba0bafd0038147973cf7c9a2c4d0bd33f4776ab"
+}
