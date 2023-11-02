@@ -1,9 +1,10 @@
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
 use crate::database;
-use crate::database::models::image_item;
+use crate::database::models::event_item::{CreatorId, EventData};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
+use crate::database::models::{image_item, Event};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
@@ -24,6 +25,7 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
+use db_ids::OrganizationId;
 use futures::TryStreamExt;
 use meilisearch_sdk::indexes::IndexesResults;
 use serde::{Deserialize, Serialize};
@@ -1118,6 +1120,14 @@ pub async fn project_edit(
             )
             .await?;
 
+            insert_project_update_event(
+                id.into(),
+                project_item.inner.organization_id,
+                &user,
+                &mut transaction,
+            )
+            .await?;
+
             transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
@@ -1466,6 +1476,14 @@ pub async fn projects_edit(
             .execute(&mut *transaction)
             .await?;
         }
+
+        insert_project_update_event(
+            project.inner.id.into(),
+            project.inner.organization_id,
+            &user,
+            &mut transaction,
+        )
+        .await?;
 
         db_models::Project::clear_cache(project.inner.id, project.inner.slug, None, &redis).await?;
     }
@@ -2556,5 +2574,26 @@ pub async fn delete_from_index(
         index.delete_document(id.to_string()).await?;
     }
 
+    Ok(())
+}
+
+async fn insert_project_update_event(
+    project_id: ProjectId,
+    organization_id: Option<OrganizationId>,
+    current_user: &crate::models::users::User,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), ApiError> {
+    let event = Event::new(
+        EventData::ProjectUpdated {
+            project_id: project_id.into(),
+            updater_id: organization_id.map_or_else(
+                || CreatorId::User(current_user.id.into()),
+                CreatorId::Organization,
+            ),
+        },
+        transaction,
+    )
+    .await?;
+    event.insert(transaction).await?;
     Ok(())
 }

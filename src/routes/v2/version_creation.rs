@@ -1,10 +1,11 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
+use crate::database::models::event_item::{CreatorId, EventData};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
     DependencyBuilder, VersionBuilder, VersionFileBuilder,
 };
-use crate::database::models::{self, image_item, Organization};
+use crate::database::models::{self, image_item, Event, Organization};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::images::{Image, ImageContext, ImageId};
@@ -303,6 +304,14 @@ async fn version_create_inner(
                         file_name: None,
                     })
                     .collect::<Vec<_>>();
+
+                insert_version_create_event(
+                    version_id,
+                    organization.map(|o| o.id),
+                    &user,
+                    transaction,
+                )
+                .await?;
 
                 version_builder = Some(VersionBuilder {
                     version_id: version_id.into(),
@@ -960,4 +969,26 @@ pub fn get_name_ext(
         ));
     };
     Ok((file_name, file_extension))
+}
+
+async fn insert_version_create_event(
+    version_id: VersionId,
+    organization_id: Option<models::OrganizationId>,
+    current_user: &crate::models::users::User,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), CreateError> {
+    println!("Adding version create event");
+    let event = Event::new(
+        EventData::VersionCreated {
+            version_id: version_id.into(),
+            creator_id: organization_id.map_or_else(
+                || CreatorId::User(current_user.id.into()),
+                CreatorId::Organization,
+            ),
+        },
+        transaction,
+    )
+    .await?;
+    event.insert(transaction).await?;
+    Ok(())
 }

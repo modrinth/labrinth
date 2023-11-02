@@ -590,7 +590,7 @@ async fn filter_allowed_ids(
             .map(|id| Ok(VersionId(parse_base62(id)?).into()))
             .collect::<Result<Vec<_>, ApiError>>()?;
         let versions = version_item::Version::get_many(&ids, &***pool, redis).await?;
-        let ids: Vec<VersionId> = filter_authorized_versions(versions, &Some(user), pool)
+        let ids: Vec<VersionId> = filter_authorized_versions(versions, Some(&user), pool)
             .await?
             .into_iter()
             .map(|x| x.id)

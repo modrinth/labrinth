@@ -1,7 +1,7 @@
 use std::{collections::HashMap, iter::FromIterator};
 
 use crate::{
-    auth::{filter_authorized_projects, get_user_from_headers},
+    auth::{filter_authorized_projects, filter_authorized_versions, get_user_from_headers},
     database::{
         self,
         models::{
@@ -12,9 +12,9 @@ use crate::{
     },
     models::{
         feeds::{FeedItem, FeedItemBody},
-        ids::ProjectId,
+        ids::{ProjectId, VersionId},
         pats::Scopes,
-        projects::Project,
+        projects::{Project, Version},
         users::User,
     },
     queue::session::AuthQueue,
@@ -105,7 +105,7 @@ pub async fn user_unfollow(
         .await?
         .ok_or_else(|| ApiError::InvalidInput("The specified user does not exist!".to_string()))?;
 
-    DBUserFollow::unfollow(current_user.id.into(), target.id.into(), &**pool).await?;
+    DBUserFollow::unfollow(current_user.id.into(), target.id, &**pool).await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -138,20 +138,32 @@ pub async fn current_user_feed(
     let followed_organizations =
         DBOrganizationFollow::get_follows_by_follower(current_user.id.into(), &**pool).await?;
 
+    // Feed by default shows the following:
+    // - Projects created by users you follow
+    // - Projects created by organizations you follow
+    // - Versions created by users you follow
+    // - Versions created by organizations you follow
+    // - Projects updated by users you follow
+    // - Projects updated by organizations you follow
+    let event_types = [
+        EventType::ProjectCreated,
+        EventType::VersionCreated,
+        EventType::ProjectUpdated,
+    ];
     let selectors = followed_users
         .into_iter()
-        .map(|follow| EventSelector {
-            id: follow.target_id.into(),
-            event_type: EventType::ProjectCreated,
+        .flat_map(|follow| {
+            event_types.iter().map(move |event_type| EventSelector {
+                id: follow.target_id.into(),
+                event_type: *event_type,
+            })
         })
-        .chain(
-            followed_organizations
-                .into_iter()
-                .map(|follow| EventSelector {
-                    id: follow.target_id.into(),
-                    event_type: EventType::ProjectCreated,
-                }),
-        )
+        .chain(followed_organizations.into_iter().flat_map(|follow| {
+            event_types.iter().map(move |event_type| EventSelector {
+                id: follow.target_id.into(),
+                event_type: *event_type,
+            })
+        }))
         .collect_vec();
     let events = DBEvent::get_events(&[], &selectors, &**pool)
         .await?
@@ -160,9 +172,32 @@ pub async fn current_user_feed(
         .take(params.offset.unwrap_or(usize::MAX))
         .collect_vec();
 
+    println!("ALL EVENTS: {:#?}", events);
+
     let mut feed_items: Vec<FeedItem> = Vec::new();
-    let authorized_projects =
-        prefetch_authorized_event_projects(&events, &pool, &redis, &current_user).await?;
+    let authorized_versions =
+        prefetch_authorized_event_versions(&events, &pool, &redis, &current_user).await?;
+    let authorized_version_project_ids = authorized_versions
+        .values()
+        .map(|versions| versions.project_id)
+        .collect_vec();
+    let authorized_projects = prefetch_authorized_event_projects(
+        &events,
+        Some(&authorized_version_project_ids),
+        &pool,
+        &redis,
+        &current_user,
+    )
+    .await?;
+
+    println!(
+        "All authorized versoins: {:#?}",
+        serde_json::to_string(&authorized_versions).unwrap()
+    );
+    println!(
+        "All authorized projects: {:#?}",
+        serde_json::to_string(&authorized_projects).unwrap()
+    );
     for event in events {
         let body =
             match event.event_data {
@@ -176,6 +211,45 @@ pub async fn current_user_feed(
                         project_title: p.title.clone(),
                     }
                 }),
+                EventData::ProjectUpdated {
+                    project_id,
+                    updater_id,
+                } => authorized_projects.get(&project_id.into()).map(|p| {
+                    FeedItemBody::ProjectUpdated {
+                        project_id: project_id.into(),
+                        updater_id: updater_id.into(),
+                        project_title: p.title.clone(),
+                    }
+                }),
+                EventData::VersionCreated {
+                    version_id,
+                    creator_id,
+                } => {
+                    println!("Making version ev");
+                    let authorized_version = authorized_versions.get(&version_id.into());
+                    let authorized_project =
+                        authorized_version.and_then(|v| authorized_projects.get(&v.project_id));
+                    println!(
+                        "av: {:#?}",
+                        serde_json::to_string(&authorized_version).unwrap()
+                    );
+                    println!(
+                        "ap: {:#?}",
+                        serde_json::to_string(&authorized_project).unwrap()
+                    );
+                    if let (Some(authorized_version), Some(authorized_project)) =
+                        (authorized_version, authorized_project)
+                    {
+                        Some(FeedItemBody::VersionCreated {
+                            project_id: authorized_project.id,
+                            version_id: authorized_version.id,
+                            creator_id: creator_id.into(),
+                            project_title: authorized_project.title.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                }
             };
 
         if let Some(body) = body {
@@ -194,23 +268,62 @@ pub async fn current_user_feed(
 
 async fn prefetch_authorized_event_projects(
     events: &[db_models::Event],
+    additional_ids: Option<&[ProjectId]>,
     pool: &web::Data<PgPool>,
     redis: &RedisPool,
     current_user: &User,
 ) -> Result<HashMap<ProjectId, Project>, ApiError> {
-    let project_ids = events
+    let mut project_ids = events
         .iter()
-        .map(|e| match &e.event_data {
+        .filter_map(|e| match &e.event_data {
             EventData::ProjectCreated {
                 project_id,
                 creator_id: _,
-            } => *project_id,
+            } => Some(*project_id),
+            EventData::ProjectUpdated {
+                project_id,
+                updater_id: _,
+            } => Some(*project_id),
+            EventData::VersionCreated { .. } => None,
         })
         .collect_vec();
+    if let Some(additional_ids) = additional_ids {
+        project_ids.extend(
+            additional_ids
+                .iter()
+                .copied()
+                .map(db_models::ProjectId::from),
+        );
+    }
     let projects = db_models::Project::get_many_ids(&project_ids, &***pool, redis).await?;
     let authorized_projects =
         filter_authorized_projects(projects, Some(current_user), pool).await?;
     Ok(HashMap::<ProjectId, Project>::from_iter(
         authorized_projects.into_iter().map(|p| (p.id, p)),
+    ))
+}
+
+async fn prefetch_authorized_event_versions(
+    events: &[db_models::Event],
+    pool: &web::Data<PgPool>,
+    redis: &RedisPool,
+    current_user: &User,
+) -> Result<HashMap<VersionId, Version>, ApiError> {
+    let version_ids = events
+        .iter()
+        .filter_map(|e| match &e.event_data {
+            EventData::VersionCreated {
+                version_id,
+                creator_id: _,
+            } => Some(*version_id),
+            EventData::ProjectCreated { .. } => None,
+            EventData::ProjectUpdated { .. } => None,
+        })
+        .collect_vec();
+    let versions = db_models::Version::get_many(&version_ids, &***pool, redis).await?;
+    let authorized_versions =
+        filter_authorized_versions(versions, Some(current_user), pool).await?;
+    Ok(HashMap::<VersionId, Version>::from_iter(
+        authorized_versions.into_iter().map(|v| (v.id, v)),
     ))
 }

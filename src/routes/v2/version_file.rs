@@ -378,7 +378,7 @@ pub async fn get_versions_from_hashes(
     let version_ids = files.iter().map(|x| x.version_id).collect::<Vec<_>>();
     let versions_data = filter_authorized_versions(
         database::models::Version::get_many(&version_ids, &**pool, &redis).await?,
-        &user_option,
+        user_option.as_ref(),
         &pool,
     )
     .await?;

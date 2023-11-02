@@ -191,7 +191,7 @@ impl ValidateAuthorized for crate::database::models::OAuthClient {
 
 pub async fn filter_authorized_versions(
     versions: Vec<QueryVersion>,
-    user_option: &Option<User>,
+    user_option: Option<&User>,
     pool: &web::Data<PgPool>,
 ) -> Result<Vec<crate::models::projects::Version>, ApiError> {
     let mut return_versions = Vec::new();

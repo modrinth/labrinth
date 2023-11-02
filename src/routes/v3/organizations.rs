@@ -88,7 +88,7 @@ pub async fn organization_unfollow(
             ApiError::InvalidInput("The specified organization does not exist!".to_string())
         })?;
 
-    DBOrganizationFollow::unfollow(current_user.id.into(), target.id.into(), &**pool).await?;
+    DBOrganizationFollow::unfollow(current_user.id.into(), target.id, &**pool).await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }

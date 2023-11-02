@@ -3,11 +3,13 @@ use itertools::Itertools;
 use super::{OrganizationId, UserId};
 use crate::database::models::DatabaseError;
 
+#[derive(Copy, Clone, Debug)]
 pub struct UserFollow {
     pub follower_id: UserId,
     pub target_id: UserId,
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct OrganizationFollow {
     pub follower_id: UserId,
     pub target_id: OrganizationId,

@@ -463,6 +463,7 @@ pub mod dynamic {
         ProjectId,
         UserId,
         OrganizationId,
+        VersionId,
     }
 
     impl PgHasArrayType for IdType {
@@ -506,6 +507,7 @@ pub mod dynamic {
     }
 
     from_static_impl!(ProjectId, IdType::ProjectId);
+    from_static_impl!(VersionId, IdType::VersionId);
     from_static_impl!(UserId, IdType::UserId);
     from_static_impl!(OrganizationId, IdType::OrganizationId);
 }

@@ -1,6 +1,6 @@
 use super::{
     dynamic::{DynamicId, IdType},
-    generate_event_id, DatabaseError, EventId, OrganizationId, ProjectId, UserId,
+    generate_event_id, DatabaseError, EventId, OrganizationId, ProjectId, UserId, VersionId,
 };
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -12,6 +12,8 @@ use std::convert::{TryFrom, TryInto};
 #[sqlx(rename_all = "snake_case")]
 pub enum EventType {
     ProjectCreated,
+    VersionCreated,
+    ProjectUpdated,
 }
 
 impl PgHasArrayType for EventType {
@@ -20,18 +22,29 @@ impl PgHasArrayType for EventType {
     }
 }
 
+#[derive(Debug)]
 pub enum CreatorId {
     User(UserId),
     Organization(OrganizationId),
 }
 
+#[derive(Debug)]
 pub enum EventData {
     ProjectCreated {
         project_id: ProjectId,
         creator_id: CreatorId,
     },
+    VersionCreated {
+        version_id: VersionId,
+        creator_id: CreatorId,
+    },
+    ProjectUpdated {
+        project_id: ProjectId,
+        updater_id: CreatorId,
+    },
 }
 
+#[derive(Debug)]
 pub struct Event {
     pub id: EventId,
     pub event_data: EventData,
@@ -108,6 +121,40 @@ impl From<Event> for RawEvent {
                     created: None,
                 }
             }
+            EventData::VersionCreated {
+                version_id,
+                creator_id,
+            } => {
+                let target_id = DynamicId::from(version_id);
+                let triggerer_id = DynamicId::from(creator_id);
+                RawEvent {
+                    id: value.id,
+                    target_id: target_id.id,
+                    target_id_type: target_id.id_type,
+                    triggerer_id: Some(triggerer_id.id),
+                    triggerer_id_type: Some(triggerer_id.id_type),
+                    event_type: EventType::VersionCreated,
+                    metadata: None,
+                    created: None,
+                }
+            }
+            EventData::ProjectUpdated {
+                project_id,
+                updater_id,
+            } => {
+                let target_id = DynamicId::from(project_id);
+                let triggerer_id = DynamicId::from(updater_id);
+                RawEvent {
+                    id: value.id,
+                    target_id: target_id.id,
+                    target_id_type: target_id.id_type,
+                    triggerer_id: Some(triggerer_id.id),
+                    triggerer_id_type: Some(triggerer_id.id_type),
+                    event_type: EventType::ProjectUpdated,
+                    metadata: None,
+                    created: None,
+                }
+            }
         }
     }
 }
@@ -124,10 +171,11 @@ impl TryFrom<RawEvent> for Event {
             (Some(id), Some(id_type)) => Some(DynamicId { id, id_type }),
             _ => None,
         };
-        Ok(match value.event_type {
-            EventType::ProjectCreated => Event {
-                id: value.id,
-                event_data: EventData::ProjectCreated {
+
+        let event = Event {
+            id : value.id,
+            event_data : match value.event_type {
+                EventType::ProjectCreated => EventData::ProjectCreated {
                     project_id: target_id.try_into()?,
                     creator_id: triggerer_id.map_or_else(|| {
                         Err(DatabaseError::UnexpectedNull(
@@ -135,16 +183,34 @@ impl TryFrom<RawEvent> for Event {
                         ))
                     }, |v| v.try_into())?,
                 },
-                time: value.created.map_or_else(
-                    || {
+                EventType::VersionCreated => EventData::VersionCreated {
+                    version_id: target_id.try_into()?,
+                    creator_id: triggerer_id.map_or_else(|| {
                         Err(DatabaseError::UnexpectedNull(
-                            "the value of created should not be null".to_string(),
+                            "Neither triggerer_id nor triggerer_id_type should be null for version creation".to_string(),
                         ))
-                    },
-                    Ok,
-                )?,
+                    }, |v| v.try_into())?,
+                },
+                EventType::ProjectUpdated => EventData::ProjectUpdated {
+                    project_id: target_id.try_into()?,
+                    updater_id: triggerer_id.map_or_else(|| {
+                        Err(DatabaseError::UnexpectedNull(
+                            "Neither triggerer_id nor triggerer_id_type should be null for project update".to_string(),
+                        ))
+                    }, |v| v.try_into())?,
+                },
             },
-        })
+            time : value.created.map_or_else(
+                || {
+                    Err(DatabaseError::UnexpectedNull(
+                        "the value of created should not be null".to_string(),
+                    ))
+                },
+                Ok,
+            )?,
+        };
+
+        Ok(event)
     }
 }
 
