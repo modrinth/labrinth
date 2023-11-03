@@ -72,15 +72,11 @@ pub async fn user_follow(
     .insert(&**pool)
     .await
     .map_err(|e| match e {
-        DatabaseError::Database(e) => {
-            if let Some(db_err) = e.as_database_error() {
-                if db_err.is_unique_violation() {
-                    return ApiError::InvalidInput(
-                        "You are already following this user!".to_string(),
-                    );
-                }
-            }
-            e.into()
+        DatabaseError::Database(e)
+            if e.as_database_error()
+                .is_some_and(|e| e.is_unique_violation()) =>
+        {
+            ApiError::InvalidInput("You are already following this user!".to_string())
         }
         e => e.into(),
     })?;
@@ -147,7 +143,10 @@ pub async fn current_user_feed(
     // - Projects created by organizations you follow
     // - Versions created by users you follow
     // - Versions created by organizations you follow
-    let event_types = [EventType::ProjectPublished, EventType::VersionCreated];
+    let event_types = [
+        EventType::ProjectPublished,
+        EventType::VersionCreated,
+    ];
     let selectors = followed_users
         .into_iter()
         .flat_map(|follow| {
@@ -187,38 +186,39 @@ pub async fn current_user_feed(
     .await?;
 
     for event in events {
-        let body = match event.event_data {
-            EventData::ProjectPublished {
-                project_id,
-                creator_id,
-            } => authorized_projects.get(&project_id.into()).map(|p| {
-                FeedItemBody::ProjectPublished {
-                    project_id: project_id.into(),
-                    creator_id: creator_id.into(),
-                    project_title: p.title.clone(),
-                }
-            }),
-            EventData::VersionCreated {
-                version_id,
-                creator_id,
-            } => {
-                let authorized_version = authorized_versions.get(&version_id.into());
-                let authorized_project =
-                    authorized_version.and_then(|v| authorized_projects.get(&v.project_id));
-                if let (Some(authorized_version), Some(authorized_project)) =
-                    (authorized_version, authorized_project)
-                {
-                    Some(FeedItemBody::VersionCreated {
-                        project_id: authorized_project.id,
-                        version_id: authorized_version.id,
+        let body =
+            match event.event_data {
+                EventData::ProjectPublished {
+                    project_id,
+                    creator_id,
+                } => authorized_projects.get(&project_id.into()).map(|p| {
+                    FeedItemBody::ProjectPublished {
+                        project_id: project_id.into(),
                         creator_id: creator_id.into(),
-                        project_title: authorized_project.title.clone(),
-                    })
-                } else {
-                    None
+                        project_title: p.title.clone(),
+                    }
+                }),
+                EventData::VersionCreated {
+                    version_id,
+                    creator_id,
+                } => {
+                    let authorized_version = authorized_versions.get(&version_id.into());
+                    let authorized_project =
+                        authorized_version.and_then(|v| authorized_projects.get(&v.project_id));
+                    if let (Some(authorized_version), Some(authorized_project)) =
+                        (authorized_version, authorized_project)
+                    {
+                        Some(FeedItemBody::VersionCreated {
+                            project_id: authorized_project.id,
+                            version_id: authorized_version.id,
+                            creator_id: creator_id.into(),
+                            project_title: authorized_project.title.clone(),
+                        })
+                    } else {
+                        None
+                    }
                 }
-            }
-        };
+            };
 
         if let Some(body) = body {
             let feed_item = FeedItem {
