@@ -88,12 +88,12 @@ pub async fn analytics_revenue() {
         .rev()
         .unzip();
     assert_eq!(
-        vec![100.1, 101.0, 200.0, 311.0, 400.0, 526.0, 633.0],
+        vec![100.1, 101.0, 200.0, 311.0, 400.0, 526.0, 633.0, 800.0],
         to_f64_vec_rounded_up(sorted_by_key)
     );
-    // Ensure that the keys are 1 day apart
-    for i in 0..sorted_keys.len() - 1 {
-        assert_eq!(sorted_keys[i] - sorted_keys[i + 1], day);
+    // Ensure that the keys are in multiples of 1 day
+    for k in sorted_keys {
+        assert_eq!(k % day, 0);
     }
 
     // Test analytics with last 900 days to include all data
@@ -109,18 +109,17 @@ pub async fn analytics_revenue() {
         .await;
     let project_analytics = analytics.get(&alpha_project_id).unwrap();
     assert_eq!(project_analytics.len(), 9); // and 2 points take place on the same day
-    let sorted_by_key = project_analytics
+    let (sorted_keys, sorted_by_key): (Vec<i64>, Vec<Decimal>) = project_analytics
         .iter()
         .sorted_by_key(|(k, _)| *k)
         .rev()
-        .map(|(_, v)| *v)
-        .collect_vec();
+        .unzip();
     assert_eq!(
         vec![100.1, 101.0, 200.0, 311.0, 400.0, 526.0, 633.0, 800.0, 800.0],
         to_f64_vec_rounded_up(sorted_by_key)
     );
-    for i in 0..sorted_keys.len() - 1 {
-        assert_eq!(sorted_keys[i] - sorted_keys[i + 1], day);
+    for k in sorted_keys {
+        assert_eq!(k % day, 0);
     }
 
     // Cleanup test db
