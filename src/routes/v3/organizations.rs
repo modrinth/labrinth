@@ -53,11 +53,15 @@ pub async fn organization_follow(
     .insert(&**pool)
     .await
     .map_err(|e| match e {
-        DatabaseError::Database(e)
-            if e.as_database_error()
-                .is_some_and(|e| e.is_unique_violation()) =>
-        {
-            ApiError::InvalidInput("You are already following this organization!".to_string())
+        DatabaseError::Database(e) => {
+            if let Some(db_err) = e.as_database_error() {
+                if db_err.is_unique_violation() {
+                    return ApiError::InvalidInput(
+                        "You are already following this organization!".to_string(),
+                    );
+                }
+            }
+            e.into()
         }
         e => e.into(),
     })?;

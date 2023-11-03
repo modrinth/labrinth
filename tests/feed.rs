@@ -1,8 +1,5 @@
 use crate::common::{
-    asserts::{
-        assert_feed_contains_project_created,
-        assert_feed_contains_version_created,
-    },
+    asserts::{assert_feed_contains_project_created, assert_feed_contains_version_created},
     dummy_data::DummyProjectAlpha,
 };
 use assert_matches::assert_matches;
