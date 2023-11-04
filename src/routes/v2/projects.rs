@@ -1,4 +1,6 @@
-use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
+use crate::auth::{
+    filter_authorized_projects, filter_authorized_versions, get_user_from_headers, is_authorized,
+};
 use crate::database;
 use crate::database::models::image_item;
 use crate::database::models::notification_item::NotificationBuilder;
@@ -7,7 +9,7 @@ use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::ids::base62_impl::parse_base62;
+use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::images::ImageContext;
 use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
@@ -22,7 +24,7 @@ use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::img;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, http::header, patch, post, route, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
 use meilisearch_sdk::indexes::IndexesResults;
@@ -52,6 +54,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(add_gallery_item)
             .service(edit_gallery_item)
             .service(delete_gallery_item)
+            .service(project_feed)
             .service(project_follow)
             .service(project_unfollow)
             .service(project_schedule)
@@ -2557,4 +2560,215 @@ pub async fn delete_from_index(
     }
 
     Ok(())
+}
+
+#[route("{id}/feed", method = "GET", method = "HEAD")]
+pub async fn project_feed(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+) -> Result<HttpResponse, ApiError> {
+    let site_url = dotenvy::var("SITE_URL")?;
+    let self_addr = dotenvy::var("SELF_ADDR")?;
+    let mut markdown_options = comrak::Options::default();
+    // enable gfm options
+    markdown_options.extension.strikethrough = true;
+    markdown_options.extension.tagfilter = true;
+    markdown_options.extension.table = true;
+    markdown_options.extension.autolink = true;
+    markdown_options.extension.tasklist = true;
+
+    let string = info.into_inner().0;
+    let Some(project_data) = db_models::Project::get(&string, &**pool, &redis).await? else {
+        return Ok(HttpResponse::NotFound().body(""));
+    };
+    if !is_authorized(&project_data.inner, &None, &pool).await? {
+        return Ok(HttpResponse::NotFound().body(""));
+    }
+    let versions = db_models::Version::get_many(&project_data.versions, &**pool, &redis).await?;
+    let mut member_user_ids =
+        db_models::TeamMember::get_from_team_full(project_data.inner.team_id, &**pool, &redis)
+            .await?
+            .iter()
+            .map(|x| x.user_id)
+            .collect::<Vec<_>>();
+    if let Some(oid) = project_data.inner.organization_id {
+        let organization_data = db_models::Organization::get_id(oid, &**pool, &redis).await?;
+        if let Some(organization_data) = organization_data {
+            let org_team = db_models::TeamMember::get_from_team_full(
+                organization_data.team_id,
+                &**pool,
+                &redis,
+            )
+            .await?;
+            for member in org_team {
+                if !member_user_ids.contains(&member.user_id) {
+                    member_user_ids.push(member.user_id);
+                }
+            }
+        }
+    }
+    for v in &versions {
+        if !member_user_ids.contains(&v.inner.author_id) {
+            member_user_ids.push(v.inner.author_id);
+        }
+    }
+    let users = db_models::User::get_many_ids(&member_user_ids, &**pool, &redis)
+        .await?
+        .into_iter()
+        .map(|u| models::users::User::from(u))
+        .collect::<Vec<_>>();
+    let authors = users
+        .iter()
+        .map(|u| atom_syndication::Person {
+            uri: Some(format!("{site_url}/user/{}", &u.username)),
+            name: u.username.clone(),
+            email: None,
+        })
+        .collect::<Vec<_>>();
+    let mut versions = filter_authorized_versions(versions, &None, &pool).await?;
+    versions.sort_by(|a, b| b.date_published.cmp(&a.date_published));
+
+    let project = models::projects::Project::from(project_data);
+    let project_id = to_base62(project.id.0);
+    let project_slug = project.slug.as_ref().unwrap_or(&project_id);
+    let mut feed = atom_syndication::Feed::default();
+    feed.title = atom_syndication::Text::plain(project.title.to_string());
+    feed.links.push(atom_syndication::Link {
+        href: format!("{site_url}/mod/{project_slug}"),
+        rel: "alternate".to_string(),
+        mime_type: Some("text/html".to_string()),
+        title: Some(project.title.to_string()),
+        hreflang: None,
+        length: None,
+    });
+    feed.links.push(atom_syndication::Link {
+        href: format!("{self_addr}/project/{project_slug}/feed"),
+        rel: "self".to_string(),
+        mime_type: Some("application/atom+xml".to_string()),
+        title: Some(project.title.to_string()),
+        hreflang: None,
+        length: None,
+    });
+    feed.icon = project.icon_url;
+    feed.id = format!("{site_url}/mod/{project_id}");
+    feed.updated = project.updated.fixed_offset();
+    feed.rights = Some(project.license.name.into());
+    for category in &project.categories {
+        feed.categories.push(atom_syndication::Category {
+            term: category.to_string(),
+            label: Some(category.to_string()),
+            scheme: None,
+        });
+    }
+    for version in &versions {
+        let version_id = to_base62(version.id.0);
+        let version_slug = if versions
+            .iter()
+            .filter(|v| v.version_number == version.version_number)
+            .count()
+            == 1
+        {
+            &version.version_number
+        } else {
+            &version_id
+        };
+        let link = format!("{site_url}/mod/{project_slug}/version/{version_slug}");
+        let mut entry = atom_syndication::Entry::default();
+        entry.id = format!("{site_url}/mod/{project_id}/version/{version_id}");
+        entry.title = atom_syndication::Text::plain(&version.name);
+        entry.updated = version.date_published.fixed_offset();
+        entry.published = Some(version.date_published.fixed_offset());
+        let rendered_changelog = comrak::markdown_to_html(&version.changelog, &markdown_options);
+        if rendered_changelog.trim().is_empty() {
+            entry.summary = Some(atom_syndication::Text::plain(&version.name));
+            entry.content = Some(atom_syndication::Content {
+                src: Some(link.clone()),
+                content_type: Some("text/html".to_string()),
+                base: None,
+                lang: None,
+                value: None,
+            });
+        } else {
+            entry.content = Some(atom_syndication::Content {
+                base: Some(link.clone()),
+                content_type: Some("html".to_string()),
+                value: Some(rendered_changelog.to_string()),
+                lang: None,
+                src: None,
+            });
+        }
+        entry.links.push(atom_syndication::Link {
+            href: link.clone(),
+            rel: "alternate".to_string(),
+            mime_type: Some("text/html".to_string()),
+            title: Some(version.name.to_string()),
+            hreflang: None,
+            length: None,
+        });
+        entry.authors = match users.iter().find(|u| u.id == version.author_id) {
+            Some(u) => vec![atom_syndication::Person {
+                name: u.username.clone(),
+                uri: Some(format!("{site_url}/user/{}", &u.username)),
+                email: None,
+            }],
+            None => authors.clone(), // this should be unreachable
+        };
+        entry.categories = version
+            .loaders
+            .iter()
+            .map(|l| &l.0)
+            .chain(version.game_versions.iter().map(|gv| &gv.0))
+            .map(|category| atom_syndication::Category {
+                label: Some(category.to_string()),
+                term: category.to_string(),
+                scheme: None,
+            })
+            .collect();
+        feed.entries.push(entry);
+    }
+    feed.authors = authors;
+    let mut out = vec![];
+    match feed.write_with_config(
+        &mut out,
+        atom_syndication::WriteConfig {
+            write_document_declaration: true,
+            indent_size: Some(4),
+        },
+    ) {
+        Ok(_) => (),
+        Err(e) => return Err(ApiError::Xml(format!("failed to generate feed: {e}"))),
+    }
+    let checksum = {
+        use hex::ToHex;
+        use sha2::Digest;
+
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(&out);
+        hasher.finalize().encode_hex()
+    };
+    let mut response = HttpResponse::Ok();
+    response.content_type("application/atom+xml");
+    response.append_header((header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"));
+    response.append_header(header::CacheControl(vec![header::CacheDirective::MaxAge(
+        3600,
+    )]));
+    let entity_tag = header::EntityTag::new(false, checksum);
+    response.append_header(header::ETag(entity_tag.clone()));
+    response.append_header(header::ContentLength(out.len()));
+    if let Ok(if_none_match) = <header::IfNoneMatch as header::Header>::parse(&req) {
+        let found_match = match if_none_match {
+            header::IfNoneMatch::Any => true,
+            header::IfNoneMatch::Items(items) => items.iter().any(|etag| etag.weak_eq(&entity_tag)),
+        };
+        if found_match {
+            response.status(actix_web::http::StatusCode::NOT_MODIFIED);
+            return Ok(response.finish());
+        }
+    }
+    if req.method() == actix_web::http::Method::HEAD {
+        return Ok(response.finish());
+    }
+    Ok(response.body(out))
 }
