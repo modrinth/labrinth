@@ -231,7 +231,7 @@ async fn main() -> std::io::Result<()> {
         let analytics_queue_ref = analytics_queue.clone();
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
-        scheduler.run(std::time::Duration::from_secs(60), move || {
+        scheduler.run(std::time::Duration::from_secs(15), move || {
             let client_ref = client_ref.clone();
             let analytics_queue_ref = analytics_queue_ref.clone();
             let pool_ref = pool_ref.clone();
