@@ -176,5 +176,3 @@ impl actix_web::ResponseError for ApiError {
         })
     }
 }
-
-unsafe impl Send for ApiError {}
