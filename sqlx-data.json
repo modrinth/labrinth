@@ -729,6 +729,32 @@
     },
     "query": "\n            UPDATE notifications\n            SET read = TRUE\n            WHERE id = ANY($1)\n            "
   },
+  "155361716f9d697c0d961b7bbad30e70698a8e5c9ceaa03b2091e058b58fb938": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "mod_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            SELECT v.id id, v.mod_id mod_id FROM files f\n            INNER JOIN versions v ON v.id = f.version_id\n            WHERE f.url = $1\n            "
+  },
   "15fac93c76e72348b50f526e1acb183521d94be335ad8b9dfeb0398d4a8a2fc4": {
     "describe": {
       "columns": [],
@@ -2095,18 +2121,6 @@
     },
     "query": "\n            UPDATE threads\n            SET show_in_mod_inbox = $1\n            WHERE id = $2\n            "
   },
-  "49a5d21a1454afc6383b78e468fd0decc75b9163e7286f34ceab22d563a0d3f7": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "UPDATE mods\n                    SET downloads = downloads + 1\n                    WHERE (id = $1)"
-  },
   "4a54d350b4695c32a802675506e85b0506fc62a63ca0ee5f38890824301d6515": {
     "describe": {
       "columns": [],
@@ -2159,18 +2173,6 @@
       }
     },
     "query": "SELECT EXISTS(SELECT 1 FROM mods WHERE id = $1)"
-  },
-  "4d54032b02c860f4facec39eacb4548a0701d4505e7a80b4834650696df69c2b": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "UPDATE versions\n                    SET downloads = downloads + 1\n                    WHERE (id = $1)"
   },
   "4d752ee3f43a1bf34d71c4391c9232537e0941294951f383ea8fa61e9d83fc96": {
     "describe": {
@@ -4883,6 +4885,18 @@
     },
     "query": "\n                UPDATE mods\n                SET status = requested_status\n                WHERE status = $1 AND approved < CURRENT_DATE AND requested_status IS NOT NULL\n                "
   },
+  "b993ec7579f06603a2a308dccd1ea1fbffd94286db48bc0e36a30f4f6a9d39af": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "UPDATE versions\n                SET downloads = downloads + 1\n                WHERE id = ANY($1)"
+  },
   "b99e906aa6ca18b9f3f111eae7bf0d360f42385ca99228a844387bf9456a6a31": {
     "describe": {
       "columns": [],
@@ -5627,6 +5641,18 @@
     },
     "query": "\n                    UPDATE users\n                    SET gitlab_id = $2\n                    WHERE (id = $1)\n                    "
   },
+  "d08c9ef6a8829ce1d23d66f27c58f4b9b64f4ce985e60ded871d1f31eb0c818b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8Array"
+        ]
+      }
+    },
+    "query": "UPDATE mods\n                SET downloads = downloads + 1\n                WHERE id = ANY($1)"
+  },
   "d1566672369ea22cb1f638f073f8e3fb467b354351ae71c67941323749ec9bcd": {
     "describe": {
       "columns": [
@@ -5996,38 +6022,6 @@
       }
     },
     "query": "\n            UPDATE dependencies\n            SET dependency_id = NULL, mod_dependency_id = $2\n            WHERE dependency_id = $1\n            "
-  },
-  "dd57a6dd89fefedbde796ef02b308ce7dba17ca0c65ffd5f9e35e296a72d4c1c": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "mod_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "file_type",
-          "ordinal": 2,
-          "type_info": "Varchar"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        true
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            SELECT v.id id, v.mod_id mod_id, file_type FROM files f\n            INNER JOIN versions v ON v.id = f.version_id\n            WHERE f.url = $1\n            "
   },
   "de1bf7e33a99a10154cefdbe3b8322e4c6a19448b6ee3c6087b1b8163bc52cb1": {
     "describe": {

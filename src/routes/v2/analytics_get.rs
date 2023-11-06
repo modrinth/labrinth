@@ -2,10 +2,10 @@ use super::ApiError;
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::types::PgInterval;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use sqlx::postgres::types::PgInterval;
 
 use crate::{
     auth::{filter_authorized_projects, filter_authorized_versions, get_user_from_headers},
