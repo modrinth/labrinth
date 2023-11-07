@@ -1,7 +1,7 @@
-use crate::routes::v3;
 use crate::database::redis::RedisPool;
 use crate::models::ids::NotificationId;
 use crate::queue::session::AuthQueue;
+use crate::routes::v3;
 use crate::routes::ApiError;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,8 @@ pub async fn notifications_get(
         pool,
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[get("{id}")]
@@ -50,13 +51,7 @@ pub async fn notification_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_get(
-        req,
-        info,
-        pool,
-        redis,
-        session_queue,
-    ).await
+    v3::notifications::notification_get(req, info, pool, redis, session_queue).await
 }
 
 #[patch("{id}")]
@@ -67,13 +62,7 @@ pub async fn notification_read(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_read(
-        req,
-        info,
-        pool,
-        redis,
-        session_queue,
-    ).await
+    v3::notifications::notification_read(req, info, pool, redis, session_queue).await
 }
 
 #[delete("{id}")]
@@ -84,13 +73,7 @@ pub async fn notification_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_delete(
-        req,
-        info,
-        pool,
-        redis,
-        session_queue,
-    ).await
+    v3::notifications::notification_delete(req, info, pool, redis, session_queue).await
 }
 
 #[patch("notifications")]
@@ -107,7 +90,8 @@ pub async fn notifications_read(
         pool,
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[delete("notifications")]
@@ -124,5 +108,6 @@ pub async fn notifications_delete(
         pool,
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }

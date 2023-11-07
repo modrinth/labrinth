@@ -24,11 +24,11 @@ use sqlx::PgPool;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("thread")
-            .route("{id}", web::get().to(thread_get)) 
+            .route("{id}", web::get().to(thread_get))
             .route("inbox", web::get().to(moderation_inbox))
             .route("{id}", web::post().to(thread_send_message))
-            .route("{id}/read", web::post().to(thread_read))
-        );
+            .route("{id}/read", web::post().to(thread_read)),
+    );
     cfg.service(web::scope("message").route("{id}", web::delete().to(message_delete)));
     cfg.route("threads", web::get().to(threads_get));
 }

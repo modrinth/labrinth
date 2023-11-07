@@ -2,7 +2,7 @@ use crate::database::redis::RedisPool;
 use crate::models::ids::ImageId;
 use crate::models::reports::ItemType;
 use crate::queue::session::AuthQueue;
-use crate::routes::{ApiError, v3};
+use crate::routes::{v3, ApiError};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -37,13 +37,7 @@ pub async fn report_create(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::reports::report_create(
-        req,
-        pool,
-        body,
-        redis,
-        session_queue,
-    ).await
+    v3::reports::report_create(req, pool, body, redis, session_queue).await
 }
 
 #[derive(Deserialize)]
@@ -69,7 +63,6 @@ pub async fn reports(
     count: web::Query<ReportsRequestOptions>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    
     v3::reports::reports(
         req,
         pool,
@@ -79,7 +72,8 @@ pub async fn reports(
             all: count.all,
         }),
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -101,7 +95,8 @@ pub async fn reports_get(
         pool,
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[get("report/{id}")]
@@ -112,13 +107,7 @@ pub async fn report_get(
     info: web::Path<(crate::models::reports::ReportId,)>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::reports::report_get(
-        req,
-        pool,
-        redis,
-        info,
-        session_queue,
-    ).await
+    v3::reports::report_get(req, pool, redis, info, session_queue).await
 }
 
 #[derive(Deserialize, Validate)]
@@ -148,7 +137,8 @@ pub async fn report_edit(
             body: edit_report.body,
             closed: edit_report.closed,
         }),
-    ).await
+    )
+    .await
 }
 
 #[delete("report/{id}")]
@@ -159,11 +149,5 @@ pub async fn report_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::reports::report_delete(
-        req,
-        pool,
-        info,
-        redis,
-        session_queue,
-    ).await
+    v3::reports::report_delete(req, pool, info, redis, session_queue).await
 }

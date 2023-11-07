@@ -600,9 +600,9 @@ impl Project {
             )
                 .fetch_many(exec)
                 .try_filter_map(|e| async {
-                    Ok(e.right().and_then(|m| {
+                    Ok(e.right().map(|m| {
                         let id = m.id;
-                    Some(QueryProject {
+                    QueryProject {
                         inner: Project {
                             id: ProjectId(id),
                             team_id: TeamId(m.team_id),
@@ -673,7 +673,7 @@ impl Project {
                                 m.donations.unwrap_or_default(),
                             ).ok().unwrap_or_default(),
                         thread_id: ThreadId(m.thread_id),
-                    })}))
+                    }}))
                 })
                 .try_collect::<Vec<QueryProject>>()
                 .await?;

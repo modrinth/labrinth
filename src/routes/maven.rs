@@ -255,7 +255,7 @@ fn find_file<'a>(
                 .iter()
                 .find(|x| x.primary)
                 .or_else(|| version.files.iter().last());
-        }     
+        }
     }
     None
 }

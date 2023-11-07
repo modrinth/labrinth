@@ -62,8 +62,7 @@ pub async fn download_version(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue)
-        .await
+    v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue).await
 }
 
 // under /api/v1/version_file/{hash}

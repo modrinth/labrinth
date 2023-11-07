@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::ApiError;
 use crate::database::models::loader_fields::LoaderFieldEnumValue;
 use crate::database::redis::RedisPool;
-use crate::routes::v3::tags::{LoaderFieldsEnumQuery, LoaderData as LoaderDataV3};
+use crate::routes::v3::tags::{LoaderData as LoaderDataV3, LoaderFieldsEnumQuery};
 use crate::routes::{v2_reroute, v3};
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -37,10 +37,7 @@ pub async fn category_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::category_list(
-        pool,
-        redis,
-    ).await
+    v3::tags::category_list(pool, redis).await
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -55,11 +52,7 @@ pub async fn loader_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let response = v3::tags::loader_list(
-        pool,
-        redis,
-    )
-    .await?;
+    let response = v3::tags::loader_list(pool, redis).await?;
 
     // Convert to V2 format
     match v2_reroute::extract_ok_json::<Vec<LoaderDataV3>>(response).await {
@@ -69,8 +62,7 @@ pub async fn loader_list(
                 .map(|l| LoaderData {
                     icon: l.icon,
                     name: l.name,
-                    supported_project_types: l
-                        .supported_project_types,
+                    supported_project_types: l.supported_project_types,
                 })
                 .collect::<Vec<_>>();
             Ok(HttpResponse::Ok().json(loaders))
@@ -167,7 +159,7 @@ pub struct LicenseText {
 pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, ApiError> {
     v3::tags::license_text(params).await
 }
-    
+
 #[derive(serde::Serialize)]
 pub struct DonationPlatformQueryData {
     short: String,
@@ -179,10 +171,7 @@ pub async fn donation_platform_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::donation_platform_list(
-        pool,
-        redis,
-    ).await
+    v3::tags::donation_platform_list(pool, redis).await
 }
 
 #[get("report_type")]
@@ -190,10 +179,7 @@ pub async fn report_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::report_type_list(
-        pool,
-        redis,
-    ).await
+    v3::tags::report_type_list(pool, redis).await
 }
 
 #[get("project_type")]
@@ -201,10 +187,7 @@ pub async fn project_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::project_type_list(
-        pool,
-        redis,
-    ).await
+    v3::tags::project_type_list(pool, redis).await
 }
 
 #[get("side_type")]

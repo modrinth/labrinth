@@ -1,20 +1,29 @@
-use std::{sync::{Arc}, collections::HashMap};
+use std::{collections::HashMap, sync::Arc};
 
 use actix_web::{web, HttpRequest, HttpResponse};
+use lazy_static::lazy_static;
 use regex::Regex;
 use rust_decimal::Decimal;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
-use lazy_static::lazy_static;
 use tokio::sync::Mutex;
 use validator::Validate;
 
 use crate::{
     auth::get_user_from_headers,
-    database::{models::{User}, redis::RedisPool},
-    models::{ids::UserId, pats::Scopes, projects::Project, users::{Badges, Role, Payout, PayoutStatus, UserPayoutData, RecipientStatus}, collections::{CollectionStatus, Collection}, notifications::Notification},
-    queue::{session::AuthQueue, payouts::PayoutsQueue}, file_hosting::FileHost, util::{routes::read_from_payload, validate::validation_errors_to_string},
+    database::{models::User, redis::RedisPool},
+    file_hosting::FileHost,
+    models::{
+        collections::{Collection, CollectionStatus},
+        ids::UserId,
+        notifications::Notification,
+        pats::Scopes,
+        projects::Project,
+        users::{Badges, Payout, PayoutStatus, RecipientStatus, Role, UserPayoutData},
+    },
+    queue::{payouts::PayoutsQueue, session::AuthQueue},
+    util::{routes::read_from_payload, validate::validation_errors_to_string},
 };
 
 use super::ApiError;
@@ -25,22 +34,20 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("user")
-        .route("{user_id}/projects", web::get().to(projects_list))
-        .route("{id}", web::get().to(user_get))
-        .route("{user_id}/collections", web::get().to(collections_list))
-        .route("{user_id}/organizations", web::get().to(orgs_list))
-        .route("{id}", web::patch().to(user_edit))
-        .route("{id}/icon", web::patch().to(user_icon_edit))
-        .route("{id}", web::delete().to(user_delete))
-        .route("{id}/follows", web::get().to(user_follows))
-        .route("{id}/notifications", web::get().to(user_notifications))
-        .route("{id}/payouts", web::get().to(user_payouts))
-        .route("{id}/payouts_fees", web::get().to(user_payouts_fees))
-        .route("{id}/payouts", web::post().to(user_payouts_request))
-
+            .route("{user_id}/projects", web::get().to(projects_list))
+            .route("{id}", web::get().to(user_get))
+            .route("{user_id}/collections", web::get().to(collections_list))
+            .route("{user_id}/organizations", web::get().to(orgs_list))
+            .route("{id}", web::patch().to(user_edit))
+            .route("{id}/icon", web::patch().to(user_icon_edit))
+            .route("{id}", web::delete().to(user_delete))
+            .route("{id}/follows", web::get().to(user_follows))
+            .route("{id}/notifications", web::get().to(user_notifications))
+            .route("{id}/payouts", web::get().to(user_payouts))
+            .route("{id}/payouts_fees", web::get().to(user_payouts_fees))
+            .route("{id}/payouts", web::post().to(user_payouts_request)),
     );
 }
-
 
 pub async fn projects_list(
     req: HttpRequest,
@@ -269,7 +276,6 @@ pub async fn orgs_list(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
-
 
 lazy_static! {
     static ref RE_URL_SAFE: Regex = Regex::new(r"^[a-zA-Z0-9_-]*$").unwrap();
@@ -670,7 +676,10 @@ pub async fn user_notifications(
             .collect();
 
         notifications.sort_by(|a, b| b.created.cmp(&a.created));
-            println!("notifications: {:?}", serde_json::to_string(&notifications).unwrap());
+        println!(
+            "notifications: {:?}",
+            serde_json::to_string(&notifications).unwrap()
+        );
         Ok(HttpResponse::Ok().json(notifications))
     } else {
         Ok(HttpResponse::NotFound().body(""))

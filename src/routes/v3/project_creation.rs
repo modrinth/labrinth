@@ -1,7 +1,7 @@
 use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::loader_fields::{
-    LoaderField, LoaderFieldEnumValue, VersionField, Loader,
+    Loader, LoaderField, LoaderFieldEnumValue, VersionField,
 };
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item, User};
@@ -370,7 +370,7 @@ async fn project_create_inner(
     .1;
 
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
-    let all_loaders =  models::loader_fields::Loader::list(&mut **transaction, redis).await?;
+    let all_loaders = models::loader_fields::Loader::list(&mut **transaction, redis).await?;
 
     let project_create_data: ProjectCreateData;
     let mut versions;
@@ -565,7 +565,7 @@ async fn project_create_inner(
             let created_version = versions.get_mut(index).unwrap();
             let version_data = project_create_data.initial_versions.get(index).unwrap();
             // TODO: maybe redundant is this calculation done elsewhere?
-            
+
             // Upload the new jar file
             super::version_creation::upload_file(
                 &mut field,
@@ -622,7 +622,7 @@ async fn project_create_inner(
             if ids.is_empty() {
                 return Err(CreateError::InvalidCategory(category.clone()));
             }
-            
+
             // TODO: We should filter out categories that don't match the project type of any of the versions
             // ie: if mod and modpack both share a name this should only have modpack if it only has a modpack as a version
             categories.extend(ids.values());
@@ -788,17 +788,19 @@ async fn project_create_inner(
             .flat_map(|v| v.loaders.clone())
             .unique()
             .collect::<Vec<_>>();
-        let (project_types, games) = Loader::list(&mut **transaction, &redis).await?.into_iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut project_types, mut games), loader| {
-                if loaders.contains(&loader.id) {
-                    project_types.extend(loader.supported_project_types);
-                    games.extend(loader.supported_games.iter().map(|x| x.name().to_string()));
-                }
-                (project_types, games)
-            },
-        );
-        
+        let (project_types, games) = Loader::list(&mut **transaction, redis)
+            .await?
+            .into_iter()
+            .fold(
+                (Vec::new(), Vec::new()),
+                |(mut project_types, mut games), loader| {
+                    if loaders.contains(&loader.id) {
+                        project_types.extend(loader.supported_project_types);
+                        games.extend(loader.supported_games.iter().map(|x| x.name().to_string()));
+                    }
+                    (project_types, games)
+                },
+            );
 
         let response = crate::models::projects::Project {
             id: project_id,
@@ -876,9 +878,7 @@ async fn create_initial_version(
         .map(|x| {
             all_loaders
                 .iter()
-                .find(|y| {
-                    y.loader == x.0
-                })
+                .find(|y| y.loader == x.0)
                 .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
                 .map(|y| y.id)
         })

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::database::models::categories::{Category, DonationPlatform, ReportType, ProjectType};
+use crate::database::models::categories::{Category, DonationPlatform, ProjectType, ReportType};
 use crate::database::models::loader_fields::{
     Loader, LoaderField, LoaderFieldEnumValue, LoaderFieldType,
 };
@@ -13,14 +13,15 @@ use sqlx::PgPool;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("tag")
-        .route("category", web::get().to(category_list))
-        .route("loader", web::get().to(loader_list)))
-        .route("loader_fields", web::get().to(loader_fields_list))
-        .route("license", web::get().to(license_list))
-        .route("license/{id}", web::get().to(license_text))
-        .route("donation_platform", web::get().to(donation_platform_list))
-        .route("report_type", web::get().to(report_type_list))
-        .route("project_type", web::get().to(project_type_list));
+            .route("category", web::get().to(category_list))
+            .route("loader", web::get().to(loader_list)),
+    )
+    .route("loader_fields", web::get().to(loader_fields_list))
+    .route("license", web::get().to(license_list))
+    .route("license/{id}", web::get().to(license_text))
+    .route("donation_platform", web::get().to(donation_platform_list))
+    .route("report_type", web::get().to(report_type_list))
+    .route("project_type", web::get().to(project_type_list));
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -68,7 +69,11 @@ pub async fn loader_list(
             icon: x.icon,
             name: x.loader,
             supported_project_types: x.supported_project_types,
-            supported_games: x.supported_games.iter().map(|x| x.name().to_string()).collect(),
+            supported_games: x
+                .supported_games
+                .iter()
+                .map(|x| x.name().to_string())
+                .collect(),
         })
         .collect::<Vec<_>>();
 

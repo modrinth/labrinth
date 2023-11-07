@@ -5,7 +5,7 @@ use crate::file_hosting::FileHost;
 use crate::models::ids::{ThreadMessageId, VersionId};
 use crate::models::reports::ReportId;
 use crate::queue::session::AuthQueue;
-use crate::routes::{ApiError, v3};
+use crate::routes::{v3, ApiError};
 use actix_web::{post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -39,12 +39,21 @@ pub async fn images_add(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::images::images_add(req, web::Query(v3::images::ImageUpload {
-        ext: data.ext,
-        context: data.context,
-        project_id: data.project_id,
-        version_id: data.version_id,
-        thread_message_id: data.thread_message_id,
-        report_id: data.report_id,
-    }), file_host, payload, pool, redis, session_queue).await
+    v3::images::images_add(
+        req,
+        web::Query(v3::images::ImageUpload {
+            ext: data.ext,
+            context: data.context,
+            project_id: data.project_id,
+            version_id: data.version_id,
+            thread_message_id: data.thread_message_id,
+            report_id: data.report_id,
+        }),
+        file_host,
+        payload,
+        pool,
+        redis,
+        session_queue,
+    )
+    .await
 }

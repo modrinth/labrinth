@@ -5,7 +5,7 @@ use crate::file_hosting::FileHost;
 use crate::models::ids::ThreadMessageId;
 use crate::models::threads::{MessageBody, ThreadId};
 use crate::queue::session::AuthQueue;
-use crate::routes::{ApiError, v3};
+use crate::routes::{v3, ApiError};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -46,11 +46,14 @@ pub async fn threads_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::threads::threads_get(req, web::Query(
-        v3::threads::ThreadIds {
-            ids: ids.ids
-        },
-    ), pool, redis, session_queue).await
+    v3::threads::threads_get(
+        req,
+        web::Query(v3::threads::ThreadIds { ids: ids.ids }),
+        pool,
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -68,11 +71,17 @@ pub async fn thread_send_message(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let new_message = new_message.into_inner();
-    v3::threads::thread_send_message(req, info, pool, web::Json(
-        v3::threads::NewThreadMessage {
-            body: new_message.body
-        },
-    ), redis, session_queue).await
+    v3::threads::thread_send_message(
+        req,
+        info,
+        pool,
+        web::Json(v3::threads::NewThreadMessage {
+            body: new_message.body,
+        }),
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[get("inbox")]

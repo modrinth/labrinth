@@ -27,7 +27,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("views", web::get().to(views_get))
             .route("downloads", web::get().to(downloads_get))
             .route("revenue", web::get().to(revenue_get))
-            .route("countries/downloads", web::get().to(countries_downloads_get))
+            .route(
+                "countries/downloads",
+                web::get().to(countries_downloads_get),
+            )
             .route("countries/views", web::get().to(countries_views_get)),
     );
 }

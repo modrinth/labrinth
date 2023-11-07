@@ -1,4 +1,4 @@
-use crate::routes::{ApiError, v3};
+use crate::routes::{v3, ApiError};
 use actix_web::{get, web, HttpResponse};
 use sqlx::PgPool;
 

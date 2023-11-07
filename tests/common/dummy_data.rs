@@ -4,11 +4,10 @@ use std::io::{Cursor, Write};
 use actix_http::StatusCode;
 use actix_web::test::{self, TestRequest};
 use labrinth::models::{
-    
-        oauth_clients::OAuthClient, organizations::Organization,
+    oauth_clients::OAuthClient,
+    organizations::Organization,
     pats::Scopes,
-    v2::projects::{LegacyProject, LegacyVersion,
-    },
+    v2::projects::{LegacyProject, LegacyVersion},
 };
 use serde_json::json;
 use sqlx::Executor;
@@ -19,11 +18,7 @@ use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegment
 
 use super::{environment::TestEnvironment, request_data::get_public_project_creation_data};
 
-use super::{
-    asserts::assert_status,
-    database::USER_USER_ID,
-    get_json_val_str,
-};
+use super::{asserts::assert_status, database::USER_USER_ID, get_json_val_str};
 
 pub const DUMMY_DATA_UPDATE: i64 = 3;
 

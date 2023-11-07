@@ -616,7 +616,6 @@ pub struct DownloadRedirect {
     pub url: String,
 }
 
-
 // under /api/v1/version_file/{hash}/download
 pub async fn download_version(
     req: HttpRequest,

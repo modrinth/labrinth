@@ -39,7 +39,10 @@ impl Category {
     // Gets hashmap of category ids matching a name
     // Multiple categories can have the same name, but different project types, so we need to return a hashmap
     // ProjectTypeId -> CategoryId
-    pub async fn get_ids<'a, E>(name: &str, exec: E) -> Result<HashMap<ProjectTypeId, CategoryId>, DatabaseError>
+    pub async fn get_ids<'a, E>(
+        name: &str,
+        exec: E,
+    ) -> Result<HashMap<ProjectTypeId, CategoryId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -57,7 +60,7 @@ impl Category {
         for r in result {
             map.insert(ProjectTypeId(r.project_type), CategoryId(r.id));
         }
-        
+
         Ok(map)
     }
 

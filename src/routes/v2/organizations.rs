@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::projects::Project;
@@ -9,6 +8,7 @@ use crate::routes::{v2_reroute, v3, ApiError};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::Arc;
 use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -57,7 +57,8 @@ pub async fn organization_create(
         pool.clone(),
         redis.clone(),
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[get("{id}")]
@@ -68,13 +69,7 @@ pub async fn organization_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::organizations::organization_get(
-        req,
-        info,
-        pool.clone(),
-        redis.clone(),
-        session_queue,
-    ).await
+    v3::organizations::organization_get(req, info, pool.clone(), redis.clone(), session_queue).await
 }
 
 #[derive(Deserialize)]
@@ -95,7 +90,8 @@ pub async fn organizations_get(
         pool,
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -130,7 +126,8 @@ pub async fn organizations_edit(
         pool.clone(),
         redis.clone(),
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[delete("{id}")]
@@ -141,13 +138,8 @@ pub async fn organization_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::organizations::organization_delete(
-        req,
-        info,
-        pool.clone(),
-        redis.clone(),
-        session_queue,
-    ).await
+    v3::organizations::organization_delete(req, info, pool.clone(), redis.clone(), session_queue)
+        .await
 }
 
 #[get("{id}/projects")]
@@ -200,7 +192,8 @@ pub async fn organization_projects_add(
         pool.clone(),
         redis.clone(),
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[delete("{organization_id}/projects/{project_id}")]
@@ -217,7 +210,8 @@ pub async fn organization_projects_remove(
         pool.clone(),
         redis.clone(),
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -246,7 +240,8 @@ pub async fn organization_icon_edit(
         file_host,
         payload,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[delete("{id}/icon")]
@@ -265,5 +260,6 @@ pub async fn delete_organization_icon(
         redis.clone(),
         file_host,
         session_queue,
-    ).await
+    )
+    .await
 }

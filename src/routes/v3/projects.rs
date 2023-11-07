@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
-use crate::database::{models as db_models, self};
-use crate::database::models::{ids as db_ids, image_item};
 use crate::database::models::notification_item::NotificationBuilder;
-use crate::database::models::project_item::{ModCategory, GalleryItem};
+use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
+use crate::database::models::{ids as db_ids, image_item};
 use crate::database::redis::RedisPool;
+use crate::database::{self, models as db_models};
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
@@ -41,34 +41,33 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("project")
-        .route("{id}", web::get().to(project_get))
-        .route("{id}/check", web::get().to(project_get_check))
-        .route("{id}", web::delete().to(project_get))
-        .route("{id}", web::patch().to(project_edit))
-        .route("{id}/icon", web::patch().to(project_icon_edit))
-        .route("{id}/icon", web::delete().to(delete_project_icon))
-        .route("{id}/gallery", web::post().to(add_gallery_item))
-        .route("{id}/gallery", web::patch().to(edit_gallery_item))
-        .route("{id}/gallery", web::delete().to(delete_gallery_item))
-        .route("{id}/follow", web::post().to(project_follow))
-        .route("{id}/follow", web::delete().to(project_unfollow))
-        .route("{id}/schedule", web::post().to(project_schedule))
+            .route("{id}", web::get().to(project_get))
+            .route("{id}/check", web::get().to(project_get_check))
+            .route("{id}", web::delete().to(project_get))
+            .route("{id}", web::patch().to(project_edit))
+            .route("{id}/icon", web::patch().to(project_icon_edit))
+            .route("{id}/icon", web::delete().to(delete_project_icon))
+            .route("{id}/gallery", web::post().to(add_gallery_item))
+            .route("{id}/gallery", web::patch().to(edit_gallery_item))
+            .route("{id}/gallery", web::delete().to(delete_gallery_item))
+            .route("{id}/follow", web::post().to(project_follow))
+            .route("{id}/follow", web::delete().to(project_unfollow))
+            .route("{id}/schedule", web::post().to(project_schedule))
             .service(
                 web::scope("{project_id}")
-                    .route("members", web::get().to(super::teams::team_members_get_project))
+                    .route(
+                        "members",
+                        web::get().to(super::teams::team_members_get_project),
+                    )
                     .route("versions", web::get().to(super::versions::version_list))
                     .route(
                         "version/{slug}",
                         web::get().to(super::versions::version_project_get),
                     )
-                    .route(
-                        "dependencies",
-                        web::get().to(dependency_list)
-                    )
+                    .route("dependencies", web::get().to(dependency_list)),
             ),
     );
 }
-
 
 #[derive(Deserialize, Validate)]
 pub struct RandomProjects {
@@ -984,8 +983,8 @@ pub async fn edit_project_categories(
 
     let mut mod_categories = Vec::new();
     for category in categories {
-        let category_ids = db_models::categories::Category::get_ids(category, &mut **transaction)
-            .await?;
+        let category_ids =
+            db_models::categories::Category::get_ids(category, &mut **transaction).await?;
         // TODO: We should filter out categories that don't match the project type of any of the versions
         // ie: if mod and modpack both share a name this should only have modpack if it only has a modpack as a version
 

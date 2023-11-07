@@ -28,7 +28,12 @@ pub async fn get_projects(
     count: web::Query<ResultCount>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::moderation::get_projects(req, pool, redis, 
-        web::Query(v3::moderation::ResultCount {
-        count: count.count}), session_queue).await
+    v3::moderation::get_projects(
+        req,
+        pool,
+        redis,
+        web::Query(v3::moderation::ResultCount { count: count.count }),
+        session_queue,
+    )
+    .await
 }

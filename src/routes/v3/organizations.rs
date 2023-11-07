@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::auth::{get_user_from_headers, filter_authorized_projects};
+use super::ApiError;
+use crate::auth::{filter_authorized_projects, get_user_from_headers};
 use crate::database::models::team_item::TeamMember;
 use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::database::redis::RedisPool;
@@ -20,20 +21,25 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
-use super::ApiError;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("organization")
-        .route("{id}/projects", web::get().to(organization_projects_get))
-        .route("{id}", web::get().to(organization_get))
-        .route("{id}", web::patch().to(organizations_edit))
-        .route("{id}", web::delete().to(organization_delete))
-        .route("{id}/projects", web::post().to(organization_projects_add))
-        .route("{id}/projects", web::delete().to(organization_projects_remove))
-        .route("{id}/icon", web::patch().to(organization_icon_edit))
-        .route("{id}/icon", web::delete().to(delete_organization_icon))
-        .route("{id}/members", web::get().to(super::teams::team_members_get_organization))
+            .route("{id}/projects", web::get().to(organization_projects_get))
+            .route("{id}", web::get().to(organization_get))
+            .route("{id}", web::patch().to(organizations_edit))
+            .route("{id}", web::delete().to(organization_delete))
+            .route("{id}/projects", web::post().to(organization_projects_add))
+            .route(
+                "{id}/projects",
+                web::delete().to(organization_projects_remove),
+            )
+            .route("{id}/icon", web::patch().to(organization_icon_edit))
+            .route("{id}/icon", web::delete().to(delete_organization_icon))
+            .route(
+                "{id}/members",
+                web::get().to(super::teams::team_members_get_organization),
+            ),
     );
 }
 

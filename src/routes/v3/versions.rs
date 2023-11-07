@@ -7,7 +7,7 @@ use crate::auth::{
 use crate::database;
 use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField};
 use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
-use crate::database::models::{Organization, image_item};
+use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
@@ -349,33 +349,29 @@ pub async fn version_edit_helper(
             if let Some(dependencies) = &new_version.dependencies {
                 // TODO: Re-add this exclusions when modpack also has separate dependency retrieval that was removed from validators
                 // if let Some(project) = project_item {
-                    // if project.project_type != "modpack" {
-                        sqlx::query!(
-                            "
+                // if project.project_type != "modpack" {
+                sqlx::query!(
+                    "
                             DELETE FROM dependencies WHERE dependent_id = $1
                             ",
-                            id as database::models::ids::VersionId,
-                        )
-                        .execute(&mut *transaction)
-                        .await?;
+                    id as database::models::ids::VersionId,
+                )
+                .execute(&mut *transaction)
+                .await?;
 
-                        let builders = dependencies
-                            .iter()
-                            .map(|x| database::models::version_item::DependencyBuilder {
-                                project_id: x.project_id.map(|x| x.into()),
-                                version_id: x.version_id.map(|x| x.into()),
-                                file_name: x.file_name.clone(),
-                                dependency_type: x.dependency_type.to_string(),
-                            })
-                            .collect::<Vec<database::models::version_item::DependencyBuilder>>();
+                let builders = dependencies
+                    .iter()
+                    .map(|x| database::models::version_item::DependencyBuilder {
+                        project_id: x.project_id.map(|x| x.into()),
+                        version_id: x.version_id.map(|x| x.into()),
+                        file_name: x.file_name.clone(),
+                        dependency_type: x.dependency_type.to_string(),
+                    })
+                    .collect::<Vec<database::models::version_item::DependencyBuilder>>();
 
-                        DependencyBuilder::insert_many(
-                            builders,
-                            version_item.inner.id,
-                            &mut transaction,
-                        )
-                        .await?;
-                    // }
+                DependencyBuilder::insert_many(builders, version_item.inner.id, &mut transaction)
+                    .await?;
+                // }
                 // }
             }
 

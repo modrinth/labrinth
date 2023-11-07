@@ -118,7 +118,7 @@ pub async fn validate_file(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &RedisPool,
 ) -> Result<ValidationResult, ValidationError> {
-    // TODO: This needs to be revisited or removed with v3. 
+    // TODO: This needs to be revisited or removed with v3.
     // Currently, it checks if the loader is the modpack loader, and extracts the pack data from it.
     // This (and the funnction that calls this) should be refactored such that
     // - validators are removed (or altogether reworked)
@@ -143,7 +143,7 @@ pub async fn validate_file(
                 file_type,
             )
             .await
-        },
+        }
         _ => Ok(ValidationResult::Pass),
     }
 }

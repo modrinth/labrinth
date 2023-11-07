@@ -277,7 +277,8 @@ pub async fn version_schedule(
             requested_status: scheduling_data.requested_status,
         }),
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[delete("{version_id}")]

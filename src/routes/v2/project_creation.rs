@@ -3,7 +3,7 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::ImageId;
-use crate::models::projects::{DonationLink, Project, ProjectStatus, SideType, Loader};
+use crate::models::projects::{DonationLink, Loader, Project, ProjectStatus, SideType};
 use crate::models::v2::projects::LegacyProject;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::default_project_type;
@@ -157,41 +157,48 @@ pub async fn project_create(
             // Setting of 'project_type' directly is removed, it's loader-based now.
             let mut additional_categories = legacy_create.additional_categories;
 
-            let initial_versions = legacy_create.initial_versions.into_iter().map(|v| {
-                let mut fields = HashMap::new();
-                fields.insert("client_side".to_string(), json!(client_side));
-                fields.insert("server_side".to_string(), json!(server_side));
-                fields.insert("game_versions".to_string(), json!(v.game_versions));
+            let initial_versions = legacy_create
+                .initial_versions
+                .into_iter()
+                .map(|v| {
+                    let mut fields = HashMap::new();
+                    fields.insert("client_side".to_string(), json!(client_side));
+                    fields.insert("server_side".to_string(), json!(server_side));
+                    fields.insert("game_versions".to_string(), json!(v.game_versions));
 
-                if project_type == "modpack" {
-                    additional_categories.extend(v.loaders.iter().map(|l| l.0.clone()));
-                } 
+                    if project_type == "modpack" {
+                        additional_categories.extend(v.loaders.iter().map(|l| l.0.clone()));
+                    }
 
-                let loaders = if project_type == "modpack" {
-                    vec![Loader("mrpack".to_string())]
-                } else {
-                    v.loaders
-                };
+                    let loaders = if project_type == "modpack" {
+                        vec![Loader("mrpack".to_string())]
+                    } else {
+                        v.loaders
+                    };
 
-                v3::version_creation::InitialVersionData {
-                    project_id: v.project_id,
-                    file_parts: v.file_parts,
-                    version_number: v.version_number,
-                    version_title: v.version_title,
-                    version_body: v.version_body,
-                    dependencies: v.dependencies,
-                    release_channel: v.release_channel,
-                    loaders,
-                    featured: v.featured,
-                    primary_file: v.primary_file,
-                    status: v.status,
-                    file_types: v.file_types,
-                    uploaded_images: v.uploaded_images,
-                    fields,
-                }
-            }).collect();
-            
-            let additional_categories = additional_categories.into_iter().unique().collect::<Vec<_>>();
+                    v3::version_creation::InitialVersionData {
+                        project_id: v.project_id,
+                        file_parts: v.file_parts,
+                        version_number: v.version_number,
+                        version_title: v.version_title,
+                        version_body: v.version_body,
+                        dependencies: v.dependencies,
+                        release_channel: v.release_channel,
+                        loaders,
+                        featured: v.featured,
+                        primary_file: v.primary_file,
+                        status: v.status,
+                        file_types: v.file_types,
+                        uploaded_images: v.uploaded_images,
+                        fields,
+                    }
+                })
+                .collect();
+
+            let additional_categories = additional_categories
+                .into_iter()
+                .unique()
+                .collect::<Vec<_>>();
             println!("additional_categories: {:?}", additional_categories);
             Ok(v3::project_creation::ProjectCreateData {
                 title: legacy_create.title,
@@ -233,14 +240,17 @@ pub async fn project_create(
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Project>(response).await {
         Ok(project) => {
-            println!("Just finished doing a project create, looking at repsonse: {:?}", serde_json::to_string(&project).unwrap());
+            println!(
+                "Just finished doing a project create, looking at repsonse: {:?}",
+                serde_json::to_string(&project).unwrap()
+            );
             let version_item = match project.versions.first() {
                 Some(vid) => version_item::Version::get((*vid).into(), &**client, &redis).await?,
                 None => None,
             };
             let project = LegacyProject::from(project, version_item);
             Ok(HttpResponse::Ok().json(project))
-        },
+        }
         Err(response) => Ok(response),
     }
 }

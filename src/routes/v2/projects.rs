@@ -491,7 +491,8 @@ pub async fn projects_edit(
         }),
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -550,7 +551,8 @@ pub async fn project_icon_edit(
         file_host,
         payload,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[delete("{id}/icon")]
@@ -603,7 +605,8 @@ pub async fn add_gallery_item(
         file_host,
         payload,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -650,7 +653,8 @@ pub async fn edit_gallery_item(
         pool,
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -676,7 +680,8 @@ pub async fn delete_gallery_item(
         redis,
         file_host,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[delete("{id}")]
@@ -688,14 +693,7 @@ pub async fn project_delete(
     config: web::Data<SearchConfig>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::project_delete(
-        req,
-        info,
-        pool,
-        redis,
-        config,
-        session_queue,
-    ).await
+    v3::projects::project_delete(req, info, pool, redis, config, session_queue).await
 }
 
 #[post("{id}/follow")]
@@ -706,13 +704,7 @@ pub async fn project_follow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::project_follow(
-        req,
-        info,
-        pool,
-        redis,
-        session_queue,
-    ).await
+    v3::projects::project_follow(req, info, pool, redis, session_queue).await
 }
 
 #[delete("{id}/follow")]
@@ -723,11 +715,5 @@ pub async fn project_unfollow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::project_unfollow(
-        req,
-        info,
-        pool,
-        redis,
-        session_queue,
-    ).await
+    v3::projects::project_unfollow(req, info, pool, redis, session_queue).await
 }

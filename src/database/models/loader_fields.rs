@@ -84,14 +84,10 @@ impl Loader {
         Ok(result)
     }
 
-    pub async fn list<'a, E>(
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<Loader>, DatabaseError>
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<Loader>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-
         let cached_loaders: Option<Vec<Loader>> = redis
             .get_deserialized_from_json(LOADERS_LIST_NAMESPACE, "all")
             .await?;

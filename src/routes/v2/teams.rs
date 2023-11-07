@@ -2,7 +2,7 @@ use crate::database::redis::RedisPool;
 use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId};
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
-use crate::routes::{ApiError, v3};
+use crate::routes::{v3, ApiError};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -73,9 +73,14 @@ pub async fn teams_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::teams_get(req, web::Query(v3::teams::TeamIds {
-        ids: ids.ids,
-    }), pool, redis, session_queue).await
+    v3::teams::teams_get(
+        req,
+        web::Query(v3::teams::TeamIds { ids: ids.ids }),
+        pool,
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[post("{id}/join")]
@@ -121,14 +126,22 @@ pub async fn add_team_member(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::add_team_member(req, info, pool, web::Json(v3::teams::NewTeamMember{
-        user_id: new_member.user_id,
-        role: new_member.role.clone(),
-        permissions: new_member.permissions,
-        organization_permissions: new_member.organization_permissions,
-        payouts_split: new_member.payouts_split,
-        ordering: new_member.ordering,
-    }), redis, session_queue).await
+    v3::teams::add_team_member(
+        req,
+        info,
+        pool,
+        web::Json(v3::teams::NewTeamMember {
+            user_id: new_member.user_id,
+            role: new_member.role.clone(),
+            permissions: new_member.permissions,
+            organization_permissions: new_member.organization_permissions,
+            payouts_split: new_member.payouts_split,
+            ordering: new_member.ordering,
+        }),
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -149,13 +162,21 @@ pub async fn edit_team_member(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::edit_team_member(req, info, pool, web::Json(v3::teams::EditTeamMember{
-        permissions: edit_member.permissions,
-        organization_permissions: edit_member.organization_permissions,
-        role: edit_member.role.clone(),
-        payouts_split: edit_member.payouts_split,
-        ordering: edit_member.ordering,
-    }), redis, session_queue).await
+    v3::teams::edit_team_member(
+        req,
+        info,
+        pool,
+        web::Json(v3::teams::EditTeamMember {
+            permissions: edit_member.permissions,
+            organization_permissions: edit_member.organization_permissions,
+            role: edit_member.role.clone(),
+            payouts_split: edit_member.payouts_split,
+            ordering: edit_member.ordering,
+        }),
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -172,9 +193,17 @@ pub async fn transfer_ownership(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::transfer_ownership(req, info, pool, web::Json(v3::teams::TransferOwnership{
-        user_id: new_owner.user_id,
-    }), redis, session_queue).await
+    v3::teams::transfer_ownership(
+        req,
+        info,
+        pool,
+        web::Json(v3::teams::TransferOwnership {
+            user_id: new_owner.user_id,
+        }),
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[delete("{id}/members/{user_id}")]

@@ -3,7 +3,7 @@ use crate::file_hosting::FileHost;
 use crate::models::collections::CollectionStatus;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::CreateError;
-use crate::routes::{ApiError, v3};
+use crate::routes::{v3, ApiError};
 use actix_web::web::Data;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -60,7 +60,8 @@ pub async fn collection_create(
         client,
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -75,9 +76,14 @@ pub async fn collections_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::collections::collections_get(req, web::Query(v3::collections::CollectionIds{
-        ids: ids.ids
-    }), pool, redis, session_queue).await
+    v3::collections::collections_get(
+        req,
+        web::Query(v3::collections::CollectionIds { ids: ids.ids }),
+        pool,
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[get("{id}")]
@@ -115,14 +121,20 @@ pub async fn collection_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let new_collection = new_collection.into_inner();
-    v3::collections::collection_edit(req, info, pool, web::Json(
-        v3::collections::EditCollection {
+    v3::collections::collection_edit(
+        req,
+        info,
+        pool,
+        web::Json(v3::collections::EditCollection {
             title: new_collection.title,
             description: new_collection.description,
             status: new_collection.status,
             new_projects: new_collection.new_projects,
-        }
-    ), redis, session_queue).await
+        }),
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -143,9 +155,7 @@ pub async fn collection_icon_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     v3::collections::collection_icon_edit(
-        web::Query(v3::collections::Extension {
-            ext: ext.ext
-        }),
+        web::Query(v3::collections::Extension { ext: ext.ext }),
         req,
         info,
         pool,
@@ -153,7 +163,8 @@ pub async fn collection_icon_edit(
         file_host,
         payload,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[delete("{id}/icon")]
@@ -165,14 +176,7 @@ pub async fn delete_collection_icon(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::collections::delete_collection_icon(
-        req,
-        info,
-        pool,
-        redis,
-        file_host,
-        session_queue,
-    ).await
+    v3::collections::delete_collection_icon(req, info, pool, redis, file_host, session_queue).await
 }
 
 #[delete("{id}")]

@@ -1,9 +1,7 @@
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::projects::Project;
-use crate::models::users::{
-    Badges, Role,
-};
+use crate::models::users::{Badges, Role};
 use crate::models::v2::projects::LegacyProject;
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
@@ -60,9 +58,7 @@ pub async fn users_get(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::users_get(web::Query(v3::users::UserIds {
-        ids: ids.ids,
-    }), pool, redis).await
+    v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis).await
 }
 
 #[get("{id}")]
@@ -153,15 +149,21 @@ pub async fn user_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let new_user = new_user.into_inner();
-    v3::users::user_edit(req, info, web::Json(
-        v3::users::EditUser {
+    v3::users::user_edit(
+        req,
+        info,
+        web::Json(v3::users::EditUser {
             username: new_user.username,
             name: new_user.name,
             bio: new_user.bio,
             role: new_user.role,
             badges: new_user.badges,
-        }
-    ), pool, redis, session_queue).await
+        }),
+        pool,
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -190,7 +192,8 @@ pub async fn user_icon_edit(
         file_host,
         payload,
         session_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -213,10 +216,17 @@ pub async fn user_delete(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let removal_type = removal_type.into_inner();
-    v3::users::user_delete(req, info, pool, 
+    v3::users::user_delete(
+        req,
+        info,
+        pool,
         web::Query(v3::users::RemovalType {
             removal_type: removal_type.removal_type,
-        }), redis, session_queue).await
+        }),
+        redis,
+        session_queue,
+    )
+    .await
 }
 
 #[get("{id}/follows")]
@@ -270,12 +280,15 @@ pub async fn user_payouts_fees(
     v3::users::user_payouts_fees(
         req,
         info,
-        web::Query(v3::users::FeeEstimateAmount { amount: amount.amount }),
+        web::Query(v3::users::FeeEstimateAmount {
+            amount: amount.amount,
+        }),
         pool,
         redis,
         session_queue,
         payouts_queue,
-    ).await
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -297,9 +310,12 @@ pub async fn user_payouts_request(
         req,
         info,
         pool,
-        web::Json(v3::users::PayoutData { amount: data.amount }),
+        web::Json(v3::users::PayoutData {
+            amount: data.amount,
+        }),
         payouts_queue,
         redis,
         session_queue,
-    ).await
+    )
+    .await
 }

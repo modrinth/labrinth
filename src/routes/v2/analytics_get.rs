@@ -1,12 +1,7 @@
 use super::ApiError;
 use crate::database::redis::RedisPool;
 use crate::routes::v3;
-use crate::{
-    models::
-        ids::
-            VersionId,
-    queue::session::AuthQueue,
-};
+use crate::{models::ids::VersionId, queue::session::AuthQueue};
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -82,7 +77,8 @@ pub async fn playtimes_get(
         session_queue,
         pool,
         redis,
-    ).await
+    )
+    .await
 }
 
 /// Get view data for a set of projects or versions
@@ -117,7 +113,8 @@ pub async fn views_get(
         session_queue,
         pool,
         redis,
-    ).await
+    )
+    .await
 }
 
 /// Get download data for a set of projects or versions
@@ -152,7 +149,8 @@ pub async fn downloads_get(
         session_queue,
         pool,
         redis,
-    ).await
+    )
+    .await
 }
 
 /// Get payout data for a set of projects
@@ -185,7 +183,8 @@ pub async fn revenue_get(
         session_queue,
         pool,
         redis,
-    ).await
+    )
+    .await
 }
 
 /// Get country data for a set of projects or versions
@@ -223,7 +222,8 @@ pub async fn countries_downloads_get(
         session_queue,
         pool,
         redis,
-    ).await
+    )
+    .await
 }
 
 /// Get country data for a set of projects or versions
@@ -261,5 +261,6 @@ pub async fn countries_views_get(
         session_queue,
         pool,
         redis,
-    ).await
+    )
+    .await
 }
