@@ -99,16 +99,6 @@ pub struct UploadSearchProject {
     pub color: Option<u32>,
 
     #[serde(flatten)]
-    /*
-       Version fields are stored as:
-           "loader_field": ["value1", "value2", ...]
-       By convention, first underline separates the loader from the field name,
-       and any subsequent underlines may be part of the field name.
-       eg:
-           "fabric_game_versions": ["1.21", "1.22"]
-           "fabric_client_side": ["required"]
-           "fabric_server_side": ["optional"]
-    */
     pub loader_fields: HashMap<String, Vec<String>>,
 }
 
