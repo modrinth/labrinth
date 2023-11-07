@@ -41,12 +41,13 @@ impl Game {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Loader {
     pub id: LoaderId,
     pub loader: String,
     pub icon: String,
     pub supported_project_types: Vec<String>,
+    pub supported_games: Vec<Game>,
 }
 
 impl Loader {
@@ -84,17 +85,15 @@ impl Loader {
     }
 
     pub async fn list<'a, E>(
-        game: Game,
         exec: E,
         redis: &RedisPool,
     ) -> Result<Vec<Loader>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let game_name = game.name();
 
         let cached_loaders: Option<Vec<Loader>> = redis
-            .get_deserialized_from_json(LOADERS_LIST_NAMESPACE, game_name)
+            .get_deserialized_from_json(LOADERS_LIST_NAMESPACE, "all")
             .await?;
         if let Some(cached_loaders) = cached_loaders {
             return Ok(cached_loaders);
@@ -103,15 +102,15 @@ impl Loader {
         let result = sqlx::query!(
             "
             SELECT l.id id, l.loader loader, l.icon icon,
-            ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types
-            FROM loaders l
-            INNER JOIN games g ON l.game_id = g.id
+            ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
+            ARRAY_AGG(DISTINCT g.name) filter (where g.name is not null) games
+            FROM loaders l            
             LEFT OUTER JOIN loaders_project_types lpt ON joining_loader_id = l.id
             LEFT OUTER JOIN project_types pt ON lpt.joining_project_type_id = pt.id
-            WHERE g.name = $1
+            LEFT OUTER JOIN loaders_project_types_games lptg ON lptg.loader_id = lpt.joining_loader_id AND lptg.project_type_id = lpt.joining_project_type_id
+            LEFT OUTER JOIN games g ON lptg.game_id = g.id
             GROUP BY l.id;
             ",
-            game_name,
         )
         .fetch_many(exec)
         .try_filter_map(|e| async {
@@ -125,13 +124,19 @@ impl Loader {
                     .iter()
                     .map(|x| x.to_string())
                     .collect(),
+                supported_games: x
+                    .games
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|x| Game::from_name(x))
+                    .collect(),
             }))
         })
         .try_collect::<Vec<_>>()
         .await?;
 
         redis
-            .set_serialized_to_json(LOADERS_LIST_NAMESPACE, game_name, &result, None)
+            .set_serialized_to_json(LOADERS_LIST_NAMESPACE, "all", &result, None)
             .await?;
 
         Ok(result)

@@ -1,7 +1,7 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
 use crate::database::models::loader_fields::{
-    Game, LoaderField, LoaderFieldEnumValue, VersionField,
+    LoaderField, LoaderFieldEnumValue, VersionField,
 };
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
@@ -14,9 +14,9 @@ use crate::models::images::{Image, ImageContext, ImageId};
 use crate::models::notifications::NotificationBody;
 use crate::models::pack::PackFileHash;
 use crate::models::pats::Scopes;
-use crate::models::projects::skip_nulls;
+use crate::models::projects::{skip_nulls, DependencyType};
 use crate::models::projects::{
-    Dependency, DependencyType, FileType, Loader, ProjectId, Version, VersionFile, VersionId,
+    Dependency, FileType, Loader, ProjectId, Version, VersionFile, VersionId,
     VersionStatus, VersionType,
 };
 use crate::models::teams::ProjectPermissions;
@@ -29,6 +29,7 @@ use actix_web::web::Data;
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
@@ -148,7 +149,7 @@ async fn version_create_inner(
 
     let mut initial_version_data = None;
     let mut version_builder = None;
-    let mut game = None;
+    let mut selected_loaders = None;
 
     let user = get_user_from_headers(
         &req,
@@ -202,11 +203,12 @@ async fn version_create_inner(
                 let project_id: models::ProjectId = version_create_data.project_id.unwrap().into();
 
                 // Ensure that the project this version is being added to exists
-                let project = models::Project::get_id(project_id, &mut **transaction, redis)
-                    .await?
-                    .ok_or_else(|| {
-                        CreateError::InvalidInput("An invalid project id was supplied".to_string())
-                    })?;
+                if models::Project::get_id(project_id, &mut **transaction, redis)
+                    .await?.is_none() {
+                    return Err(CreateError::InvalidInput(
+                        "An invalid project id was supplied".to_string(),
+                    ));
+                }
 
                 // Check that the user creating this version is a team member
                 // of the project the version is being added to.
@@ -250,25 +252,11 @@ async fn version_create_inner(
 
                 let version_id: VersionId = models::generate_version_id(transaction).await?.into();
 
-                let project_type = sqlx::query!(
-                    "
-                SELECT name FROM project_types pt
-                INNER JOIN mods ON mods.project_type = pt.id
-                WHERE mods.id = $1
-                ",
-                    project_id as models::ProjectId,
-                )
-                .fetch_one(&mut **transaction)
-                .await?
-                .name;
-
                 let all_loaders = models::loader_fields::Loader::list(
-                    project.inner.game,
                     &mut **transaction,
                     redis,
                 )
                 .await?;
-                game = Some(project.inner.game);
 
                 let loader_fields = LoaderField::get_fields(&mut **transaction, redis).await?;
                 let mut version_fields = vec![];
@@ -307,12 +295,15 @@ async fn version_create_inner(
                         all_loaders
                             .iter()
                             .find(|y| {
-                                y.loader == x.0 && y.supported_project_types.contains(&project_type)
+                                y.loader == x.0
                             })
+                            .cloned()
                             .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
-                            .map(|y| y.id)
-                    })
-                    .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
+                    }).collect::<Result<Vec<_>, _>>()?;
+                selected_loaders = Some(loaders.clone());
+                let loader_ids = loaders.iter()
+                    .map(|y| y.id)
+                    .collect_vec();
 
                 let dependencies = version_create_data
                     .dependencies
@@ -324,7 +315,7 @@ async fn version_create_inner(
                         file_name: None,
                     })
                     .collect::<Vec<_>>();
-
+                
                 version_builder = Some(VersionBuilder {
                     version_id: version_id.into(),
                     project_id,
@@ -334,7 +325,7 @@ async fn version_create_inner(
                     changelog: version_create_data.version_body.clone().unwrap_or_default(),
                     files: Vec::new(),
                     dependencies,
-                    loaders,
+                    loaders: loader_ids,
                     version_fields,
                     version_type: version_create_data.release_channel.to_string(),
                     featured: version_create_data.featured,
@@ -348,22 +339,11 @@ async fn version_create_inner(
             let version = version_builder.as_mut().ok_or_else(|| {
                 CreateError::InvalidInput(String::from("`data` field must come before file fields"))
             })?;
-            let game = game.ok_or_else(|| {
+            let loaders = selected_loaders.as_ref().ok_or_else(|| {
                 CreateError::InvalidInput(String::from("`data` field must come before file fields"))
             })?;
-
-            let project_type = sqlx::query!(
-                "
-            SELECT name FROM project_types pt
-            INNER JOIN mods ON mods.project_type = pt.id
-            WHERE mods.id = $1
-            ",
-                version.project_id as models::ProjectId,
-            )
-            .fetch_one(&mut **transaction)
-            .await?
-            .name;
-
+            let loaders = loaders.iter().map(|x| Loader(x.loader.clone())).collect::<Vec<_>>();
+            
             let version_data = initial_version_data
                 .clone()
                 .ok_or_else(|| CreateError::InvalidInput("`data` field is required".to_string()))?;
@@ -377,12 +357,10 @@ async fn version_create_inner(
                 &mut version.dependencies,
                 &cdn_url,
                 &content_disposition,
-                game,
                 version.project_id.into(),
                 version.version_id.into(),
                 &version.version_fields,
-                &project_type,
-                version_data.loaders,
+                loaders,
                 version_data.primary_file.is_some(),
                 version_data.primary_file.as_deref() == Some(name),
                 version_data.file_types.get(name).copied().flatten(),
@@ -441,6 +419,13 @@ async fn version_create_inner(
     .insert_many(users, &mut *transaction, redis)
     .await?;
 
+    let loader_structs = selected_loaders.unwrap_or_default();
+    let (all_project_types, all_games) : (Vec<String>, Vec<String>) = loader_structs.iter().fold((vec![], vec![]), |mut acc, x| {
+        acc.0.extend_from_slice(&x.supported_project_types);
+        acc.1.extend(x.supported_games.iter().map(|x| x.name().to_string()));
+        acc
+    });
+
     let response = Version {
         id: builder.version_id.into(),
         project_id: builder.project_id.into(),
@@ -448,6 +433,8 @@ async fn version_create_inner(
         featured: builder.featured,
         name: builder.name.clone(),
         version_number: builder.version_number.clone(),
+        project_types: all_project_types,
+        games: all_games,
         changelog: builder.changelog.clone(),
         changelog_url: None,
         date_published: Utc::now(),
@@ -609,11 +596,29 @@ async fn upload_file_to_version_inner(
         }
     };
 
-    let project = models::Project::get_id(version.inner.project_id, &mut **transaction, &redis)
-        .await?
-        .ok_or_else(|| {
-            CreateError::InvalidInput("Version contained an invalid project id".to_string())
-        })?;
+    let all_loaders = models::loader_fields::Loader::list(&mut **transaction, &redis).await?;
+
+    // TODO: this coded is reused a lot, it should be refactored into a function
+    let selected_loaders = version
+        .loaders
+        .iter()
+        .map(|x| {
+            all_loaders
+                .iter()
+                .find(|y| {
+                    &y.loader == x
+                })
+                .cloned()
+                .ok_or_else(|| CreateError::InvalidLoader(x.clone()))
+        }).collect::<Result<Vec<_>, _>>()?;
+
+        if models::Project::get_id(version.inner.project_id, &mut **transaction, &redis)
+        .await?.is_none() {
+            return Err(CreateError::InvalidInput(
+                "An invalid project id was supplied".to_string(),
+            ));
+        }
+
 
     if !user.role.is_admin() {
         let team_member = models::TeamMember::get_from_user_id_project(
@@ -655,19 +660,6 @@ async fn upload_file_to_version_inner(
     }
 
     let project_id = ProjectId(version.inner.project_id.0 as u64);
-
-    let project_type = sqlx::query!(
-        "
-        SELECT name FROM project_types pt
-        INNER JOIN mods ON mods.project_type = pt.id
-        WHERE mods.id = $1
-        ",
-        version.inner.project_id as models::ProjectId,
-    )
-    .fetch_one(&mut **transaction)
-    .await?
-    .name;
-
     let mut error = None;
     while let Some(item) = payload.next().await {
         let mut field: Field = item?;
@@ -697,6 +689,8 @@ async fn upload_file_to_version_inner(
                 CreateError::InvalidInput(String::from("`data` field must come before file fields"))
             })?;
 
+            let loaders = selected_loaders.iter().map(|x| Loader(x.loader.clone())).collect::<Vec<_>>();
+        
             let mut dependencies = version
                 .dependencies
                 .iter()
@@ -717,12 +711,10 @@ async fn upload_file_to_version_inner(
                 &mut dependencies,
                 &cdn_url,
                 &content_disposition,
-                project.inner.game,
                 project_id,
                 version_id.into(),
                 &version.version_fields,
-                &project_type,
-                version.loaders.clone().into_iter().map(Loader).collect(),
+                loaders,
                 true,
                 false,
                 file_data.file_types.get(name).copied().flatten(),
@@ -770,12 +762,10 @@ pub async fn upload_file(
     dependencies: &mut Vec<DependencyBuilder>,
     cdn_url: &str,
     content_disposition: &actix_web::http::header::ContentDisposition,
-    game: Game,
     project_id: ProjectId,
     version_id: VersionId,
     version_fields: &[VersionField],
-    project_type: &str,
-    loaders: Vec<Loader>,
+    loaders : Vec<Loader>,
     ignore_primary: bool,
     force_primary: bool,
     file_type: Option<FileType>,
@@ -822,10 +812,8 @@ pub async fn upload_file(
     }
 
     let validation_result = validate_file(
-        game,
         data.clone().into(),
         file_extension.to_string(),
-        project_type.to_string(),
         loaders.clone(),
         file_type,
         version_fields.to_vec(),
@@ -899,9 +887,7 @@ pub async fn upload_file(
     }
 
     let data = data.freeze();
-
-    let primary = (validation_result.is_passed()
-        && version_files.iter().all(|x| !x.primary)
+    let primary = (version_files.iter().all(|x| !x.primary)
         && !ignore_primary)
         || force_primary
         || total_files_len == 1;
@@ -934,12 +920,6 @@ pub async fn upload_file(
         return Err(CreateError::InvalidInput(
             "Duplicate files are not allowed to be uploaded to Modrinth!".to_string(),
         ));
-    }
-
-    if let ValidationResult::Warning(msg) = validation_result {
-        if primary {
-            return Err(CreateError::InvalidInput(msg.to_string()));
-        }
     }
 
     version_files.push(VersionFileBuilder {

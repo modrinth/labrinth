@@ -90,6 +90,8 @@ pub async fn send_discord_webhook(
             pt.name project_type, u.username username, u.avatar_url avatar_url,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null) categories,
             ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders,
+            ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
+            ARRAY_AGG(DISTINCT g.name) filter (where g.name is not null) games,
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is false) gallery,
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery,
             JSONB_AGG(
@@ -128,8 +130,11 @@ pub async fn send_discord_webhook(
             LEFT OUTER JOIN versions v ON v.mod_id = m.id AND v.status != ALL($2)
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
             LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id
+            LEFT JOIN loaders_project_types lpt ON lpt.joining_loader_id = lo.id
+            LEFT JOIN project_types pt ON pt.id = lpt.joining_project_type_id
+            LEFT JOIN loaders_project_types_games lptg ON lptg.loader_id = lo.id AND lptg.project_type_id = pt.id
+            LEFT JOIN games g ON lptg.game_id = g.id
             LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
-            INNER JOIN project_types pt ON pt.id = m.project_type
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
             INNER JOIN users u ON tm.user_id = u.id
             LEFT OUTER JOIN version_fields vf on v.id = vf.version_id

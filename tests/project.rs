@@ -958,6 +958,7 @@ async fn permissions_manage_invites() {
 
 #[actix_rt::test]
 async fn permissions_delete_project() {
+    println!("doing:");
     // Add member, remove member, edit member
     let test_env = TestEnvironment::build(None).await;
 

@@ -29,8 +29,10 @@ pub struct Project {
     pub id: ProjectId,
     /// The slug of a project, used for vanity URLs
     pub slug: Option<String>,
-    /// The project type of the project
-    pub project_type: String,
+    /// The aggregated project typs of the versions of this project
+    pub project_types: Vec<String>,
+    /// The aggregated games of the versions of this project
+    pub games: Vec<String>,
     /// The team of people that has ownership of this project.
     pub team: TeamId,
     /// The optional organization of people that have ownership of this project.
@@ -115,7 +117,8 @@ impl From<QueryProject> for Project {
         Self {
             id: m.id.into(),
             slug: m.slug,
-            project_type: data.project_type,
+            project_types: data.project_types,
+            games: data.games,
             team: m.team_id.into(),
             organization: m.organization_id.map(|i| i.into()),
             title: m.title,
@@ -454,11 +457,14 @@ pub struct Version {
     pub author_id: UserId,
     /// Whether the version is featured or not
     pub featured: bool,
-
     /// The name of this version
     pub name: String,
     /// The version number. Ideally will follow semantic versioning
     pub version_number: String,
+    /// Project types for which this version is compatible with, extracted from Loader
+    pub project_types: Vec<String>,
+    /// Games for which this version is compatible with, extracted from Loader/Project types
+    pub games: Vec<String>,
     /// The changelog for this version of the project.
     pub changelog: String,
     /// A link to the changelog for this version of the project. Deprecated, always None
@@ -506,10 +512,11 @@ impl From<QueryVersion> for Version {
             id: v.id.into(),
             project_id: v.project_id.into(),
             author_id: v.author_id.into(),
-
             featured: v.featured,
             name: v.name,
             version_number: v.version_number,
+            project_types: data.project_types,
+            games: data.games,
             changelog: v.changelog,
             changelog_url: None,
             date_published: v.date_published,

@@ -1,5 +1,5 @@
 use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
-use crate::database::models::loader_fields::{Game, Loader};
+use crate::database::models::loader_fields::Loader;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::{QueryFile, QueryVersion};
 use crate::database::redis::RedisPool;
@@ -22,6 +22,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(version_file_sha1);
     cfg.service(version_file);
 }
+
+// TODO: These were modified in v3 and should be tested
 
 #[derive(Default, Debug, Clone, YaSerialize)]
 #[yaserde(root = "metadata", rename = "metadata")]
@@ -180,8 +182,7 @@ async fn find_version(
         return Ok(exact_matches.get(0).map(|x| (*x).clone()));
     };
 
-    // Hardcoded to minecraft-java
-    let db_loaders: HashSet<String> = Loader::list(Game::MinecraftJava, pool, redis)
+    let db_loaders: HashSet<String> = Loader::list(pool, redis)
         .await?
         .into_iter()
         .map(|x| x.loader)
@@ -229,7 +230,6 @@ async fn find_version(
 fn find_file<'a>(
     project_id: &str,
     vcoords: &str,
-    project: &QueryProject,
     version: &'a QueryVersion,
     file: &str,
 ) -> Option<&'a QueryFile> {
@@ -237,21 +237,27 @@ fn find_file<'a>(
         return Some(selected_file);
     }
 
-    let fileext = match project.project_type.as_str() {
-        "mod" => "jar",
-        "modpack" => "mrpack",
-        _ => return None,
-    };
-
-    if file == format!("{}-{}.{}", &project_id, &vcoords, fileext) {
-        version
-            .files
-            .iter()
-            .find(|x| x.primary)
-            .or_else(|| version.files.iter().last())
-    } else {
-        None
+    // Minecraft mods are not going to be both a mod and a modpack, so this minecraft-specific handling is fine
+    // As there can be multiple project types, returns the first allowable match
+    let mut fileexts = vec![];
+    for project_type in version.project_types.iter() {
+        match project_type.as_str() {
+            "mod" => fileexts.push("jar"),
+            "modpack" => fileexts.push("mrpack"),
+            _ => (),
+        }
     }
+
+    for fileext in fileexts {
+        if file == format!("{}-{}.{}", &project_id, &vcoords, fileext) {
+            return version
+                .files
+                .iter()
+                .find(|x| x.primary)
+                .or_else(|| version.files.iter().last());
+        }     
+    }
+    None
 }
 
 #[route(
@@ -310,7 +316,7 @@ pub async fn version_file(
         return Ok(HttpResponse::Ok()
             .content_type("text/xml")
             .body(yaserde::ser::to_string(&respdata).map_err(ApiError::Xml)?));
-    } else if let Some(selected_file) = find_file(&project_id, &vnum, &project, &version, &file) {
+    } else if let Some(selected_file) = find_file(&project_id, &vnum, &version, &file) {
         return Ok(HttpResponse::TemporaryRedirect()
             .append_header(("location", &*selected_file.url))
             .body(""));
@@ -355,7 +361,7 @@ pub async fn version_file_sha1(
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    Ok(find_file(&project_id, &vnum, &project, &version, &file)
+    Ok(find_file(&project_id, &vnum, &version, &file)
         .and_then(|file| file.hashes.get("sha1"))
         .map(|hash_str| HttpResponse::Ok().body(hash_str.clone()))
         .unwrap_or_else(|| HttpResponse::NotFound().body("")))
@@ -397,7 +403,7 @@ pub async fn version_file_sha512(
         return Ok(HttpResponse::NotFound().body(""));
     }
 
-    Ok(find_file(&project_id, &vnum, &project, &version, &file)
+    Ok(find_file(&project_id, &vnum, &version, &file)
         .and_then(|file| file.hashes.get("sha512"))
         .map(|hash_str| HttpResponse::Ok().body(hash_str.clone()))
         .unwrap_or_else(|| HttpResponse::NotFound().body("")))

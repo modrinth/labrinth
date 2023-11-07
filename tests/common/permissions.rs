@@ -175,6 +175,7 @@ impl<'a> PermissionsTest<'a> {
 
         let resp = test_env.call(request).await;
         if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+            println!("Body: {:?}", resp.response().body());
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
                 self.allowed_failure_codes
@@ -206,6 +207,7 @@ impl<'a> PermissionsTest<'a> {
 
         let resp = test_env.call(request).await;
         if !resp.status().is_success() {
+            println!("Body: {:?}", resp.response().body());
             return Err(format!(
                 "Success permissions test failed. Expected success, got {}",
                 resp.status().as_u16()

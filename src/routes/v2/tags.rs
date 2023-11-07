@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::database::models::loader_fields::{Game, LoaderFieldEnumValue};
+use crate::database::models::loader_fields::LoaderFieldEnumValue;
 use crate::database::redis::RedisPool;
-use crate::routes::v3::tags::{LoaderFieldsEnumQuery, LoaderList};
+use crate::routes::v3::tags::{LoaderFieldsEnumQuery, LoaderData as LoaderDataV3};
 use crate::routes::{v2_reroute, v3};
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -45,9 +45,9 @@ pub async fn category_list(
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct LoaderData {
-    icon: String,
-    name: String,
-    supported_project_types: Vec<String>,
+    pub icon: String,
+    pub name: String,
+    pub supported_project_types: Vec<String>,
 }
 
 #[get("loader")]
@@ -56,14 +56,27 @@ pub async fn loader_list(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::tags::loader_list(
-        web::Query(LoaderList {
-            game: Game::MinecraftJava.name().to_string(),
-        }),
         pool,
         redis,
     )
     .await?;
-    Ok(response)
+
+    // Convert to V2 format
+    match v2_reroute::extract_ok_json::<Vec<LoaderDataV3>>(response).await {
+        Ok(loaders) => {
+            let loaders = loaders
+                .into_iter()
+                .map(|l| LoaderData {
+                    icon: l.icon,
+                    name: l.name,
+                    supported_project_types: l
+                        .supported_project_types,
+                })
+                .collect::<Vec<_>>();
+            Ok(HttpResponse::Ok().json(loaders))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

@@ -19,13 +19,15 @@ pub async fn index_local(
     let uploads =
         sqlx::query!(
             "
-            SELECT m.id id, v.id version_id, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
+            SELECT m.id id, v.id version_id, m.title title, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,
             m.team_id team_id, m.license license, m.slug slug, m.status status_name, m.color color,
             pt.name project_type_name, u.username username,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,
             ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,
             ARRAY_AGG(DISTINCT lo.loader) filter (where lo.loader is not null) loaders,
+            ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
+            ARRAY_AGG(DISTINCT g.name) filter (where g.name is not null) games,
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is false) gallery,
             ARRAY_AGG(DISTINCT mg.image_url) filter (where mg.image_url is not null and mg.featured is true) featured_gallery,
             JSONB_AGG(
@@ -59,15 +61,17 @@ pub async fn index_local(
                 )  
             ) filter (where lfev.id is not null) loader_field_enum_values
 
-            
             FROM versions v
             INNER JOIN mods m ON v.mod_id = m.id AND m.status = ANY($2)
             LEFT OUTER JOIN mods_categories mc ON joining_mod_id = m.id
             LEFT OUTER JOIN categories c ON mc.joining_category_id = c.id
             LEFT OUTER JOIN loaders_versions lv ON lv.version_id = v.id
             LEFT OUTER JOIN loaders lo ON lo.id = lv.loader_id
+            LEFT JOIN loaders_project_types lpt ON lpt.joining_loader_id = lo.id
+            LEFT JOIN project_types pt ON pt.id = lpt.joining_project_type_id
+            LEFT JOIN loaders_project_types_games lptg ON lptg.loader_id = lo.id AND lptg.project_type_id = pt.id
+            LEFT JOIN games g ON lptg.game_id = g.id
             LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
-            INNER JOIN project_types pt ON pt.id = m.project_type
             INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
             INNER JOIN users u ON tm.user_id = u.id
             LEFT OUTER JOIN version_fields vf on v.id = vf.version_id

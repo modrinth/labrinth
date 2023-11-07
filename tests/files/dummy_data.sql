@@ -19,13 +19,17 @@ INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (52, 
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (53, 4, 'friend-pat', 'mrp_patfriend', $1, '2030-08-18 15:48:58.435729+00');
 INSERT INTO pats (id, user_id, name, access_token, scopes, expires) VALUES (54, 5, 'enemy-pat', 'mrp_patenemy', $1, '2030-08-18 15:48:58.435729+00');
 
-INSERT INTO loaders (id, loader, game_id) VALUES (1, 'fabric', 1);
-INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,1);
-INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (1,2); 
+INSERT INTO loaders (id, loader) VALUES (5, 'fabric');
+INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (5,1);
 
-INSERT INTO loaders (id, loader, game_id) VALUES (2, 'forge', 1);
-INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (2,1);
-INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (2,2); 
+INSERT INTO loaders (id, loader) VALUES (6, 'forge');
+INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (6,1);
+
+INSERT INTO categories (category, project_type) SELECT 'forge', id FROM project_types WHERE name = 'modpack';
+INSERT INTO categories (category, project_type) SELECT 'fabric', id FROM project_types WHERE name = 'modpack';
+
+INSERT INTO loaders_project_types_games (loader_id, project_type_id, game_id) SELECT joining_loader_id, joining_project_type_id, 1 FROM loaders_project_types WHERE joining_loader_id = 5;
+INSERT INTO loaders_project_types_games (loader_id, project_type_id, game_id) SELECT joining_loader_id, joining_project_type_id, 1 FROM loaders_project_types WHERE joining_loader_id = 6;
 
 -- Sample game versions, loaders, categories
 -- Game versions is '2'
@@ -45,13 +49,13 @@ SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf WHERE lf.field = '
 
 
 INSERT INTO categories (id, category, project_type) VALUES
-    (1, 'combat', 1),
-    (2, 'decoration', 1),
-    (3, 'economy', 1),
-    (4, 'food', 1),
-    (5, 'magic', 1),
-    (6, 'mobs', 1),
-    (7, 'optimization', 1);
+    (51, 'combat', 1),
+    (52, 'decoration', 1),
+    (53, 'economy', 1),
+    (54, 'food', 1),
+    (55, 'magic', 1),
+    (56, 'mobs', 1),
+    (57, 'optimization', 1);
 
 INSERT INTO categories (id, category, project_type) VALUES
     (101, 'combat', 2),

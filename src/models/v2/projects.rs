@@ -71,6 +71,11 @@ impl LegacyProject {
         let mut client_side = LegacySideType::Unknown;
         let mut server_side = LegacySideType::Unknown;
         let mut game_versions = Vec::new();
+
+        // TODO: extract modpack changes
+        // - if loader is mrpack, this is a modpack
+        // the loaders are whatever the corresponding cateogires are
+
         if let Some(versions_item) = versions_item {
             client_side = versions_item
                 .version_fields
@@ -100,10 +105,15 @@ impl LegacyProject {
                 .map(|v| v.into_iter().map(|v| v.version).collect())
                 .unwrap_or(Vec::new());
         }
+
+        // V2 projects only have one project type- v3 ones can rarely have multiple.
+        // We'll just use the first one.
+        let project_type = data.project_types.get(0).cloned().unwrap_or_default();
+
         Self {
             id: data.id,
             slug: data.slug,
-            project_type: data.project_type,
+            project_type,
             team: data.team,
             organization: data.organization,
             title: data.title,

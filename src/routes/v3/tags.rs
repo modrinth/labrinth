@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::ApiError;
 use crate::database::models::categories::{Category, DonationPlatform, ReportType, ProjectType};
 use crate::database::models::loader_fields::{
-    Game, Loader, LoaderField, LoaderFieldEnumValue, LoaderFieldType,
+    Loader, LoaderField, LoaderFieldEnumValue, LoaderFieldType,
 };
 use crate::database::redis::RedisPool;
 use actix_web::{web, HttpResponse};
@@ -54,28 +54,21 @@ pub struct LoaderData {
     pub icon: String,
     pub name: String,
     pub supported_project_types: Vec<String>,
-}
-
-#[derive(serde::Deserialize)]
-pub struct LoaderList {
-    pub game: String,
+    pub supported_games: Vec<String>,
 }
 
 pub async fn loader_list(
-    data: web::Query<LoaderList>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let game = Game::from_name(&data.game).ok_or_else(|| {
-        ApiError::InvalidInput(format!("'{}' is not a supported game.", data.game))
-    })?;
-    let mut results = Loader::list(game, &**pool, &redis)
+    let mut results = Loader::list(&**pool, &redis)
         .await?
         .into_iter()
         .map(|x| LoaderData {
             icon: x.icon,
             name: x.loader,
             supported_project_types: x.supported_project_types,
+            supported_games: x.supported_games.iter().map(|x| x.name().to_string()).collect(),
         })
         .collect::<Vec<_>>();
 

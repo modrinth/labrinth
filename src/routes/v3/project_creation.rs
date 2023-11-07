@@ -1,7 +1,7 @@
 use super::version_creation::InitialVersionData;
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::loader_fields::{
-    Game, LoaderField, LoaderFieldEnumValue, VersionField,
+    LoaderField, LoaderFieldEnumValue, VersionField, Loader,
 };
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item, User};
@@ -28,6 +28,7 @@ use actix_web::{HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
 use image::ImageError;
+use itertools::Itertools;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
@@ -159,14 +160,6 @@ pub struct ProjectCreateData {
     #[serde(alias = "mod_name")]
     /// The title or name of the project.
     pub title: String,
-    /// The name of the game that the project is for.
-    /// This must be a valid game name.
-    #[validate(length(min = 1, max = 64))]
-    pub game_name: String,
-    #[validate(length(min = 1, max = 64))]
-    #[serde(default = "default_project_type")]
-    /// The project type of this mod
-    pub project_type: String,
     #[validate(
         length(min = 3, max = 64),
         regex = "crate::util::validate::RE_URL_SAFE"
@@ -377,9 +370,9 @@ async fn project_create_inner(
     .1;
 
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
+    let all_loaders =  models::loader_fields::Loader::list(&mut **transaction, redis).await?;
 
     let project_create_data: ProjectCreateData;
-    let game;
     let mut versions;
     let mut versions_map = std::collections::HashMap::new();
     let mut gallery_urls = Vec::new();
@@ -454,14 +447,6 @@ async fn project_create_inner(
             }
         }
 
-        // Check game exists, and get loaders for it
-        let game_name = &create_data.game_name;
-        game = Game::from_name(&create_data.game_name).ok_or_else(|| {
-            CreateError::InvalidInput(format!("Game '{game_name}' is currently unsupported."))
-        })?;
-        let all_loaders =
-            models::loader_fields::Loader::list(game, &mut **transaction, redis).await?;
-
         // Create VersionBuilders for the versions specified in `initial_versions`
         versions = Vec::with_capacity(create_data.initial_versions.len());
         for (i, data) in create_data.initial_versions.iter().enumerate() {
@@ -480,7 +465,6 @@ async fn project_create_inner(
                     project_id,
                     current_user.id,
                     &all_loaders,
-                    &create_data.project_type,
                     transaction,
                     redis,
                 )
@@ -490,18 +474,6 @@ async fn project_create_inner(
 
         project_create_data = create_data;
     }
-
-    let project_type_id = models::categories::ProjectType::get_id(
-        project_create_data.project_type.as_str(),
-        &mut **transaction,
-    )
-    .await?
-    .ok_or_else(|| {
-        CreateError::InvalidInput(format!(
-            "Project Type {} does not exist.",
-            project_create_data.project_type.clone()
-        ))
-    })?;
 
     let mut icon_data = None;
 
@@ -592,6 +564,8 @@ async fn project_create_inner(
             // `index` is always valid for these lists
             let created_version = versions.get_mut(index).unwrap();
             let version_data = project_create_data.initial_versions.get(index).unwrap();
+            // TODO: maybe redundant is this calculation done elsewhere?
+            
             // Upload the new jar file
             super::version_creation::upload_file(
                 &mut field,
@@ -602,11 +576,9 @@ async fn project_create_inner(
                 &mut created_version.dependencies,
                 &cdn_url,
                 &content_disposition,
-                game,
                 project_id,
                 created_version.version_id.into(),
                 &created_version.version_fields,
-                &project_create_data.project_type,
                 version_data.loaders.clone(),
                 version_data.primary_file.is_some(),
                 version_data.primary_file.as_deref() == Some(name),
@@ -646,27 +618,26 @@ async fn project_create_inner(
         // Convert the list of category names to actual categories
         let mut categories = Vec::with_capacity(project_create_data.categories.len());
         for category in &project_create_data.categories {
-            let id = models::categories::Category::get_id_project(
-                category,
-                project_type_id,
-                &mut **transaction,
-            )
-            .await?
-            .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
-            categories.push(id);
+            let ids = models::categories::Category::get_ids(category, &mut **transaction).await?;
+            if ids.is_empty() {
+                return Err(CreateError::InvalidCategory(category.clone()));
+            }
+            
+            // TODO: We should filter out categories that don't match the project type of any of the versions
+            // ie: if mod and modpack both share a name this should only have modpack if it only has a modpack as a version
+            categories.extend(ids.values());
         }
 
         let mut additional_categories =
             Vec::with_capacity(project_create_data.additional_categories.len());
         for category in &project_create_data.additional_categories {
-            let id = models::categories::Category::get_id_project(
-                category,
-                project_type_id,
-                &mut **transaction,
-            )
-            .await?
-            .ok_or_else(|| CreateError::InvalidCategory(category.clone()))?;
-            additional_categories.push(id);
+            let ids = models::categories::Category::get_ids(category, &mut **transaction).await?;
+            if ids.is_empty() {
+                return Err(CreateError::InvalidCategory(category.clone()));
+            }
+            // TODO: We should filter out categories that don't match the project type of any of the versions
+            // ie: if mod and modpack both share a name this should only have modpack if it only has a modpack as a version
+            additional_categories.extend(ids.values());
         }
 
         let team = models::team_item::TeamBuilder {
@@ -726,8 +697,6 @@ async fn project_create_inner(
 
         let project_builder_actual = models::project_item::ProjectBuilder {
             project_id: project_id.into(),
-            game,
-            project_type_id,
             team_id,
             organization_id: project_create_data.organization_id.map(|x| x.into()),
             title: project_create_data.title,
@@ -813,10 +782,29 @@ async fn project_create_inner(
         .insert(&mut *transaction)
         .await?;
 
+        let loaders = project_builder
+            .initial_versions
+            .iter()
+            .flat_map(|v| v.loaders.clone())
+            .unique()
+            .collect::<Vec<_>>();
+        let (project_types, games) = Loader::list(&mut **transaction, &redis).await?.into_iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut project_types, mut games), loader| {
+                if loaders.contains(&loader.id) {
+                    project_types.extend(loader.supported_project_types);
+                    games.extend(loader.supported_games.iter().map(|x| x.name().to_string()));
+                }
+                (project_types, games)
+            },
+        );
+        
+
         let response = crate::models::projects::Project {
             id: project_id,
             slug: project_builder.slug.clone(),
-            project_type: project_create_data.project_type.clone(),
+            project_types,
+            games,
             team: team_id.into(),
             organization: project_create_data.organization_id,
             title: project_builder.title.clone(),
@@ -866,7 +854,6 @@ async fn create_initial_version(
     project_id: ProjectId,
     author: UserId,
     all_loaders: &[models::loader_fields::Loader],
-    project_type: &String,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &RedisPool,
 ) -> Result<models::version_item::VersionBuilder, CreateError> {
@@ -891,8 +878,6 @@ async fn create_initial_version(
                 .iter()
                 .find(|y| {
                     y.loader == x.0
-                        && y.supported_project_types
-                            .contains(&project_type.to_string())
                 })
                 .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
                 .map(|y| y.id)

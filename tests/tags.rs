@@ -29,7 +29,7 @@ async fn get_tags() {
     let loader_names = loaders.into_iter().map(|x| x.name).collect::<HashSet<_>>();
     assert_eq!(
         loader_names,
-        ["fabric", "forge"].iter().map(|s| s.to_string()).collect()
+        ["fabric", "forge", "mrpack"].iter().map(|s| s.to_string()).collect()
     );
 
     let side_type_names = side_types.into_iter().collect::<HashSet<_>>();
@@ -54,7 +54,9 @@ async fn get_tags() {
             "optimization",
             "decoration",
             "mobs",
-            "magic"
+            "magic",
+            "fabric",
+            "forge"
         ]
         .iter()
         .map(|s| s.to_string())

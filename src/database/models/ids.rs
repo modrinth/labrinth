@@ -202,7 +202,7 @@ pub struct OrganizationId(pub i64);
 #[derive(Copy, Clone, Debug, Type, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct ProjectId(pub i64);
-#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[sqlx(transparent)]
 pub struct ProjectTypeId(pub i32);
 
@@ -219,7 +219,7 @@ pub struct DonationPlatformId(pub i32);
 #[derive(Copy, Clone, Debug, Type, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct VersionId(pub i64);
-#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[sqlx(transparent)]
 pub struct LoaderId(pub i32);
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize)]

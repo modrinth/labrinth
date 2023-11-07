@@ -34,6 +34,8 @@ impl ApiV2 {
         let resp = self.call(req).await;
         assert_status(&resp, StatusCode::OK);
 
+        println!("Added body: {:?}", resp.response().body());
+
         // Approve as a moderator.
         let req = TestRequest::patch()
             .uri(&format!("/v2/project/{}", creation_data.slug))

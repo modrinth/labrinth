@@ -1,5 +1,5 @@
 use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
-use crate::database::models::loader_fields::{Game, VersionField};
+use crate::database::models::loader_fields::VersionField;
 use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
 use crate::models::pack::PackFormat;
@@ -110,18 +110,23 @@ static VALIDATORS: &[&dyn Validator] = &[
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
 #[allow(clippy::too_many_arguments)]
 pub async fn validate_file(
-    game: Game,
     data: bytes::Bytes,
     file_extension: String,
-    project_type: String,
     loaders: Vec<Loader>,
     file_type: Option<FileType>,
     version_fields: Vec<VersionField>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &RedisPool,
 ) -> Result<ValidationResult, ValidationError> {
-    match game {
-        Game::MinecraftJava => {
+    // TODO: This needs to be revisited or removed with v3. 
+    // Currently, it checks if the loader is the modpack loader, and extracts the pack data from it.
+    // This (and the funnction that calls this) should be refactored such that
+    // - validators are removed (or altogether reworked)
+    // - if a mrpack is uploaded, the pack data is extracted and usable to extract dependencies automatically
+
+    // TODO: A test needs to be written for this.
+    match loaders {
+        loaders if loaders == vec![Loader("mrpack".to_string())] => {
             let game_versions = version_fields
                 .into_iter()
                 .find_map(|v| MinecraftGameVersion::try_from_version_field(&v).ok())
@@ -131,14 +136,15 @@ pub async fn validate_file(
             validate_minecraft_file(
                 data,
                 file_extension,
-                project_type,
+                "modpack".to_string(),
                 loaders,
                 game_versions,
                 all_game_versions,
                 file_type,
             )
             .await
-        }
+        },
+        _ => Ok(ValidationResult::Pass),
     }
 }
 

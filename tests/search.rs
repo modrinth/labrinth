@@ -274,6 +274,10 @@ async fn search_projects() {
                     .collect();
                 expected_project_ids.sort();
                 found_project_ids.sort();
+                println!(
+                    "facets: {:?}, expected: {:?}, found: {:?}",
+                    facets, expected_project_ids, found_project_ids
+                );
                 assert_eq!(found_project_ids, expected_project_ids);
             }
         })

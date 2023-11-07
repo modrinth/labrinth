@@ -2,10 +2,7 @@ use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
-use labrinth::routes::{
-    v2::tags::{CategoryData, GameVersionQueryData},
-    v3::tags::LoaderData,
-};
+use labrinth::routes::v2::tags::{CategoryData, GameVersionQueryData, LoaderData};
 
 use crate::common::database::ADMIN_USER_PAT;
 

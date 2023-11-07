@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::database::redis::RedisPool;
 
 use super::ids::*;
@@ -34,21 +36,29 @@ pub struct DonationPlatform {
 }
 
 impl Category {
-    pub async fn get_id<'a, E>(name: &str, exec: E) -> Result<Option<CategoryId>, DatabaseError>
+    // Gets hashmap of category ids matching a name
+    // Multiple categories can have the same name, but different project types, so we need to return a hashmap
+    // ProjectTypeId -> CategoryId
+    pub async fn get_ids<'a, E>(name: &str, exec: E) -> Result<HashMap<ProjectTypeId, CategoryId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
         let result = sqlx::query!(
             "
-            SELECT id FROM categories
+            SELECT id, project_type FROM categories
             WHERE category = $1
             ",
             name,
         )
-        .fetch_optional(exec)
+        .fetch_all(exec)
         .await?;
 
-        Ok(result.map(|r| CategoryId(r.id)))
+        let mut map = HashMap::new();
+        for r in result {
+            map.insert(ProjectTypeId(r.project_type), CategoryId(r.id));
+        }
+        
+        Ok(map)
     }
 
     pub async fn get_id_project<'a, E>(

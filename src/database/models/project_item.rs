@@ -1,4 +1,3 @@
-use super::loader_fields::Game;
 use super::{ids::*, User};
 use crate::database::models;
 use crate::database::models::DatabaseError;
@@ -142,8 +141,6 @@ impl ModCategory {
 #[derive(Clone)]
 pub struct ProjectBuilder {
     pub project_id: ProjectId,
-    pub game: Game,
-    pub project_type_id: ProjectTypeId,
     pub team_id: TeamId,
     pub organization_id: Option<OrganizationId>,
     pub title: String,
@@ -175,8 +172,6 @@ impl ProjectBuilder {
     ) -> Result<ProjectId, DatabaseError> {
         let project_struct = Project {
             id: self.project_id,
-            game: self.game,
-            project_type: self.project_type_id,
             team_id: self.team_id,
             organization_id: self.organization_id,
             title: self.title,
@@ -248,8 +243,6 @@ impl ProjectBuilder {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Project {
     pub id: ProjectId,
-    pub game: Game,
-    pub project_type: ProjectTypeId,
     pub team_id: TeamId,
     pub organization_id: Option<OrganizationId>,
     pub title: String,
@@ -292,14 +285,14 @@ impl Project {
                 published, downloads, icon_url, issues_url,
                 source_url, wiki_url, status, requested_status, discord_url,
                 license_url, license,
-                slug, project_type, color, monetization_status
+                slug, color, monetization_status
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8, $9,
                 $10, $11, $12, $13, $14,
-                $15, $16, LOWER($17), $18,
-                $19, $20
+                $15, $16, 
+                LOWER($17), $18, $19
             )
             ",
             self.id as ProjectId,
@@ -319,7 +312,6 @@ impl Project {
             self.license_url.as_ref(),
             &self.license,
             self.slug.as_ref(),
-            self.project_type as ProjectTypeId,
             self.color.map(|x| x as i32),
             self.monetization_status.as_str(),
         )
@@ -570,22 +562,22 @@ impl Project {
 
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
-                SELECT m.id id, g.name, m.project_type project_type, m.title title, m.description description, m.downloads downloads, m.follows follows,
+                SELECT m.id id, m.title title, m.description description, m.downloads downloads, m.follows follows,
                 m.icon_url icon_url, m.body body, m.published published,
                 m.updated updated, m.approved approved, m.queued, m.status status, m.requested_status requested_status,
                 m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
                 m.team_id team_id, m.organization_id organization_id, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
-                pt.name project_type_name, m.webhook_sent, m.color,
+                m.webhook_sent, m.color,
                 t.id thread_id, m.monetization_status monetization_status,
                 ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
+                ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
+                ARRAY_AGG(DISTINCT g.name) filter (where g.name is not null) games,
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,
                 JSONB_AGG(DISTINCT jsonb_build_object('id', v.id, 'date_published', v.date_published)) filter (where v.id is not null) versions,
                 JSONB_AGG(DISTINCT jsonb_build_object('image_url', mg.image_url, 'featured', mg.featured, 'title', mg.title, 'description', mg.description, 'created', mg.created, 'ordering', mg.ordering)) filter (where mg.image_url is not null) gallery,
                 JSONB_AGG(DISTINCT jsonb_build_object('platform_id', md.joining_platform_id, 'platform_short', dp.short, 'platform_name', dp.name,'url', md.url)) filter (where md.joining_platform_id is not null) donations
-                FROM mods m
-                INNER JOIN games g ON g.id = m.game_id
-                INNER JOIN project_types pt ON pt.id = m.project_type
+                FROM mods m                
                 INNER JOIN threads t ON t.mod_id = m.id
                 LEFT JOIN mods_gallery mg ON mg.mod_id = m.id
                 LEFT JOIN mods_donations md ON md.joining_mod_id = m.id
@@ -595,8 +587,12 @@ impl Project {
                 LEFT JOIN versions v ON v.mod_id = m.id AND v.status = ANY($3)
                 LEFT JOIN loaders_versions lv ON lv.version_id = v.id
                 LEFT JOIN loaders l on lv.loader_id = l.id
+                LEFT JOIN loaders_project_types lpt ON lpt.joining_loader_id = l.id
+                LEFT JOIN project_types pt ON pt.id = lpt.joining_project_type_id
+                LEFT JOIN loaders_project_types_games lptg ON lptg.loader_id = l.id AND lptg.project_type_id = pt.id
+                LEFT JOIN games g ON lptg.game_id = g.id
                 WHERE m.id = ANY($1) OR m.slug = ANY($2)
-                GROUP BY pt.id, t.id, m.id, g.name;
+                GROUP BY t.id, m.id;
                 ",
                 &project_ids_parsed,
                 &remaining_strings.into_iter().map(|x| x.to_string().to_lowercase()).collect::<Vec<_>>(),
@@ -609,8 +605,6 @@ impl Project {
                     Some(QueryProject {
                         inner: Project {
                             id: ProjectId(id),
-                            game: m.name.and_then(|g| Game::from_name(&g))?,
-                            project_type: ProjectTypeId(m.project_type),
                             team_id: TeamId(m.team_id),
                             organization_id: m.organization_id.map(OrganizationId),
                             title: m.title.clone(),
@@ -646,9 +640,10 @@ impl Project {
                             ),
                             loaders: m.loaders.unwrap_or_default(),
                         },
-                        project_type: m.project_type_name,
                         categories: m.categories.unwrap_or_default(),
                         additional_categories: m.additional_categories.unwrap_or_default(),
+                        project_types: m.project_types.unwrap_or_default(),
+                        games: m.games.unwrap_or_default(),
                         versions: {
                                 #[derive(Deserialize)]
                                 struct Version {
@@ -781,10 +776,11 @@ impl Project {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QueryProject {
     pub inner: Project,
-    pub project_type: String,
     pub categories: Vec<String>,
     pub additional_categories: Vec<String>,
     pub versions: Vec<VersionId>,
+    pub project_types: Vec<String>,
+    pub games: Vec<String>,
     pub donation_urls: Vec<DonationUrl>,
     pub gallery_items: Vec<GalleryItem>,
     pub thread_id: ThreadId,

@@ -519,6 +519,8 @@ impl Version {
                 v.changelog changelog, v.date_published date_published, v.downloads downloads,
                 v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status,
                 ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
+                ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
+                ARRAY_AGG(DISTINCT g.name) filter (where g.name is not null) games,
                 JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,
                 JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,
                 JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies,
@@ -557,6 +559,10 @@ impl Version {
                 FROM versions v
                 LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id
                 LEFT OUTER JOIN loaders l on lv.loader_id = l.id
+                LEFT OUTER JOIN loaders_project_types lpt on l.id = lpt.joining_loader_id
+                LEFT JOIN project_types pt on lpt.joining_project_type_id = pt.id
+                LEFT OUTER JOIN loaders_project_types_games lptg on l.id = lptg.loader_id AND pt.id = lptg.project_type_id
+                LEFT JOIN games g on lptg.game_id = g.id
                 LEFT OUTER JOIN files f on v.id = f.version_id
                 LEFT OUTER JOIN hashes h on f.id = h.file_id
                 LEFT OUTER JOIN dependencies d on v.id = d.dependent_id
@@ -658,6 +664,8 @@ impl Version {
                             },
                             version_fields: VersionField::from_query_json(v.id, v.loader_fields, v.version_fields, v.loader_field_enum_values),
                             loaders: v.loaders.unwrap_or_default(),
+                            project_types: v.project_types.unwrap_or_default(),
+                            games: v.games.unwrap_or_default(),
                             dependencies: serde_json::from_value(
                                 v.dependencies.unwrap_or_default(),
                             )
@@ -838,6 +846,8 @@ pub struct QueryVersion {
     pub files: Vec<QueryFile>,
     pub version_fields: Vec<VersionField>,
     pub loaders: Vec<String>,
+    pub project_types: Vec<String>,
+    pub games: Vec<String>,
     pub dependencies: Vec<QueryDependency>,
 }
 

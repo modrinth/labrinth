@@ -326,6 +326,15 @@ pub async fn project_edit(
     let server_side = v2_new_project.server_side.clone();
     let new_slug = v2_new_project.slug.clone();
 
+    // TODO: Some kind of handling here to ensure project type is fine.
+    // We expect the version uploaded to be of loader type modpack, but there might  not be a way to check here for that.
+    // After all, theoretically, they could be creating a genuine 'fabric' mod, and modpack no longer carries information on whether its a mod or modpack,
+    // as those are out to the versions.
+
+    // Ideally this would, if the project 'should' be a modpack:
+    // - change the loaders to mrpack only
+    // - add categories to the project for the corresponding loaders
+
     let new_project = v3::projects::EditProject {
         title: v2_new_project.title,
         description: v2_new_project.description,
