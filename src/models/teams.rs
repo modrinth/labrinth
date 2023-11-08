@@ -42,7 +42,7 @@ bitflags::bitflags! {
 
 impl Default for ProjectPermissions {
     fn default() -> ProjectPermissions {
-        ProjectPermissions::UPLOAD_VERSION | ProjectPermissions::DELETE_VERSION
+        ProjectPermissions::empty()
     }
 }
 
