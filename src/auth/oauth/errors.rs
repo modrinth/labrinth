@@ -94,10 +94,7 @@ impl actix_web::ResponseError for OAuthError {
                 redirect_uri = format!("{}&state={}", redirect_uri, state);
             }
 
-            redirect_uri = urlencoding::encode(&redirect_uri).to_string();
-            HttpResponse::Found()
-                .append_header(("Location".to_string(), redirect_uri))
-                .finish()
+            HttpResponse::Ok().body(redirect_uri)
         } else {
             HttpResponse::build(self.status_code()).json(ApiError {
                 error: &self.error_type.error_name(),
