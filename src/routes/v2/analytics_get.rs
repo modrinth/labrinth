@@ -595,7 +595,7 @@ async fn filter_allowed_ids(
             .into_iter()
             .map(|x| x.id)
             .collect::<Vec<_>>();
-        Some(vec!)
+        Some(vec![])
     } else {
         None
     };
