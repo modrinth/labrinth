@@ -12,7 +12,6 @@ use crate::routes::{v2_reroute, v3};
 use actix_multipart::Multipart;
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
@@ -153,9 +152,6 @@ pub async fn project_create(
             let server_side = legacy_create.server_side;
 
             let project_type = legacy_create.project_type;
-            // Modpacks now use the "mrpack" loader, and loaders are converted to categories.
-            // Setting of 'project_type' directly is removed, it's loader-based now.
-            let mut additional_categories = legacy_create.additional_categories;
 
             let initial_versions = legacy_create
                 .initial_versions
@@ -166,8 +162,10 @@ pub async fn project_create(
                     fields.insert("server_side".to_string(), json!(server_side));
                     fields.insert("game_versions".to_string(), json!(v.game_versions));
 
+                    // Modpacks now use the "mrpack" loader, and loaders are converted to loader fields.
+                    // Setting of 'project_type' directly is removed, it's loader-based now.
                     if project_type == "modpack" {
-                        additional_categories.extend(v.loaders.iter().map(|l| l.0.clone()));
+                        fields.insert("mrpack_loaders".to_string(), json!(v.loaders.clone()));
                     }
 
                     let loaders = if project_type == "modpack" {
@@ -195,11 +193,6 @@ pub async fn project_create(
                 })
                 .collect();
 
-            let additional_categories = additional_categories
-                .into_iter()
-                .unique()
-                .collect::<Vec<_>>();
-            println!("additional_categories: {:?}", additional_categories);
             Ok(v3::project_creation::ProjectCreateData {
                 title: legacy_create.title,
                 slug: legacy_create.slug,
@@ -207,7 +200,7 @@ pub async fn project_create(
                 body: legacy_create.body,
                 initial_versions,
                 categories: legacy_create.categories,
-                additional_categories,
+                additional_categories: legacy_create.additional_categories,
                 issues_url: legacy_create.issues_url,
                 source_url: legacy_create.source_url,
                 wiki_url: legacy_create.wiki_url,
@@ -236,14 +229,9 @@ pub async fn project_create(
     )
     .await?;
 
-    println!("did a little test <3");
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Project>(response).await {
         Ok(project) => {
-            println!(
-                "Just finished doing a project create, looking at repsonse: {:?}",
-                serde_json::to_string(&project).unwrap()
-            );
             let version_item = match project.versions.first() {
                 Some(vid) => version_item::Version::get((*vid).into(), &**client, &redis).await?,
                 None => None,

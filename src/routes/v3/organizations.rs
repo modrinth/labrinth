@@ -479,7 +479,6 @@ pub async fn organization_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("DELETE ORGANIZATION");
     let user = get_user_from_headers(
         &req,
         &**pool,
@@ -490,7 +489,6 @@ pub async fn organization_delete(
     .await?
     .1;
     let string = info.into_inner().0;
-    println!("string: {}", string);
 
     let organization = database::models::Organization::get(&string, &**pool, &redis)
         .await?
@@ -498,7 +496,6 @@ pub async fn organization_delete(
             ApiError::InvalidInput("The specified organization does not exist!".to_string())
         })?;
 
-    println!("organization: {:?}", organization);
     if !user.role.is_admin() {
         let team_member = database::models::TeamMember::get_from_user_id_organization(
             organization.id,

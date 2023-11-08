@@ -66,15 +66,19 @@ pub struct LegacyProject {
 impl LegacyProject {
     // Convert from a standard V3 project to a V2 project
     // Requires any queried versions to be passed in, to get access to certain version fields contained within.
-    // It's safe to use a db version_item for this as the only info is side types and game versions, which used to be public on project anyway.
+    // - This can be any version, because the fields are ones that used to be on the project itself.
+    // - Its conceivable that certain V3 projects that have many different ones may not have the same fields on all of them.
+    // TODO: Should this return an error instead for v2 users?
+    // It's safe to use a db version_item for this as the only info is side types, game versions, and loader fields (for loaders), which used to be public on project anyway.
     pub fn from(data: Project, versions_item: Option<version_item::QueryVersion>) -> Self {
         let mut client_side = LegacySideType::Unknown;
         let mut server_side = LegacySideType::Unknown;
         let mut game_versions = Vec::new();
 
-        // TODO: extract modpack changes
-        // - if loader is mrpack, this is a modpack
-        // the loaders are whatever the corresponding cateogires are
+        // V2 versions only have one project type- v3 versions can rarely have multiple.
+        // We'll just use the first one.
+        let mut project_type = data.project_types.get(0).cloned().unwrap_or_default();
+        let mut loaders = data.loaders;
 
         if let Some(versions_item) = versions_item {
             client_side = versions_item
@@ -104,11 +108,20 @@ impl LegacyProject {
                 .and_then(|f| MinecraftGameVersion::try_from_version_field(f).ok())
                 .map(|v| v.into_iter().map(|v| v.version).collect())
                 .unwrap_or(Vec::new());
-        }
 
-        // V2 projects only have one project type- v3 ones can rarely have multiple.
-        // We'll just use the first one.
-        let project_type = data.project_types.get(0).cloned().unwrap_or_default();
+            // - if loader is mrpack, this is a modpack
+            // the loaders are whatever the corresponding loader fields are
+            if versions_item.loaders == vec!["mrpack".to_string()] {
+                project_type = "modpack".to_string();
+                if let Some(mrpack_loaders) = versions_item
+                    .version_fields
+                    .iter()
+                    .find(|f| f.field_name == "mrpack_loaders")
+                {
+                    loaders = mrpack_loaders.value.as_strings();
+                }
+            }
+        }
 
         Self {
             id: data.id,
@@ -132,7 +145,7 @@ impl LegacyProject {
             followers: data.followers,
             categories: data.categories,
             additional_categories: data.additional_categories,
-            loaders: data.loaders,
+            loaders,
             versions: data.versions,
             icon_url: data.icon_url,
             issues_url: data.issues_url,
@@ -251,6 +264,22 @@ impl From<Version> for LegacyVersion {
             }
         }
 
+        // - if loader is mrpack, this is a modpack
+        // the v2 loaders are whatever the corresponding loader fields are
+        let mut loaders = data.loaders.into_iter().map(|l| l.0).collect::<Vec<_>>();
+        if loaders == vec!["mrpack".to_string()] {
+            if let Some((_, mrpack_loaders)) = data
+                .fields
+                .into_iter()
+                .find(|(key, _)| key == "mrpack_loaders")
+            {
+                if let Ok(mrpack_loaders) = serde_json::from_value(mrpack_loaders) {
+                    loaders = mrpack_loaders;
+                }
+            }
+        }
+        let loaders = loaders.into_iter().map(Loader).collect::<Vec<_>>();
+
         Self {
             id: data.id,
             project_id: data.project_id,
@@ -268,7 +297,7 @@ impl From<Version> for LegacyVersion {
             files: data.files,
             dependencies: data.dependencies,
             game_versions,
-            loaders: data.loaders,
+            loaders,
         }
     }
 }

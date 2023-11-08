@@ -274,7 +274,6 @@ pub async fn project_edit(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("project_edit");
     let user = get_user_from_headers(
         &req,
         &**pool,
@@ -284,17 +283,13 @@ pub async fn project_edit(
     )
     .await?
     .1;
-    println!("serde user {}", serde_json::to_string(&user)?);
 
     new_project
         .validate()
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
 
-    println!("new project {}", serde_json::to_string(&new_project)?);
     let string = info.into_inner().0;
-    println!("string {}", string);
     let result = db_models::Project::get(&string, &**pool, &redis).await?;
-    println!("result {}", serde_json::to_string(&result)?);
     if let Some(project_item) = result {
         let id = project_item.inner.id;
 

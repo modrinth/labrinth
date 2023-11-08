@@ -234,7 +234,6 @@ async fn search_projects() {
         (json!([[r#"title:'Mysterious Project'"#]]), vec![2, 3]),
         (json!([["author:user"]]), vec![0, 1, 2, 4, 5, 7]),
         (json!([["versions:1.20.5"]]), vec![4, 5]),
-        // text search
         // bug fix
         (
             json!([
@@ -244,6 +243,21 @@ async fn search_projects() {
                 ["versions:1.20.2"]
             ]),
             vec![],
+        ),
+        // Project type change
+        // Modpack should still be able to search based on former loader, even though technically the loader is 'mrpack'
+        (json!([["categories:mrpack"]]), vec![4]),
+        (
+            json!([["categories:mrpack"], ["categories:fabric"]]),
+            vec![4],
+        ),
+        (
+            json!([
+                ["categories:mrpack"],
+                ["categories:fabric"],
+                ["project_type:modpack"]
+            ]),
+            vec![4],
         ),
     ];
     // TODO: versions, game versions
@@ -274,10 +288,6 @@ async fn search_projects() {
                     .collect();
                 expected_project_ids.sort();
                 found_project_ids.sort();
-                println!(
-                    "facets: {:?}, expected: {:?}, found: {:?}",
-                    facets, expected_project_ids, found_project_ids
-                );
                 assert_eq!(found_project_ids, expected_project_ids);
             }
         })

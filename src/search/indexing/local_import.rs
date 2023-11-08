@@ -101,7 +101,7 @@ pub async fn index_local(
                     let version_fields = VersionField::from_query_json(m.id, m.loader_fields, m.version_fields, m.loader_field_enum_values);
 
                     let loader_fields : HashMap<String, Vec<String>> = version_fields.into_iter().map(|vf| {
-                        (vf.field_name, vf.value.as_search_strings())
+                        (vf.field_name, vf.value.as_strings())
                     }).collect();
 
                     for v in loader_fields.keys().cloned() {
@@ -120,6 +120,15 @@ pub async fn index_local(
                         Some(id) => id.is_osi_approved(),
                         _ => false,
                     };
+
+                    // SPECIAL BEHAVIOUR
+                    // Todo: revisit.
+                    // For consistency with v2 searching, we consider the loader field 'mrpack_loaders' to be a category.
+                    // These were previously considered the loader, and in v2, the loader is a category for searching.
+                    // So to avoid breakage or awkward conversions, we just consider those loader_fields to be categories.
+                    // The loaders are kept in loader_fields as well, so that no information is lost on retrieval.
+                    let mrpack_loaders = loader_fields.get("mrpack_loaders").cloned().unwrap_or_default();
+                    categories.extend(mrpack_loaders);
 
                     UploadSearchProject {
                         version_id: version_id.to_string(),

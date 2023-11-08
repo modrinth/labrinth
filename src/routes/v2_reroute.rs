@@ -102,7 +102,7 @@ where
             headers.insert(key, value);
         }
         Err(err) => {
-            panic!("Error inserting test header: {:?}.", err);
+            CreateError::InvalidInput(format!("Error inserting test header: {:?}.", err));
         }
     };
 

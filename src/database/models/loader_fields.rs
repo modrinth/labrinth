@@ -650,14 +650,14 @@ impl VersionField {
         }
 
         let query_loader_fields: Vec<JsonLoaderField> = loader_fields
-            .and_then(|x| serde_json::from_value(x).unwrap())
+            .and_then(|x| serde_json::from_value(x).ok())
             .unwrap_or_default();
         let query_version_field_combined: Vec<JsonVersionField> = version_fields
-            .and_then(|x| serde_json::from_value(x).unwrap())
+            .and_then(|x| serde_json::from_value(x).ok())
             .unwrap_or_default();
         let query_loader_field_enum_values: Vec<JsonLoaderFieldEnumValue> =
             loader_field_enum_values
-                .and_then(|x| serde_json::from_value(x).unwrap())
+                .and_then(|x| serde_json::from_value(x).ok())
                 .unwrap_or_default();
         let version_id = VersionId(version_id);
         query_loader_fields
@@ -918,9 +918,9 @@ impl VersionFieldValue {
         }
     }
 
-    // For conversion to an interanl string, such as for search facets or filtering
+    // For conversion to an interanl string(s), such as for search facets, filtering, or direct hardcoding
     // No matter the type, it will be converted to a Vec<String>, whre the non-array types will have a single element
-    pub fn as_search_strings(&self) -> Vec<String> {
+    pub fn as_strings(&self) -> Vec<String> {
         match self {
             VersionFieldValue::Integer(i) => vec![i.to_string()],
             VersionFieldValue::Text(s) => vec![s.clone()],

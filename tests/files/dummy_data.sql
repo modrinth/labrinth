@@ -25,8 +25,9 @@ INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) V
 INSERT INTO loaders (id, loader) VALUES (6, 'forge');
 INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (6,1);
 
-INSERT INTO categories (category, project_type) SELECT 'forge', id FROM project_types WHERE name = 'modpack';
-INSERT INTO categories (category, project_type) SELECT 'fabric', id FROM project_types WHERE name = 'modpack';
+-- Adds dummies to mrpack_loaders
+INSERT INTO loader_field_enum_values (enum_id, value) SELECT id, 'fabric' FROM loader_field_enums WHERE enum_name = 'mrpack_loaders';
+INSERT INTO loader_field_enum_values (enum_id, value) SELECT id, 'forge' FROM loader_field_enums WHERE enum_name = 'mrpack_loaders';
 
 INSERT INTO loaders_project_types_games (loader_id, project_type_id, game_id) SELECT joining_loader_id, joining_project_type_id, 1 FROM loaders_project_types WHERE joining_loader_id = 5;
 INSERT INTO loaders_project_types_games (loader_id, project_type_id, game_id) SELECT joining_loader_id, joining_project_type_id, 1 FROM loaders_project_types WHERE joining_loader_id = 6;
@@ -46,7 +47,6 @@ VALUES (2, '1.20.5', '{"type":"release","major":true}');
 
 INSERT INTO loader_fields_loaders(loader_id, loader_field_id) 
 SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf WHERE lf.field = 'game_versions' OR lf.field = 'client_side' OR lf.field = 'server_side';
-
 
 INSERT INTO categories (id, category, project_type) VALUES
     (51, 'combat', 1),

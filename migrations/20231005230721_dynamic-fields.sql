@@ -6,41 +6,6 @@ CREATE TABLE games (
 INSERT INTO games(id, name) VALUES (1, 'minecraft-java');
 INSERT INTO games(id, name) VALUES (2, 'minecraft-bedrock');
 
--- we are creating a new loader type- 'mrpack'- for minecraft modpacks
-INSERT INTO loaders (loader) VALUES ('mrpack');
-INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) SELECT DISTINCT l.id, pt.id FROM loaders l CROSS JOIN project_types pt WHERE pt.name = 'modpack' AND l.loader = 'mrpack';
-
--- We create 'modpack' categories for every loader 
--- That way we keep information like "this modpack is a fabric modpack"
-INSERT INTO categories (category, project_type) 
-SELECT DISTINCT l.loader, pt.id FROM loaders l CROSS JOIN project_types pt WHERE pt.name = 'modpack' AND l.loader != 'mrpack';
-
--- insert the loader of every modpack mod as a category
-INSERT INTO mods_categories (joining_mod_id, joining_category_id)
-SELECT DISTINCT m.id, c.id 
-FROM mods m
-LEFT JOIN versions v ON m.id = v.mod_id
-LEFT JOIN loaders_versions lv ON v.id = lv.version_id
-LEFT JOIN loaders l ON lv.loader_id = l.id
-CROSS JOIN categories c 
-WHERE m.project_type = (SELECT id FROM project_types WHERE name = 'modpack') AND c.category = l.loader;
-
--- Non mrpack loaders no longer support modpacks
-DELETE FROM loaders_project_types WHERE joining_loader_id != (SELECT id FROM loaders WHERE loader = 'mrpack') AND joining_project_type_id = (SELECT id FROM project_types WHERE name = 'modpack');
-
-CREATE TABLE loaders_project_types_games (
-  loader_id integer REFERENCES loaders NOT NULL,
-  project_type_id integer REFERENCES project_types NOT NULL,
-  game_id integer REFERENCES games NOT NULL,
-  PRIMARY KEY (loader_id, project_type_id, game_id)
-);
-
--- all past loader_project_types are minecraft-java as the only game before this migration is minecraft-java
-INSERT INTO loaders_project_types_games (loader_id, project_type_id, game_id) SELECT joining_loader_id, joining_project_type_id, 1 FROM loaders_project_types;
-
--- Now that loaders are inferred, we can drop the project_type column from mods
-ALTER TABLE mods DROP COLUMN project_type;
-
 ALTER TABLE loaders ADD CONSTRAINT unique_loader_name UNIQUE (loader);
 
 CREATE TABLE loader_field_enums (
@@ -129,7 +94,7 @@ INSERT INTO loader_field_enums (id, enum_name, hidable) VALUES (2, 'game_version
 INSERT INTO loader_field_enum_values (original_id, enum_id, value, created, metadata)
 SELECT id, 2, version, created, json_build_object('type', type, 'major', major) FROM game_versions;
 
-INSERT INTO loader_fields (field, field_type, enum_type, optional, min_val) VALUES('game_versions', 'array_enum', 2, false, 1);
+INSERT INTO loader_fields (field, field_type, enum_type, optional, min_val) VALUES('game_versions', 'array_enum', 2, false, 0);
 
 INSERT INTO version_fields(version_id, field_id, enum_value) 
 SELECT gvv.joining_version_id, 2, lfev.id 
@@ -140,6 +105,47 @@ ALTER TABLE mods DROP COLUMN loaders;
 ALTER TABLE mods DROP COLUMN game_versions;
 DROP TABLE game_versions_versions;
 DROP TABLE game_versions;
+
+-- Convert project types
+-- we are creating a new loader type- 'mrpack'- for minecraft modpacks
+INSERT INTO loaders (loader) VALUES ('mrpack');
+
+-- For the loader 'mrpack', we create loader fields for every loader
+-- That way we keep information like "this modpack is a fabric modpack"
+INSERT INTO loader_field_enums (id, enum_name, hidable) VALUES (3, 'mrpack_loaders', true);
+INSERT INTO loader_field_enum_values (original_id, enum_id, value) SELECT id, 2, loader FROM loaders WHERE loader != 'mrpack';
+INSERT INTO loader_fields (field, field_type, enum_type, optional, min_val) VALUES('mrpack_loaders', 'array_enum', 3, false, 0);
+INSERT INTO loader_fields_loaders (loader_id, loader_field_id) 
+SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf  WHERE lf.field = 'mrpack_loaders' AND l.loader = 'mrpack';
+
+INSERT INTO version_fields(version_id, field_id, enum_value)
+SELECT v.id, lf.id, lfev.id
+FROM versions v
+INNER JOIN mods m ON v.mod_id = m.id
+INNER JOIN loaders_versions lv ON v.id = lv.version_id
+INNER JOIN loaders l ON lv.loader_id = l.id
+CROSS JOIN loader_fields lf
+LEFT JOIN loader_field_enum_values lfev ON lf.enum_type = lfev.enum_id 
+WHERE m.project_type = (SELECT id FROM project_types WHERE name = 'modpack') AND lf.field = 'mrpack_loaders';
+
+INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) SELECT DISTINCT l.id, pt.id FROM loaders l CROSS JOIN project_types pt WHERE pt.name = 'modpack' AND l.loader = 'mrpack';
+
+--- Non-mrpack loaders no longer support modpacks
+DELETE FROM loaders_project_types WHERE joining_loader_id != (SELECT id FROM loaders WHERE loader = 'mrpack') AND joining_project_type_id = (SELECT id FROM project_types WHERE name = 'modpack');
+
+CREATE TABLE loaders_project_types_games (
+  loader_id integer REFERENCES loaders NOT NULL,
+  project_type_id integer REFERENCES project_types NOT NULL,
+  game_id integer REFERENCES games NOT NULL,
+  PRIMARY KEY (loader_id, project_type_id, game_id)
+);
+
+-- all past loader_project_types are minecraft-java as the only game before this migration is minecraft-java
+INSERT INTO loaders_project_types_games (loader_id, project_type_id, game_id) SELECT joining_loader_id, joining_project_type_id, 1 FROM loaders_project_types;
+
+-- Now that loaders are inferred, we can drop the project_type column from mods
+ALTER TABLE mods DROP COLUMN project_type;
+
 
 -- Drop original_id columns
 ALTER TABLE loader_field_enum_values DROP COLUMN original_id;

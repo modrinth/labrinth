@@ -340,7 +340,7 @@ pub async fn revenue_get(
 
     let duration: PgInterval = Duration::minutes(resolution_minutes as i64)
         .try_into()
-        .unwrap();
+        .map_err(|_| ApiError::InvalidInput("Invalid resolution_minutes".to_string()))?;
     // Get the revenue data
     let payouts_values = sqlx::query!(
         "

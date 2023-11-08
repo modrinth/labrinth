@@ -5,15 +5,16 @@ use chrono::{Duration, Utc};
 use common::environment::{with_test_environment, TestEnvironment};
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
+use itertools::Itertools;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::teams::ProjectPermissions;
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 use serde_json::json;
 
-use crate::common::database::*;
+use crate::common::{database::*, request_data};
 
-use crate::common::dummy_data::DUMMY_CATEGORIES;
+use crate::common::dummy_data::{TestFile, DUMMY_CATEGORIES};
 
 // importing common module.
 mod common;
@@ -276,6 +277,55 @@ async fn test_add_remove_project() {
 
     // Cleanup test db
     test_env.cleanup().await;
+}
+
+#[actix_rt::test]
+async fn test_project_type_sanity() {
+    let test_env = TestEnvironment::build(None).await;
+    let api = &test_env.v2;
+
+    // Perform all other patch tests on both 'mod' and 'modpack'
+    let test_creation_mod = request_data::get_public_project_creation_data(
+        "test-mod",
+        Some(TestFile::build_random_jar()),
+    );
+    let test_creation_modpack = request_data::get_public_project_creation_data(
+        "test-modpack",
+        Some(TestFile::build_random_mrpack()),
+    );
+    for (mod_or_modpack, test_creation_data) in [
+        ("mod", test_creation_mod),
+        ("modpack", test_creation_modpack),
+    ] {
+        let (test_project, test_version) = api
+            .add_public_project(test_creation_data, USER_USER_PAT)
+            .await;
+        let test_project_slug = test_project.slug.as_ref().unwrap();
+
+        assert_eq!(test_project.project_type, mod_or_modpack);
+        assert_eq!(test_project.loaders, vec!["fabric"]);
+        assert_eq!(
+            test_version[0].loaders.iter().map(|x| &x.0).collect_vec(),
+            vec!["fabric"]
+        );
+
+        let project = api
+            .get_project_deserialized(test_project_slug, USER_USER_PAT)
+            .await;
+        assert_eq!(test_project.loaders, vec!["fabric"]);
+        assert_eq!(project.project_type, mod_or_modpack);
+
+        let version = api
+            .get_version_deserialized(&test_version[0].id.to_string(), USER_USER_PAT)
+            .await;
+        assert_eq!(
+            version.loaders.iter().map(|x| &x.0).collect_vec(),
+            vec!["fabric"]
+        );
+    }
+
+    // TODO: as we get more complicated strucures with v3 testing, and alpha/beta get more complicated, we should add more tests here,
+    // to ensure that projects created with v3 routes are still valid and work with v2 routes.
 }
 
 #[actix_rt::test]
@@ -958,7 +1008,6 @@ async fn permissions_manage_invites() {
 
 #[actix_rt::test]
 async fn permissions_delete_project() {
-    println!("doing:");
     // Add member, remove member, edit member
     let test_env = TestEnvironment::build(None).await;
 

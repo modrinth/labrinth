@@ -57,9 +57,7 @@ async fn get_tags() {
             "optimization",
             "decoration",
             "mobs",
-            "magic",
-            "fabric",
-            "forge"
+            "magic"
         ]
         .iter()
         .map(|s| s.to_string())

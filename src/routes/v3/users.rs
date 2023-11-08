@@ -676,10 +676,6 @@ pub async fn user_notifications(
             .collect();
 
         notifications.sort_by(|a, b| b.created.cmp(&a.created));
-        println!(
-            "notifications: {:?}",
-            serde_json::to_string(&notifications).unwrap()
-        );
         Ok(HttpResponse::Ok().json(notifications))
     } else {
         Ok(HttpResponse::NotFound().body(""))

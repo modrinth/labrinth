@@ -99,7 +99,7 @@ pub async fn version_create(
 
             // Ideally this would, if the project 'should' be a modpack:
             // - change the loaders to mrpack only
-            // - add categories to the project for the corresponding loaders
+            // - add loader fields to the project for the corresponding loaders
 
             Ok(v3::version_creation::InitialVersionData {
                 project_id: legacy_create.project_id,
