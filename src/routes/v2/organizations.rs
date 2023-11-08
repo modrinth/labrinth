@@ -47,7 +47,7 @@ pub struct NewOrganization {
     )]
     // Title of the organization, also used as slug
     pub title: String,
-    #[serde(default = "crate::models::teams::ProjectPermissions::default")]
+    #[serde(default)]
     pub default_project_permissions: ProjectPermissions,
 }
 

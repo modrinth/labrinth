@@ -579,7 +579,7 @@ async fn filter_allowed_ids(
             .into_iter()
             .map(|x| x.id)
             .collect::<Vec<_>>();
-        Some(ids)
+        Some(vec![])
     } else {
         None
     };
@@ -595,7 +595,7 @@ async fn filter_allowed_ids(
             .into_iter()
             .map(|x| x.id)
             .collect::<Vec<_>>();
-        Some(ids)
+        Some(vec!)
     } else {
         None
     };
