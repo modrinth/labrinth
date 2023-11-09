@@ -180,6 +180,7 @@ impl Image {
     {
         use futures::TryStreamExt;
 
+        let mut redis = redis.connect().await?;
         if image_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -191,7 +192,10 @@ impl Image {
 
         if !image_ids.is_empty() {
             let images = redis
-                .multi_get::<String, _>(IMAGES_NAMESPACE, image_ids)
+                .multi_get(
+                    IMAGES_NAMESPACE,
+                    image_ids.iter().map(|x| x.to_string()).collect(),
+                )
                 .await?;
             for image in images {
                 if let Some(image) = image.and_then(|x| serde_json::from_str::<Image>(&x).ok()) {
@@ -246,6 +250,8 @@ impl Image {
     }
 
     pub async fn clear_cache(id: ImageId, redis: &RedisPool) -> Result<(), DatabaseError> {
+        let mut redis = redis.connect().await?;
+
         redis.delete(IMAGES_NAMESPACE, id.0).await?;
         Ok(())
     }

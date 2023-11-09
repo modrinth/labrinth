@@ -134,6 +134,8 @@ impl User {
     {
         use futures::TryStreamExt;
 
+        let mut redis = redis.connect().await?;
+
         if users_strings.is_empty() {
             return Ok(Vec::new());
         }
@@ -151,19 +153,26 @@ impl User {
 
         user_ids.append(
             &mut redis
-                .multi_get::<i64, _>(
+                .multi_get(
                     USER_USERNAMES_NAMESPACE,
-                    users_strings.iter().map(|x| x.to_string().to_lowercase()),
+                    users_strings
+                        .iter()
+                        .map(|x| x.to_string().to_lowercase())
+                        .collect(),
                 )
                 .await?
                 .into_iter()
                 .flatten()
+                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !user_ids.is_empty() {
             let users = redis
-                .multi_get::<String, _>(USERS_NAMESPACE, user_ids)
+                .multi_get(
+                    USERS_NAMESPACE,
+                    user_ids.iter().map(|x| x.to_string()).collect(),
+                )
                 .await?;
             for user in users {
                 if let Some(user) = user.and_then(|x| serde_json::from_str::<User>(&x).ok()) {
@@ -239,8 +248,8 @@ impl User {
                 redis
                     .set(
                         USER_USERNAMES_NAMESPACE,
-                        user.username.to_lowercase(),
-                        user.id.0,
+                        &user.username.to_lowercase(),
+                        &user.id.0.to_string(),
                         None,
                     )
                     .await?;
@@ -278,8 +287,13 @@ impl User {
     {
         use futures::stream::TryStreamExt;
 
+        let mut redis = redis.connect().await?;
+
         let cached_projects = redis
-            .get_deserialized_from_json::<Vec<ProjectId>, _>(USERS_PROJECTS_NAMESPACE, user_id.0)
+            .get_deserialized_from_json::<Vec<ProjectId>>(
+                USERS_PROJECTS_NAMESPACE,
+                &user_id.0.to_string(),
+            )
             .await?;
 
         if let Some(projects) = cached_projects {
@@ -384,6 +398,8 @@ impl User {
         user_ids: &[(UserId, Option<String>)],
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
+        let mut redis = redis.connect().await?;
+
         redis
             .delete_many(user_ids.iter().flat_map(|(id, username)| {
                 [
@@ -402,6 +418,8 @@ impl User {
         user_ids: &[UserId],
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
+        let mut redis = redis.connect().await?;
+
         redis
             .delete_many(
                 user_ids

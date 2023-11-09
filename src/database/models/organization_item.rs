@@ -103,6 +103,8 @@ impl Organization {
     {
         use futures::stream::TryStreamExt;
 
+        let mut redis = redis.connect().await?;
+
         if organization_strings.is_empty() {
             return Ok(Vec::new());
         }
@@ -120,21 +122,26 @@ impl Organization {
 
         organization_ids.append(
             &mut redis
-                .multi_get::<i64, _>(
+                .multi_get(
                     ORGANIZATIONS_TITLES_NAMESPACE,
                     organization_strings
                         .iter()
-                        .map(|x| x.to_string().to_lowercase()),
+                        .map(|x| x.to_string().to_lowercase())
+                        .collect::<Vec<_>>(),
                 )
                 .await?
                 .into_iter()
                 .flatten()
+                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !organization_ids.is_empty() {
             let organizations = redis
-                .multi_get::<String, _>(ORGANIZATIONS_NAMESPACE, organization_ids)
+                .multi_get(
+                    ORGANIZATIONS_NAMESPACE,
+                    organization_ids.iter().map(|x| x.to_string()).collect(),
+                )
                 .await?;
 
             for organization in organizations {
@@ -197,8 +204,8 @@ impl Organization {
                 redis
                     .set(
                         ORGANIZATIONS_TITLES_NAMESPACE,
-                        organization.title.to_lowercase(),
-                        organization.id.0,
+                        &organization.title.to_lowercase(),
+                        &organization.id.0.to_string(),
                         None,
                     )
                     .await?;
@@ -318,6 +325,8 @@ impl Organization {
         title: Option<String>,
         redis: &RedisPool,
     ) -> Result<(), super::DatabaseError> {
+        let mut redis = redis.connect().await?;
+
         redis
             .delete_many([
                 (ORGANIZATIONS_NAMESPACE, Some(id.0.to_string())),

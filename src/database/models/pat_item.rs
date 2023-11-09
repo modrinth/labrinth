@@ -89,6 +89,8 @@ impl PersonalAccessToken {
     {
         use futures::TryStreamExt;
 
+        let mut redis = redis.connect().await?;
+
         if pat_strings.is_empty() {
             return Ok(Vec::new());
         }
@@ -106,19 +108,23 @@ impl PersonalAccessToken {
 
         pat_ids.append(
             &mut redis
-                .multi_get::<i64, _>(
+                .multi_get(
                     PATS_TOKENS_NAMESPACE,
-                    pat_strings.iter().map(|x| x.to_string()),
+                    pat_strings.iter().map(|x| x.to_string()).collect(),
                 )
                 .await?
                 .into_iter()
                 .flatten()
+                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !pat_ids.is_empty() {
             let pats = redis
-                .multi_get::<String, _>(PATS_NAMESPACE, pat_ids)
+                .multi_get(
+                    PATS_NAMESPACE,
+                    pat_ids.iter().map(|x| x.to_string()).collect(),
+                )
                 .await?;
             for pat in pats {
                 if let Some(pat) =
@@ -174,8 +180,8 @@ impl PersonalAccessToken {
                 redis
                     .set(
                         PATS_TOKENS_NAMESPACE,
-                        pat.access_token.clone(),
-                        pat.id.0,
+                        &pat.access_token,
+                        &pat.id.0.to_string(),
                         None,
                     )
                     .await?;
@@ -194,8 +200,10 @@ impl PersonalAccessToken {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let mut redis = redis.connect().await?;
+
         let res = redis
-            .get_deserialized_from_json::<Vec<i64>, _>(PATS_USERS_NAMESPACE, user_id.0)
+            .get_deserialized_from_json::<Vec<i64>>(PATS_USERS_NAMESPACE, &user_id.0.to_string())
             .await?;
 
         if let Some(res) = res {
@@ -220,8 +228,8 @@ impl PersonalAccessToken {
         redis
             .set(
                 PATS_USERS_NAMESPACE,
-                user_id.0,
-                serde_json::to_string(&db_pats)?,
+                &user_id.0.to_string(),
+                &serde_json::to_string(&db_pats)?,
                 None,
             )
             .await?;
@@ -232,6 +240,8 @@ impl PersonalAccessToken {
         clear_pats: Vec<(Option<PatId>, Option<String>, Option<UserId>)>,
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
+        let mut redis = redis.connect().await?;
+
         if clear_pats.is_empty() {
             return Ok(());
         }

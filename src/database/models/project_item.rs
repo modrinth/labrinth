@@ -530,6 +530,8 @@ impl Project {
             return Ok(Vec::new());
         }
 
+        let mut redis = redis.connect().await?;
+
         let mut found_projects = Vec::new();
         let mut remaining_strings = project_strings
             .iter()
@@ -543,19 +545,26 @@ impl Project {
 
         project_ids.append(
             &mut redis
-                .multi_get::<i64, _>(
+                .multi_get(
                     PROJECTS_SLUGS_NAMESPACE,
-                    project_strings.iter().map(|x| x.to_string().to_lowercase()),
+                    project_strings
+                        .iter()
+                        .map(|x| x.to_string().to_lowercase())
+                        .collect(),
                 )
                 .await?
                 .into_iter()
                 .flatten()
+                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !project_ids.is_empty() {
             let projects = redis
-                .multi_get::<String, _>(PROJECTS_NAMESPACE, project_ids)
+                .multi_get(
+                    PROJECTS_NAMESPACE,
+                    project_ids.iter().map(|x| x.to_string()).collect(),
+                )
                 .await?;
             for project in projects {
                 if let Some(project) =
@@ -705,8 +714,8 @@ impl Project {
                     redis
                         .set(
                             PROJECTS_SLUGS_NAMESPACE,
-                            slug.to_lowercase(),
-                            project.inner.id.0,
+                            &slug.to_lowercase(),
+                            &project.inner.id.0.to_string(),
                             None,
                         )
                         .await?;
@@ -728,8 +737,13 @@ impl Project {
     {
         type Dependencies = Vec<(Option<VersionId>, Option<ProjectId>, Option<ProjectId>)>;
 
+        let mut redis = redis.connect().await?;
+
         let dependencies = redis
-            .get_deserialized_from_json::<Dependencies, _>(PROJECTS_DEPENDENCIES_NAMESPACE, id.0)
+            .get_deserialized_from_json::<Dependencies>(
+                PROJECTS_DEPENDENCIES_NAMESPACE,
+                &id.0.to_string(),
+            )
             .await?;
         if let Some(dependencies) = dependencies {
             return Ok(dependencies);
@@ -824,6 +838,8 @@ impl Project {
         clear_dependencies: Option<bool>,
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
+        let mut redis = redis.connect().await?;
+
         redis
             .delete_many([
                 (PROJECTS_NAMESPACE, Some(id.0.to_string())),
