@@ -133,7 +133,7 @@ pub async fn get_update_from_hash(
         if let Some(project) =
             database::models::Project::get_id(file.project_id, &**pool, &redis).await?
         {
-            let mut versions =
+            let versions =
                 database::models::Version::get_many(&project.versions, &**pool, &redis)
                     .await?
                     .into_iter()
@@ -162,7 +162,7 @@ pub async fn get_update_from_hash(
                     })
                     .sorted();
 
-            if let Some(first) = versions.next() {
+            if let Some(first) = versions.last() {
                 if !is_authorized_version(&first.inner, &user_option, &pool).await? {
                     return Ok(HttpResponse::NotFound().body(""));
                 }
@@ -363,7 +363,7 @@ pub async fn update_files(
                     bool
                 })
                 .sorted()
-                .next();
+                .last();
 
             if let Some(version) = version {
                 if is_authorized_version(&version.inner, &user_option, &pool).await? {
@@ -477,7 +477,7 @@ pub async fn update_individual_files(
                             bool
                         })
                         .sorted()
-                        .next();
+                        .last();
 
                     if let Some(version) = version {
                         if is_authorized_version(&version.inner, &user_option, &pool).await? {
