@@ -228,7 +228,7 @@ pub enum VersionFieldValue {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct QueryVersionField { 
+pub struct QueryVersionField {
     pub version_id: VersionId,
     pub field_id: LoaderFieldId,
     pub int_value: Option<i32>,

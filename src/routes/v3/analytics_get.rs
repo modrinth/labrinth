@@ -341,7 +341,7 @@ pub async fn revenue_get(
     // Round end_date up to nearest resolution
     let diff = end_date.timestamp() % (resolution_minutes as i64 * 60);
     let end_date = end_date + Duration::seconds((resolution_minutes as i64 * 60) - diff);
-    
+
     // Convert String list to list of ProjectIds or VersionIds
     // - Filter out unauthorized projects/versions
     // - If no project_ids or version_ids are provided, we default to all projects the user has access to

@@ -200,7 +200,7 @@ pub struct EditVersion {
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
     pub file_types: Option<Vec<EditVersionFileType>>,
-    
+
     pub ordering: Option<Option<i32>>, //TODO: How do you actually pass this in json?
 
     // Flattened loader fields

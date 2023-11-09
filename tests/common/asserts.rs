@@ -8,10 +8,7 @@ pub fn assert_status(response: &actix_web::dev::ServiceResponse, status: actix_h
     assert_eq!(response.status(), status, "{:#?}", response.response());
 }
 
-pub fn assert_version_ids(
-    versions: &[LegacyVersion],
-    expected_ids: Vec<String>,
-) {
+pub fn assert_version_ids(versions: &[LegacyVersion], expected_ids: Vec<String>) {
     let version_ids = versions
         .iter()
         .map(|v| get_json_val_str(v.id))

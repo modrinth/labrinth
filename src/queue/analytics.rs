@@ -1,10 +1,10 @@
 use crate::database::models::DatabaseError;
+use crate::database::redis::RedisPool;
 use crate::models::analytics::{Download, PageView, Playtime};
 use crate::routes::ApiError;
 use dashmap::{DashMap, DashSet};
 use redis::cmd;
 use sqlx::PgPool;
-use crate::database::redis::RedisPool;
 
 const DOWNLOADS_NAMESPACE: &str = "downloads";
 
@@ -151,8 +151,8 @@ impl AnalyticsQueue {
                 WHERE id = ANY($1)",
                 &version_ids
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
 
             sqlx::query!(
                 "UPDATE mods
@@ -160,8 +160,8 @@ impl AnalyticsQueue {
                 WHERE id = ANY($1)",
                 &project_ids
             )
-                .execute(&mut *transaction)
-                .await?;
+            .execute(&mut *transaction)
+            .await?;
 
             transaction.commit().await?;
             downloads.end().await?;

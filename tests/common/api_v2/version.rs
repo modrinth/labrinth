@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use actix_http::{StatusCode, header::AUTHORIZATION};
+use actix_http::{header::AUTHORIZATION, StatusCode};
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
@@ -326,7 +326,6 @@ impl ApiV2 {
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
-
 
     // TODO: remove redundancy in these functions
 

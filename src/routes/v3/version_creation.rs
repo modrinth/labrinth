@@ -79,7 +79,7 @@ pub struct InitialVersionData {
     pub uploaded_images: Vec<ImageId>,
     // The ordering relative to other versions
     pub ordering: Option<i32>,
-    
+
     // Flattened loader fields
     // All other fields are loader-specific VersionFields
     // These are flattened during serialization
