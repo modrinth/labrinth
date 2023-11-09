@@ -910,7 +910,7 @@ impl std::cmp::Ord for Version {
         };
 
         match ordering_order {
-            Ordering::Equal => self.date_published.cmp(&other.date_published),
+            Ordering::Equal => other.date_published.cmp(&self.date_published),
             ordering => ordering,
         }
     }

@@ -160,10 +160,9 @@ pub async fn get_update_from_hash(
                         }
                         bool
                     })
-                    .sorted()
-                    .collect::<Vec<_>>();
+                    .sorted();
 
-            if let Some(first) = versions.pop() {
+            if let Some(first) = versions.next() {
                 if !is_authorized_version(&first.inner, &user_option, &pool).await? {
                     return Ok(HttpResponse::NotFound().body(""));
                 }
