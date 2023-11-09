@@ -333,6 +333,15 @@ pub async fn revenue_get(
     let end_date = data.end_date.unwrap_or(Utc::now());
     let resolution_minutes = data.resolution_minutes.unwrap_or(60 * 24);
 
+    // Round up/down to nearest duration as we are using pgadmin, does not have rounding in the fetch command
+    // Round start_date down to nearest resolution
+    let diff = start_date.timestamp() % (resolution_minutes as i64 * 60);
+    let start_date = start_date - Duration::seconds(diff);
+
+    // Round end_date up to nearest resolution
+    let diff = end_date.timestamp() % (resolution_minutes as i64 * 60);
+    let end_date = end_date + Duration::seconds((resolution_minutes as i64 * 60) - diff);
+    
     // Convert String list to list of ProjectIds or VersionIds
     // - Filter out unauthorized projects/versions
     // - If no project_ids or version_ids are provided, we default to all projects the user has access to

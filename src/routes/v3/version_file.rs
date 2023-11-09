@@ -160,7 +160,7 @@ pub async fn get_update_from_hash(
                         }
                         bool
                     })
-                    .sorted_by(|a, b| a.inner.date_published.cmp(&b.inner.date_published))
+                    .sorted()
                     .collect::<Vec<_>>();
 
             if let Some(first) = versions.pop() {
@@ -363,7 +363,7 @@ pub async fn update_files(
 
                     bool
                 })
-                .sorted_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published))
+                .sorted()
                 .next();
 
             if let Some(version) = version {
@@ -477,7 +477,7 @@ pub async fn update_individual_files(
 
                             bool
                         })
-                        .sorted_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published))
+                        .sorted()
                         .next();
 
                     if let Some(version) = version {

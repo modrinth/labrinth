@@ -188,6 +188,7 @@ pub async fn project_create(
                         status: v.status,
                         file_types: v.file_types,
                         uploaded_images: v.uploaded_images,
+                        ordering: v.ordering,
                         fields,
                     }
                 })

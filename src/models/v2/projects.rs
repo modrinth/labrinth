@@ -236,6 +236,9 @@ pub struct LegacyVersion {
     /// A list of loaders this project supports
     pub loaders: Vec<Loader>,
 
+    // TODO: remove this once we have v3 testing, as this is a v3 field and tests for it should be isolated to v3
+    pub ordering: Option<i32>,
+
     pub id: VersionId,
     pub project_id: ProjectId,
     pub author_id: UserId,
@@ -297,6 +300,7 @@ impl From<Version> for LegacyVersion {
             files: data.files,
             dependencies: data.dependencies,
             game_versions,
+            ordering: data.ordering,
             loaders,
         }
     }

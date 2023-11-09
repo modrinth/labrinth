@@ -197,7 +197,7 @@ pub struct LoaderFieldEnum {
     pub hidable: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct LoaderFieldEnumValue {
     pub id: LoaderFieldEnumValueId,
     pub enum_id: LoaderFieldEnumId,
@@ -208,14 +208,14 @@ pub struct LoaderFieldEnumValue {
     pub metadata: serde_json::Value,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct VersionField {
     pub version_id: VersionId,
     pub field_id: LoaderFieldId,
     pub field_name: String,
     pub value: VersionFieldValue,
 }
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum VersionFieldValue {
     Integer(i32),
     Text(String),
@@ -228,7 +228,7 @@ pub enum VersionFieldValue {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct QueryVersionField {
+pub struct QueryVersionField { 
     pub version_id: VersionId,
     pub field_id: LoaderFieldId,
     pub int_value: Option<i32>,

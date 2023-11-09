@@ -22,7 +22,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 /// The json data to be passed to fetch analytic data
 /// Either a list of project_ids or version_ids can be used, but not both. Unauthorized projects/versions will be filtered out.
-/// start_date and end_date are optional, and default to two weeks ago, and the maximum date respectively.
+/// start_date and end_date are optional, and default to two weeks ago, and the maximum date respectively
+/// start_date and end_date are inclusive
 /// resolution_minutes is optional. This refers to the window by which we are looking (every day, every minute, etc) and defaults to 1440 (1 day)
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GetData {

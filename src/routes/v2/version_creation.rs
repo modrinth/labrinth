@@ -63,6 +63,9 @@ pub struct InitialVersionData {
     #[validate(length(max = 10))]
     #[serde(default)]
     pub uploaded_images: Vec<ImageId>,
+
+    // The ordering relative to other versions
+    pub ordering: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -115,6 +118,7 @@ pub async fn version_create(
                 status: legacy_create.status,
                 file_types: legacy_create.file_types,
                 uploaded_images: legacy_create.uploaded_images,
+                ordering: legacy_create.ordering,
                 fields,
             })
         },
