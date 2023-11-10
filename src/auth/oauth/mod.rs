@@ -14,6 +14,7 @@ use crate::models;
 use crate::models::ids::OAuthClientId;
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
+use actix_web::http::header::LOCATION;
 use actix_web::web::{scope, Data, Query, ServiceConfig};
 use actix_web::{get, post, web, HttpRequest, HttpResponse};
 use chrono::Duration;
@@ -414,7 +415,9 @@ async fn init_oauth_code_flow(
     let redirect_uri = append_params_to_uri(&redirect_uris.validated.0, &redirect_params);
 
     // IETF RFC 6749 Section 4.1.2 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2)
-    Ok(HttpResponse::Ok().body(redirect_uri))
+    Ok(HttpResponse::Ok()
+        .append_header((LOCATION, redirect_uri.clone()))
+        .body(redirect_uri))
 }
 
 fn append_params_to_uri(uri: &str, params: &[impl AsRef<str>]) -> String {
