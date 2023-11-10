@@ -149,22 +149,21 @@ impl Session {
 
         session_ids.append(
             &mut redis
-                .multi_get(
+                .multi_get::<i64>(
                     SESSIONS_IDS_NAMESPACE,
-                    session_strings.iter().map(|x| x.to_string()).collect(),
+                    session_strings.iter().map(|x| x.to_string()),
                 )
                 .await?
                 .into_iter()
                 .flatten()
-                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !session_ids.is_empty() {
             let sessions = redis
-                .multi_get(
+                .multi_get::<String>(
                     SESSIONS_NAMESPACE,
-                    session_ids.iter().map(|x| x.to_string()).collect(),
+                    session_ids.iter().map(|x| x.to_string()),
                 )
                 .await?;
             for session in sessions {

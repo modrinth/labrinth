@@ -192,9 +192,9 @@ impl Image {
 
         if !image_ids.is_empty() {
             let images = redis
-                .multi_get(
+                .multi_get::<String>(
                     IMAGES_NAMESPACE,
-                    image_ids.iter().map(|x| x.to_string()).collect(),
+                    image_ids.iter().map(|x| x.to_string()),
                 )
                 .await?;
             for image in images {

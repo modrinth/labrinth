@@ -122,7 +122,7 @@ impl Organization {
 
         organization_ids.append(
             &mut redis
-                .multi_get(
+                .multi_get::<i64>(
                     ORGANIZATIONS_TITLES_NAMESPACE,
                     organization_strings
                         .iter()
@@ -132,15 +132,14 @@ impl Organization {
                 .await?
                 .into_iter()
                 .flatten()
-                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !organization_ids.is_empty() {
             let organizations = redis
-                .multi_get(
+                .multi_get::<String>(
                     ORGANIZATIONS_NAMESPACE,
-                    organization_ids.iter().map(|x| x.to_string()).collect(),
+                    organization_ids.iter().map(|x| x.to_string()),
                 )
                 .await?;
 

@@ -1,9 +1,7 @@
-use crate::util::redis::{redis_args, redis_execute};
-
 use super::models::DatabaseError;
 use deadpool_redis::{Config, Runtime};
 use itertools::Itertools;
-use redis::cmd;
+use redis::{cmd, Cmd};
 use std::fmt::Display;
 
 const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
@@ -122,11 +120,14 @@ impl RedisConnection {
             .and_then(|x| serde_json::from_str(&x).ok()))
     }
 
-    pub async fn multi_get(
+    pub async fn multi_get<R>(
         &mut self,
         namespace: &str,
-        ids: Vec<String>,
-    ) -> Result<Vec<Option<String>>, DatabaseError> {
+        ids: impl IntoIterator<Item = impl Display>,
+    ) -> Result<Vec<Option<R>>, DatabaseError> 
+    where 
+        R: for<'a> serde::Deserialize<'a>,
+    {
         let mut cmd = cmd("MGET");
 
         redis_args(
@@ -136,7 +137,9 @@ impl RedisConnection {
                 .collect_vec(),
         );
         let res: Vec<Option<String>> = redis_execute(&mut cmd, &mut self.connection).await?;
-        Ok(res)
+        Ok(res.into_iter()
+            .map(|x| x.and_then(|x| serde_json::from_str(&x).ok()))
+            .collect())
     }
 
     pub async fn delete<T1>(&mut self, namespace: &str, id: T1) -> Result<(), DatabaseError>
@@ -174,4 +177,21 @@ impl RedisConnection {
 
         Ok(())
     }
+}
+
+pub fn redis_args(cmd: &mut Cmd, args: &[String]) {
+    for arg in args {
+        cmd.arg(arg);
+    }
+}
+
+pub async fn redis_execute<T>(
+    cmd: &mut Cmd,
+    redis: &mut deadpool_redis::Connection,
+) -> Result<T, deadpool_redis::PoolError>
+where
+    T: redis::FromRedisValue,
+{
+    let res = cmd.query_async::<_, T>(redis).await?;
+    Ok(res)
 }

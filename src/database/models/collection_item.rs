@@ -168,9 +168,9 @@ impl Collection {
 
         if !collection_ids.is_empty() {
             let collections = redis
-                .multi_get(
+                .multi_get::<String>(
                     COLLECTIONS_NAMESPACE,
-                    collection_ids.iter().map(|x| x.0.to_string()).collect(),
+                    collection_ids.iter().map(|x| x.0.to_string()),
                 )
                 .await?;
 

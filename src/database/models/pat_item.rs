@@ -108,22 +108,21 @@ impl PersonalAccessToken {
 
         pat_ids.append(
             &mut redis
-                .multi_get(
+                .multi_get::<i64>(
                     PATS_TOKENS_NAMESPACE,
-                    pat_strings.iter().map(|x| x.to_string()).collect(),
+                    pat_strings.iter().map(|x| x.to_string()),
                 )
                 .await?
                 .into_iter()
                 .flatten()
-                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !pat_ids.is_empty() {
             let pats = redis
-                .multi_get(
+                .multi_get::<String>(
                     PATS_NAMESPACE,
-                    pat_ids.iter().map(|x| x.to_string()).collect(),
+                    pat_ids.iter().map(|x| x.to_string()),
                 )
                 .await?;
             for pat in pats {

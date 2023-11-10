@@ -153,25 +153,23 @@ impl User {
 
         user_ids.append(
             &mut redis
-                .multi_get(
+                .multi_get::<i64>(
                     USER_USERNAMES_NAMESPACE,
                     users_strings
                         .iter()
-                        .map(|x| x.to_string().to_lowercase())
-                        .collect(),
+                        .map(|x| x.to_string().to_lowercase()),
                 )
                 .await?
                 .into_iter()
                 .flatten()
-                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !user_ids.is_empty() {
             let users = redis
-                .multi_get(
+                .multi_get::<String>(
                     USERS_NAMESPACE,
-                    user_ids.iter().map(|x| x.to_string()).collect(),
+                    user_ids.iter().map(|x| x.to_string()),
                 )
                 .await?;
             for user in users {

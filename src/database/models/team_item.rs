@@ -210,9 +210,9 @@ impl TeamMember {
         let mut found_teams = Vec::new();
 
         let teams = redis
-            .multi_get(
+            .multi_get::<String>(
                 TEAMS_NAMESPACE,
-                team_ids_parsed.iter().map(|x| x.to_string()).collect(),
+                team_ids_parsed.iter().map(|x| x.to_string()),
             )
             .await?;
 

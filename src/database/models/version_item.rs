@@ -542,7 +542,7 @@ impl Version {
         let mut found_versions = Vec::new();
 
         let versions = redis
-            .multi_get(
+            .multi_get::<String>(
                 VERSIONS_NAMESPACE,
                 version_ids_parsed
                     .clone()
@@ -754,7 +754,7 @@ impl Version {
         let mut found_files = Vec::new();
 
         let files = redis
-            .multi_get(
+            .multi_get::<String>(
                 VERSION_FILES_NAMESPACE,
                 file_ids_parsed
                     .iter()

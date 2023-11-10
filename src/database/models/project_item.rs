@@ -545,25 +545,23 @@ impl Project {
 
         project_ids.append(
             &mut redis
-                .multi_get(
+                .multi_get::<i64>(
                     PROJECTS_SLUGS_NAMESPACE,
                     project_strings
                         .iter()
-                        .map(|x| x.to_string().to_lowercase())
-                        .collect(),
+                        .map(|x| x.to_string().to_lowercase()),
                 )
                 .await?
                 .into_iter()
                 .flatten()
-                .filter_map(|x| x.parse::<i64>().ok())
                 .collect(),
         );
 
         if !project_ids.is_empty() {
             let projects = redis
-                .multi_get(
+                .multi_get::<String>(
                     PROJECTS_NAMESPACE,
-                    project_ids.iter().map(|x| x.to_string()).collect(),
+                    project_ids.iter().map(|x| x.to_string()),
                 )
                 .await?;
             for project in projects {
