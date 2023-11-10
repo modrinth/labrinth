@@ -1,23 +1,22 @@
-use crate::common::database::*;
-use crate::common::dummy_data::DUMMY_CATEGORIES;
-use crate::common::environment::TestEnvironment;
-use crate::common::request_data::{get_public_version_creation_data, ProjectCreationRequestData};
+use common::database::*;
 use common::dummy_data::TestFile;
+use common::dummy_data::DUMMY_CATEGORIES;
+use common::environment::TestEnvironment;
 use common::request_data;
+use common::request_data::{get_public_version_creation_data, ProjectCreationRequestData};
 use futures::stream::StreamExt;
 use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// importing common module.
 mod common;
 
 #[actix_rt::test]
 async fn search_projects() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(Some(8)).await;
-    let api = &test_env.v2;
+    let api = &test_env.v3;
     let test_name = test_env.db.database_name.clone();
 
     // Add dummy projects of various categories for searchability
@@ -288,6 +287,8 @@ async fn search_projects() {
                     .collect();
                 expected_project_ids.sort();
                 found_project_ids.sort();
+
+                println!("facets: {:?}", facets);
                 assert_eq!(found_project_ids, expected_project_ids);
             }
         })

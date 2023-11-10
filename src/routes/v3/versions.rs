@@ -54,6 +54,7 @@ pub async fn version_project_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("In v project get");
     let info = info.into_inner();
     version_project_get_helper(req, info, pool, redis, session_queue).await
 }

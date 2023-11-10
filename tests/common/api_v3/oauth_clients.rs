@@ -45,6 +45,7 @@ impl ApiV3 {
             .append_header((AUTHORIZATION, pat))
             .to_request();
         let resp = self.call(req).await;
+        println!("Response: {:#?}", resp.response().body());
         assert_status(&resp, StatusCode::OK);
 
         test::read_body_json(resp).await

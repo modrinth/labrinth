@@ -77,7 +77,7 @@ impl TestEnvironment {
 
     pub async fn generate_friend_user_notification(&self) {
         let resp = self
-            .v2
+            .v3
             .add_user_to_team(
                 &self.dummy.as_ref().unwrap().project_alpha.team_id,
                 FRIEND_USER_ID,
@@ -95,7 +95,7 @@ impl TestEnvironment {
         pat: &str,
         status_code: StatusCode,
     ) {
-        let resp = self.v2.get_user_notifications(user_id, pat).await;
+        let resp = self.v3.get_user_notifications(user_id, pat).await;
         assert_status(&resp, status_code);
     }
 
@@ -105,7 +105,7 @@ impl TestEnvironment {
         pat: &str,
         status_code: StatusCode,
     ) {
-        let resp = self.v2.get_user_projects(user_id, pat).await;
+        let resp = self.v3.get_user_projects(user_id, pat).await;
         assert_status(&resp, status_code);
     }
 }

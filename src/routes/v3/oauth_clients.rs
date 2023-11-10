@@ -43,7 +43,6 @@ use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
 use crate::models::ids::OAuthClientId as ApiOAuthClientId;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_user_clients);
     cfg.service(
         scope("oauth")
             .service(oauth_client_create)
@@ -56,7 +55,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-#[get("user/{user_id}/oauth_apps")]
 pub async fn get_user_clients(
     req: HttpRequest,
     info: web::Path<String>,
@@ -64,6 +62,7 @@ pub async fn get_user_clients(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("get_user_clients");
     let current_user = get_user_from_headers(
         &req,
         &**pool,

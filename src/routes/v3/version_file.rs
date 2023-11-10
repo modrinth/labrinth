@@ -19,7 +19,7 @@ use std::collections::HashMap;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("version_file")
-            .route("version_id", web::get().to(get_version_from_hash))
+            .route("{version_id}", web::get().to(get_version_from_hash))
             .route("{version_id}/update", web::post().to(get_update_from_hash))
             .route("project", web::post().to(get_projects_from_hashes))
             .route("{version_id}", web::delete().to(delete_file))
@@ -41,6 +41,7 @@ pub async fn get_version_from_hash(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("Getting version from hash");
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -380,7 +381,7 @@ pub async fn update_files(
     Ok(HttpResponse::Ok().json(response))
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct FileUpdateData {
     pub hash: String,
     pub loaders: Option<Vec<String>>,
@@ -388,7 +389,7 @@ pub struct FileUpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ManyFileUpdateData {
     #[serde(default = "default_algorithm")]
     pub algorithm: String,

@@ -26,9 +26,14 @@ pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
             .wrap(default_cors())
             .configure(admin::config)
             .configure(analytics_get::config)
+            // THESE NEED TO BE SEPARATED
+            // TODO
+            // TODO PANIC UNWRAP
             .configure(crate::auth::session::config)
             .configure(crate::auth::flows::config)
             .configure(crate::auth::pats::config)
+            // TODO ^
+            // need to be able to v2 these
             .configure(moderation::config)
             .configure(notifications::config)
             .configure(organizations::config)
