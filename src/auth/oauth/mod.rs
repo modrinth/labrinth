@@ -34,7 +34,7 @@ pub mod uris;
 
 pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
-        scope("auth/oauth")
+        scope("oauth")
             .service(init_oauth)
             .service(accept_client_scopes)
             .service(reject_client_scopes)

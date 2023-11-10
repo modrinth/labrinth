@@ -7,7 +7,7 @@ use labrinth::models::{
     oauth_clients::OAuthClient,
     organizations::Organization,
     pats::Scopes,
-    v2::projects::{LegacyProject, LegacyVersion},
+    v3::projects::{Project, Version},
 };
 use serde_json::json;
 use sqlx::Executor;
@@ -170,10 +170,10 @@ pub struct DummyData {
 
 impl DummyData {
     pub fn new(
-        project_alpha: LegacyProject,
-        project_alpha_version: LegacyVersion,
-        project_beta: LegacyProject,
-        project_beta_version: LegacyVersion,
+        project_alpha: Project,
+        project_alpha_version: Version,
+        project_beta: Project,
+        project_beta_version: Version,
         organization_zeta: Organization,
         oauth_client_alpha: OAuthClient,
     ) -> Self {
@@ -303,9 +303,9 @@ pub async fn get_dummy_data(test_env: &TestEnvironment) -> DummyData {
     )
 }
 
-pub async fn add_project_alpha(test_env: &TestEnvironment) -> (LegacyProject, LegacyVersion) {
+pub async fn add_project_alpha(test_env: &TestEnvironment) -> (Project, Version) {
     let (project, versions) = test_env
-        .v2
+        .v3
         .add_public_project(
             get_public_project_creation_data("alpha", Some(TestFile::DummyProjectAlpha)),
             USER_USER_PAT,
@@ -314,7 +314,7 @@ pub async fn add_project_alpha(test_env: &TestEnvironment) -> (LegacyProject, Le
     (project, versions.into_iter().next().unwrap())
 }
 
-pub async fn add_project_beta(test_env: &TestEnvironment) -> (LegacyProject, LegacyVersion) {
+pub async fn add_project_beta(test_env: &TestEnvironment) -> (Project, Version) {
     // Adds dummy data to the database with sqlx (projects, versions, threads)
     // Generate test project data.
     let jar = TestFile::DummyProjectBeta;
@@ -331,7 +331,6 @@ pub async fn add_project_beta(test_env: &TestEnvironment) -> (LegacyProject, Leg
                 "version_number": "1.2.3",
                 "version_title": "start",
                 "status": "unlisted",
-                "requested_status": "unlisted",
                 "dependencies": [],
                 "game_versions": ["1.20.1"] ,
                 "release_channel": "release",
@@ -363,12 +362,12 @@ pub async fn add_project_beta(test_env: &TestEnvironment) -> (LegacyProject, Leg
 
     // Add a project.
     let req = TestRequest::post()
-        .uri("/v2/project")
+        .uri("/v3/project")
         .append_header(("Authorization", USER_USER_PAT))
         .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         .to_request();
     let resp = test_env.call(req).await;
-
+    println!("{:?}", resp.response().body());
     assert_eq!(resp.status(), 200);
 
     get_project_beta(test_env).await
@@ -377,7 +376,7 @@ pub async fn add_project_beta(test_env: &TestEnvironment) -> (LegacyProject, Leg
 pub async fn add_organization_zeta(test_env: &TestEnvironment) -> Organization {
     // Add an organzation.
     let req = TestRequest::post()
-        .uri("/v2/organization")
+        .uri("/v3/organization")
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
             "title": "zeta",
@@ -391,46 +390,46 @@ pub async fn add_organization_zeta(test_env: &TestEnvironment) -> Organization {
     get_organization_zeta(test_env).await
 }
 
-pub async fn get_project_alpha(test_env: &TestEnvironment) -> (LegacyProject, LegacyVersion) {
+pub async fn get_project_alpha(test_env: &TestEnvironment) -> (Project, Version) {
     // Get project
     let req = TestRequest::get()
-        .uri("/v2/project/alpha")
+        .uri("/v3/project/alpha")
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
-    let project: LegacyProject = test::read_body_json(resp).await;
+    let project: Project = test::read_body_json(resp).await;
 
     // Get project's versions
     let req = TestRequest::get()
-        .uri("/v2/project/alpha/version")
+        .uri("/v3/project/alpha/version")
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
-    let versions: Vec<LegacyVersion> = test::read_body_json(resp).await;
+    let versions: Vec<Version> = test::read_body_json(resp).await;
     let version = versions.into_iter().next().unwrap();
 
     (project, version)
 }
 
-pub async fn get_project_beta(test_env: &TestEnvironment) -> (LegacyProject, LegacyVersion) {
+pub async fn get_project_beta(test_env: &TestEnvironment) -> (Project, Version) {
     // Get project
     let req = TestRequest::get()
-        .uri("/v2/project/beta")
+        .uri("/v3/project/beta")
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
     assert_status(&resp, StatusCode::OK);
     let project: serde_json::Value = test::read_body_json(resp).await;
-    let project: LegacyProject = serde_json::from_value(project).unwrap();
+    let project: Project = serde_json::from_value(project).unwrap();
 
     // Get project's versions
     let req = TestRequest::get()
-        .uri("/v2/project/beta/version")
+        .uri("/v3/project/beta/version")
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;
     assert_status(&resp, StatusCode::OK);
-    let versions: Vec<LegacyVersion> = test::read_body_json(resp).await;
+    let versions: Vec<Version> = test::read_body_json(resp).await;
     let version = versions.into_iter().next().unwrap();
 
     (project, version)
@@ -439,7 +438,7 @@ pub async fn get_project_beta(test_env: &TestEnvironment) -> (LegacyProject, Leg
 pub async fn get_organization_zeta(test_env: &TestEnvironment) -> Organization {
     // Get organization
     let req = TestRequest::get()
-        .uri("/v2/organization/zeta")
+        .uri("/v3/organization/zeta")
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = test_env.call(req).await;

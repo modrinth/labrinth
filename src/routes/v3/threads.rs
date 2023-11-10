@@ -24,8 +24,8 @@ use sqlx::PgPool;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("thread")
-            .route("{id}", web::get().to(thread_get))
             .route("inbox", web::get().to(moderation_inbox))
+            .route("{id}", web::get().to(thread_get))
             .route("{id}", web::post().to(thread_send_message))
             .route("{id}/read", web::post().to(thread_read)),
     );
@@ -228,6 +228,7 @@ pub async fn thread_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("GET THREAD");
     let string = info.into_inner().0.into();
 
     let thread_data = database::models::Thread::get(string, &**pool).await?;
@@ -509,6 +510,7 @@ pub async fn moderation_inbox(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("moderation_inbox");
     let user = check_is_moderator_from_headers(
         &req,
         &**pool,
@@ -517,7 +519,7 @@ pub async fn moderation_inbox(
         Some(&[Scopes::THREAD_READ]),
     )
     .await?;
-
+    println!("moderation_inbox2 {:#?}", user);
     let ids = sqlx::query!(
         "
         SELECT id
@@ -529,6 +531,7 @@ pub async fn moderation_inbox(
     .try_filter_map(|e| async { Ok(e.right().map(|m| database::models::ThreadId(m.id))) })
     .try_collect::<Vec<database::models::ThreadId>>()
     .await?;
+    println!("moderation_inbox3 {:#?}", ids);
 
     let threads_data = database::models::Thread::get_many(&ids, &**pool).await?;
     let threads = filter_authorized_threads(threads_data, &user, &pool, &redis).await?;

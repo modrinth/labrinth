@@ -37,7 +37,7 @@ use thiserror::Error;
 use validator::Validate;
 
 pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
-    cfg.route("create", web::post().to(project_create));
+    cfg.route("project", web::post().to(project_create));
 }
 
 #[derive(Error, Debug)]
@@ -869,6 +869,10 @@ async fn create_initial_version(
         .validate()
         .map_err(|err| CreateError::ValidationError(validation_errors_to_string(err, None)))?;
 
+    println!(
+        "Creating version: {:?}",
+        serde_json::to_string(version_data)
+    );
     // Randomly generate a new id to be used for the version
     let version_id: VersionId = models::generate_version_id(transaction).await?.into();
 

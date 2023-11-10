@@ -845,7 +845,7 @@ impl<'a> PermissionsTest<'a> {
 }
 
 async fn create_dummy_project(test_env: &TestEnvironment) -> (String, String) {
-    let api = &test_env.v2;
+    let api = &test_env.v3;
 
     // Create a very simple project
     let slug = generate_random_name("test_project");
@@ -861,7 +861,7 @@ async fn create_dummy_project(test_env: &TestEnvironment) -> (String, String) {
 async fn create_dummy_org(test_env: &TestEnvironment) -> (String, String) {
     // Create a very simple organization
     let name = generate_random_name("test_org");
-    let api = &test_env.v2;
+    let api = &test_env.v3;
 
     let resp = api
         .create_organization(&name, "Example description.", ADMIN_USER_PAT)
@@ -878,7 +878,7 @@ async fn create_dummy_org(test_env: &TestEnvironment) -> (String, String) {
 }
 
 async fn add_project_to_org(test_env: &TestEnvironment, project_id: &str, organization_id: &str) {
-    let api = &test_env.v2;
+    let api = &test_env.v3;
     let resp = api
         .organization_add_project(organization_id, project_id, ADMIN_USER_PAT)
         .await;
@@ -893,7 +893,7 @@ async fn add_user_to_team(
     organization_permissions: Option<OrganizationPermissions>,
     test_env: &TestEnvironment,
 ) {
-    let api = &test_env.v2;
+    let api = &test_env.v3;
 
     // Invite user
     let resp = api
@@ -919,7 +919,7 @@ async fn modify_user_team_permissions(
     organization_permissions: Option<OrganizationPermissions>,
     test_env: &TestEnvironment,
 ) {
-    let api = &test_env.v2;
+    let api = &test_env.v3;
 
     // Send invitation to user
     let resp = api
@@ -938,7 +938,7 @@ async fn modify_user_team_permissions(
 
 async fn remove_user_from_team(user_id: &str, team_id: &str, test_env: &TestEnvironment) {
     // Send invitation to user
-    let api = &test_env.v2;
+    let api = &test_env.v3;
     let resp = api.remove_from_team(team_id, user_id, ADMIN_USER_PAT).await;
     assert!(resp.status().is_success());
 }
@@ -949,7 +949,7 @@ async fn get_project_permissions(
     project_id: &str,
     test_env: &TestEnvironment,
 ) -> ProjectPermissions {
-    let resp = test_env.v2.get_project_members(project_id, user_pat).await;
+    let resp = test_env.v3.get_project_members(project_id, user_pat).await;
     let permissions = if resp.status().as_u16() == 200 {
         let value: serde_json::Value = test::read_body_json(resp).await;
         value
@@ -972,7 +972,7 @@ async fn get_organization_permissions(
     organization_id: &str,
     test_env: &TestEnvironment,
 ) -> OrganizationPermissions {
-    let api = &test_env.v2;
+    let api = &test_env.v3;
     let resp = api
         .get_organization_members(organization_id, user_pat)
         .await;
