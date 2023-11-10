@@ -9,7 +9,6 @@ use labrinth::auth::oauth::{
     OAuthClientAccessRequest, RespondToOAuthClientScopes, TokenRequest, TokenResponse,
 };
 use reqwest::header::{AUTHORIZATION, LOCATION};
-use serde::Deserialize;
 
 use crate::common::asserts::assert_status;
 
