@@ -120,7 +120,7 @@ pub async fn get_clients(
     let ids: Vec<_> = info
         .ids
         .iter()
-        .map(|id| parse_base62(&id).map(ApiOAuthClientId))
+        .map(|id| parse_base62(id).map(ApiOAuthClientId))
         .collect::<Result<_, _>>()?;
 
     let clients = get_clients_inner(&ids, req, pool, redis, session_queue).await?;
