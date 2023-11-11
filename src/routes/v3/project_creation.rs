@@ -1,7 +1,7 @@
-use super::version_creation::InitialVersionData;
+use super::version_creation::{InitialVersionData, try_create_version_fields};
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::loader_fields::{
-    Loader, LoaderField, LoaderFieldEnumValue, VersionField,
+    Loader, LoaderField, LoaderFieldEnumValue,
 };
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item, User};
@@ -869,10 +869,6 @@ async fn create_initial_version(
         .validate()
         .map_err(|err| CreateError::ValidationError(validation_errors_to_string(err, None)))?;
 
-    println!(
-        "Creating version: {:?}",
-        serde_json::to_string(version_data)
-    );
     // Randomly generate a new id to be used for the version
     let version_id: VersionId = models::generate_version_id(transaction).await?.into();
 
@@ -888,31 +884,19 @@ async fn create_initial_version(
         })
         .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
 
-    let loader_fields = LoaderField::get_fields(&mut **transaction, redis).await?;
-    let mut version_fields = vec![];
+    let loader_fields = LoaderField::get_fields(&loaders, &mut **transaction, redis).await?;
     let mut loader_field_enum_values =
         LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut **transaction, redis)
             .await?;
-    for (key, value) in version_data.fields.iter() {
-        let loader_field = loader_fields
-            .iter()
-            .find(|lf| &lf.field == key)
-            .ok_or_else(|| {
-                CreateError::InvalidInput(format!("Loader field '{key}' does not exist!"))
-            })?;
-        let enum_variants = loader_field_enum_values
-            .remove(&loader_field.id)
-            .unwrap_or_default();
-        let vf: VersionField = VersionField::check_parse(
-            version_id.into(),
-            loader_field.clone(),
-            value.clone(),
-            enum_variants,
-        )
-        .map_err(CreateError::InvalidInput)?;
-        version_fields.push(vf);
-    }
 
+    let version_fields = try_create_version_fields(
+        version_id,
+        &version_data.fields,
+        &loader_fields,
+        &mut loader_field_enum_values,
+    )?;
+
+    println!("Made it past here");
     let dependencies = version_data
         .dependencies
         .iter()

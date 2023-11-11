@@ -62,7 +62,6 @@ pub async fn get_user_clients(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("get_user_clients");
     let current_user = get_user_from_headers(
         &req,
         &**pool,

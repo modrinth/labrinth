@@ -108,14 +108,14 @@ async fn test_add_remove_project() {
             "slug": "demo",
             "description": "Example description.",
             "body": "Example body.",
-            "client_side": "required",
-            "server_side": "optional",
             "initial_versions": [{
                 "file_parts": ["basic-mod.jar"],
                 "version_number": "1.2.3",
                 "version_title": "start",
                 "dependencies": [],
                 "game_versions": ["1.20.1"] ,
+                "client_side": "required",
+                "server_side": "optional",    
                 "release_channel": "release",
                 "loaders": ["fabric"],
                 "featured": true
@@ -401,8 +401,6 @@ pub async fn test_patch_project() {
                 "issues_url": "https://github.com",
                 "discord_url": "https://discord.gg",
                 "wiki_url": "https://wiki.com",
-                "client_side": "optional",
-                "server_side": "required",
                 "donation_urls": [{
                     "id": "patreon",
                     "platform": "Patreon",
@@ -494,8 +492,6 @@ async fn permissions_patch_project() {
         ("title", json!("randomname")),
         ("description", json!("randomdescription")),
         ("categories", json!(["combat", "economy"])),
-        // ("client_side", json!("unsupported")),
-        // ("server_side", json!("unsupported")),
         ("additional_categories", json!(["decoration"])),
         ("issues_url", json!("https://issues.com")),
         ("source_url", json!("https://source.com")),
@@ -745,6 +741,8 @@ async fn permissions_upload_version() {
                         "version_number": "1.0.0",
                         "version_title": "1.0.0",
                         "version_type": "release",
+                        "client_side": "required",
+                        "server_side": "optional",
                         "dependencies": [],
                         "game_versions": ["1.20.1"],
                         "loaders": ["fabric"],
@@ -966,7 +964,7 @@ async fn permissions_delete_project() {
 
 #[actix_rt::test]
 async fn project_permissions_consistency_test() {
-    let test_env = TestEnvironment::build(Some(8)).await;
+    let test_env = TestEnvironment::build(Some(10)).await;
 
     // Test that the permissions are consistent with each other
     // For example, if we get the projectpermissions directly, from an organization's defaults, overriden, etc, they should all be correct & consistent

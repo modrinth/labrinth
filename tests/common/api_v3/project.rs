@@ -18,10 +18,9 @@ use serde_json::json;
 use crate::common::{
     asserts::assert_status,
     database::MOD_USER_PAT,
-    request_data::{ImageData, ProjectCreationRequestData},
 };
 
-use super::ApiV3;
+use super::{ApiV3, request_data::{ProjectCreationRequestData, ImageData}};
 
 impl ApiV3 {
     pub async fn add_public_project(
@@ -61,7 +60,6 @@ impl ApiV3 {
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
-        println!("{:?}", resp.response().body());
         let versions: Vec<Version> = test::read_body_json(resp).await;
 
         (project, versions)

@@ -9,10 +9,10 @@ use labrinth::models::projects::{Loader, ProjectId, VersionId, VersionStatus, Ve
 use labrinth::routes::v3::version_file::FileUpdateData;
 use serde_json::json;
 
+use crate::common::api_v3::request_data::get_public_version_creation_data;
 use crate::common::database::*;
 
 use crate::common::dummy_data::TestFile;
-use crate::common::request_data::get_public_version_creation_data;
 
 // importing common module.
 mod common;
@@ -159,11 +159,12 @@ async fn version_updates() {
     .iter()
     {
         let version = api
-            .add_public_version(
+            .add_public_version_deserialized(
                 get_public_version_creation_data(
                     ProjectId(parse_base62(alpha_project_id).unwrap()),
                     version_number,
                     TestFile::build_random_jar(),
+                    None::<fn(&mut serde_json::Value)>,
                 ),
                 USER_USER_PAT,
             )
@@ -224,13 +225,15 @@ async fn version_updates() {
 
         // update_individual_files
         let mut loader_fields = HashMap::new();
-        loader_fields.insert(
-            "game_versions".to_string(),
-            game_versions
-                .into_iter()
-                .map(|v| json!(v))
-                .collect::<Vec<_>>(),
-        );
+        if let Some(game_versions) = game_versions {
+            loader_fields.insert(
+                "game_versions".to_string(),
+                game_versions
+                    .into_iter()
+                    .map(|v| json!(v))
+                    .collect::<Vec<_>>(),
+            );    
+        }
 
         let hashes = vec![FileUpdateData {
             hash: alpha_version_hash.to_string(),

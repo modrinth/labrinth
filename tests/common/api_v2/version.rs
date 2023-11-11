@@ -12,9 +12,9 @@ use labrinth::{
 };
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, request_data::VersionCreationRequestData};
+use crate::common::asserts::assert_status;
 
-use super::ApiV2;
+use super::{ApiV2, request_data::VersionCreationRequestData};
 
 pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
     let serialized = serde_json::to_string(&elements).unwrap();
@@ -327,8 +327,7 @@ impl ApiV2 {
         test::read_body_json(resp).await
     }
 
-    // TODO: remove redundancy in these functions
-
+    // TODO: remove redundancy in these functions- some are essentially repeats
     pub async fn create_default_version(
         &self,
         project_id: &str,

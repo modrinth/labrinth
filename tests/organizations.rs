@@ -1,8 +1,7 @@
 use crate::common::{
     database::{generate_random_name, ADMIN_USER_PAT, MOD_USER_ID, MOD_USER_PAT, USER_USER_ID},
     dummy_data::DummyImage,
-    environment::TestEnvironment,
-    request_data::get_icon_data,
+    environment::TestEnvironment, api_v3::request_data::get_icon_data,
 };
 use actix_web::test;
 use bytes::Bytes;
@@ -581,7 +580,7 @@ async fn permissions_add_default_project_permissions() {
             .uri(&format!("/v3/team/{}/members", ctx.team_id.unwrap()))
             .set_json(json!({
                 "user_id": MOD_USER_ID,
-                // do not set permissions as it will be set to default, which is non-zero
+                "permissions": (ProjectPermissions::UPLOAD_VERSION | ProjectPermissions::DELETE_VERSION).bits(),
                 "organization_permissions": 0,
             }))
     };

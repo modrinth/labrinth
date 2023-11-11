@@ -12,9 +12,9 @@ use labrinth::{
 };
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, request_data::VersionCreationRequestData};
+use crate::common::asserts::assert_status;
 
-use super::ApiV3;
+use super::{ApiV3, request_data::VersionCreationRequestData};
 
 pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
     let serialized = serde_json::to_string(&elements).unwrap();
@@ -26,31 +26,25 @@ impl ApiV3 {
         &self,
         creation_data: VersionCreationRequestData,
         pat: &str,
-    ) -> Version {
+    ) -> ServiceResponse {
         // Add a project.
         let req = TestRequest::post()
             .uri("/v3/version")
             .append_header(("Authorization", pat))
             .set_multipart(creation_data.segment_data)
             .to_request();
-        let resp = self.call(req).await;
+        self.call(req).await
+    }
+
+    pub async fn add_public_version_deserialized(
+        &self,
+        creation_data: VersionCreationRequestData,
+        pat: &str,
+    ) -> Version {
+        let resp = self.add_public_version(creation_data, pat).await;
         assert_status(&resp, StatusCode::OK);
         let value: serde_json::Value = test::read_body_json(resp).await;
         let version_id = value["id"].as_str().unwrap();
-
-        // // Approve as a moderator.
-        // let req = TestRequest::patch()
-        //     .uri(&format!("/v3/project/{}", creation_data.slug))
-        //     .append_header(("Authorization", MOD_USER_PAT))
-        //     .set_json(json!(
-        //         {
-        //             "status": "approved"
-        //         }
-        //     ))
-        //     .to_request();
-        // let resp = self.call(req).await;
-        // assert_status(resp, StatusCode::NO_CONTENT);
-
         self.get_version_deserialized(version_id, pat).await
     }
 
@@ -144,16 +138,25 @@ impl ApiV3 {
         version_types: Option<Vec<String>>,
         pat: &str,
     ) -> ServiceResponse {
+        let mut json = json!({});
+        if let Some(loaders) = loaders {
+            json["loaders"] = serde_json::to_value(loaders).unwrap();
+        }
+        if let Some(game_versions) = game_versions {
+            json["loader_fields"] = json!({
+                "game_versions": game_versions,
+            });
+        }
+        if let Some(version_types) = version_types {
+            json["version_types"] = serde_json::to_value(version_types).unwrap();
+        }
+
         let req = test::TestRequest::post()
             .uri(&format!(
                 "/v3/version_file/{hash}/update?algorithm={algorithm}"
             ))
             .append_header(("Authorization", pat))
-            .set_json(json!({
-                "loaders": loaders,
-                "game_versions": game_versions,
-                "version_types": version_types,
-            }))
+            .set_json(json)
             .to_request();
         self.call(req).await
     }
@@ -183,16 +186,26 @@ impl ApiV3 {
         version_types: Option<Vec<String>>,
         pat: &str,
     ) -> ServiceResponse {
+        let mut json = json!({
+            "algorithm": algorithm,
+            "hashes": hashes,
+        });
+        if let Some(loaders) = loaders {
+            json["loaders"] = serde_json::to_value(loaders).unwrap();
+        }
+        if let Some(game_versions) = game_versions {
+            json["loader_fields"] = json!({
+                "game_versions": game_versions,
+            });
+        }
+        if let Some(version_types) = version_types {
+            json["version_types"] = serde_json::to_value(version_types).unwrap();
+        }
+
         let req = test::TestRequest::post()
             .uri("/v3/version_files/update")
             .append_header(("Authorization", pat))
-            .set_json(json!({
-                "algorithm": algorithm,
-                "hashes": hashes,
-                "loaders": loaders,
-                "game_versions": game_versions,
-                "version_types": version_types,
-            }))
+            .set_json(json)
             .to_request();
         self.call(req).await
     }
@@ -343,6 +356,8 @@ impl ApiV3 {
                     "version_title": "start",
                     "dependencies": [],
                     "game_versions": ["1.20.1"] ,
+                    "client_side": "required",
+                    "server_side": "optional",
                     "release_channel": "release",
                     "loaders": ["fabric"],
                     "featured": true,
@@ -383,7 +398,6 @@ impl ApiV3 {
             .append_header((AUTHORIZATION, pat))
             .to_request();
         let resp = self.call(request).await;
-        println!("{:?}", resp.response().body());
         assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }

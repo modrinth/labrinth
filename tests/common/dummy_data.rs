@@ -16,7 +16,7 @@ use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 use crate::common::database::USER_USER_PAT;
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
-use super::{environment::TestEnvironment, request_data::get_public_project_creation_data};
+use super::{environment::TestEnvironment, api_v3::request_data::get_public_project_creation_data};
 
 use super::{asserts::assert_status, database::USER_USER_ID, get_json_val_str};
 
@@ -318,20 +318,21 @@ pub async fn add_project_beta(test_env: &TestEnvironment) -> (Project, Version) 
     // Adds dummy data to the database with sqlx (projects, versions, threads)
     // Generate test project data.
     let jar = TestFile::DummyProjectBeta;
+    // TODO: this shouldnt be hardcoded (nor should other similar ones be)
     let json_data = json!(
         {
             "title": "Test Project Beta",
             "slug": "beta",
             "description": "A dummy project for testing with.",
             "body": "This project is not-yet-approved, and versions are draft.",
-            "client_side": "required",
-            "server_side": "optional",
             "initial_versions": [{
                 "file_parts": [jar.filename()],
                 "version_number": "1.2.3",
                 "version_title": "start",
                 "status": "unlisted",
                 "dependencies": [],
+                "client_side": "required",
+                "server_side": "optional",
                 "game_versions": ["1.20.1"] ,
                 "release_channel": "release",
                 "loaders": ["fabric"],
@@ -367,7 +368,6 @@ pub async fn add_project_beta(test_env: &TestEnvironment) -> (Project, Version) 
         .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         .to_request();
     let resp = test_env.call(req).await;
-    println!("{:?}", resp.response().body());
     assert_eq!(resp.status(), 200);
 
     get_project_beta(test_env).await

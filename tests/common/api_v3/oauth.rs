@@ -45,7 +45,6 @@ impl ApiV3 {
         pat: &str,
     ) -> ServiceResponse {
         let uri = generate_authorize_uri(client_id, scope, redirect_uri, state);
-        println!("uri: {}", uri);
         let req = TestRequest::get()
             .uri(&uri)
             .append_header((AUTHORIZATION, pat))
