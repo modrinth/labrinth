@@ -207,14 +207,14 @@ pub async fn project_version_create_scopes() {
             "slug": "demo",
             "description": "Example description.",
             "body": "Example body.",
-            "client_side": "required",
-            "server_side": "optional",
             "initial_versions": [{
                 "file_parts": ["basic-mod.jar"],
                 "version_number": "1.2.3",
                 "version_title": "start",
                 "dependencies": [],
                 "game_versions": ["1.20.1"] ,
+                "client_side": "required",
+                "server_side": "optional",
                 "release_channel": "release",
                 "loaders": ["fabric"],
                 "featured": true
@@ -257,6 +257,8 @@ pub async fn project_version_create_scopes() {
                 "version_title": "start",
                 "dependencies": [],
                 "game_versions": ["1.20.1"] ,
+                "client_side": "required",
+                "server_side": "optional",
                 "release_channel": "release",
                 "loaders": ["fabric"],
                 "featured": true

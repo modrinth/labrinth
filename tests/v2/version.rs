@@ -10,11 +10,11 @@ use labrinth::{
 };
 use serde_json::json;
 
+use crate::common::api_v2::request_data::get_public_version_creation_data;
 use crate::common::{
     database::{ENEMY_USER_PAT, USER_USER_PAT},
     dummy_data::TestFile,
     environment::TestEnvironment,
-    request_data::get_public_version_creation_data,
 };
 
 #[actix_rt::test]

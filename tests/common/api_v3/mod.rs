@@ -8,6 +8,7 @@ pub mod oauth;
 pub mod oauth_clients;
 pub mod organization;
 pub mod project;
+pub mod request_data;
 pub mod tags;
 pub mod team;
 pub mod version;

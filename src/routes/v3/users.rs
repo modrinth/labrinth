@@ -649,7 +649,6 @@ pub async fn user_notifications(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("Here 1");
     let user = get_user_from_headers(
         &req,
         &**pool,
@@ -678,10 +677,8 @@ pub async fn user_notifications(
             .collect();
 
         notifications.sort_by(|a, b| b.created.cmp(&a.created));
-        println!("Here 2");
         Ok(HttpResponse::Ok().json(notifications))
     } else {
-        println!("Here 3");
         Ok(HttpResponse::NotFound().body(""))
     }
 }

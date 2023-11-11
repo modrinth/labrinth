@@ -6,9 +6,7 @@ use bytes::Bytes;
 use labrinth::models::{organizations::Organization, v3::projects::Project};
 use serde_json::json;
 
-use crate::common::request_data::ImageData;
-
-use super::ApiV3;
+use super::{ApiV3, request_data::ImageData};
 
 impl ApiV3 {
     pub async fn create_organization(

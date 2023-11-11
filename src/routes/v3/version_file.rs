@@ -41,7 +41,6 @@ pub async fn get_version_from_hash(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("Getting version from hash");
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -462,6 +461,7 @@ pub async fn update_individual_files(
                             if let Some(loaders) = &query_file.loaders {
                                 bool &= x.loaders.iter().any(|y| loaders.contains(y));
                             }
+                            
                             if let Some(loader_fields) = &query_file.loader_fields {
                                 for (key, values) in loader_fields {
                                     bool &= if let Some(x_vf) =
@@ -473,7 +473,6 @@ pub async fn update_individual_files(
                                     };
                                 }
                             }
-
                             bool
                         })
                         .sorted()

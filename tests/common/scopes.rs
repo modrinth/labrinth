@@ -82,7 +82,6 @@ impl<'a> ScopeTest<'a> {
         let resp = self.test_env.call(req).await;
 
         if resp.status().as_u16() != self.expected_failure_code {
-            println!("Response: {:#?}", resp.response().body());
             return Err(format!(
                 "Expected failure code {}, got {} ({:#?})",
                 self.expected_failure_code,
@@ -107,7 +106,6 @@ impl<'a> ScopeTest<'a> {
         let resp = self.test_env.call(req).await;
 
         if !(resp.status().is_success() || resp.status().is_redirection()) {
-            println!("Response: {:#?}", resp.response().body());
             return Err(format!(
                 "Expected success code, got {} ({:#?})",
                 resp.status().as_u16(),

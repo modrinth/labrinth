@@ -118,12 +118,10 @@ impl ApiV3 {
     }
 
     pub async fn get_user_notifications(&self, user_id: &str, pat: &str) -> ServiceResponse {
-        println!("1111");
         let req = test::TestRequest::get()
             .uri(&format!("/v3/user/{user_id}/notifications"))
             .append_header(("Authorization", pat))
             .to_request();
-        println!("341431242");
         self.call(req).await
     }
 
@@ -133,7 +131,6 @@ impl ApiV3 {
         pat: &str,
     ) -> Vec<Notification> {
         let resp = self.get_user_notifications(user_id, pat).await;
-        println!("s{:?}", resp.response());
         assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
