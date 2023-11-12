@@ -8,7 +8,9 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::common::api_v3::request_data::{self, get_public_version_creation_data, ProjectCreationRequestData};
+use crate::common::api_v3::request_data::{
+    self, get_public_version_creation_data, ProjectCreationRequestData,
+};
 
 mod common;
 
@@ -204,9 +206,12 @@ async fn search_projects() {
         .get_project_deserialized(&format!("{test_name}-searchable-project-7"), USER_USER_PAT)
         .await;
     api.add_public_version(
-        get_public_version_creation_data(project_7.id, "1.0.0", TestFile::build_random_jar(),
-        None::<fn(&mut serde_json::Value)>,
-    ),
+        get_public_version_creation_data(
+            project_7.id,
+            "1.0.0",
+            TestFile::build_random_jar(),
+            None::<fn(&mut serde_json::Value)>,
+        ),
         USER_USER_PAT,
     )
     .await;

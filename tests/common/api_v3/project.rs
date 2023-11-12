@@ -15,12 +15,12 @@ use labrinth::{
 use rust_decimal::Decimal;
 use serde_json::json;
 
-use crate::common::{
-    asserts::assert_status,
-    database::MOD_USER_PAT,
-};
+use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
 
-use super::{ApiV3, request_data::{ProjectCreationRequestData, ImageData}};
+use super::{
+    request_data::{ImageData, ProjectCreationRequestData},
+    ApiV3,
+};
 
 impl ApiV3 {
     pub async fn add_public_project(

@@ -270,14 +270,20 @@ async fn version_create_inner(
                 selected_loaders = Some(loaders.clone());
                 let loader_ids: Vec<models::LoaderId> = loaders.iter().map(|y| y.id).collect_vec();
 
-                let loader_fields = LoaderField::get_fields(&loader_ids, &mut **transaction, redis).await?;
+                let loader_fields =
+                    LoaderField::get_fields(&loader_ids, &mut **transaction, redis).await?;
                 let mut loader_field_enum_values = LoaderFieldEnumValue::list_many_loader_fields(
                     &loader_fields,
                     &mut **transaction,
                     redis,
                 )
                 .await?;
-                let version_fields = try_create_version_fields(version_id, &version_create_data.fields, &loader_fields, &mut loader_field_enum_values)?;
+                let version_fields = try_create_version_fields(
+                    version_id,
+                    &version_create_data.fields,
+                    &loader_fields,
+                    &mut loader_field_enum_values,
+                )?;
 
                 let dependencies = version_create_data
                     .dependencies
@@ -945,18 +951,28 @@ pub fn get_name_ext(
     Ok((file_name, file_extension))
 }
 
-
 // Reused functionality between project_creation and version_creation
 // Create a list of VersionFields from the fetched data, and check that all mandatory fields are present
-pub fn try_create_version_fields(version_id : VersionId, submitted_fields : &HashMap<String, serde_json::Value>, loader_fields : &Vec<LoaderField>, loader_field_enum_values: &mut HashMap<models::LoaderFieldId, Vec<LoaderFieldEnumValue>>) -> Result<Vec<VersionField>, CreateError> {
+pub fn try_create_version_fields(
+    version_id: VersionId,
+    submitted_fields: &HashMap<String, serde_json::Value>,
+    loader_fields: &[LoaderField],
+    loader_field_enum_values: &mut HashMap<models::LoaderFieldId, Vec<LoaderFieldEnumValue>>,
+) -> Result<Vec<VersionField>, CreateError> {
     let mut version_fields = vec![];
-    let mut remaining_mandatory_loader_fields = loader_fields.iter().filter(|lf| !lf.optional).map(|lf| lf.field.clone()).collect::<HashSet<_>>();
+    let mut remaining_mandatory_loader_fields = loader_fields
+        .iter()
+        .filter(|lf| !lf.optional)
+        .map(|lf| lf.field.clone())
+        .collect::<HashSet<_>>();
     for (key, value) in submitted_fields.iter() {
         let loader_field = loader_fields
             .iter()
             .find(|lf| &lf.field == key)
             .ok_or_else(|| {
-                CreateError::InvalidInput(format!("Loader field '{key}' does not exist for any loaders supplied,"))
+                CreateError::InvalidInput(format!(
+                    "Loader field '{key}' does not exist for any loaders supplied,"
+                ))
             })?;
         remaining_mandatory_loader_fields.remove(&loader_field.field);
         let enum_variants = loader_field_enum_values
@@ -973,11 +989,10 @@ pub fn try_create_version_fields(version_id : VersionId, submitted_fields : &Has
         version_fields.push(vf);
     }
 
-    if remaining_mandatory_loader_fields.len() > 0 {
+    if !remaining_mandatory_loader_fields.is_empty() {
         return Err(CreateError::InvalidInput(format!(
             "Missing mandatory loader fields: {}",
-            remaining_mandatory_loader_fields.iter()
-                .join(", ")
+            remaining_mandatory_loader_fields.iter().join(", ")
         )));
     }
     Ok(version_fields)

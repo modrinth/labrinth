@@ -1,8 +1,6 @@
-use super::version_creation::{InitialVersionData, try_create_version_fields};
+use super::version_creation::{try_create_version_fields, InitialVersionData};
 use crate::auth::{get_user_from_headers, AuthenticationError};
-use crate::database::models::loader_fields::{
-    Loader, LoaderField, LoaderFieldEnumValue,
-};
+use crate::database::models::loader_fields::{Loader, LoaderField, LoaderFieldEnumValue};
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item, User};
 use crate::database::redis::RedisPool;

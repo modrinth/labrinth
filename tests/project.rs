@@ -115,7 +115,7 @@ async fn test_add_remove_project() {
                 "dependencies": [],
                 "game_versions": ["1.20.1"] ,
                 "client_side": "required",
-                "server_side": "optional",    
+                "server_side": "optional",
                 "release_channel": "release",
                 "loaders": ["fabric"],
                 "featured": true

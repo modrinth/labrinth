@@ -246,7 +246,7 @@ pub async fn send_discord_webhook(
             });
         }
 
-        let mut project_types : Vec<String> = project.project_types.unwrap_or_default();
+        let mut project_types: Vec<String> = project.project_types.unwrap_or_default();
         let mut project_type = project_types.pop().unwrap_or_default(); // TODO: Should this grab a not-first?
 
         if loaders.iter().all(|x| PLUGIN_LOADERS.contains(&&**x)) {

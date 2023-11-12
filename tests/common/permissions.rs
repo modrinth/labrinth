@@ -4,13 +4,12 @@ use itertools::Itertools;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::common::{
-    database::{generate_random_name, ADMIN_USER_PAT},
-};
+use crate::common::database::{generate_random_name, ADMIN_USER_PAT};
 
 use super::{
-    database::{USER_USER_ID, USER_USER_PAT, ENEMY_USER_PAT},
-    environment::TestEnvironment, api_v3::request_data,
+    api_v3::request_data,
+    database::{ENEMY_USER_PAT, USER_USER_ID, USER_USER_PAT},
+    environment::TestEnvironment,
 };
 
 // A reusable test type that works for any permissions test testing an endpoint that:
@@ -203,7 +202,7 @@ impl<'a> PermissionsTest<'a> {
                 resp.status().as_u16()
             ));
         }
-        
+
         // Failure test- logged in with EVERY non-relevant permission
         let request = req_gen(&PermissionsTestContext {
             project_id: Some(&project_id),
@@ -416,7 +415,6 @@ impl<'a> PermissionsTest<'a> {
 
             Ok(())
         };
-
 
         // TEST 2: Failure
         // Random user, unaffiliated with the project, with no permissions
@@ -751,7 +749,8 @@ impl<'a> PermissionsTest<'a> {
             Ok(())
         };
 
-        tokio::try_join!(test_1, test_2, test_3, test_4, test_5, test_6, test_7, test_8).map_err(|e| e)?;
+        tokio::try_join!(test_1, test_2, test_3, test_4, test_5, test_6, test_7, test_8)
+            .map_err(|e| e)?;
 
         Ok(())
     }

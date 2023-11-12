@@ -295,7 +295,7 @@ pub struct SideType {
 impl LoaderField {
     pub async fn get_field<'a, E>(
         field: &str,
-        loader_ids : &[LoaderId],
+        loader_ids: &[LoaderId],
         exec: E,
         redis: &RedisPool,
     ) -> Result<Option<LoaderField>, DatabaseError>
@@ -309,7 +309,7 @@ impl LoaderField {
     // Gets all fields for a given loader(s)
     // Returns all as this there are probably relatively few fields per loader
     pub async fn get_fields<'a, E>(
-        loader_ids : &[LoaderId],
+        loader_ids: &[LoaderId],
         exec: E,
         redis: &RedisPool,
     ) -> Result<Vec<LoaderField>, DatabaseError>
@@ -319,11 +319,12 @@ impl LoaderField {
         type RedisLoaderFieldTuple = (LoaderId, Vec<LoaderField>);
 
         let mut loader_ids = loader_ids.to_vec();
-        let cached_fields : Vec<RedisLoaderFieldTuple> = redis
-            .multi_get::<String, _>(LOADER_FIELDS_NAMESPACE, loader_ids.iter().map(|x| x.0)).await?
+        let cached_fields: Vec<RedisLoaderFieldTuple> = redis
+            .multi_get::<String, _>(LOADER_FIELDS_NAMESPACE, loader_ids.iter().map(|x| x.0))
+            .await?
             .into_iter()
             .flatten()
-            .filter_map(|x : String| serde_json::from_str::<RedisLoaderFieldTuple>(&x).ok())
+            .filter_map(|x: String| serde_json::from_str::<RedisLoaderFieldTuple>(&x).ok())
             .collect();
 
         let mut found_loader_fields = vec![];
@@ -361,8 +362,8 @@ impl LoaderField {
             })
             .try_collect::<Vec<(LoaderId, LoaderField)>>()
             .await?;
-    
-            let result : Vec<RedisLoaderFieldTuple> = result
+
+            let result: Vec<RedisLoaderFieldTuple> = result
                 .into_iter()
                 .fold(HashMap::new(), |mut acc, x| {
                     acc.entry(x.0).or_insert_with(Vec::new).push(x.1);
@@ -370,16 +371,18 @@ impl LoaderField {
                 })
                 .into_iter()
                 .collect_vec();
-    
+
             for (k, v) in result.into_iter() {
                 redis
-                    .set_serialized_to_json(LOADER_FIELDS_NAMESPACE, k.0, (k,&v), None)
+                    .set_serialized_to_json(LOADER_FIELDS_NAMESPACE, k.0, (k, &v), None)
                     .await?;
                 found_loader_fields.extend(v);
             }
-    
         }
-        let result = found_loader_fields.into_iter().unique_by(|x| x.id).collect();
+        let result = found_loader_fields
+            .into_iter()
+            .unique_by(|x| x.id)
+            .collect();
         Ok(result)
     }
 }
