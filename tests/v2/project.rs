@@ -1,15 +1,21 @@
 use crate::common::{
-    database::{ENEMY_USER_PAT, MOD_USER_PAT, USER_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT},
+    api_v2::request_data,
+    database::{ENEMY_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, MOD_USER_PAT, USER_USER_PAT},
     dummy_data::{TestFile, DUMMY_CATEGORIES},
-    environment::TestEnvironment, api_v2::request_data, permissions::{PermissionsTestContext, PermissionsTest},
+    environment::TestEnvironment,
+    permissions::{PermissionsTest, PermissionsTestContext},
 };
 use actix_web::test;
 use itertools::Itertools;
-use labrinth::{models::teams::ProjectPermissions, database::models::project_item::PROJECTS_SLUGS_NAMESPACE, util::actix::{MultipartSegment, MultipartSegmentData, AppendsMultipart}};
+use labrinth::{
+    database::models::project_item::PROJECTS_SLUGS_NAMESPACE,
+    models::teams::ProjectPermissions,
+    util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData},
+};
 use serde_json::json;
 
 #[actix_rt::test]
-async fn test_project_type_sanity() {    
+async fn test_project_type_sanity() {
     let test_env = TestEnvironment::build(None).await;
     let api = &test_env.v2;
 
@@ -71,7 +77,7 @@ async fn test_add_remove_project() {
             "description": "Example description.",
             "body": "Example body.",
             "client_side": "required",
-            "server_side": "optional",    
+            "server_side": "optional",
             "initial_versions": [{
                 "file_parts": ["basic-mod.jar"],
                 "version_number": "1.2.3",
@@ -116,7 +122,9 @@ async fn test_add_remove_project() {
         filename: Some("basic-mod.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
         // TODO: look at these: can be simplified with TestFile
-        data: MultipartSegmentData::Binary(include_bytes!("../../tests/files/basic-mod.jar").to_vec()),
+        data: MultipartSegmentData::Binary(
+            include_bytes!("../../tests/files/basic-mod.jar").to_vec(),
+        ),
     };
 
     // Differently named file, with the same content (for hash testing)
@@ -124,7 +132,9 @@ async fn test_add_remove_project() {
         name: "basic-mod-different.jar".to_string(),
         filename: Some("basic-mod-different.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
-        data: MultipartSegmentData::Binary(include_bytes!("../../tests/files/basic-mod.jar").to_vec()),
+        data: MultipartSegmentData::Binary(
+            include_bytes!("../../tests/files/basic-mod.jar").to_vec(),
+        ),
     };
 
     // Differently named file, with different content
@@ -364,7 +374,6 @@ async fn permissions_upload_version() {
 
     test_env.cleanup().await;
 }
-
 
 #[actix_rt::test]
 pub async fn test_patch_project() {

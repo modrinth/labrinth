@@ -46,7 +46,9 @@ pub async fn project_version_create_scopes() {
         name: "basic-mod.jar".to_string(),
         filename: Some("basic-mod.jar".to_string()),
         content_type: Some("application/java-archive".to_string()),
-        data: MultipartSegmentData::Binary(include_bytes!("../../tests/files/basic-mod.jar").to_vec()),
+        data: MultipartSegmentData::Binary(
+            include_bytes!("../../tests/files/basic-mod.jar").to_vec(),
+        ),
     };
 
     let req_gen = || {

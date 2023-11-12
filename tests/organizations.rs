@@ -1,7 +1,8 @@
 use crate::common::{
+    api_v3::request_data::get_icon_data,
     database::{generate_random_name, ADMIN_USER_PAT, MOD_USER_ID, MOD_USER_PAT, USER_USER_ID},
     dummy_data::DummyImage,
-    environment::TestEnvironment, api_v3::request_data::get_icon_data,
+    environment::TestEnvironment,
 };
 use actix_web::test;
 use bytes::Bytes;

@@ -16,7 +16,7 @@ use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 use crate::common::database::USER_USER_PAT;
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
-use super::{environment::TestEnvironment, api_v3::request_data::get_public_project_creation_data};
+use super::{api_v3::request_data::get_public_project_creation_data, environment::TestEnvironment};
 
 use super::{asserts::assert_status, database::USER_USER_ID, get_json_val_str};
 

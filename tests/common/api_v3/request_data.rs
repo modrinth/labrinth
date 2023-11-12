@@ -44,7 +44,7 @@ pub fn get_public_version_creation_data(
     version_jar: TestFile,
     // closure that takes in a &mut serde_json::Value
     // and modifies it before it is serialized and sent
-    modify_json : Option<impl FnOnce(&mut serde_json::Value)>,
+    modify_json: Option<impl FnOnce(&mut serde_json::Value)>,
 ) -> VersionCreationRequestData {
     let mut json_data = get_public_version_creation_data_json(version_number, &version_jar);
     json_data["project_id"] = json!(project_id);

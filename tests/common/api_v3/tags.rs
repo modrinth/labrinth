@@ -2,7 +2,10 @@ use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
-use labrinth::{routes::v3::tags::{CategoryData, LoaderData}, database::models::loader_fields::LoaderFieldEnumValue};
+use labrinth::{
+    database::models::loader_fields::LoaderFieldEnumValue,
+    routes::v3::tags::{CategoryData, LoaderData},
+};
 
 use crate::common::database::ADMIN_USER_PAT;
 
@@ -37,7 +40,7 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
-    pub async fn get_loader_field_variants(&self, loader_field : &str) -> ServiceResponse {
+    pub async fn get_loader_field_variants(&self, loader_field: &str) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!("/v3/loader_field?loader_field={}", loader_field))
             .append_header(("Authorization", ADMIN_USER_PAT))
@@ -45,7 +48,10 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_loader_field_variants_deserialized(&self, loader_field : &str) -> Vec<LoaderFieldEnumValue> {
+    pub async fn get_loader_field_variants_deserialized(
+        &self,
+        loader_field: &str,
+    ) -> Vec<LoaderFieldEnumValue> {
         let resp = self.get_loader_field_variants(loader_field).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await

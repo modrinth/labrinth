@@ -96,15 +96,20 @@ pub async fn loader_fields_list(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let query = query.into_inner();
-    let all_loader_ids = Loader::list(&**pool, &redis).await?.into_iter().map(|x| x.id).collect_vec();
-    let loader_field = LoaderField::get_field(&query.loader_field, &all_loader_ids, &**pool, &redis)
+    let all_loader_ids = Loader::list(&**pool, &redis)
         .await?
-        .ok_or_else(|| {
-            ApiError::InvalidInput(format!(
-                "'{}' was not a valid loader field.",
-                query.loader_field
-            ))
-        })?;
+        .into_iter()
+        .map(|x| x.id)
+        .collect_vec();
+    let loader_field =
+        LoaderField::get_field(&query.loader_field, &all_loader_ids, &**pool, &redis)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput(format!(
+                    "'{}' was not a valid loader field.",
+                    query.loader_field
+                ))
+            })?;
 
     let loader_field_enum_id = match loader_field.field_type {
         LoaderFieldType::Enum(enum_id) | LoaderFieldType::ArrayEnum(enum_id) => enum_id,

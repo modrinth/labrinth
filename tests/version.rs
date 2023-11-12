@@ -232,7 +232,7 @@ async fn version_updates() {
                     .into_iter()
                     .map(|v| json!(v))
                     .collect::<Vec<_>>(),
-            );    
+            );
         }
 
         let hashes = vec![FileUpdateData {

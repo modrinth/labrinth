@@ -5,7 +5,9 @@ use crate::auth::{
     filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
 };
 use crate::database;
-use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField, self};
+use crate::database::models::loader_fields::{
+    self, LoaderField, LoaderFieldEnumValue, VersionField,
+};
 use crate::database::models::version_item::{DependencyBuilder, LoaderVersion};
 use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
@@ -385,17 +387,11 @@ pub async fn version_edit_helper(
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>();
 
-                let all_loaders =
-                    loader_fields::Loader::list(&mut *transaction, &redis).await?;
+                let all_loaders = loader_fields::Loader::list(&mut *transaction, &redis).await?;
                 let loader_ids = version_item
                     .loaders
                     .iter()
-                    .filter_map(|x| {
-                        all_loaders
-                            .iter()
-                            .find(|y| &y.loader == x)
-                            .map(|y| y.id)
-                    })
+                    .filter_map(|x| all_loaders.iter().find(|y| &y.loader == x).map(|y| y.id))
                     .collect_vec();
 
                 let loader_fields = LoaderField::get_fields(&loader_ids, &mut *transaction, &redis)

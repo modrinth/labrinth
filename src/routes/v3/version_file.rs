@@ -461,7 +461,7 @@ pub async fn update_individual_files(
                             if let Some(loaders) = &query_file.loaders {
                                 bool &= x.loaders.iter().any(|y| loaders.contains(y));
                             }
-                            
+
                             if let Some(loader_fields) = &query_file.loader_fields {
                                 for (key, values) in loader_fields {
                                     bool &= if let Some(x_vf) =

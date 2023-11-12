@@ -14,7 +14,7 @@ use serde_json::json;
 
 use crate::common::asserts::assert_status;
 
-use super::{ApiV3, request_data::VersionCreationRequestData};
+use super::{request_data::VersionCreationRequestData, ApiV3};
 
 pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
     let serialized = serde_json::to_string(&elements).unwrap();
