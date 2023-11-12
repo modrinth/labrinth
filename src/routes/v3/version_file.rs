@@ -133,34 +133,33 @@ pub async fn get_update_from_hash(
         if let Some(project) =
             database::models::Project::get_id(file.project_id, &**pool, &redis).await?
         {
-            let versions =
-                database::models::Version::get_many(&project.versions, &**pool, &redis)
-                    .await?
-                    .into_iter()
-                    .filter(|x| {
-                        let mut bool = true;
-                        if let Some(version_types) = &update_data.version_types {
-                            bool &= version_types
-                                .iter()
-                                .any(|y| y.as_str() == x.inner.version_type);
+            let versions = database::models::Version::get_many(&project.versions, &**pool, &redis)
+                .await?
+                .into_iter()
+                .filter(|x| {
+                    let mut bool = true;
+                    if let Some(version_types) = &update_data.version_types {
+                        bool &= version_types
+                            .iter()
+                            .any(|y| y.as_str() == x.inner.version_type);
+                    }
+                    if let Some(loaders) = &update_data.loaders {
+                        bool &= x.loaders.iter().any(|y| loaders.contains(y));
+                    }
+                    if let Some(loader_fields) = &update_data.loader_fields {
+                        for (key, values) in loader_fields {
+                            bool &= if let Some(x_vf) =
+                                x.version_fields.iter().find(|y| y.field_name == *key)
+                            {
+                                values.iter().any(|v| x_vf.value.contains_json_value(v))
+                            } else {
+                                true
+                            };
                         }
-                        if let Some(loaders) = &update_data.loaders {
-                            bool &= x.loaders.iter().any(|y| loaders.contains(y));
-                        }
-                        if let Some(loader_fields) = &update_data.loader_fields {
-                            for (key, values) in loader_fields {
-                                bool &= if let Some(x_vf) =
-                                    x.version_fields.iter().find(|y| y.field_name == *key)
-                                {
-                                    values.iter().any(|v| x_vf.value.contains_json_value(v))
-                                } else {
-                                    true
-                                };
-                            }
-                        }
-                        bool
-                    })
-                    .sorted();
+                    }
+                    bool
+                })
+                .sorted();
 
             if let Some(first) = versions.last() {
                 if !is_authorized_version(&first.inner, &user_option, &pool).await? {
