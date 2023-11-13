@@ -445,7 +445,7 @@ impl LoaderFieldEnumValue {
             "
             SELECT id, enum_id, value, ordering, metadata, created FROM loader_field_enum_values
             WHERE enum_id = ANY($1)
-            ORDER BY ordering, created DESC
+            ORDER BY enum_id, ordering, created DESC
             ",
             &remaining_enums
         )
@@ -467,7 +467,7 @@ impl LoaderFieldEnumValue {
         let cachable_enum_sets: Vec<(LoaderFieldEnumId, Vec<LoaderFieldEnumValue>)> = result
             .clone()
             .into_iter()
-            .group_by(|x| x.enum_id)
+            .group_by(|x| x.enum_id) // we sort by enum_id, so this will group all values of the same enum_id together
             .into_iter()
             .map(|(k, v)| (k, v.collect::<Vec<_>>().to_vec()))
             .collect();
@@ -786,10 +786,15 @@ impl VersionFieldValue {
                 }
             }),
             LoaderFieldType::ArrayEnum(id) => VersionFieldValue::ArrayEnum(*id, {
+                println!("\nenum_array: {:?}", enum_array);
+                println!("value: {:?}", value);
+                println!("id: {:?}", id);
                 let array_values: Vec<String> = serde_json::from_value(value)
                     .map_err(|_| incorrect_type_error("array of enums"))?;
+                println!("array_values: {:?}", array_values);
                 let mut enum_values = vec![];
                 for av in array_values {
+                    println!("av: {:?}", av);
                     if let Some(ev) = enum_array.iter().find(|v| v.value == av) {
                         enum_values.push(ev.clone());
                     } else {
