@@ -1,66 +1,38 @@
-name: Coverage-1
+name: Custom Build and Coverage
 
 on:
   push:
     branches: [master]
   pull_request:
-    branches:
-      - master
-
-env:
-  CARGO_TERM_COLOR: always
-  SQLX_OFFLINE: true
+    branches: [master]
 
 jobs:
-  test:
-    name: ${{ matrix.os }}-rust-${{ matrix.rust }}
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.rust != 'stable' }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        rust: [stable]
+  custom-build-and-coverage:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v2
-      
-      # Start Docker Compose
-      - name: Start Docker Compose
-        run: docker-compose up -d
 
-      - uses: actions-rs/toolchain@v1
-        name: Install toolchain
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1.5.0
         with:
           profile: minimal
-          toolchain: ${{ matrix.rust }}
+          toolchain: stable
           override: true
 
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2.21.11
-        with:
-          tool: cargo-llvm-cov
-
-      - name: Generate code coverage
-        run: cargo llvm-cov --locked --all-features --codecov --output-path codecov.json
+      - name: Build Entire Workspace
+        run: cargo build --workspace --all-features
         env:
-          BACKBLAZE_BUCKET_ID: ${{ secrets.BACKBLAZE_BUCKET_ID }}
-          BACKBLAZE_KEY: ${{ secrets.BACKBLAZE_KEY }}
-          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
-          S3_ACCESS_TOKEN: ${{ secrets.S3_ACCESS_TOKEN }}
-          S3_SECRET: ${{ secrets.S3_SECRET }}
-          S3_URL: ${{ secrets.S3_URL }}
-          S3_REGION: ${{ secrets.S3_REGION }}
-          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
           SQLX_OFFLINE: true
           DATABASE_URL: postgresql://labrinth:labrinth@localhost/postgres
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+      - name: Install llvm-tools and cargo-llvm-cov
+        run: |
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov
+
+      - name: Generate Coverage for Main Crate Only
+        run: cargo llvm-cov --package labrinth --all-features --codecov --output-path codecov.json
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      # - name: Install Rust
-      #   uses: actions-rust-lang/setup-rust-toolchain@v1.5.0
-      #   with:
-      #     components: llvm-tools-preview
-
+          SQLX_OFFLINE: true
+          DATABASE_URL: postgresql://labrinth:labrinth@localhost/postgres
