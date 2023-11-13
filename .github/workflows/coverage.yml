@@ -27,6 +27,9 @@ jobs:
         uses: taiki-e/install-action@v2.21.11
         with:
           tool: cargo-llvm-cov
+        env:
+          SQLX_OFFLINE: true
+          DATABASE_URL: postgresql://labrinth:labrinth@localhost/postgres
 
       - name: Generate code coverage
         run: cargo llvm-cov --workspace --all-features --codecov --output-path codecov.json
