@@ -7,8 +7,9 @@ env:
 on:
   push:
     branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  # Uncomment to allow PRs to trigger the workflow
+  # pull_request:
+  #   branches: [ master ]
 jobs:
   citarp:
     runs-on: ubuntu-latest
