@@ -10,21 +10,13 @@ on:
   pull_request:
     branches: [ master ]
 jobs:
-  test:
-    name:                       citarp
+  citarp:
     runs-on:                    ubuntu-latest
-    container:
-      image:                    xd009642/tarpaulin:develop-nightly
-      options:                  --security-opt seccomp=unconfined
     steps:
       - uses: actions/checkout@v2
       # Start Docker Compose
       - name: Start Docker Compose
         run: docker-compose up -d
-
-      - name:                   Checkout repository
-        uses:                   actions/checkout@v2
-
       - name:                   Generate code coverage
         run: |
           cargo +nightly tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
