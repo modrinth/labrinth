@@ -2,9 +2,9 @@ name: Rust33
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,6 +14,11 @@ jobs:
   integration-tests:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+      # Start Docker Compose
+      - name: Start Docker Compose
+        run: docker-compose up -d
+
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
 
