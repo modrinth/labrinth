@@ -1,8 +1,7 @@
+use common::environment::TestEnvironment;
 use std::collections::HashSet;
 
 use itertools::Itertools;
-
-use common::environment::TestEnvironment;
 
 mod common;
 
