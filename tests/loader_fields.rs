@@ -115,7 +115,7 @@ async fn creating_loader_fields() {
     assert_eq!(resp.status(), 400);
 
     // Cannot create a version with a loader field array that has fewer than the minimum elements or more than the maximum elements
-    for gvs in [vec![], vec!["1.20.1"].repeat(30)] {
+    for gvs in [vec![], ["1.20.1"].repeat(30)] {
         // TODO: - Create project
         // - Create version
         let version_data = get_public_version_creation_data(
@@ -267,17 +267,28 @@ async fn get_loader_fields() {
         .get_loader_field_variants_deserialized("client_side")
         .await;
 
-    // These tests match dummy data and will need to be updated if the dummy data changes;
+    // These tests match dummy data and will need to be updated if the dummy data changes
+    // Versions should be ordered by:
+    // - ordering
+    // - ordering ties settled by date added to database
+    // - We also expect presentation of NEWEST to OLDEST
+    // - All null orderings are treated as older than any non-null ordering
+    // (for this test, the 1.20.1, etc, versions are all null ordering)
     let game_version_versions = game_versions
         .into_iter()
         .map(|x| x.value)
-        .collect::<HashSet<_>>();
+        .collect::<Vec<_>>();
     assert_eq!(
         game_version_versions,
-        ["1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.5"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
+        [
+            "Ordering_Negative1",
+            "Ordering_Positive100",
+            "1.20.5",
+            "1.20.4",
+            "1.20.3",
+            "1.20.2",
+            "1.20.1"
+        ]
     );
 
     let side_type_names = side_types

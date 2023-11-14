@@ -332,10 +332,13 @@ impl LoaderField {
 
             let result: Vec<RedisLoaderFieldTuple> = result
                 .into_iter()
-                .fold(HashMap::new(), |mut acc, x| {
-                    acc.entry(x.0).or_insert_with(Vec::new).push(x.1);
-                    acc
-                })
+                .fold(
+                    HashMap::new(),
+                    |mut acc: HashMap<LoaderId, Vec<LoaderField>>, x| {
+                        acc.entry(x.0).or_default().push(x.1);
+                        acc
+                    },
+                )
                 .into_iter()
                 .collect_vec();
 
