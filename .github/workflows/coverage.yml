@@ -1,4 +1,4 @@
-name: citarp
+name: Coverage-Tarpaulin
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
       # Start Docker Compose
       - name: Start Docker Compose
         run: docker-compose up -d
@@ -35,8 +36,8 @@ jobs:
           SQLX_OFFLINE: true
           DATABASE_URL: postgresql://labrinth:labrinth@localhost/postgres
 
-      - name:                   Upload to codecov.io
-        uses:                   codecov/codecov-action@v2
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v2
         with:
-          # token:                ${{secrets.CODECOV_TOKEN}} # not required for public repos
-          fail_ci_if_error:     true
+          # token: ${{secrets.CODECOV_TOKEN}} # not required for public repos
+          fail_ci_if_error: true
