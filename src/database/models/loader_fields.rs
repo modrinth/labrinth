@@ -22,6 +22,7 @@ pub struct Game {
     pub slug: String,
     pub name: String,
     pub icon_url: Option<String>,
+    pub banner_url: Option<String>,
 }
 
 impl Game {
@@ -52,7 +53,7 @@ impl Game {
 
         let result = sqlx::query!(
             "
-            SELECT id, slug, name, icon_url FROM games
+            SELECT id, slug, name, icon_url, banner_url FROM games
             ",
         )
         .fetch_many(exec)
@@ -62,6 +63,7 @@ impl Game {
                 slug: x.slug,
                 name: x.name,
                 icon_url: x.icon_url,
+                banner_url: x.banner_url,
             }))
         })
         .try_collect::<Vec<Game>>()

@@ -30,6 +30,7 @@ pub struct GameData {
     pub slug: String,
     pub name: String,
     pub icon: Option<String>,
+    pub banner: Option<String>,
 }
 
 pub async fn games_list(
@@ -43,6 +44,7 @@ pub async fn games_list(
             slug: x.slug,
             name: x.name,
             icon: x.icon_url,
+            banner: x.banner_url,
         })
         .collect::<Vec<_>>();
 
