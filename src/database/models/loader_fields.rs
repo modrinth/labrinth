@@ -786,15 +786,10 @@ impl VersionFieldValue {
                 }
             }),
             LoaderFieldType::ArrayEnum(id) => VersionFieldValue::ArrayEnum(*id, {
-                println!("\nenum_array: {:?}", enum_array);
-                println!("value: {:?}", value);
-                println!("id: {:?}", id);
                 let array_values: Vec<String> = serde_json::from_value(value)
                     .map_err(|_| incorrect_type_error("array of enums"))?;
-                println!("array_values: {:?}", array_values);
                 let mut enum_values = vec![];
                 for av in array_values {
-                    println!("av: {:?}", av);
                     if let Some(ev) = enum_array.iter().find(|v| v.value == av) {
                         enum_values.push(ev.clone());
                     } else {
