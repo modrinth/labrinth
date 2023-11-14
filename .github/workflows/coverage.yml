@@ -7,32 +7,19 @@ on:
     branches: [master]
 
 jobs:
-  custom-build-and-coverage:
+  run_rust_tests:
+    name: Run rust test
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
-
+      - uses: actions/checkout@v4
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1.5.0
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-
-      - name: Build Entire Workspace
-        run: cargo build --workspace --all-features
-        env:
-          SQLX_OFFLINE: true
-          DATABASE_URL: postgresql://labrinth:labrinth@localhost/postgres
-
-      - name: Install llvm-tools and cargo-llvm-cov
+        run: rustup update stable
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate code coverage
         run: |
-          rustup component add llvm-tools-preview
-          cargo install cargo-llvm-cov
-
-      - name: Generate Coverage for Main Crate Only
-        run: cargo llvm-cov --package labrinth --all-features --codecov --output-path codecov.json
+          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+          cat lcov.info
         env:
-          SQLX_OFFLINE: true
-          DATABASE_URL: postgresql://labrinth:labrinth@localhost/postgres
+          SQLX_OFFLINE: true # needed to keep it from trying to connect to a database
+
