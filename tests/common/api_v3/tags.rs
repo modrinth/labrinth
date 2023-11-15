@@ -2,6 +2,7 @@ use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
+use labrinth::routes::v3::tags::GameData;
 use labrinth::{
     database::models::loader_fields::LoaderFieldEnumValue,
     routes::v3::tags::{CategoryData, LoaderData},
@@ -56,18 +57,7 @@ impl ApiV3 {
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
-}
-use actix_web::{
-    dev::ServiceResponse,
-    test::{self, TestRequest},
-};
-use labrinth::routes::v3::tags::GameData;
 
-use crate::common::database::ADMIN_USER_PAT;
-
-use super::ApiV3;
-
-impl ApiV3 {
     // TODO: fold this into v3 API of other v3 testing PR
     pub async fn get_games(&self) -> ServiceResponse {
         let req = TestRequest::get()
