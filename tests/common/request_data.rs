@@ -30,7 +30,7 @@ pub fn get_public_project_creation_data(
     version_jar: Option<TestFile>,
     organization_id: Option<&str>,
 ) -> ProjectCreationRequestData {
-    let json_data = get_public_project_creation_data_json(slug, version_jar.as_ref());
+    let json_data = get_public_project_creation_data_json(slug, version_jar.as_ref(), organization_id);
     let multipart_data = get_public_creation_data_multipart(&json_data, version_jar.as_ref());
     ProjectCreationRequestData {
         slug: slug.to_string(),
@@ -73,6 +73,7 @@ pub fn get_public_version_creation_data_json(
 pub fn get_public_project_creation_data_json(
     slug: &str,
     version_jar: Option<&TestFile>,
+    organization_id: Option<&str>,
 ) -> serde_json::Value {
     let initial_versions = if let Some(jar) = version_jar {
         json!([get_public_version_creation_data_json("1.2.3", jar)])

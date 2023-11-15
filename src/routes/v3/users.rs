@@ -12,9 +12,20 @@ use validator::Validate;
 
 use crate::{
     auth::get_user_from_headers,
+    auth::{filter_authorized_projects, filter_authorized_versions},
+    database::{
+        self,
+        models::{
+            event_item::{EventData, EventSelector, EventType},
+            DatabaseError,
+        },
+    },
     database::{models::User, redis::RedisPool},
     file_hosting::FileHost,
     models::{
+        feeds::{FeedItem, FeedItemBody},
+        ids::{ProjectId, VersionId},
+        projects::Version,
         collections::{Collection, CollectionStatus},
         ids::UserId,
         notifications::Notification,
@@ -25,6 +36,14 @@ use crate::{
     queue::{payouts::PayoutsQueue, session::AuthQueue},
     util::{routes::read_from_payload, validate::validation_errors_to_string},
 };
+use std::iter::FromIterator;
+use itertools::Itertools;
+
+use database::models as db_models;
+use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
+use database::models::creator_follows::UserFollow as DBUserFollow;
+use database::models::event_item::Event as DBEvent;
+use database::models::user_item::User as DBUser;
 
 use super::ApiError;
 
@@ -34,6 +53,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("user")
+            .route("feed", web::get().to(current_user_feed))
             .route("{user_id}/projects", web::get().to(projects_list))
             .route("{id}", web::get().to(user_get))
             .route("{user_id}/collections", web::get().to(collections_list))
@@ -45,7 +65,9 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("{id}/notifications", web::get().to(user_notifications))
             .route("{id}/payouts", web::get().to(user_payouts))
             .route("{id}/payouts_fees", web::get().to(user_payouts_fees))
-            .route("{id}/payouts", web::post().to(user_payouts_request)),
+            .route("{id}/payouts", web::post().to(user_payouts_request))
+            .route("{id}/follow", web::post().to(user_follow))
+            .route("{id}/follow", web::delete().to(user_unfollow))
     );
 }
 
@@ -911,53 +933,7 @@ pub async fn user_payouts_request(
         Ok(HttpResponse::NotFound().body(""))
     }
 }
-use std::{collections::HashMap, iter::FromIterator};
 
-use crate::{
-    auth::{filter_authorized_projects, filter_authorized_versions, get_user_from_headers},
-    database::{
-        self,
-        models::{
-            event_item::{EventData, EventSelector, EventType},
-            DatabaseError,
-        },
-        redis::RedisPool,
-    },
-    models::{
-        feeds::{FeedItem, FeedItemBody},
-        ids::{ProjectId, VersionId},
-        pats::Scopes,
-        projects::{Project, Version},
-        users::User,
-    },
-    queue::session::AuthQueue,
-    routes::ApiError,
-};
-use actix_web::{
-    delete, get, post,
-    web::{self},
-    HttpRequest, HttpResponse,
-};
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
-
-use database::models as db_models;
-use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
-use database::models::creator_follows::UserFollow as DBUserFollow;
-use database::models::event_item::Event as DBEvent;
-use database::models::user_item::User as DBUser;
-
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("user")
-            .service(user_follow)
-            .service(user_unfollow)
-            .service(current_user_feed),
-    );
-}
-
-#[post("{id}/follow")]
 pub async fn user_follow(
     req: HttpRequest,
     target_id: web::Path<String>,
@@ -965,6 +941,7 @@ pub async fn user_follow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("inside user_follow");
     let (_, current_user) = get_user_from_headers(
         &req,
         &**pool,
@@ -973,11 +950,13 @@ pub async fn user_follow(
         Some(&[Scopes::USER_WRITE]),
     )
     .await?;
+    println!("current_user: {:?}", current_user);
 
     let target = DBUser::get(&target_id, &**pool, &redis)
         .await?
         .ok_or_else(|| ApiError::InvalidInput("The specified user does not exist!".to_string()))?;
 
+    println!("target: {:?}", target);
     DBUserFollow {
         follower_id: current_user.id.into(),
         target_id: target.id,
@@ -993,11 +972,10 @@ pub async fn user_follow(
         }
         e => e.into(),
     })?;
-
+    println!("inserted");
     Ok(HttpResponse::NoContent().body(""))
 }
 
-#[delete("{id}/follow")]
 pub async fn user_unfollow(
     req: HttpRequest,
     target_id: web::Path<String>,
@@ -1029,7 +1007,6 @@ pub struct FeedParameters {
     pub offset: Option<usize>,
 }
 
-#[get("feed")]
 pub async fn current_user_feed(
     req: HttpRequest,
     web::Query(params): web::Query<FeedParameters>,
@@ -1037,6 +1014,7 @@ pub async fn current_user_feed(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("In current_user_feed");
     let (_, current_user) = get_user_from_headers(
         &req,
         &**pool,
@@ -1045,12 +1023,14 @@ pub async fn current_user_feed(
         Some(&[Scopes::NOTIFICATION_READ]),
     )
     .await?;
+    println!("current_user: {:?}", current_user);
 
     let followed_users =
         DBUserFollow::get_follows_by_follower(current_user.id.into(), &**pool).await?;
     let followed_organizations =
         DBOrganizationFollow::get_follows_by_follower(current_user.id.into(), &**pool).await?;
 
+    println!("followed_users: {:?}", followed_users);
     // Feed by default shows the following:
     // - Projects created by users you follow
     // - Projects created by organizations you follow
@@ -1075,13 +1055,14 @@ pub async fn current_user_feed(
             })
         }))
         .collect_vec();
+    println!("selectors:");
     let events = DBEvent::get_events(&[], &selectors, &**pool)
         .await?
         .into_iter()
         .skip(params.offset.unwrap_or(0))
         .take(params.offset.unwrap_or(usize::MAX))
         .collect_vec();
-
+    println!("events: {:?}", events);
     let mut feed_items: Vec<FeedItem> = Vec::new();
     let authorized_versions =
         prefetch_authorized_event_versions(&events, &pool, &redis, &current_user).await?;
@@ -1097,6 +1078,7 @@ pub async fn current_user_feed(
         &current_user,
     )
     .await?;
+    println!("authorized projects");
 
     for event in events {
         let body =
@@ -1152,7 +1134,7 @@ async fn prefetch_authorized_event_projects(
     additional_ids: Option<&[ProjectId]>,
     pool: &web::Data<PgPool>,
     redis: &RedisPool,
-    current_user: &User,
+    current_user: &crate::models::v3::users::User,
 ) -> Result<HashMap<ProjectId, Project>, ApiError> {
     let mut project_ids = events
         .iter()
@@ -1184,7 +1166,7 @@ async fn prefetch_authorized_event_versions(
     events: &[db_models::Event],
     pool: &web::Data<PgPool>,
     redis: &RedisPool,
-    current_user: &User,
+    current_user: &crate::models::v3::users::User,
 ) -> Result<HashMap<VersionId, Version>, ApiError> {
     let version_ids = events
         .iter()

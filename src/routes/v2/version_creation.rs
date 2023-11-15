@@ -169,24 +169,3 @@ pub async fn upload_file_to_version(
     .await?;
     Ok(response)
 }
-
-async fn insert_version_create_event(
-    version_id: VersionId,
-    organization_id: Option<models::OrganizationId>,
-    current_user: &crate::models::users::User,
-    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-) -> Result<(), CreateError> {
-    let event = Event::new(
-        EventData::VersionCreated {
-            version_id: version_id.into(),
-            creator_id: organization_id.map_or_else(
-                || CreatorId::User(current_user.id.into()),
-                CreatorId::Organization,
-            ),
-        },
-        transaction,
-    )
-    .await?;
-    event.insert(transaction).await?;
-    Ok(())
-}

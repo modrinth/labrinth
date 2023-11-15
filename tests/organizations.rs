@@ -7,12 +7,11 @@ use crate::common::{
 use actix_web::test;
 use bytes::Bytes;
 use common::{
-    actix::AppendsMultipart,
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
     permissions::{PermissionsTest, PermissionsTestContext},
     request_data::get_public_project_creation_data,
 };
-use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
+use labrinth::{models::teams::{OrganizationPermissions, ProjectPermissions}, util::actix::AppendsMultipart};
 use serde_json::json;
 
 mod common;

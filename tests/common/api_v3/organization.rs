@@ -1,6 +1,5 @@
 use actix_web::{dev::ServiceResponse, test::TestRequest};
-
-use crate::common::actix::TestRequestExtensions;
+use labrinth::util::actix::TestRequestExtensions; // TODO: extend other tests to do this
 
 use super::ApiV3;
 

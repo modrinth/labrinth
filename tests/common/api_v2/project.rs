@@ -24,7 +24,7 @@ use crate::common::{
 use super::ApiV2;
 
 impl ApiV2 {
-    pub async fn add_default_org_project(&self, org_id: &str, pat: &str) -> Project {
+    pub async fn add_default_org_project(&self, org_id: &str, pat: &str) -> LegacyProject {
         let project_create_data =
             get_public_project_creation_data("thisisaslug", None, Some(org_id));
         let (project, _) = self.add_public_project(project_create_data, pat).await;

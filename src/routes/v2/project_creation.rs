@@ -1,7 +1,6 @@
 use crate::database::models::version_item;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models;
 use crate::models::ids::ImageId;
 use crate::models::projects::{DonationLink, Loader, Project, ProjectStatus, SideType};
 use crate::models::v2::projects::LegacyProject;

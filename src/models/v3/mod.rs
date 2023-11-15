@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod collections;
 pub mod error;
+pub mod feeds;
 pub mod ids;
 pub mod images;
 pub mod notifications;

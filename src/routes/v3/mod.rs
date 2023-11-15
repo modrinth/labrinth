@@ -22,8 +22,6 @@ pub mod version_file;
 pub mod versions;
 
 pub mod oauth_clients;
-pub mod organizations;
-pub mod users;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(

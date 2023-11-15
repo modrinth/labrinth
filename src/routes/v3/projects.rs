@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
+use crate::database::models::event_item::{EventData, CreatorId};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
-use crate::database::models::{ids as db_ids, image_item};
+use crate::database::models::{ids as db_ids, image_item, Event, TeamMember};
 use crate::database::redis::RedisPool;
 use crate::database::{self, models as db_models};
 use crate::file_hosting::FileHost;
@@ -26,6 +27,7 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
+use db_ids::{UserId, OrganizationId};
 use futures::TryStreamExt;
 use meilisearch_sdk::indexes::IndexesResults;
 use serde::{Deserialize, Serialize};
@@ -134,7 +136,7 @@ pub async fn projects_get(
     .map(|x| x.1)
     .ok();
 
-    let projects = filter_authorized_projects(projects_data, &user_option, &pool).await?;
+    let projects = filter_authorized_projects(projects_data, user_option.as_ref(), &pool).await?;
 
     Ok(HttpResponse::Ok().json(projects))
 }
@@ -411,6 +413,21 @@ pub async fn project_edit(
                     )
                     .execute(&mut *transaction)
                     .await?;
+
+                    // On publish event, we send out notification using team *owner* as publishing user, at the time of mod approval
+                    // (even though 'user' is the mod and doing the publishing)
+                    let owner_id =
+                        TeamMember::get_owner_id(project_item.inner.team_id, &mut *transaction)
+                            .await?;
+                    if let Some(owner_id) = owner_id {
+                        insert_project_publish_event(
+                            id.into(),
+                            project_item.inner.organization_id,
+                            owner_id,
+                            &mut transaction,
+                        )
+                        .await?;
+                    }
                 }
                 if status.is_searchable() && !project_item.inner.webhook_sent {
                     if let Ok(webhook_url) = dotenvy::var("PUBLIC_DISCORD_WEBHOOK") {
@@ -2492,4 +2509,23 @@ pub async fn project_unfollow(
             "You are not following this project!".to_string(),
         ))
     }
+}
+
+async fn insert_project_publish_event(
+    project_id: ProjectId,
+    organization_id: Option<OrganizationId>,
+    owner_id: UserId,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), ApiError> {
+    let event = Event::new(
+        EventData::ProjectPublished {
+            project_id: project_id.into(),
+            creator_id: organization_id
+                .map_or_else(|| CreatorId::User(owner_id), CreatorId::Organization),
+        },
+        transaction,
+    )
+    .await?;
+    event.insert(transaction).await?;
+    Ok(())
 }

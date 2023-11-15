@@ -288,10 +288,12 @@ async fn test_project_type_sanity() {
     let test_creation_mod = request_data::get_public_project_creation_data(
         "test-mod",
         Some(TestFile::build_random_jar()),
+        None,
     );
     let test_creation_modpack = request_data::get_public_project_creation_data(
         "test-modpack",
         Some(TestFile::build_random_mrpack()),
+        None,
     );
     for (mod_or_modpack, test_creation_data) in [
         ("mod", test_creation_mod),

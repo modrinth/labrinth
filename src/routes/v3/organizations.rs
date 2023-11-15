@@ -21,6 +21,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
+use crate::database::models::DatabaseError;
+use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
+use database::models::organization_item::Organization as DBOrganization;
+
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -39,6 +43,14 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "{id}/members",
                 web::get().to(super::teams::team_members_get_organization),
+            )
+            .route(
+                "{id}/follow",
+                web::post().to(organization_follow),
+            )
+            .route(
+                "{id}/follow",
+                web::delete().to(organization_unfollow),
             ),
     );
 }
@@ -82,7 +94,7 @@ pub async fn organization_projects_get(
     let projects_data =
         crate::database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
 
-    let projects = filter_authorized_projects(projects_data, &current_user, &pool).await?;
+    let projects = filter_authorized_projects(projects_data, current_user.as_ref(), &pool).await?;
     Ok(HttpResponse::Ok().json(projects))
 }
 
@@ -916,32 +928,7 @@ pub async fn delete_organization_icon(
 
     Ok(HttpResponse::NoContent().body(""))
 }
-use crate::{
-    auth::get_user_from_headers,
-    database::{self, models::DatabaseError, redis::RedisPool},
-    models::pats::Scopes,
-    queue::session::AuthQueue,
-    routes::ApiError,
-};
-use actix_web::{
-    delete, post,
-    web::{self},
-    HttpRequest, HttpResponse,
-};
-use sqlx::PgPool;
 
-use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
-use database::models::organization_item::Organization as DBOrganization;
-
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("organization")
-            .service(organization_follow)
-            .service(organization_unfollow),
-    );
-}
-
-#[post("{id}/follow")]
 pub async fn organization_follow(
     req: HttpRequest,
     target_id: web::Path<String>,
@@ -983,7 +970,6 @@ pub async fn organization_follow(
     Ok(HttpResponse::NoContent().body(""))
 }
 
-#[delete("{id}/follow")]
 pub async fn organization_unfollow(
     req: HttpRequest,
     target_id: web::Path<String>,

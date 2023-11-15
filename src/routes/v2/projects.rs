@@ -17,7 +17,6 @@ use serde_json::json;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use team_item::TeamMember;
 use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
