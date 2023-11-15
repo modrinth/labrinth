@@ -1,14 +1,21 @@
+use std::collections::HashMap;
+
 use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
 use bytes::Bytes;
-use labrinth::models::projects::{Project, Version};
+use chrono::{DateTime, Utc};
+use labrinth::{
+    models::v2::projects::{LegacyProject, LegacyVersion},
+    search::SearchResults,
+    util::actix::AppendsMultipart,
+};
+use rust_decimal::Decimal;
 use serde_json::json;
 
 use crate::common::{
-    actix::AppendsMultipart,
     asserts::assert_status,
     database::MOD_USER_PAT,
     request_data::{get_public_project_creation_data, ImageData, ProjectCreationRequestData},
@@ -28,7 +35,7 @@ impl ApiV2 {
         &self,
         creation_data: ProjectCreationRequestData,
         pat: &str,
-    ) -> (Project, Vec<Version>) {
+    ) -> (LegacyProject, Vec<LegacyVersion>) {
         // Add a project.
         let req = TestRequest::post()
             .uri("/v2/project")
@@ -61,7 +68,7 @@ impl ApiV2 {
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
-        let versions: Vec<Version> = test::read_body_json(resp).await;
+        let versions: Vec<LegacyVersion> = test::read_body_json(resp).await;
 
         (project, versions)
     }
@@ -83,7 +90,7 @@ impl ApiV2 {
             .to_request();
         self.call(req).await
     }
-    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {
+    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> LegacyProject {
         let resp = self.get_project(id_or_slug, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
@@ -101,32 +108,8 @@ impl ApiV2 {
         &self,
         user_id_or_username: &str,
         pat: &str,
-    ) -> Vec<Project> {
+    ) -> Vec<LegacyProject> {
         let resp = self.get_user_projects(user_id_or_username, pat).await;
-        assert_eq!(resp.status(), 200);
-        test::read_body_json(resp).await
-    }
-
-    pub async fn get_version_from_hash(
-        &self,
-        hash: &str,
-        algorithm: &str,
-        pat: &str,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v2/version_file/{hash}?algorithm={algorithm}"))
-            .append_header(("Authorization", pat))
-            .to_request();
-        self.call(req).await
-    }
-
-    pub async fn get_version_from_hash_deserialized(
-        &self,
-        hash: &str,
-        algorithm: &str,
-        pat: &str,
-    ) -> Version {
-        let resp = self.get_version_from_hash(hash, algorithm, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
@@ -196,5 +179,86 @@ impl ApiV2 {
 
             self.call(req).await
         }
+    }
+
+    pub async fn search_deserialized(
+        &self,
+        query: Option<&str>,
+        facets: Option<serde_json::Value>,
+        pat: &str,
+    ) -> SearchResults {
+        let query_field = if let Some(query) = query {
+            format!("&query={}", urlencoding::encode(query))
+        } else {
+            "".to_string()
+        };
+
+        let facets_field = if let Some(facets) = facets {
+            format!("&facets={}", urlencoding::encode(&facets.to_string()))
+        } else {
+            "".to_string()
+        };
+
+        let req = test::TestRequest::get()
+            .uri(&format!("/v2/search?{}{}", query_field, facets_field))
+            .append_header(("Authorization", pat))
+            .to_request();
+        let resp = self.call(req).await;
+        let status = resp.status();
+        assert_eq!(status, 200);
+        test::read_body_json(resp).await
+    }
+
+    pub async fn get_analytics_revenue(
+        &self,
+        id_or_slugs: Vec<&str>,
+        start_date: Option<DateTime<Utc>>,
+        end_date: Option<DateTime<Utc>>,
+        resolution_minutes: Option<u32>,
+        pat: &str,
+    ) -> ServiceResponse {
+        let projects_string = serde_json::to_string(&id_or_slugs).unwrap();
+        let projects_string = urlencoding::encode(&projects_string);
+
+        let mut extra_args = String::new();
+        if let Some(start_date) = start_date {
+            let start_date = start_date.to_rfc3339();
+            // let start_date = serde_json::to_string(&start_date).unwrap();
+            let start_date = urlencoding::encode(&start_date);
+            extra_args.push_str(&format!("&start_date={start_date}"));
+        }
+        if let Some(end_date) = end_date {
+            let end_date = end_date.to_rfc3339();
+            // let end_date = serde_json::to_string(&end_date).unwrap();
+            let end_date = urlencoding::encode(&end_date);
+            extra_args.push_str(&format!("&end_date={end_date}"));
+        }
+        if let Some(resolution_minutes) = resolution_minutes {
+            extra_args.push_str(&format!("&resolution_minutes={}", resolution_minutes));
+        }
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/v2/analytics/revenue?{projects_string}{extra_args}",
+            ))
+            .append_header(("Authorization", pat))
+            .to_request();
+
+        self.call(req).await
+    }
+
+    pub async fn get_analytics_revenue_deserialized(
+        &self,
+        id_or_slugs: Vec<&str>,
+        start_date: Option<DateTime<Utc>>,
+        end_date: Option<DateTime<Utc>>,
+        resolution_minutes: Option<u32>,
+        pat: &str,
+    ) -> HashMap<String, HashMap<i64, Decimal>> {
+        let resp = self
+            .get_analytics_revenue(id_or_slugs, start_date, end_date, resolution_minutes, pat)
+            .await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
     }
 }

@@ -8,6 +8,7 @@ pub mod oauth;
 pub mod oauth_clients;
 pub mod organization;
 pub mod user;
+pub mod tags;
 
 #[derive(Clone)]
 pub struct ApiV3 {

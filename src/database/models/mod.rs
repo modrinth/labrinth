@@ -7,6 +7,8 @@ pub mod event_item;
 pub mod flow_item;
 pub mod ids;
 pub mod image_item;
+pub mod legacy_loader_fields;
+pub mod loader_fields;
 pub mod notification_item;
 pub mod oauth_client_authorization_item;
 pub mod oauth_client_item;
@@ -54,4 +56,6 @@ pub enum DatabaseError {
     RedisPool(#[from] deadpool_redis::PoolError),
     #[error("Error while serializing with the cache: {0}")]
     SerdeCacheError(#[from] serde_json::Error),
+    #[error("Schema error: {0}")]
+    SchemaError(String),
 }

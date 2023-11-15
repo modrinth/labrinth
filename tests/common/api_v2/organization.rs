@@ -4,7 +4,7 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use bytes::Bytes;
-use labrinth::models::{organizations::Organization, projects::Project};
+use labrinth::models::{organizations::Organization, v2::projects::LegacyProject};
 use serde_json::json;
 
 use crate::common::{asserts::assert_status, get_json_val_str, request_data::ImageData};
@@ -64,7 +64,7 @@ impl ApiV2 {
         &self,
         id_or_title: &str,
         pat: &str,
-    ) -> Vec<Project> {
+    ) -> Vec<LegacyProject> {
         let resp = self.get_organization_projects(id_or_title, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
