@@ -30,7 +30,8 @@ pub fn get_public_project_creation_data(
     version_jar: Option<TestFile>,
     organization_id: Option<&str>,
 ) -> ProjectCreationRequestData {
-    let json_data = get_public_project_creation_data_json(slug, version_jar.as_ref(), organization_id);
+    let json_data =
+        get_public_project_creation_data_json(slug, version_jar.as_ref(), organization_id);
     let multipart_data = get_public_creation_data_multipart(&json_data, version_jar.as_ref());
     ProjectCreationRequestData {
         slug: slug.to_string(),

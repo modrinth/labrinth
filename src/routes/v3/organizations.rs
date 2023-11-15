@@ -4,6 +4,7 @@ use std::sync::Arc;
 use super::ApiError;
 use crate::auth::{filter_authorized_projects, get_user_from_headers};
 use crate::database::models::team_item::TeamMember;
+use crate::database::models::DatabaseError;
 use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -17,14 +18,12 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
 use actix_web::{web, HttpRequest, HttpResponse};
+use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
+use database::models::organization_item::Organization as DBOrganization;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
-use crate::database::models::DatabaseError;
-use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
-use database::models::organization_item::Organization as DBOrganization;
-
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -44,14 +43,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "{id}/members",
                 web::get().to(super::teams::team_members_get_organization),
             )
-            .route(
-                "{id}/follow",
-                web::post().to(organization_follow),
-            )
-            .route(
-                "{id}/follow",
-                web::delete().to(organization_unfollow),
-            ),
+            .route("{id}/follow", web::post().to(organization_follow))
+            .route("{id}/follow", web::delete().to(organization_unfollow)),
     );
 }
 

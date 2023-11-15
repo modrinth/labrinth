@@ -14,7 +14,7 @@ use crate::models::pats::Scopes;
 use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, VersionId, VersionStatus,
 };
-use crate::models::teams::{ProjectPermissions, OrganizationPermissions};
+use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;

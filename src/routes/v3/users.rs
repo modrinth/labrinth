@@ -23,21 +23,21 @@ use crate::{
     database::{models::User, redis::RedisPool},
     file_hosting::FileHost,
     models::{
-        feeds::{FeedItem, FeedItemBody},
-        ids::{ProjectId, VersionId},
-        projects::Version,
         collections::{Collection, CollectionStatus},
+        feeds::{FeedItem, FeedItemBody},
         ids::UserId,
+        ids::{ProjectId, VersionId},
         notifications::Notification,
         pats::Scopes,
         projects::Project,
+        projects::Version,
         users::{Badges, Payout, PayoutStatus, RecipientStatus, Role, UserPayoutData},
     },
     queue::{payouts::PayoutsQueue, session::AuthQueue},
     util::{routes::read_from_payload, validate::validation_errors_to_string},
 };
-use std::iter::FromIterator;
 use itertools::Itertools;
+use std::iter::FromIterator;
 
 use database::models as db_models;
 use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
@@ -67,7 +67,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("{id}/payouts_fees", web::get().to(user_payouts_fees))
             .route("{id}/payouts", web::post().to(user_payouts_request))
             .route("{id}/follow", web::post().to(user_follow))
-            .route("{id}/follow", web::delete().to(user_unfollow))
+            .route("{id}/follow", web::delete().to(user_unfollow)),
     );
 }
 
@@ -1036,10 +1036,7 @@ pub async fn current_user_feed(
     // - Projects created by organizations you follow
     // - Versions created by users you follow
     // - Versions created by organizations you follow
-    let event_types = [
-        EventType::ProjectPublished,
-        EventType::VersionCreated,
-    ];
+    let event_types = [EventType::ProjectPublished, EventType::VersionCreated];
     let selectors = followed_users
         .into_iter()
         .flat_map(|follow| {
@@ -1081,39 +1078,38 @@ pub async fn current_user_feed(
     println!("authorized projects");
 
     for event in events {
-        let body =
-            match event.event_data {
-                EventData::ProjectPublished {
-                    project_id,
-                    creator_id,
-                } => authorized_projects.get(&project_id.into()).map(|p| {
-                    FeedItemBody::ProjectPublished {
-                        project_id: project_id.into(),
-                        creator_id: creator_id.into(),
-                        project_title: p.title.clone(),
-                    }
-                }),
-                EventData::VersionCreated {
-                    version_id,
-                    creator_id,
-                } => {
-                    let authorized_version = authorized_versions.get(&version_id.into());
-                    let authorized_project =
-                        authorized_version.and_then(|v| authorized_projects.get(&v.project_id));
-                    if let (Some(authorized_version), Some(authorized_project)) =
-                        (authorized_version, authorized_project)
-                    {
-                        Some(FeedItemBody::VersionCreated {
-                            project_id: authorized_project.id,
-                            version_id: authorized_version.id,
-                            creator_id: creator_id.into(),
-                            project_title: authorized_project.title.clone(),
-                        })
-                    } else {
-                        None
-                    }
+        let body = match event.event_data {
+            EventData::ProjectPublished {
+                project_id,
+                creator_id,
+            } => authorized_projects.get(&project_id.into()).map(|p| {
+                FeedItemBody::ProjectPublished {
+                    project_id: project_id.into(),
+                    creator_id: creator_id.into(),
+                    project_title: p.title.clone(),
                 }
-            };
+            }),
+            EventData::VersionCreated {
+                version_id,
+                creator_id,
+            } => {
+                let authorized_version = authorized_versions.get(&version_id.into());
+                let authorized_project =
+                    authorized_version.and_then(|v| authorized_projects.get(&v.project_id));
+                if let (Some(authorized_version), Some(authorized_project)) =
+                    (authorized_version, authorized_project)
+                {
+                    Some(FeedItemBody::VersionCreated {
+                        project_id: authorized_project.id,
+                        version_id: authorized_version.id,
+                        creator_id: creator_id.into(),
+                        project_title: authorized_project.title.clone(),
+                    })
+                } else {
+                    None
+                }
+            }
+        };
 
         if let Some(body) = body {
             let feed_item = FeedItem {

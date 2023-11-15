@@ -1,12 +1,12 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
-use crate::database::models::event_item::{EventData, CreatorId};
+use crate::database::models::event_item::{CreatorId, EventData};
 use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
     DependencyBuilder, VersionBuilder, VersionFileBuilder,
 };
-use crate::database::models::{self, image_item, Organization, Event};
+use crate::database::models::{self, image_item, Event, Organization};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::images::{Image, ImageContext, ImageId};
@@ -320,7 +320,7 @@ async fn version_create_inner(
                     transaction,
                 )
                 .await?;
-    
+
                 version_builder = Some(VersionBuilder {
                     version_id: version_id.into(),
                     project_id,

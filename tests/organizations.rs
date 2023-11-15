@@ -11,7 +11,10 @@ use common::{
     permissions::{PermissionsTest, PermissionsTestContext},
     request_data::get_public_project_creation_data,
 };
-use labrinth::{models::teams::{OrganizationPermissions, ProjectPermissions}, util::actix::AppendsMultipart};
+use labrinth::{
+    models::teams::{OrganizationPermissions, ProjectPermissions},
+    util::actix::AppendsMultipart,
+};
 use serde_json::json;
 
 mod common;

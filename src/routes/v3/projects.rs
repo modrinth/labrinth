@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
-use crate::database::models::event_item::{EventData, CreatorId};
+use crate::database::models::event_item::{CreatorId, EventData};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
@@ -27,7 +27,7 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
-use db_ids::{UserId, OrganizationId};
+use db_ids::{OrganizationId, UserId};
 use futures::TryStreamExt;
 use meilisearch_sdk::indexes::IndexesResults;
 use serde::{Deserialize, Serialize};
