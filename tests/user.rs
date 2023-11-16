@@ -19,7 +19,7 @@ mod common;
 
 #[actix_rt::test]
 pub async fn get_user_projects_after_creating_project_returns_new_project() {
-    with_test_environment(|test_env| async move {
+    with_test_environment(None, |test_env| async move {
         let api = test_env.v3;
         api.get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
             .await;
@@ -41,7 +41,7 @@ pub async fn get_user_projects_after_creating_project_returns_new_project() {
 
 #[actix_rt::test]
 pub async fn get_user_projects_after_deleting_project_shows_removal() {
-    with_test_environment(|test_env| async move {
+    with_test_environment(None, |test_env| async move {
         let api = test_env.v3;
         let (project, _) = api
             .add_public_project(
@@ -65,7 +65,7 @@ pub async fn get_user_projects_after_deleting_project_shows_removal() {
 
 #[actix_rt::test]
 pub async fn get_user_projects_after_joining_team_shows_team_projects() {
-    with_test_environment(|test_env| async move {
+    with_test_environment(None, |test_env| async move {
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let api = test_env.v3;
@@ -88,7 +88,7 @@ pub async fn get_user_projects_after_joining_team_shows_team_projects() {
 
 #[actix_rt::test]
 pub async fn get_user_projects_after_leaving_team_shows_no_team_projects() {
-    with_test_environment(|test_env| async move {
+    with_test_environment(None, |test_env| async move {
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let api = test_env.v3;

@@ -20,7 +20,7 @@ mod common;
 
 #[actix_rt::test]
 async fn can_create_edit_get_oauth_client() {
-    with_test_environment(|env| async move {
+    with_test_environment(None, |env| async move {
         let client_name = "test_client".to_string();
         let redirect_uris = vec![
             "https://modrinth.com".to_string(),
@@ -72,7 +72,7 @@ async fn can_create_edit_get_oauth_client() {
 
 #[actix_rt::test]
 async fn create_oauth_client_with_restricted_scopes_fails() {
-    with_test_environment(|env| async move {
+    with_test_environment(None, |env| async move {
         let resp = env
             .v3
             .add_oauth_client(
@@ -90,7 +90,7 @@ async fn create_oauth_client_with_restricted_scopes_fails() {
 
 #[actix_rt::test]
 async fn get_oauth_client_for_client_creator_succeeds() {
-    with_test_environment(|env| async move {
+    with_test_environment(None, |env| async move {
         let DummyOAuthClientAlpha { client_id, .. } =
             env.dummy.as_ref().unwrap().oauth_client_alpha.clone();
 
@@ -108,7 +108,7 @@ async fn get_oauth_client_for_client_creator_succeeds() {
 
 #[actix_rt::test]
 async fn get_oauth_client_for_unrelated_user_fails() {
-    with_test_environment(|env| async move {
+    with_test_environment(None, |env| async move {
         let DummyOAuthClientAlpha { client_id, .. } =
             env.dummy.as_ref().unwrap().oauth_client_alpha.clone();
 
@@ -124,7 +124,7 @@ async fn get_oauth_client_for_unrelated_user_fails() {
 
 #[actix_rt::test]
 async fn can_delete_oauth_client() {
-    with_test_environment(|env| async move {
+    with_test_environment(None, |env| async move {
         let client_id = env.dummy.unwrap().oauth_client_alpha.client_id.clone();
         let resp = env.v3.delete_oauth_client(&client_id, USER_USER_PAT).await;
         assert_status(&resp, StatusCode::NO_CONTENT);
@@ -140,7 +140,7 @@ async fn can_delete_oauth_client() {
 
 #[actix_rt::test]
 async fn delete_oauth_client_after_issuing_access_tokens_revokes_tokens() {
-    with_test_environment(|env| async move {
+    with_test_environment(None, |env| async move {
         let DummyOAuthClientAlpha {
             client_id,
             client_secret,
@@ -168,7 +168,7 @@ async fn delete_oauth_client_after_issuing_access_tokens_revokes_tokens() {
 
 #[actix_rt::test]
 async fn can_list_user_oauth_authorizations() {
-    with_test_environment(|env| async move {
+    with_test_environment(None, |env| async move {
         let DummyOAuthClientAlpha {
             client_id,
             client_secret,

@@ -13,11 +13,11 @@ use actix_http::StatusCode;
 use actix_web::{dev::ServiceResponse, test, App};
 use futures::Future;
 
-pub async fn with_test_environment<Fut>(f: impl FnOnce(TestEnvironment) -> Fut)
+pub async fn with_test_environment<Fut>(max_connections : Option<u32>, f: impl FnOnce(TestEnvironment) -> Fut)
 where
     Fut: Future<Output = ()>,
 {
-    let test_env = TestEnvironment::build(None).await;
+    let test_env = TestEnvironment::build(max_connections).await;
     let db = test_env.db.clone();
 
     f(test_env).await;
@@ -55,7 +55,7 @@ pub struct TestEnvironment {
 }
 
 impl TestEnvironment {
-    pub async fn build(max_connections: Option<u32>) -> Self {
+    async fn build(max_connections: Option<u32>) -> Self {
         let db = TemporaryDatabase::create(max_connections).await;
         let mut test_env = Self::build_with_db(db).await;
 
