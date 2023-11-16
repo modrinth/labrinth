@@ -1,13 +1,14 @@
 // TODO: fold this into loader_fields.rs or tags.rs of other v3 testing PR
 
-use crate::common::environment::with_test_environment;
+use common::{environment::{with_test_environment, TestEnvironment}, api_v3::ApiV3};
 
 mod common;
 
 #[actix_rt::test]
 async fn get_games() {
-    with_test_environment(None, |env| async move {
-        let api = &env.v3;
+    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+        let api = test_env.api;
+
         let games = api.get_games_deserialized().await;
 
         // There should be 2 games in the dummy data

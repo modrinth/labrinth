@@ -1,6 +1,6 @@
 use common::{
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
-    environment::with_test_environment,
+    environment::with_test_environment_all,
 };
 
 use crate::common::api_common::ApiTeams;
@@ -9,7 +9,7 @@ mod common;
 
 #[actix_rt::test]
 pub async fn get_user_notifications_after_team_invitation_returns_notification() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_team_id = test_env
             .dummy
             .as_ref()
@@ -17,7 +17,7 @@ pub async fn get_user_notifications_after_team_invitation_returns_notification()
             .project_alpha
             .team_id
             .clone();
-        let api = test_env.v3;
+        let api = test_env.api;
         api.get_user_notifications_deserialized_common(FRIEND_USER_ID, FRIEND_USER_PAT)
             .await;
 
@@ -34,9 +34,9 @@ pub async fn get_user_notifications_after_team_invitation_returns_notification()
 
 #[actix_rt::test]
 pub async fn get_user_notifications_after_reading_indicates_notification_read() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         test_env.generate_friend_user_notification().await;
-        let api = test_env.v3;
+        let api = test_env.api;
         let notifications = api
             .get_user_notifications_deserialized_common(FRIEND_USER_ID, FRIEND_USER_PAT)
             .await;
@@ -57,9 +57,9 @@ pub async fn get_user_notifications_after_reading_indicates_notification_read() 
 
 #[actix_rt::test]
 pub async fn get_user_notifications_after_deleting_does_not_show_notification() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         test_env.generate_friend_user_notification().await;
-        let api = test_env.v3;
+        let api = test_env.api;
         let notifications = api
             .get_user_notifications_deserialized_common(FRIEND_USER_ID, FRIEND_USER_PAT)
             .await;

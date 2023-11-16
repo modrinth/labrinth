@@ -1,11 +1,11 @@
-use crate::common::environment::with_test_environment;
 use std::collections::HashSet;
+
+use crate::common::{environment::{with_test_environment, TestEnvironment}, api_v2::ApiV2};
 
 #[actix_rt::test]
 async fn get_tags() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v2;
-
+    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+        let api = &test_env.api;
         let game_versions = api.get_game_versions_deserialized().await;
         let loaders = api.get_loaders_deserialized().await;
         let side_types = api.get_side_types_deserialized().await;

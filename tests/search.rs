@@ -1,7 +1,8 @@
 use common::database::*;
 use common::dummy_data::TestFile;
 use common::dummy_data::DUMMY_CATEGORIES;
-use common::environment::with_test_environment;
+
+use common::environment::with_test_environment_all;
 use futures::stream::StreamExt;
 use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
@@ -22,8 +23,8 @@ mod common;
 #[actix_rt::test]
 async fn search_projects() {
     // Test setup and dummy data
-    with_test_environment(Some(8), |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(Some(8), |test_env| async move {
+        let api = &test_env.api;
         let test_name = test_env.db.database_name.clone();
 
         // Add dummy projects of various categories for searchability

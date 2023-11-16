@@ -1,7 +1,8 @@
 use actix_web::test::{self, TestRequest};
 use bytes::Bytes;
 use chrono::{Duration, Utc};
-use common::environment::with_test_environment;
+
+use common::environment::with_test_environment_all;
 use common::{database::*, scopes::ScopeTest};
 use labrinth::models::pats::Scopes;
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
@@ -21,7 +22,7 @@ mod common;
 #[actix_rt::test]
 async fn user_scopes() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
    
         // User reading
         let read_user = Scopes::USER_READ;
@@ -81,15 +82,13 @@ async fn user_scopes() {
             .await
             .unwrap();
 
-        // Cleanup test db
-        test_env.cleanup().await;
     }).await;
 }
 
 // Notifications
 #[actix_rt::test]
 pub async fn notifications_scopes() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_team_id = &test_env
             .dummy
             .as_ref()
@@ -101,7 +100,7 @@ pub async fn notifications_scopes() {
         // We will invite user 'friend' to project team, and use that as a notification
         // Get notifications
         let resp = test_env
-            .v3
+            .api
             .add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
         assert_eq!(resp.status(), 204);
@@ -169,7 +168,7 @@ pub async fn notifications_scopes() {
         // Mass notification delete
         // We invite mod, get the notification ID, and do mass delete using that
         let resp = test_env
-            .v3
+            .api
             .add_user_to_team(alpha_team_id, MOD_USER_ID, None, None, USER_USER_PAT)
             .await;
         assert_eq!(resp.status(), 204);
@@ -199,7 +198,7 @@ pub async fn notifications_scopes() {
 // Project version creation scopes
 #[actix_rt::test]
 pub async fn project_version_create_scopes() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         // Create project
         let create_project = Scopes::PROJECT_CREATE;
         let json_data = json!(
@@ -296,7 +295,7 @@ pub async fn project_version_create_scopes() {
 // Project management scopes
 #[actix_rt::test]
 pub async fn project_version_reads_scopes() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let beta_project_id = &test_env
             .dummy
             .as_ref()
@@ -531,7 +530,7 @@ pub async fn project_version_reads_scopes() {
 #[actix_rt::test]
 pub async fn project_write_scopes() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let beta_project_id = &test_env
             .dummy
             .as_ref()
@@ -746,7 +745,7 @@ pub async fn project_write_scopes() {
 #[actix_rt::test]
 pub async fn version_write_scopes() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_version_id = &test_env
             .dummy
             .as_ref()
@@ -878,7 +877,7 @@ pub async fn version_write_scopes() {
 #[actix_rt::test]
 pub async fn report_scopes() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let beta_project_id = &test_env
             .dummy
             .as_ref()
@@ -958,7 +957,7 @@ pub async fn report_scopes() {
 #[actix_rt::test]
 pub async fn thread_scopes() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_thread_id = &test_env
             .dummy
             .as_ref()
@@ -1053,7 +1052,7 @@ pub async fn thread_scopes() {
 // Pat scopes
 #[actix_rt::test]
 pub async fn pat_scopes() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
 
         // Pat create
         let pat_create = Scopes::PAT_CREATE;
@@ -1105,7 +1104,7 @@ pub async fn pat_scopes() {
 #[actix_rt::test]
 pub async fn collections_scopes() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_project_id = &test_env
             .dummy
             .as_ref()
@@ -1204,7 +1203,7 @@ pub async fn collections_scopes() {
 #[actix_rt::test]
 pub async fn organization_scopes() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let beta_project_id = &test_env
             .dummy
             .as_ref()
@@ -1336,8 +1335,6 @@ pub async fn organization_scopes() {
             .await
             .unwrap();
 
-        // Cleanup test db
-        test_env.cleanup().await;
     }).await;
 }
 

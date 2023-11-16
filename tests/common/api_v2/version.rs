@@ -13,7 +13,7 @@ use labrinth::{
 };
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, api_common::{ApiVersion, models::CommonVersion}};
+use crate::common::{asserts::assert_status, api_common::{ApiVersion, models::CommonVersion, Api}};
 
 use super::{request_data::VersionCreationRequestData, ApiV2};
 

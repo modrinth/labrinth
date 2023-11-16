@@ -1,11 +1,13 @@
 use crate::common::api_common::Api;
 use crate::common::api_common::ApiProject;
+use crate::common::api_v2::ApiV2;
 use crate::common::api_v2::request_data;
 use crate::common::api_v2::request_data::get_public_version_creation_data;
 use crate::common::api_v2::request_data::ProjectCreationRequestData;
 use crate::common::database::*;
 use crate::common::dummy_data::TestFile;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
+use crate::common::environment::TestEnvironment;
 use crate::common::environment::with_test_environment;
 use futures::stream::StreamExt;
 use labrinth::models::ids::base62_impl::parse_base62;
@@ -19,8 +21,8 @@ async fn search_projects() {
     // It should drastically simplify this function
 
     // Test setup and dummy data
-    with_test_environment(Some(8), |test_env| async move {
-        let api = &test_env.v2;
+    with_test_environment(Some(8), |test_env : TestEnvironment<ApiV2>| async move {
+        let api = &test_env.api;
         let test_name = test_env.db.database_name.clone();
 
         // Add dummy projects of various categories for searchability

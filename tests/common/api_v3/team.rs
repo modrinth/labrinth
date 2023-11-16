@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, api_common::{ApiTeams, models::{CommonTeamMember, CommonNotification}}};
+use crate::common::{asserts::assert_status, api_common::{ApiTeams, models::{CommonTeamMember, CommonNotification}, Api}};
 
 use super::ApiV3;
 

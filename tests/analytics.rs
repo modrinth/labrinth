@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
-use common::{database::*, environment::with_test_environment};
+use common::{database::*, environment::{with_test_environment, TestEnvironment}, api_v3::ApiV3};
 use itertools::Itertools;
 use labrinth::models::ids::base62_impl::parse_base62;
 use rust_decimal::{prelude::ToPrimitive, Decimal};
@@ -10,8 +10,8 @@ mod common;
 
 #[actix_rt::test]
 pub async fn analytics_revenue() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+        let api = &test_env.api;
 
         let alpha_project_id = test_env
             .dummy

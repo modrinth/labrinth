@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use actix_web::test;
+use common::environment::{with_test_environment_all, with_test_environment};
 use futures::StreamExt;
 use labrinth::database::models::version_item::VERSIONS_NAMESPACE;
 use labrinth::models::ids::base62_impl::parse_base62;
@@ -11,7 +12,7 @@ use serde_json::json;
 use crate::common::{asserts::assert_status, get_json_val_str};
 use actix_http::StatusCode;
 use common::{
-    asserts::assert_version_ids, database::USER_USER_PAT, environment::with_test_environment,
+    asserts::assert_version_ids, database::USER_USER_PAT,
 };
 
 use crate::common::api_common::ApiVersion;
@@ -26,8 +27,8 @@ mod common;
 #[actix_rt::test]
 async fn test_get_version() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
         let alpha_project_id: &String = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
         let beta_version_id = &test_env.dummy.as_ref().unwrap().project_beta.version_id;
@@ -77,7 +78,7 @@ async fn test_get_version() {
 async fn version_updates() {
     // Test setup and dummy data
     with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+        let api = &test_env.api;
 
         let alpha_project_id: &String = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
@@ -364,8 +365,8 @@ async fn version_updates() {
 
 #[actix_rt::test]
 pub async fn test_patch_version() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
 
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
 
@@ -473,8 +474,8 @@ pub async fn test_patch_version() {
 
 #[actix_rt::test]
 pub async fn test_project_versions() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
         let alpha_project_id: &String = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
 
@@ -497,18 +498,18 @@ pub async fn test_project_versions() {
 
 #[actix_rt::test]
 async fn can_create_version_with_ordering() {
-    with_test_environment(None, |env| async move {
+    with_test_environment_all(None, |env| async move {
         let alpha_project_id = env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
 
         let new_version_id = get_json_val_str(
-            env.v3
+            env.api
                 .create_default_version(&alpha_project_id, Some(1), USER_USER_PAT)
                 .await
                 .id,
         );
 
         let versions = env
-            .v3
+            .api
             .get_versions(vec![new_version_id.clone()], USER_USER_PAT)
             .await;
         assert_eq!(versions[0].ordering, Some(1));
@@ -518,17 +519,17 @@ async fn can_create_version_with_ordering() {
 
 #[actix_rt::test]
 async fn edit_version_ordering_works() {
-    with_test_environment(None, |env| async move {
+    with_test_environment_all(None, |env| async move {
         let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
 
         let resp = env
-            .v3
+            .api
             .edit_version_ordering(&alpha_version_id, Some(10), USER_USER_PAT)
             .await;
         assert_status(&resp, StatusCode::NO_CONTENT);
 
         let versions = env
-            .v3
+            .api
             .get_versions(vec![alpha_version_id.clone()], USER_USER_PAT)
             .await;
         assert_eq!(versions[0].ordering, Some(10));
@@ -538,21 +539,21 @@ async fn edit_version_ordering_works() {
 
 #[actix_rt::test]
 async fn version_ordering_for_specified_orderings_orders_lower_order_first() {
-    with_test_environment(None, |env| async move {
+    with_test_environment_all(None, |env| async move {
         let alpha_project_id = env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
         let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
         let new_version_id = get_json_val_str(
-            env.v3
+            env.api
                 .create_default_version(&alpha_project_id, Some(1), USER_USER_PAT)
                 .await
                 .id,
         );
-        env.v3
+        env.api
             .edit_version_ordering(&alpha_version_id, Some(10), USER_USER_PAT)
             .await;
 
         let versions = env
-            .v3
+            .api
             .get_versions(
                 vec![alpha_version_id.clone(), new_version_id.clone()],
                 USER_USER_PAT,
@@ -565,18 +566,18 @@ async fn version_ordering_for_specified_orderings_orders_lower_order_first() {
 
 #[actix_rt::test]
 async fn version_ordering_when_unspecified_orders_oldest_first() {
-    with_test_environment(None, |env| async move {
+    with_test_environment_all(None, |env| async move {
         let alpha_project_id = &env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
         let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
         let new_version_id = get_json_val_str(
-            env.v3
+            env.api
                 .create_default_version(alpha_project_id, None, USER_USER_PAT)
                 .await
                 .id,
         );
 
         let versions = env
-            .v3
+            .api
             .get_versions(
                 vec![alpha_version_id.clone(), new_version_id.clone()],
                 USER_USER_PAT,
@@ -589,21 +590,21 @@ async fn version_ordering_when_unspecified_orders_oldest_first() {
 
 #[actix_rt::test]
 async fn version_ordering_when_specified_orders_specified_before_unspecified() {
-    with_test_environment(None, |env| async move {
+    with_test_environment_all(None, |env| async move {
         let alpha_project_id = &env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
         let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
         let new_version_id = get_json_val_str(
-            env.v3
+            env.api
                 .create_default_version(alpha_project_id, Some(10000), USER_USER_PAT)
                 .await
                 .id,
         );
-        env.v3
+        env.api
             .edit_version_ordering(&alpha_version_id, None, USER_USER_PAT)
             .await;
 
         let versions = env
-            .v3
+            .api
             .get_versions(
                 vec![alpha_version_id.clone(), new_version_id.clone()],
                 USER_USER_PAT,

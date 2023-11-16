@@ -11,8 +11,9 @@ use labrinth::{
 use serde_json::json;
 
 use crate::common::api_common::ApiVersion;
+use crate::common::api_v2::ApiV2;
 use crate::common::api_v2::request_data::get_public_version_creation_data;
-use crate::common::environment::with_test_environment;
+use crate::common::environment::{TestEnvironment, with_test_environment};
 use crate::common::{
     database::{ENEMY_USER_PAT, USER_USER_PAT},
     dummy_data::TestFile,
@@ -20,8 +21,8 @@ use crate::common::{
 
 #[actix_rt::test]
 pub async fn test_patch_version() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v2;
+    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+        let api = &test_env.api;
 
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
 
@@ -133,8 +134,8 @@ pub async fn test_patch_version() {
 #[actix_rt::test]
 async fn version_updates() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v2;
+    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+        let api = &test_env.api;
 
         let alpha_project_id: &String = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;

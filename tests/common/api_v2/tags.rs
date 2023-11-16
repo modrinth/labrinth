@@ -5,7 +5,7 @@ use actix_web::{
 use async_trait::async_trait;
 use labrinth::routes::v2::tags::{CategoryData, GameVersionQueryData, LoaderData};
 
-use crate::common::{database::ADMIN_USER_PAT, api_common::{ApiTags, models::{CommonLoaderData, CommonCategoryData}}};
+use crate::common::{database::ADMIN_USER_PAT, api_common::{ApiTags, models::{CommonLoaderData, CommonCategoryData}, Api}};
 
 use super::ApiV2;
 

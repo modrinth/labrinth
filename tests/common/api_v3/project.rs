@@ -16,7 +16,7 @@ use labrinth::{
 use rust_decimal::Decimal;
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, database::MOD_USER_PAT, api_common::{ApiProject, models::{CommonProject, CommonImageData}}};
+use crate::common::{asserts::assert_status, database::MOD_USER_PAT, api_common::{ApiProject, models::{CommonProject, CommonImageData}, Api}};
 
 use super::{
     request_data::ProjectCreationRequestData,

@@ -3,16 +3,23 @@ use std::collections::HashMap;
 use actix_web::dev::ServiceResponse;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use labrinth::{search::SearchResults, models::{teams::{ProjectPermissions, OrganizationPermissions}, projects::VersionType}};
+use labrinth::{search::SearchResults, models::{teams::{ProjectPermissions, OrganizationPermissions}, projects::VersionType}, LabrinthConfig};
 use rust_decimal::Decimal;
 
 use self::models::{CommonProject, CommonImageData, CommonLoaderData, CommonCategoryData, CommonTeamMember, CommonNotification, CommonVersion};
 
+pub mod generic;
 pub mod models;
 
 #[async_trait(?Send)]
+pub trait ApiBuildable : Api {
+    async fn build(labrinth_config: LabrinthConfig) -> Self;
+}
+
+#[async_trait(?Send)]
 pub trait Api: ApiProject + ApiTags + ApiTeams + ApiVersion {
-        async fn reset_search_index(&self) -> ServiceResponse;
+    async fn call(&self, req: actix_http::Request) -> ServiceResponse;
+    async fn reset_search_index(&self) -> ServiceResponse;
 }
 
 #[async_trait(?Send)]

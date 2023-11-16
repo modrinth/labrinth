@@ -1,7 +1,7 @@
 use actix_web::test;
 use chrono::{Duration, Utc};
-use common::database::*;
-use common::environment::with_test_environment;
+use common::{database::*, environment::with_test_environment_all};
+
 use labrinth::models::pats::Scopes;
 use serde_json::json;
 
@@ -16,7 +16,7 @@ mod common;
 // - ensure PATs can be deleted
 #[actix_rt::test]
 pub async fn pat_full_test() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         // Create a PAT for a full test
         let req = test::TestRequest::post()
             .uri("/v3/pat")
@@ -158,7 +158,7 @@ pub async fn pat_full_test() {
 // Test illegal PAT setting, both in POST and PATCH
 #[actix_rt::test]
 pub async fn bad_pats() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         // Creating a PAT with no name should fail
         let req = test::TestRequest::post()
             .uri("/v3/pat")
