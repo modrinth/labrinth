@@ -1,5 +1,5 @@
 use crate::common::database::*;
-use common::environment::with_test_environment;
+use common::environment::with_test_environment_all;
 use actix_web::test;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
@@ -9,7 +9,7 @@ mod common;
 #[actix_rt::test]
 async fn test_get_team() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
         let zeta_organization_id = &test_env
@@ -135,7 +135,7 @@ async fn test_get_team() {
 #[actix_rt::test]
 async fn test_get_team_project_orgs() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
         let zeta_organization_id = &test_env
@@ -207,7 +207,7 @@ async fn test_get_team_project_orgs() {
 #[actix_rt::test]
 async fn test_patch_project_team_member() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
 
         // Edit team as admin/mod but not a part of the team should be OK
@@ -361,7 +361,7 @@ async fn test_patch_project_team_member() {
 #[actix_rt::test]
 async fn test_patch_organization_team_member() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let zeta_team_id = &test_env.dummy.as_ref().unwrap().organization_zeta.team_id;
 
         // Edit team as admin/mod but not a part of the team should be OK
@@ -502,7 +502,7 @@ async fn test_patch_organization_team_member() {
 #[actix_rt::test]
 async fn transfer_ownership() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
 
         // Cannot set friend as owner (not a member)
@@ -610,7 +610,7 @@ async fn transfer_ownership() {
 //     // This is because project-team permission overrriding must be possible, and this overriding can decrease the number of permissions a user has.
 
 //     let test_env = TestEnvironment::build(None).await;
-//     let api = &test_env.v3;
+//     let api = &test_env.api;
 
 //     let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
 //     let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;

@@ -7,7 +7,7 @@ use actix_web::test;
 use bytes::Bytes;
 use common::{
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
-    permissions::{PermissionsTest, PermissionsTestContext}, environment::with_test_environment,
+    permissions::{PermissionsTest, PermissionsTestContext}, environment::with_test_environment_all, api_common::generic::GenericApi, 
 };
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
@@ -16,8 +16,8 @@ mod common;
 
 #[actix_rt::test]
 async fn create_organization() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
         let zeta_organization_slug = &test_env
             .dummy
             .as_ref()
@@ -83,8 +83,8 @@ async fn create_organization() {
 
 #[actix_rt::test]
 async fn patch_organization() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
 
         let zeta_organization_id = &test_env
             .dummy
@@ -164,8 +164,8 @@ async fn patch_organization() {
 // add/remove icon
 #[actix_rt::test]
 async fn add_remove_icon() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
         let zeta_organization_id = &test_env
             .dummy
             .as_ref()
@@ -175,7 +175,7 @@ async fn add_remove_icon() {
 
         // Get project
         let resp = test_env
-            .v3
+            .api
             .get_organization_deserialized(zeta_organization_id, USER_USER_PAT)
             .await;
         assert_eq!(resp.icon_url, None);
@@ -215,8 +215,8 @@ async fn add_remove_icon() {
 // delete org
 #[actix_rt::test]
 async fn delete_org() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
         let zeta_organization_id = &test_env
             .dummy
             .as_ref()
@@ -240,7 +240,7 @@ async fn delete_org() {
 // add/remove organization projects
 #[actix_rt::test]
 async fn add_remove_organization_projects() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_project_slug: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
         let zeta_organization_id: &str = &test_env
@@ -253,14 +253,14 @@ async fn add_remove_organization_projects() {
         // Add/remove project to organization, first by ID, then by slug
         for alpha in [alpha_project_id, alpha_project_slug] {
             let resp = test_env
-                .v3
+                .api
                 .organization_add_project(zeta_organization_id, alpha, USER_USER_PAT)
                 .await;
             assert_eq!(resp.status(), 200);
 
             // Get organization projects
             let projects = test_env
-                .v3
+                .api
                 .get_organization_projects_deserialized(zeta_organization_id, USER_USER_PAT)
                 .await;
             assert_eq!(projects[0].id.to_string(), alpha_project_id);
@@ -268,14 +268,14 @@ async fn add_remove_organization_projects() {
 
             // Remove project from organization
             let resp = test_env
-                .v3
+                .api
                 .organization_remove_project(zeta_organization_id, alpha, USER_USER_PAT)
                 .await;
             assert_eq!(resp.status(), 200);
 
             // Get organization projects
             let projects = test_env
-                .v3
+                .api
                 .get_organization_projects_deserialized(zeta_organization_id, USER_USER_PAT)
                 .await;
             assert!(projects.is_empty());
@@ -285,7 +285,7 @@ async fn add_remove_organization_projects() {
 
 #[actix_rt::test]
 async fn permissions_patch_organization() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         // For each permission covered by EDIT_DETAILS, ensure the permission is required
         let edit_details = OrganizationPermissions::EDIT_DETAILS;
         let test_pairs = [
@@ -319,7 +319,7 @@ async fn permissions_patch_organization() {
 // Not covered by PATCH /organization
 #[actix_rt::test]
 async fn permissions_edit_details() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let zeta_organization_id = &test_env
             .dummy
             .as_ref()
@@ -369,8 +369,8 @@ async fn permissions_edit_details() {
 #[actix_rt::test]
 async fn permissions_manage_invites() {
     // Add member, remove member, edit member
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
 
         let zeta_organization_id = &test_env
             .dummy
@@ -461,8 +461,8 @@ async fn permissions_manage_invites() {
 
 #[actix_rt::test]
 async fn permissions_add_remove_project() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
 
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
@@ -528,7 +528,7 @@ async fn permissions_add_remove_project() {
 
 #[actix_rt::test]
 async fn permissions_delete_organization() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let delete_organization = OrganizationPermissions::DELETE_ORGANIZATION;
 
         // Now, FRIEND_USER_ID owns the alpha project
@@ -549,7 +549,7 @@ async fn permissions_delete_organization() {
 
 #[actix_rt::test]
 async fn permissions_add_default_project_permissions() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let zeta_organization_id = &test_env
             .dummy
             .as_ref()
@@ -617,7 +617,7 @@ async fn permissions_add_default_project_permissions() {
 
 #[actix_rt::test]
 async fn permissions_organization_permissions_consistency_test() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         // Ensuring that permission are as we expect them to be
         // Full organization permissions test
         let success_permissions = OrganizationPermissions::EDIT_DETAILS;

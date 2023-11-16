@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use labrinth::routes::v3::tags::GameData;
 use labrinth::database::models::loader_fields::LoaderFieldEnumValue;
 
-use crate::common::{database::ADMIN_USER_PAT, api_common::{ApiTags, models::{CommonLoaderData, CommonCategoryData}}};
+use crate::common::{database::ADMIN_USER_PAT, api_common::{ApiTags, models::{CommonLoaderData, CommonCategoryData}, Api}};
 
 use super::ApiV3;
 

@@ -4,7 +4,8 @@ use bytes::Bytes;
 use chrono::{Duration, Utc};
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
-use common::environment::with_test_environment;
+
+use common::environment::with_test_environment_all;
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
@@ -20,7 +21,7 @@ mod common;
 #[actix_rt::test]
 async fn test_get_project() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let beta_project_id = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
         let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
@@ -98,8 +99,8 @@ async fn test_get_project() {
 #[actix_rt::test]
 async fn test_add_remove_project() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
 
         // Generate test project data.
         let mut json_data = json!(
@@ -245,7 +246,7 @@ async fn test_add_remove_project() {
         let id = project.id.to_string();
 
         // Remove the project
-        let resp = test_env.v3.remove_project("demo", USER_USER_PAT).await;
+        let resp = test_env.api.remove_project("demo", USER_USER_PAT).await;
         assert_eq!(resp.status(), 204);
 
         // Confirm that the project is gone from the cache
@@ -276,8 +277,8 @@ async fn test_add_remove_project() {
 
 #[actix_rt::test]
 pub async fn test_patch_project() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
 
         let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
         let beta_project_slug = &test_env.dummy.as_ref().unwrap().project_beta.project_slug;
@@ -435,8 +436,8 @@ pub async fn test_patch_project() {
 
 #[actix_rt::test]
 pub async fn test_bulk_edit_categories() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
         let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
 
@@ -476,7 +477,7 @@ pub async fn test_bulk_edit_categories() {
 
 #[actix_rt::test]
 async fn permissions_patch_project() {
-    with_test_environment(Some(8), |test_env| async move {
+    with_test_environment_all(Some(8), |test_env| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
 
@@ -583,7 +584,7 @@ async fn permissions_patch_project() {
 // Not covered by PATCH /project
 #[actix_rt::test]
 async fn permissions_edit_details() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
 
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
@@ -716,7 +717,7 @@ async fn permissions_edit_details() {
 
 #[actix_rt::test]
 async fn permissions_upload_version() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
@@ -845,7 +846,7 @@ async fn permissions_upload_version() {
 #[actix_rt::test]
 async fn permissions_manage_invites() {
     // Add member, remove member, edit member
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
 
@@ -941,7 +942,7 @@ async fn permissions_manage_invites() {
 #[actix_rt::test]
 async fn permissions_delete_project() {
     // Add member, remove member, edit member
-    with_test_environment(None, |test_env| async move {
+    with_test_environment_all(None, |test_env| async move {
         let delete_project = ProjectPermissions::DELETE_PROJECT;
 
         // Delete project
@@ -959,7 +960,7 @@ async fn permissions_delete_project() {
 
 #[actix_rt::test]
 async fn project_permissions_consistency_test() {
-    with_test_environment(Some(10), |test_env| async move {
+    with_test_environment_all(Some(10), |test_env| async move {
 
         // Test that the permissions are consistent with each other
         // For example, if we get the projectpermissions directly, from an organization's defaults, overriden, etc, they should all be correct & consistent

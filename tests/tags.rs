@@ -1,5 +1,7 @@
-use common::environment::with_test_environment;
+
 use std::collections::HashSet;
+
+use common::environment::with_test_environment_all;
 
 use crate::common::api_common::ApiTags;
 
@@ -9,9 +11,8 @@ mod common;
 
 #[actix_rt::test]
 async fn get_tags() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
-
+    with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
         let loaders = api.get_loaders_deserialized_common().await;
         let categories = api.get_categories_deserialized_common().await;
 

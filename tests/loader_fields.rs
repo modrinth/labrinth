@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use common::environment::with_test_environment;
+use common::api_v3::ApiV3;
+use common::environment::{with_test_environment, TestEnvironment};
 use serde_json::json;
 
 use crate::common::api_common::ApiVersion;
@@ -14,8 +15,8 @@ mod common;
 
 #[actix_rt::test]
 async fn creating_loader_fields() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+        let api = &test_env.api;
 
         let alpha_project_id = &test_env
             .dummy
@@ -258,8 +259,8 @@ async fn creating_loader_fields() {
 
 #[actix_rt::test]
 async fn get_loader_fields() {
-    with_test_environment(None, |test_env| async move {
-        let api = &test_env.v3;
+    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+        let api = &test_env.api;
 
         let game_versions = api
             .get_loader_field_variants_deserialized("game_versions")

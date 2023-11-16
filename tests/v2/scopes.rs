@@ -1,3 +1,5 @@
+use crate::common::api_v2::ApiV2;
+use crate::common::environment::TestEnvironment;
 use crate::common::environment::with_test_environment;
 use crate::common::scopes::ScopeTest;
 use actix_web::test;
@@ -10,7 +12,7 @@ use serde_json::json;
 // Project version creation scopes
 #[actix_rt::test]
 pub async fn project_version_create_scopes() {
-    with_test_environment(None, |test_env| async move {
+    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
 
         // Create project
         let create_project = Scopes::PROJECT_CREATE;
@@ -104,7 +106,5 @@ pub async fn project_version_create_scopes() {
             .await
             .unwrap();
 
-        // Cleanup test db
-        test_env.cleanup().await;
     }).await;
 }
