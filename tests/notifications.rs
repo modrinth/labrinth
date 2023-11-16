@@ -9,7 +9,7 @@ mod common;
 
 #[actix_rt::test]
 pub async fn get_user_notifications_after_team_invitation_returns_notification() {
-    with_test_environment(|test_env| async move {
+    with_test_environment(None, |test_env| async move {
         let alpha_team_id = test_env
             .dummy
             .as_ref()
@@ -34,7 +34,7 @@ pub async fn get_user_notifications_after_team_invitation_returns_notification()
 
 #[actix_rt::test]
 pub async fn get_user_notifications_after_reading_indicates_notification_read() {
-    with_test_environment(|test_env| async move {
+    with_test_environment(None, |test_env| async move {
         test_env.generate_friend_user_notification().await;
         let api = test_env.v3;
         let notifications = api
@@ -57,7 +57,7 @@ pub async fn get_user_notifications_after_reading_indicates_notification_read() 
 
 #[actix_rt::test]
 pub async fn get_user_notifications_after_deleting_does_not_show_notification() {
-    with_test_environment(|test_env| async move {
+    with_test_environment(None, |test_env| async move {
         test_env.generate_friend_user_notification().await;
         let api = test_env.v3;
         let notifications = api
