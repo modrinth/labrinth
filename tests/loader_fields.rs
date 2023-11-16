@@ -114,35 +114,34 @@ async fn creating_loader_fields() {
     let resp = api.add_public_version(version_data, USER_USER_PAT).await;
     assert_eq!(resp.status(), 400);
 
-    // Cannot create a version with a loader field array that has fewer than the minimum elements or more than the maximum elements
-    for gvs in [vec![], ["1.20.1"].repeat(30)] {
-        // TODO: - Create project
-        // - Create version
-        let version_data = get_public_version_creation_data(
-            alpha_project_id,
-            "1.0.0",
-            TestFile::build_random_jar(),
-            Some(|j: &mut serde_json::Value| {
-                let j: &mut serde_json::Map<String, serde_json::Value> = j.as_object_mut().unwrap();
-                j["game_versions"] = json!(gvs);
-            }),
-        );
-        let resp: actix_web::dev::ServiceResponse =
-            api.add_public_version(version_data, USER_USER_PAT).await;
-        assert_eq!(resp.status(), 400);
+    // TODO: Create a test for too many elements in the array when we have a LF that has a max (past max)
+    // Cannot create a version with a loader field array that has fewer than the minimum elements
+    // TODO: - Create project
+    // - Create version
+    let version_data = get_public_version_creation_data(
+        alpha_project_id,
+        "1.0.0",
+        TestFile::build_random_jar(),
+        Some(|j: &mut serde_json::Value| {
+            let j: &mut serde_json::Map<String, serde_json::Value> = j.as_object_mut().unwrap();
+            j["game_versions"] = json!([]);
+        }),
+    );
+    let resp: actix_web::dev::ServiceResponse =
+        api.add_public_version(version_data, USER_USER_PAT).await;
+    assert_eq!(resp.status(), 400);
 
-        // - Patch
-        let resp = api
-            .edit_version(
-                alpha_version_id,
-                json!({
-                    "game_versions": gvs
-                }),
-                USER_USER_PAT,
-            )
-            .await;
-        assert_eq!(resp.status(), 400);
-    }
+    // - Patch
+    let resp = api
+        .edit_version(
+            alpha_version_id,
+            json!({
+                "game_versions": []
+            }),
+            USER_USER_PAT,
+        )
+        .await;
+    assert_eq!(resp.status(), 400);
 
     // Cannot create an invalid data type for the loader field type (including bad variant for the type)
     for bad_type_game_versions in [
