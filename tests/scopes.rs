@@ -6,6 +6,8 @@ use labrinth::models::pats::Scopes;
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 use serde_json::json;
 
+use crate::common::api_common::ApiTeams;
+
 // For each scope, we (using test_scope):
 // - create a PAT with a given set of scopes for a function
 // - create a PAT with all other scopes for a function

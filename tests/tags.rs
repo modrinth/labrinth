@@ -1,6 +1,8 @@
 use common::environment::TestEnvironment;
 use std::collections::HashSet;
 
+use crate::common::api_common::ApiTags;
+
 mod common;
 
 #[actix_rt::test]
@@ -8,8 +10,8 @@ async fn get_tags() {
     let test_env = TestEnvironment::build(None).await;
     let api = &test_env.v3;
 
-    let loaders = api.get_loaders_deserialized().await;
-    let categories = api.get_categories_deserialized().await;
+    let loaders = api.get_loaders_deserialized_common().await;
+    let categories = api.get_categories_deserialized_common().await;
 
     let loader_names = loaders.into_iter().map(|x| x.name).collect::<HashSet<_>>();
     assert_eq!(

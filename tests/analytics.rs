@@ -5,6 +5,8 @@ use itertools::Itertools;
 use labrinth::models::ids::base62_impl::parse_base62;
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 
+use crate::common::api_common::ApiProject;
+
 mod common;
 
 #[actix_rt::test]

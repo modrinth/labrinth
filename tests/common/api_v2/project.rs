@@ -1,15 +1,15 @@
-use crate::common::api_v2::request_data::ProjectCreationRequestData;
+use crate::common::{api_v2::request_data::ProjectCreationRequestData, api_common::{ApiProject, models::{CommonImageData, CommonProject, CommonVersion}}};
 use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
+use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
-    models::v2::projects::{LegacyProject, LegacyVersion},
     search::SearchResults,
-    util::actix::AppendsMultipart,
+    util::actix::AppendsMultipart, models::v2::projects::LegacyProject,
 };
 use rust_decimal::Decimal;
 use serde_json::json;
@@ -17,14 +17,14 @@ use std::collections::HashMap;
 
 use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
 
-use super::{request_data::ImageData, ApiV2};
+use super::ApiV2;
 
 impl ApiV2 {
     pub async fn add_public_project(
         &self,
         creation_data: ProjectCreationRequestData,
         pat: &str,
-    ) -> (LegacyProject, Vec<LegacyVersion>) {
+    ) -> (CommonProject, Vec<CommonVersion>) {
         // Add a project.
         let req = TestRequest::post()
             .uri("/v2/project")
@@ -48,7 +48,7 @@ impl ApiV2 {
         assert_status(&resp, StatusCode::NO_CONTENT);
 
         let project = self
-            .get_project_deserialized(&creation_data.slug, pat)
+            .get_project_deserialized_common(&creation_data.slug, pat)
             .await;
 
         // Get project's versions
@@ -57,40 +57,15 @@ impl ApiV2 {
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
-        let versions: Vec<LegacyVersion> = test::read_body_json(resp).await;
+        let versions: Vec<CommonVersion> = test::read_body_json(resp).await;
 
         (project, versions)
     }
 
-    pub async fn remove_project(&self, project_slug_or_id: &str, pat: &str) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!("/v2/project/{project_slug_or_id}"))
-            .append_header(("Authorization", pat))
-            .to_request();
-        let resp = self.call(req).await;
-        assert_eq!(resp.status(), 204);
-        resp
-    }
-
-    pub async fn get_project(&self, id_or_slug: &str, pat: &str) -> ServiceResponse {
-        let req = TestRequest::get()
-            .uri(&format!("/v2/project/{id_or_slug}"))
-            .append_header(("Authorization", pat))
-            .to_request();
-        self.call(req).await
-    }
     pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> LegacyProject {
         let resp = self.get_project(id_or_slug, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
-    }
-
-    pub async fn get_user_projects(&self, user_id_or_username: &str, pat: &str) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v2/user/{}/projects", user_id_or_username))
-            .append_header(("Authorization", pat))
-            .to_request();
-        self.call(req).await
     }
 
     pub async fn get_user_projects_deserialized(
@@ -103,7 +78,54 @@ impl ApiV2 {
         test::read_body_json(resp).await
     }
 
-    pub async fn edit_project(
+
+}
+
+#[async_trait(?Send)]
+impl ApiProject for ApiV2 {
+    async fn remove_project(&self, project_slug_or_id: &str, pat: &str) -> ServiceResponse {
+        let req = test::TestRequest::delete()
+            .uri(&format!("/v2/project/{project_slug_or_id}"))
+            .append_header(("Authorization", pat))
+            .to_request();
+        let resp = self.call(req).await;
+        assert_eq!(resp.status(), 204);
+        resp
+    }
+
+    async fn get_project(&self, id_or_slug: &str, pat: &str) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri(&format!("/v2/project/{id_or_slug}"))
+            .append_header(("Authorization", pat))
+            .to_request();
+        self.call(req).await
+    }
+
+    async fn get_project_deserialized_common(&self, id_or_slug: &str, pat: &str) -> CommonProject {
+        let resp = self.get_project(id_or_slug, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
+    async fn get_user_projects(&self, user_id_or_username: &str, pat: &str) -> ServiceResponse {
+        let req = test::TestRequest::get()
+            .uri(&format!("/v2/user/{}/projects", user_id_or_username))
+            .append_header(("Authorization", pat))
+            .to_request();
+        self.call(req).await
+    }
+
+    async fn get_user_projects_deserialized_common(
+        &self,
+        user_id_or_username: &str,
+        pat: &str,
+    ) -> Vec<CommonProject> {
+        let resp = self.get_user_projects(user_id_or_username, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
+    async fn edit_project(
         &self,
         id_or_slug: &str,
         patch: serde_json::Value,
@@ -118,9 +140,9 @@ impl ApiV2 {
         self.call(req).await
     }
 
-    pub async fn edit_project_bulk(
+    async fn edit_project_bulk(
         &self,
-        ids_or_slugs: impl IntoIterator<Item = &str>,
+        ids_or_slugs:  &[&str],
         patch: serde_json::Value,
         pat: &str,
     ) -> ServiceResponse {
@@ -141,10 +163,10 @@ impl ApiV2 {
         self.call(req).await
     }
 
-    pub async fn edit_project_icon(
+    async fn edit_project_icon(
         &self,
         id_or_slug: &str,
-        icon: Option<ImageData>,
+        icon: Option<CommonImageData>,
         pat: &str,
     ) -> ServiceResponse {
         if let Some(icon) = icon {
@@ -170,7 +192,7 @@ impl ApiV2 {
         }
     }
 
-    pub async fn search_deserialized(
+    async fn search_deserialized_common(
         &self,
         query: Option<&str>,
         facets: Option<serde_json::Value>,
@@ -198,7 +220,7 @@ impl ApiV2 {
         test::read_body_json(resp).await
     }
 
-    pub async fn get_analytics_revenue(
+    async fn get_analytics_revenue(
         &self,
         id_or_slugs: Vec<&str>,
         start_date: Option<DateTime<Utc>>,
@@ -236,7 +258,7 @@ impl ApiV2 {
         self.call(req).await
     }
 
-    pub async fn get_analytics_revenue_deserialized(
+    async fn get_analytics_revenue_deserialized(
         &self,
         id_or_slugs: Vec<&str>,
         start_date: Option<DateTime<Utc>>,

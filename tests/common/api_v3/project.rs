@@ -5,6 +5,7 @@ use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
+use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
@@ -15,10 +16,10 @@ use labrinth::{
 use rust_decimal::Decimal;
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
+use crate::common::{asserts::assert_status, database::MOD_USER_PAT, api_common::{ApiProject, models::{CommonProject, CommonImageData}}};
 
 use super::{
-    request_data::{ImageData, ProjectCreationRequestData},
+    request_data::ProjectCreationRequestData,
     ApiV3,
 };
 
@@ -51,8 +52,9 @@ impl ApiV3 {
         assert_status(&resp, StatusCode::NO_CONTENT);
 
         let project = self
-            .get_project_deserialized(&creation_data.slug, pat)
+            .get_project(&creation_data.slug, pat)
             .await;
+        let project = test::read_body_json(project).await;
 
         // Get project's versions
         let req = TestRequest::get()
@@ -64,8 +66,11 @@ impl ApiV3 {
 
         (project, versions)
     }
+}
 
-    pub async fn remove_project(&self, project_slug_or_id: &str, pat: &str) -> ServiceResponse {
+#[async_trait(?Send)]
+impl ApiProject for ApiV3 {
+    async fn remove_project(&self, project_slug_or_id: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v3/project/{project_slug_or_id}"))
             .append_header(("Authorization", pat))
@@ -75,20 +80,21 @@ impl ApiV3 {
         resp
     }
 
-    pub async fn get_project(&self, id_or_slug: &str, pat: &str) -> ServiceResponse {
+    async fn get_project(&self, id_or_slug: &str, pat: &str) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!("/v3/project/{id_or_slug}"))
             .append_header(("Authorization", pat))
             .to_request();
         self.call(req).await
     }
-    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {
+
+    async fn get_project_deserialized_common(&self, id_or_slug: &str, pat: &str) -> CommonProject {
         let resp = self.get_project(id_or_slug, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
 
-    pub async fn get_user_projects(&self, user_id_or_username: &str, pat: &str) -> ServiceResponse {
+    async fn get_user_projects(&self, user_id_or_username: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::get()
             .uri(&format!("/v3/user/{}/projects", user_id_or_username))
             .append_header(("Authorization", pat))
@@ -96,17 +102,17 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_user_projects_deserialized(
+    async fn get_user_projects_deserialized_common(
         &self,
         user_id_or_username: &str,
         pat: &str,
-    ) -> Vec<Project> {
+    ) -> Vec<CommonProject> {
         let resp = self.get_user_projects(user_id_or_username, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
 
-    pub async fn edit_project(
+    async fn edit_project(
         &self,
         id_or_slug: &str,
         patch: serde_json::Value,
@@ -121,9 +127,9 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn edit_project_bulk(
+    async fn edit_project_bulk(
         &self,
-        ids_or_slugs: impl IntoIterator<Item = &str>,
+        ids_or_slugs: &[&str],
         patch: serde_json::Value,
         pat: &str,
     ) -> ServiceResponse {
@@ -144,10 +150,10 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn edit_project_icon(
+    async fn edit_project_icon(
         &self,
         id_or_slug: &str,
-        icon: Option<ImageData>,
+        icon: Option<CommonImageData>,
         pat: &str,
     ) -> ServiceResponse {
         if let Some(icon) = icon {
@@ -173,7 +179,7 @@ impl ApiV3 {
         }
     }
 
-    pub async fn search_deserialized(
+    async fn search_deserialized_common(
         &self,
         query: Option<&str>,
         facets: Option<serde_json::Value>,
@@ -201,7 +207,7 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
-    pub async fn get_analytics_revenue(
+    async fn get_analytics_revenue(
         &self,
         id_or_slugs: Vec<&str>,
         start_date: Option<DateTime<Utc>>,
@@ -239,7 +245,7 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_analytics_revenue_deserialized(
+    async fn get_analytics_revenue_deserialized(
         &self,
         id_or_slugs: Vec<&str>,
         start_date: Option<DateTime<Utc>>,

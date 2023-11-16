@@ -10,6 +10,7 @@ use labrinth::{
 };
 use serde_json::json;
 
+use crate::common::api_common::ApiVersion;
 use crate::common::api_v2::request_data::get_public_version_creation_data;
 use crate::common::{
     database::{ENEMY_USER_PAT, USER_USER_PAT},
@@ -165,7 +166,7 @@ async fn version_updates() {
 
     // When there is only the one version, there should be no updates
     let version = api
-        .get_update_from_hash_deserialized(
+        .get_update_from_hash_deserialized_common(
             alpha_version_hash,
             "sha1",
             None,
@@ -177,7 +178,7 @@ async fn version_updates() {
     assert_eq!(&version.id.to_string(), alpha_version_id);
 
     let versions = api
-        .update_files_deserialized(
+        .update_files_deserialized_common(
             "sha1",
             vec![alpha_version_hash.to_string()],
             None,
@@ -266,7 +267,7 @@ async fn version_updates() {
 
         // update_files
         let versions = api
-            .update_files_deserialized(
+            .update_files_deserialized_common(
                 "sha1",
                 vec![alpha_version_hash.to_string()],
                 loaders.clone(),
@@ -378,7 +379,7 @@ async fn version_updates() {
     // We do a couple small tests for get_project_versions_deserialized as well
     // TODO: expand this more.
     let versions = api
-        .get_project_versions_deserialized(
+        .get_project_versions_deserialized_common(
             alpha_project_id,
             None,
             None,
@@ -391,7 +392,7 @@ async fn version_updates() {
         .await;
     assert_eq!(versions.len(), 4);
     let versions = api
-        .get_project_versions_deserialized(
+        .get_project_versions_deserialized_common(
             alpha_project_id,
             None,
             Some(vec!["forge".to_string()]),

@@ -8,6 +8,8 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::common::api_common::Api;
+use crate::common::api_common::ApiProject;
 use crate::common::api_v3::request_data::{
     self, get_public_version_creation_data, ProjectCreationRequestData,
 };
@@ -203,7 +205,7 @@ async fn search_projects() {
 
     // Create a second version for project 7
     let project_7 = api
-        .get_project_deserialized(&format!("{test_name}-searchable-project-7"), USER_USER_PAT)
+        .get_project_deserialized_common(&format!("{test_name}-searchable-project-7"), USER_USER_PAT)
         .await;
     api.add_public_version(
         get_public_version_creation_data(
@@ -288,7 +290,7 @@ async fn search_projects() {
             let test_name = test_name.clone();
             async move {
                 let projects = api
-                    .search_deserialized(Some(&test_name), Some(facets.clone()), USER_USER_PAT)
+                    .search_deserialized_common(Some(&test_name), Some(facets.clone()), USER_USER_PAT)
                     .await;
                 let mut found_project_ids: Vec<u64> = projects
                     .hits
