@@ -59,11 +59,13 @@ pub struct User {
     pub github_id: Option<u64>,
 }
 
+// TODO: make v2 supported version of this
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct UserPayoutData {
+    pub paypal_address: Option<String>,
+    pub paypal_country: Option<String>,
+    pub venmo_handle: Option<String>,
     pub balance: Decimal,
-    pub trolley_id: Option<String>,
-    pub trolley_status: Option<RecipientStatus>,
 }
 
 use crate::database::models::user_item::User as DBUser;

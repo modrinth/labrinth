@@ -349,10 +349,6 @@ pub fn check_env_vars() -> bool {
         failed |= true;
     }
 
-    failed |= check_var::<String>("TROLLEY_ACCESS_KEY");
-    failed |= check_var::<String>("TROLLEY_SECRET_KEY");
-    failed |= check_var::<String>("TROLLEY_WEBHOOK_SIGNATURE");
-
     failed |= check_var::<String>("GITHUB_CLIENT_ID");
     failed |= check_var::<String>("GITHUB_CLIENT_SECRET");
     failed |= check_var::<String>("GITLAB_CLIENT_ID");
@@ -363,6 +359,9 @@ pub fn check_env_vars() -> bool {
     failed |= check_var::<String>("MICROSOFT_CLIENT_SECRET");
     failed |= check_var::<String>("GOOGLE_CLIENT_ID");
     failed |= check_var::<String>("GOOGLE_CLIENT_SECRET");
+    failed |= check_var::<String>("PAYPAL_API_URL");
+    failed |= check_var::<String>("PAYPAL_CLIENT_ID");
+    failed |= check_var::<String>("PAYPAL_CLIENT_SECRET");
     failed |= check_var::<String>("STEAM_API_KEY");
 
     failed |= check_var::<String>("TURNSTILE_SECRET");

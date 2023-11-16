@@ -1,9 +1,9 @@
 pub mod v2;
 pub mod v3;
+pub mod error;
 
 pub use v3::analytics;
 pub use v3::collections;
-pub use v3::error;
 pub use v3::ids;
 pub use v3::images;
 pub use v3::notifications;

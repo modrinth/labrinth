@@ -1,6 +1,9 @@
 ALTER TABLE users
-    ADD COLUMN trolley_id text NULL,
-    ADD COLUMN trolley_account_status text NULL,
+    ADD COLUMN paypal_country text NULL,
+    ADD COLUMN paypal_email text NULL,
+    ADD COLUMN paypal_id text NULL,
+    ADD COLUMN venmo_handle text NULL,
+
     DROP COLUMN midas_expires,
     DROP COLUMN is_overdue,
     DROP COLUMN stripe_customer_id,
@@ -8,8 +11,10 @@ ALTER TABLE users
     DROP COLUMN payout_wallet_type,
     DROP COLUMN payout_address;
 
+
+-- TODO FIGURE OUT
 ALTER TABLE historical_payouts
-    ADD COLUMN batch_id text NULL,
+    ADD COLUMN payment_method text NULL,
     ADD COLUMN payment_id text NULL;
 
 UPDATE historical_payouts

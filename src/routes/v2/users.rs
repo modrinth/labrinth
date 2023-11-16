@@ -31,9 +31,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(user_icon_edit)
             .service(user_notifications)
             .service(user_follows)
-            .service(user_payouts)
-            .service(user_payouts_fees)
-            .service(user_payouts_request),
     );
 }
 
@@ -249,73 +246,4 @@ pub async fn user_notifications(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     v3::users::user_notifications(req, info, pool, redis, session_queue).await
-}
-
-#[get("{id}/payouts")]
-pub async fn user_payouts(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    v3::users::user_payouts(req, info, pool, redis, session_queue).await
-}
-
-#[derive(Deserialize)]
-pub struct FeeEstimateAmount {
-    amount: Decimal,
-}
-
-#[get("{id}/payouts_fees")]
-pub async fn user_payouts_fees(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    web::Query(amount): web::Query<FeeEstimateAmount>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-    payouts_queue: web::Data<Mutex<PayoutsQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    v3::users::user_payouts_fees(
-        req,
-        info,
-        web::Query(v3::users::FeeEstimateAmount {
-            amount: amount.amount,
-        }),
-        pool,
-        redis,
-        session_queue,
-        payouts_queue,
-    )
-    .await
-}
-
-#[derive(Deserialize)]
-pub struct PayoutData {
-    amount: Decimal,
-}
-
-#[post("{id}/payouts")]
-pub async fn user_payouts_request(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    data: web::Json<PayoutData>,
-    payouts_queue: web::Data<Mutex<PayoutsQueue>>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    v3::users::user_payouts_request(
-        req,
-        info,
-        pool,
-        web::Json(v3::users::PayoutData {
-            amount: data.amount,
-        }),
-        payouts_queue,
-        redis,
-        session_queue,
-    )
-    .await
 }

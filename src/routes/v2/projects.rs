@@ -11,7 +11,6 @@ use crate::routes::v3::projects::ProjectIds;
 use crate::routes::{v2_reroute, v3, ApiError};
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
@@ -38,7 +37,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(delete_gallery_item)
             .service(project_follow)
             .service(project_unfollow)
-            .service(project_schedule)
             .service(super::teams::team_members_get_project)
             .service(
                 web::scope("{project_id}")
@@ -115,14 +113,10 @@ pub async fn random_projects_get(
     let response =
         v3::projects::random_projects_get(web::Query(count), pool.clone(), redis.clone()).await?;
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Project>(response).await {
+    match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
         Ok(project) => {
-            let version_item = match project.versions.first() {
-                Some(vid) => version_item::Version::get((*vid).into(), &**pool, &redis).await?,
-                None => None,
-            };
-            let project = LegacyProject::from(project, version_item);
-            Ok(HttpResponse::Ok().json(project))
+            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+            Ok(HttpResponse::Ok().json(legacy_projects))
         }
         Err(response) => Ok(response),
     }
@@ -491,36 +485,6 @@ pub async fn projects_edit(
         }),
         redis,
         session_queue,
-    )
-    .await
-}
-
-#[derive(Deserialize)]
-pub struct SchedulingData {
-    pub time: DateTime<Utc>,
-    pub requested_status: ProjectStatus,
-}
-
-#[post("{id}/schedule")]
-pub async fn project_schedule(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-    scheduling_data: web::Json<SchedulingData>,
-) -> Result<HttpResponse, ApiError> {
-    let scheduling_data = scheduling_data.into_inner();
-    v3::projects::project_schedule(
-        req,
-        info,
-        pool,
-        redis,
-        session_queue,
-        web::Json(v3::projects::SchedulingData {
-            time: scheduling_data.time,
-            requested_status: scheduling_data.requested_status,
-        }),
     )
     .await
 }
