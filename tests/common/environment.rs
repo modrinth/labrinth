@@ -1,13 +1,12 @@
 #![allow(dead_code)]
 
-use std::{rc::Rc, sync::Arc};
-
+use std::rc::Rc;
 use super::{
     api_v2::ApiV2,
     api_v3::ApiV3,
     asserts::assert_status,
     database::{TemporaryDatabase, FRIEND_USER_ID, USER_USER_PAT},
-    dummy_data,
+    dummy_data::{self, DummyData}, api_common::{ApiProject, ApiTeams, Api},
 };
 use crate::common::setup;
 use actix_http::StatusCode;
@@ -28,7 +27,19 @@ where
 // TODO: This needs to be slightly redesigned in order to do both V2 and v3 tests.
 // TODO: Most tests, since they use API functions, can be applied to both. The ones that weren't are in v2/, but
 // all tests that can be applied to both should use both v2 and v3 (extract api to a trait  with all the API functions and call both).
+pub async fn with_test_environment_both<Fut>(
+    f: impl Fn(Box<dyn Api>, DummyData) -> Fut
+) where
+    Fut: Future<Output = ()>,
+{
+    let test_env = TestEnvironment::build(None).await;
+    f(Box::new(test_env.v3), test_env.dummy.unwrap()).await;
+    test_env.db.cleanup().await;
 
+    let test_env = TestEnvironment::build(None).await;
+    f(Box::new(test_env.v2), test_env.dummy.unwrap()).await;
+    test_env.db.cleanup().await;
+}
 // A complete test environment, with a test actix app and a database.
 // Must be called in an #[actix_rt::test] context. It also simulates a
 // temporary sqlx db like #[sqlx::test] would.
@@ -40,7 +51,7 @@ pub struct TestEnvironment {
     pub v2: ApiV2,
     pub v3: ApiV3,
 
-    pub dummy: Option<Arc<dummy_data::DummyData>>,
+    pub dummy: Option<dummy_data::DummyData>,
 }
 
 impl TestEnvironment {
@@ -49,7 +60,7 @@ impl TestEnvironment {
         let mut test_env = Self::build_with_db(db).await;
 
         let dummy = dummy_data::get_dummy_data(&test_env).await;
-        test_env.dummy = Some(Arc::new(dummy));
+        test_env.dummy = Some(dummy);
         test_env
     }
 

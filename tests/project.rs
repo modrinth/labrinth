@@ -13,6 +13,8 @@ use labrinth::models::teams::ProjectPermissions;
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 use serde_json::json;
 
+use crate::common::api_common::{ApiProject, ApiVersion};
+
 mod common;
 
 #[actix_rt::test]
@@ -187,7 +189,7 @@ async fn test_add_remove_project() {
     assert_eq!(status, 200);
 
     // Get the project we just made, and confirm that it's correct
-    let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
+    let project = api.get_project_deserialized_common("demo", USER_USER_PAT).await;
     assert!(project.versions.len() == 1);
     let uploaded_version_id = project.versions[0];
 
@@ -196,7 +198,7 @@ async fn test_add_remove_project() {
         .digest()
         .to_string();
     let version = api
-        .get_version_from_hash_deserialized(&hash, "sha1", USER_USER_PAT)
+        .get_version_from_hash_deserialized_common(&hash, "sha1", USER_USER_PAT)
         .await;
     assert_eq!(version.id, uploaded_version_id);
 
@@ -241,7 +243,7 @@ async fn test_add_remove_project() {
     assert_eq!(resp.status(), 200);
 
     // Get
-    let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
+    let project = api.get_project_deserialized_common("demo", USER_USER_PAT).await;
     let id = project.id.to_string();
 
     // Remove the project
@@ -417,7 +419,7 @@ pub async fn test_patch_project() {
     assert_eq!(resp.status(), 404);
 
     // New slug does work
-    let project = api.get_project_deserialized("newslug", USER_USER_PAT).await;
+    let project = api.get_project_deserialized_common("newslug", USER_USER_PAT).await;
 
     assert_eq!(project.slug.unwrap(), "newslug");
     assert_eq!(project.title, "New successful title");
@@ -446,7 +448,7 @@ pub async fn test_bulk_edit_categories() {
 
         let resp = api
             .edit_project_bulk(
-                [alpha_project_id, beta_project_id],
+                &[alpha_project_id, beta_project_id],
                 json!({
                     "categories": [DUMMY_CATEGORIES[0], DUMMY_CATEGORIES[3]],
                     "add_categories": [DUMMY_CATEGORIES[1], DUMMY_CATEGORIES[2]],
@@ -461,13 +463,13 @@ pub async fn test_bulk_edit_categories() {
         assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
         let alpha_body = api
-            .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
+            .get_project_deserialized_common(alpha_project_id, ADMIN_USER_PAT)
             .await;
         assert_eq!(alpha_body.categories, DUMMY_CATEGORIES[0..=2]);
         assert_eq!(alpha_body.additional_categories, DUMMY_CATEGORIES[4..=5]);
 
         let beta_body = api
-            .get_project_deserialized(beta_project_id, ADMIN_USER_PAT)
+            .get_project_deserialized_common(beta_project_id, ADMIN_USER_PAT)
             .await;
         assert_eq!(beta_body.categories, alpha_body.categories);
         assert_eq!(

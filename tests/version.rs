@@ -5,10 +5,11 @@ use common::environment::TestEnvironment;
 use futures::StreamExt;
 use labrinth::database::models::version_item::VERSIONS_NAMESPACE;
 use labrinth::models::ids::base62_impl::parse_base62;
-use labrinth::models::projects::{Loader, ProjectId, VersionId, VersionStatus, VersionType};
+use labrinth::models::projects::{ProjectId, VersionId, VersionStatus, VersionType};
 use labrinth::routes::v3::version_file::FileUpdateData;
 use serde_json::json;
 
+use crate::common::api_common::ApiVersion;
 use crate::common::api_v3::request_data::get_public_version_creation_data;
 use crate::common::database::*;
 
@@ -28,7 +29,7 @@ async fn test_get_version() {
 
     // Perform request on dummy data
     let version = api
-        .get_version_deserialized(alpha_version_id, USER_USER_PAT)
+        .get_version_deserialized_common(alpha_version_id, USER_USER_PAT)
         .await;
     assert_eq!(&version.project_id.to_string(), alpha_project_id);
     assert_eq!(&version.id.to_string(), alpha_version_id);
@@ -83,13 +84,13 @@ async fn version_updates() {
 
     // Quick test, using get version from hash
     let version = api
-        .get_version_from_hash_deserialized(alpha_version_hash, "sha1", USER_USER_PAT)
+        .get_version_from_hash_deserialized_common(alpha_version_hash, "sha1", USER_USER_PAT)
         .await;
     assert_eq!(&version.id.to_string(), alpha_version_id);
 
     // Get versions from hash
     let versions = api
-        .get_versions_from_hashes_deserialized(
+        .get_versions_from_hashes_deserialized_common(
             &[alpha_version_hash.as_str(), beta_version_hash.as_str()],
             "sha1",
             USER_USER_PAT,
@@ -104,7 +105,7 @@ async fn version_updates() {
 
     // When there is only the one version, there should be no updates
     let version = api
-        .get_update_from_hash_deserialized(
+        .get_update_from_hash_deserialized_common(
             alpha_version_hash,
             "sha1",
             None,
@@ -116,7 +117,7 @@ async fn version_updates() {
     assert_eq!(&version.id.to_string(), alpha_version_id);
 
     let versions = api
-        .update_files_deserialized(
+        .update_files_deserialized_common(
             "sha1",
             vec![alpha_version_hash.to_string()],
             None,
@@ -206,7 +207,7 @@ async fn version_updates() {
 
         // update_files
         let versions = api
-            .update_files_deserialized(
+            .update_files_deserialized_common(
                 "sha1",
                 vec![alpha_version_hash.to_string()],
                 loaders.clone(),
@@ -329,7 +330,7 @@ async fn version_updates() {
     // We do a couple small tests for get_project_versions_deserialized as well
     // TODO: expand this more.
     let versions = api
-        .get_project_versions_deserialized(
+        .get_project_versions_deserialized_common(
             alpha_project_id,
             None,
             None,
@@ -342,7 +343,7 @@ async fn version_updates() {
         .await;
     assert_eq!(versions.len(), 4);
     let versions = api
-        .get_project_versions_deserialized(
+        .get_project_versions_deserialized_common(
             alpha_project_id,
             None,
             Some(vec!["forge".to_string()]),
@@ -418,7 +419,7 @@ pub async fn test_patch_version() {
     assert_eq!(resp.status(), 204);
 
     let version = api
-        .get_version_deserialized(alpha_version_id, USER_USER_PAT)
+        .get_version_deserialized_common(alpha_version_id, USER_USER_PAT)
         .await;
     assert_eq!(version.name, "new version name");
     assert_eq!(version.version_number, "1.3.0");
@@ -427,7 +428,7 @@ pub async fn test_patch_version() {
         version.version_type,
         serde_json::from_str::<VersionType>("\"beta\"").unwrap()
     );
-    assert_eq!(version.loaders, vec![Loader("forge".to_string())]);
+    assert_eq!(version.loaders, vec!["forge".to_string()]);
     assert!(!version.featured);
     assert_eq!(version.status, VersionStatus::from_string("draft"));
 
@@ -445,9 +446,9 @@ pub async fn test_patch_version() {
     assert_eq!(resp.status(), 204);
 
     let version = api
-        .get_version_deserialized(alpha_version_id, USER_USER_PAT)
+        .get_version_deserialized_common(alpha_version_id, USER_USER_PAT)
         .await;
-    assert_eq!(version.loaders, vec![Loader("forge".to_string())]); // From last patch
+    assert_eq!(version.loaders, vec!["forge".to_string()]); // From last patch
 
     let resp = api
         .edit_version(
@@ -461,9 +462,9 @@ pub async fn test_patch_version() {
     assert_eq!(resp.status(), 204);
 
     let version = api
-        .get_version_deserialized(alpha_version_id, USER_USER_PAT)
+        .get_version_deserialized_common(alpha_version_id, USER_USER_PAT)
         .await;
-    assert_eq!(version.loaders, vec![Loader("fabric".to_string())]);
+    assert_eq!(version.loaders, vec!["fabric".to_string()]);
 
     // Cleanup test db
     test_env.cleanup().await;
@@ -480,7 +481,7 @@ pub async fn test_project_versions() {
     let _beta_version_hash = &test_env.dummy.as_ref().unwrap().project_beta.file_hash;
 
     let versions = api
-        .get_project_versions_deserialized(
+        .get_project_versions_deserialized_common(
             alpha_project_id,
             None,
             None,

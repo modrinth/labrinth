@@ -2,7 +2,7 @@ use crate::common::{
     api_v3::request_data::get_icon_data,
     database::{generate_random_name, ADMIN_USER_PAT, MOD_USER_ID, MOD_USER_PAT, USER_USER_ID},
     dummy_data::DummyImage,
-    environment::TestEnvironment,
+    environment::TestEnvironment, api_common::ApiTeams,
 };
 use actix_web::test;
 use bytes::Bytes;
@@ -69,7 +69,7 @@ async fn create_organization() {
 
     // Get created team
     let members = api
-        .get_organization_members_deserialized("theta", USER_USER_PAT)
+        .get_organization_members_deserialized_common("theta", USER_USER_PAT)
         .await;
 
     // Should only be one member, which is USER_USER_ID, and is the owner with full permissions

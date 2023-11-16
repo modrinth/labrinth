@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
-use super::environment::LocalService;
+use super::{environment::LocalService, api_common::Api};
 use actix_web::dev::ServiceResponse;
+use async_trait::async_trait;
 use std::rc::Rc;
 
 pub mod oauth;
@@ -22,8 +23,11 @@ impl ApiV3 {
     pub async fn call(&self, req: actix_http::Request) -> ServiceResponse {
         self.test_app.call(req).await.unwrap()
     }
+}
 
-    pub async fn reset_search_index(&self) -> ServiceResponse {
+#[async_trait(?Send)]
+impl Api for ApiV3 {
+    async fn reset_search_index(&self) -> ServiceResponse {
         let req = actix_web::test::TestRequest::post()
             .uri("/v3/admin/_force_reindex")
             .append_header((

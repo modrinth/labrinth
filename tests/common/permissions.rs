@@ -4,7 +4,7 @@ use itertools::Itertools;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::common::database::{generate_random_name, ADMIN_USER_PAT};
+use crate::common::{database::{generate_random_name, ADMIN_USER_PAT}, api_common::ApiTeams};
 
 use super::{
     api_v3::request_data,
