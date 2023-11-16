@@ -18,10 +18,18 @@ async fn get_tags() {
         .collect::<HashSet<_>>();
     assert_eq!(
         game_version_versions,
-        ["1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.5"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
+        [
+            "1.20.1",
+            "1.20.2",
+            "1.20.3",
+            "1.20.4",
+            "1.20.5",
+            "Ordering_Negative1",
+            "Ordering_Positive100"
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
     );
 
     let loader_names = loaders.into_iter().map(|x| x.name).collect::<HashSet<_>>();

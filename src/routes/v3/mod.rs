@@ -33,6 +33,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             // TODO: write tests that catch these
             .configure(crate::auth::session::config)
             .configure(crate::auth::flows::config)
+            .configure(crate::auth::oauth::config)
             .configure(crate::auth::pats::config)
             .configure(collections::config)
             .configure(images::config)

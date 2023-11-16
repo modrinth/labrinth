@@ -34,8 +34,6 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use validator::Validate;
 
-use super::oauth;
-
 pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
         scope("auth")
@@ -55,9 +53,7 @@ pub fn config(cfg: &mut ServiceConfig) {
             .service(set_email)
             .service(verify_email)
             .service(subscribe_newsletter)
-            .service(link_trolley)
-            // auth/oauth
-            .configure(oauth::config),
+            .service(link_trolley),
     );
 }
 

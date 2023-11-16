@@ -95,7 +95,8 @@ pub async fn version_create(
                 json!(legacy_create.game_versions),
             );
 
-            // TODO: This needs to actually get the SideType from somewhere- another version? Default?
+            // TODO: will be overhauled with side-types overhaul
+            // TODO: if not, should default to previous version
             fields.insert("client_side".to_string(), json!("required"));
             fields.insert("server_side".to_string(), json!("optional"));
 
