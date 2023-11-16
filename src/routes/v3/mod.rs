@@ -31,9 +31,9 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(admin::config)
             .configure(analytics_get::config)
             // TODO: write tests that catch these
+            .configure(oauth_clients::config)
             .configure(crate::auth::session::config)
             .configure(crate::auth::flows::config)
-            .configure(crate::auth::oauth::config)
             .configure(crate::auth::pats::config)
             .configure(collections::config)
             .configure(images::config)
@@ -49,8 +49,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(threads::config)
             .configure(users::config)
             .configure(version_file::config)
-            .configure(versions::config)
-            .configure(oauth_clients::config),
+            .configure(versions::config),
     );
 }
 

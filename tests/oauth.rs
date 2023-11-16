@@ -1,5 +1,5 @@
 use actix_http::StatusCode;
-use actix_web::test::{self};
+use actix_web::test;
 use common::{
     api_v3::oauth::get_redirect_location_query_params,
     api_v3::oauth::{get_auth_code_from_redirect_params, get_authorize_accept_flow_id},

@@ -45,13 +45,14 @@ use crate::models::ids::OAuthClientId as ApiOAuthClientId;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         scope("oauth")
+            .configure(crate::auth::oauth::config)
+            .service(revoke_oauth_authorization)
             .service(oauth_client_create)
             .service(oauth_client_edit)
             .service(oauth_client_delete)
             .service(get_client)
             .service(get_clients)
-            .service(get_user_oauth_authorizations)
-            .service(revoke_oauth_authorization),
+            .service(get_user_oauth_authorizations),
     );
 }
 
@@ -352,6 +353,7 @@ pub async fn revoke_oauth_authorization(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("Inside revoke_oauth_authorization");
     let current_user = get_user_from_headers(
         &req,
         &**pool,
