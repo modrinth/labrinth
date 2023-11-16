@@ -1,13 +1,12 @@
-use crate::common::{
-    api_v3::oauth::get_redirect_location_query_params, database::FRIEND_USER_ID,
-    dummy_data::DummyOAuthClientAlpha,
-};
 use actix_http::StatusCode;
-use actix_web::test::{self};
+use actix_web::test;
 use common::{
+    api_v3::oauth::get_redirect_location_query_params,
     api_v3::oauth::{get_auth_code_from_redirect_params, get_authorize_accept_flow_id},
     asserts::{assert_any_status_except, assert_status},
+    database::FRIEND_USER_ID,
     database::{FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},
+    dummy_data::DummyOAuthClientAlpha,
     environment::with_test_environment,
 };
 use labrinth::auth::oauth::TokenResponse;
@@ -42,7 +41,7 @@ async fn oauth_flow_happy_path() {
 
         // Accept the authorization request
         let resp = env.v3.oauth_accept(&flow_id, FRIEND_USER_PAT).await;
-        assert_status(&resp, StatusCode::FOUND);
+        assert_status(&resp, StatusCode::OK);
         let query = get_redirect_location_query_params(&resp);
 
         let auth_code = query.get("code").unwrap();
@@ -105,7 +104,7 @@ async fn oauth_authorize_for_already_authorized_scopes_returns_auth_code() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::FOUND);
+        assert_status(&resp, StatusCode::OK);
     })
     .await;
 }
@@ -231,10 +230,10 @@ async fn reject_authorize_ends_authorize_flow() {
         let flow_id = get_authorize_accept_flow_id(resp).await;
 
         let resp = env.v3.oauth_reject(&flow_id, USER_USER_PAT).await;
-        assert_status(&resp, StatusCode::FOUND);
+        assert_status(&resp, StatusCode::OK);
 
         let resp = env.v3.oauth_accept(&flow_id, USER_USER_PAT).await;
-        assert_any_status_except(&resp, StatusCode::FOUND);
+        assert_any_status_except(&resp, StatusCode::OK);
     })
     .await;
 }
@@ -249,7 +248,7 @@ async fn accept_authorize_after_already_accepting_fails() {
             .await;
         let flow_id = get_authorize_accept_flow_id(resp).await;
         let resp = env.v3.oauth_accept(&flow_id, USER_USER_PAT).await;
-        assert_status(&resp, StatusCode::FOUND);
+        assert_status(&resp, StatusCode::OK);
 
         let resp = env.v3.oauth_accept(&flow_id, USER_USER_PAT).await;
         assert_status(&resp, StatusCode::BAD_REQUEST);

@@ -2,9 +2,6 @@ use labrinth::{check_env_vars, clickhouse};
 use labrinth::{file_hosting, queue, LabrinthConfig};
 use std::sync::Arc;
 
-use self::database::TemporaryDatabase;
-
-pub mod actix;
 pub mod api_v2;
 pub mod api_v3;
 pub mod asserts;
@@ -13,12 +10,11 @@ pub mod dummy_data;
 pub mod environment;
 pub mod pats;
 pub mod permissions;
-pub mod request_data;
 pub mod scopes;
 
 // Testing equivalent to 'setup' function, producing a LabrinthConfig
 // If making a test, you should probably use environment::TestEnvironment::build() (which calls this)
-pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
+pub async fn setup(db: &database::TemporaryDatabase) -> LabrinthConfig {
     println!("Setting up labrinth config");
 
     dotenvy::dotenv().ok();
@@ -40,7 +36,7 @@ pub async fn setup(db: &TemporaryDatabase) -> LabrinthConfig {
         redis_pool.clone(),
         &mut clickhouse,
         file_host.clone(),
-        maxmind_reader.clone(),
+        maxmind_reader,
     )
 }
 

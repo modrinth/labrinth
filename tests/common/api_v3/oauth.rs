@@ -55,7 +55,7 @@ impl ApiV3 {
     pub async fn oauth_accept(&self, flow: &str, pat: &str) -> ServiceResponse {
         self.call(
             TestRequest::post()
-                .uri("/v3/auth/oauth/accept")
+                .uri("/v3/oauth/accept")
                 .append_header((AUTHORIZATION, pat))
                 .set_json(RespondToOAuthClientScopes {
                     flow: flow.to_string(),
@@ -68,7 +68,7 @@ impl ApiV3 {
     pub async fn oauth_reject(&self, flow: &str, pat: &str) -> ServiceResponse {
         self.call(
             TestRequest::post()
-                .uri("/v3/auth/oauth/reject")
+                .uri("/v3/oauth/reject")
                 .append_header((AUTHORIZATION, pat))
                 .set_json(RespondToOAuthClientScopes {
                     flow: flow.to_string(),
@@ -87,7 +87,7 @@ impl ApiV3 {
     ) -> ServiceResponse {
         self.call(
             TestRequest::post()
-                .uri("/v3/auth/oauth/token")
+                .uri("/v3/oauth/token")
                 .append_header((AUTHORIZATION, client_secret))
                 .set_form(TokenRequest {
                     grant_type: "authorization_code".to_string(),
@@ -108,13 +108,12 @@ pub fn generate_authorize_uri(
     state: Option<&str>,
 ) -> String {
     format!(
-        "/v3/auth/oauth/authorize?client_id={}{}{}{}",
+        "/v3/oauth/authorize?client_id={}{}{}{}",
         urlencoding::encode(client_id),
         optional_query_param("redirect_uri", redirect_uri),
         optional_query_param("scope", scope),
         optional_query_param("state", state),
     )
-    .to_string()
 }
 
 pub async fn get_authorize_accept_flow_id(response: ServiceResponse) -> String {
@@ -125,7 +124,7 @@ pub async fn get_authorize_accept_flow_id(response: ServiceResponse) -> String {
 }
 
 pub async fn get_auth_code_from_redirect_params(response: &ServiceResponse) -> String {
-    assert_status(response, StatusCode::FOUND);
+    assert_status(response, StatusCode::OK);
     let query_params = get_redirect_location_query_params(response);
     query_params.get("code").unwrap().to_string()
 }
@@ -140,7 +139,13 @@ pub async fn get_access_token(response: ServiceResponse) -> String {
 pub fn get_redirect_location_query_params(
     response: &ServiceResponse,
 ) -> actix_web::web::Query<HashMap<String, String>> {
-    let redirect_location = response.headers().get(LOCATION).unwrap().to_str().unwrap();
+    let redirect_location = response
+        .headers()
+        .get(LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     actix_web::web::Query::<HashMap<String, String>>::from_query(
         redirect_location.split_once('?').unwrap().1,
     )
