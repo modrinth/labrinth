@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use super::ApiError;
 use crate::database::models::categories::{Category, DonationPlatform, ProjectType, ReportType};
 use crate::database::models::loader_fields::{
-    Loader, LoaderField, LoaderFieldEnumValue, LoaderFieldType,
+    Game, Loader, LoaderField, LoaderFieldEnumValue, LoaderFieldType,
 };
 use crate::database::redis::RedisPool;
 use actix_web::{web, HttpResponse};
+use itertools::Itertools;
 use serde_json::Value;
 use sqlx::PgPool;
 
@@ -16,12 +17,39 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("category", web::get().to(category_list))
             .route("loader", web::get().to(loader_list)),
     )
-    .route("loader_fields", web::get().to(loader_fields_list))
+    .route("games", web::get().to(games_list))
+    .route("loader_field", web::get().to(loader_fields_list))
     .route("license", web::get().to(license_list))
     .route("license/{id}", web::get().to(license_text))
     .route("donation_platform", web::get().to(donation_platform_list))
     .route("report_type", web::get().to(report_type_list))
     .route("project_type", web::get().to(project_type_list));
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct GameData {
+    pub slug: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub banner: Option<String>,
+}
+
+pub async fn games_list(
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+) -> Result<HttpResponse, ApiError> {
+    let results = Game::list(&**pool, &redis)
+        .await?
+        .into_iter()
+        .map(|x| GameData {
+            slug: x.slug,
+            name: x.name,
+            icon: x.icon_url,
+            banner: x.banner_url,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(results))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -69,11 +97,7 @@ pub async fn loader_list(
             icon: x.icon,
             name: x.loader,
             supported_project_types: x.supported_project_types,
-            supported_games: x
-                .supported_games
-                .iter()
-                .map(|x| x.name().to_string())
-                .collect(),
+            supported_games: x.supported_games,
         })
         .collect::<Vec<_>>();
 
@@ -95,14 +119,20 @@ pub async fn loader_fields_list(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let query = query.into_inner();
-    let loader_field = LoaderField::get_field(&query.loader_field, &**pool, &redis)
+    let all_loader_ids = Loader::list(&**pool, &redis)
         .await?
-        .ok_or_else(|| {
-            ApiError::InvalidInput(format!(
-                "'{}' was not a valid loader field.",
-                query.loader_field
-            ))
-        })?;
+        .into_iter()
+        .map(|x| x.id)
+        .collect_vec();
+    let loader_field =
+        LoaderField::get_field(&query.loader_field, &all_loader_ids, &**pool, &redis)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput(format!(
+                    "'{}' was not a valid loader field.",
+                    query.loader_field
+                ))
+            })?;
 
     let loader_field_enum_id = match loader_field.field_type {
         LoaderFieldType::Enum(enum_id) | LoaderFieldType::ArrayEnum(enum_id) => enum_id,

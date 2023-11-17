@@ -1,23 +1,27 @@
-use crate::common::database::*;
-use crate::common::dummy_data::DUMMY_CATEGORIES;
-use crate::common::environment::TestEnvironment;
-use crate::common::request_data::{get_public_version_creation_data, ProjectCreationRequestData};
+use common::database::*;
 use common::dummy_data::TestFile;
-use common::request_data;
+use common::dummy_data::DUMMY_CATEGORIES;
+use common::environment::TestEnvironment;
 use futures::stream::StreamExt;
 use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// importing common module.
+use crate::common::api_v3::request_data::{
+    self, get_public_version_creation_data, ProjectCreationRequestData,
+};
+
 mod common;
+
+// TODO: Revisit this with the new modify_json in the version maker
+// That change here should be able to simplify it vastly
 
 #[actix_rt::test]
 async fn search_projects() {
     // Test setup and dummy data
     let test_env = TestEnvironment::build(Some(8)).await;
-    let api = &test_env.v2;
+    let api = &test_env.v3;
     let test_name = test_env.db.database_name.clone();
 
     // Add dummy projects of various categories for searchability
@@ -38,7 +42,6 @@ async fn search_projects() {
             let mut basic_project_json =
                 request_data::get_public_project_creation_data_json(&slug, Some(&jar));
             modify_json(&mut basic_project_json);
-
             let basic_project_multipart =
                 request_data::get_public_creation_data_multipart(&basic_project_json, Some(&jar));
             // Add a project- simple, should work.
@@ -72,7 +75,7 @@ async fn search_projects() {
     let id = 0;
     let modify_json = |json: &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[4..6]);
-        json["server_side"] = json!("required");
+        json["initial_versions"][0]["server_side"] = json!("required");
         json["license_id"] = json!("LGPL-3.0-or-later");
     };
     project_creation_futures.push(create_async_future(
@@ -86,7 +89,7 @@ async fn search_projects() {
     let id = 1;
     let modify_json = |json: &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[0..2]);
-        json["client_side"] = json!("optional");
+        json["initial_versions"][0]["client_side"] = json!("optional");
     };
     project_creation_futures.push(create_async_future(
         id,
@@ -99,7 +102,7 @@ async fn search_projects() {
     let id = 2;
     let modify_json = |json: &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[0..2]);
-        json["server_side"] = json!("required");
+        json["initial_versions"][0]["server_side"] = json!("required");
         json["title"] = json!("Mysterious Project");
     };
     project_creation_futures.push(create_async_future(
@@ -113,7 +116,7 @@ async fn search_projects() {
     let id = 3;
     let modify_json = |json: &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[0..3]);
-        json["server_side"] = json!("required");
+        json["initial_versions"][0]["server_side"] = json!("required");
         json["initial_versions"][0]["game_versions"] = json!(["1.20.4"]);
         json["title"] = json!("Mysterious Project");
         json["license_id"] = json!("LicenseRef-All-Rights-Reserved"); // closed source
@@ -129,7 +132,7 @@ async fn search_projects() {
     let id = 4;
     let modify_json = |json: &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[0..3]);
-        json["client_side"] = json!("optional");
+        json["initial_versions"][0]["client_side"] = json!("optional");
         json["initial_versions"][0]["game_versions"] = json!(["1.20.5"]);
     };
     project_creation_futures.push(create_async_future(
@@ -143,7 +146,7 @@ async fn search_projects() {
     let id = 5;
     let modify_json = |json: &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[5..6]);
-        json["client_side"] = json!("optional");
+        json["initial_versions"][0]["client_side"] = json!("optional");
         json["initial_versions"][0]["game_versions"] = json!(["1.20.5"]);
         json["license_id"] = json!("LGPL-3.0-or-later");
     };
@@ -158,8 +161,8 @@ async fn search_projects() {
     let id = 6;
     let modify_json = |json: &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[5..6]);
-        json["client_side"] = json!("optional");
-        json["server_side"] = json!("required");
+        json["initial_versions"][0]["client_side"] = json!("optional");
+        json["initial_versions"][0]["server_side"] = json!("required");
         json["license_id"] = json!("LGPL-3.0-or-later");
     };
     project_creation_futures.push(create_async_future(
@@ -175,8 +178,8 @@ async fn search_projects() {
     let id = 7;
     let modify_json = |json: &mut serde_json::Value| {
         json["categories"] = json!(DUMMY_CATEGORIES[5..6]);
-        json["client_side"] = json!("optional");
-        json["server_side"] = json!("required");
+        json["initial_versions"][0]["client_side"] = json!("optional");
+        json["initial_versions"][0]["server_side"] = json!("required");
         json["license_id"] = json!("LGPL-3.0-or-later");
         json["initial_versions"][0]["loaders"] = json!(["forge"]);
         json["initial_versions"][0]["game_versions"] = json!(["1.20.2"]);
@@ -203,7 +206,12 @@ async fn search_projects() {
         .get_project_deserialized(&format!("{test_name}-searchable-project-7"), USER_USER_PAT)
         .await;
     api.add_public_version(
-        get_public_version_creation_data(project_7.id, "1.0.0", TestFile::build_random_jar()),
+        get_public_version_creation_data(
+            project_7.id,
+            "1.0.0",
+            TestFile::build_random_jar(),
+            None::<fn(&mut serde_json::Value)>,
+        ),
         USER_USER_PAT,
     )
     .await;
@@ -226,21 +234,21 @@ async fn search_projects() {
             ]),
             vec![1, 2, 3, 4],
         ),
-        (json!([["project_type:modpack"]]), vec![4]),
-        (json!([["client_side:required"]]), vec![0, 2, 3]),
+        (json!([["project_types:modpack"]]), vec![4]),
+        (json!([["client_side:required"]]), vec![0, 2, 3, 7]),
         (json!([["server_side:required"]]), vec![0, 2, 3, 6, 7]),
         (json!([["open_source:true"]]), vec![0, 1, 2, 4, 5, 6, 7]),
         (json!([["license:MIT"]]), vec![1, 2, 4]),
         (json!([[r#"title:'Mysterious Project'"#]]), vec![2, 3]),
         (json!([["author:user"]]), vec![0, 1, 2, 4, 5, 7]),
-        (json!([["versions:1.20.5"]]), vec![4, 5]),
+        (json!([["game_versions:1.20.5"]]), vec![4, 5]),
         // bug fix
         (
             json!([
                 // Only the forge one has 1.20.2, so its true that this project 'has'
                 // 1.20.2 and a fabric version, but not true that it has a 1.20.2 fabric version.
                 ["categories:fabric"],
-                ["versions:1.20.2"]
+                ["game_versions:1.20.2"]
             ]),
             vec![],
         ),
@@ -255,7 +263,7 @@ async fn search_projects() {
             json!([
                 ["categories:mrpack"],
                 ["categories:fabric"],
-                ["project_type:modpack"]
+                ["project_types:modpack"]
             ]),
             vec![4],
         ),
@@ -266,6 +274,7 @@ async fn search_projects() {
     // - color                          (not varied)
     // - created_timestamp              (not varied)
     // - modified_timestamp             (not varied)
+    // TODO: multiple different project types test
 
     // Forcibly reset the search index
     let resp = api.reset_search_index().await;
