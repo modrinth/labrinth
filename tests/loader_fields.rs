@@ -115,15 +115,6 @@ async fn creating_loader_fields() {
     // Cannot create a version with a loader field array that has fewer than the minimum elements
     // TODO: - Create project
     // - Create version
-    let version_data = get_public_version_creation_data(
-        alpha_project_id,
-        "1.0.0",
-        TestFile::build_random_jar(),
-        Some(|j: &mut serde_json::Value| {
-            let j: &mut serde_json::Map<String, serde_json::Value> = j.as_object_mut().unwrap();
-            j["game_versions"] = json!([]);
-        }),
-    );
     let resp: actix_web::dev::ServiceResponse =
     api.add_public_version(alpha_project_id,
         "1.0.0",
@@ -132,9 +123,9 @@ async fn creating_loader_fields() {
         Some(serde_json::from_value(json!([{
             "op": "add",
             "path": "/game_versions",
-            "value": gvs
+            "value": []
         }])).unwrap()), USER_USER_PAT).await;
-assert_eq!(resp.status(), 400);
+    assert_eq!(resp.status(), 400);
 
     // - Patch
     let resp = api
