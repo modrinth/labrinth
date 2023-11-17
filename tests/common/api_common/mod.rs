@@ -3,14 +3,15 @@ use std::collections::HashMap;
 use actix_web::dev::ServiceResponse;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use labrinth::{search::SearchResults, models::{teams::{ProjectPermissions, OrganizationPermissions}, projects::VersionType}, LabrinthConfig};
+use labrinth::{search::SearchResults, models::{teams::{ProjectPermissions, OrganizationPermissions}, projects::{VersionType, ProjectId}}, LabrinthConfig};
 use rust_decimal::Decimal;
 
 use self::models::{CommonProject, CommonImageData, CommonLoaderData, CommonCategoryData, CommonTeamMember, CommonNotification, CommonVersion};
 
+use super::dummy_data::TestFile;
+
 pub mod generic;
 pub mod models;
-
 #[async_trait(?Send)]
 pub trait ApiBuildable : Api {
     async fn build(labrinth_config: LabrinthConfig) -> Self;
@@ -24,6 +25,13 @@ pub trait Api: ApiProject + ApiTags + ApiTeams + ApiVersion {
 
 #[async_trait(?Send)]
 pub trait ApiProject {
+    async fn add_public_project(
+        &self,
+        slug : &str,
+        version_jar: Option<TestFile>,
+        modify_json: Option<json_patch::Patch>,
+        pat: &str,
+    ) -> (CommonProject, Vec<CommonVersion>);
     async fn remove_project(&self, id_or_slug: &str, pat: &str) -> ServiceResponse;
     async fn get_project(&self, id_or_slug: &str, pat: &str) -> ServiceResponse;
     async fn get_project_deserialized_common(&self, id_or_slug: &str, pat: &str) -> CommonProject;
@@ -66,8 +74,28 @@ pub trait ApiTeams {
 
 #[async_trait(?Send)]
 pub trait ApiVersion {
+    async fn add_public_version(
+        &self,
+        project_id: ProjectId,
+        version_number: &str,
+        version_jar: TestFile,
+        ordering: Option<i32>,
+        modify_json: Option<json_patch::Patch>,
+        pat: &str,
+    ) -> ServiceResponse;
+    async fn add_public_version_deserialized_common(
+        &self,
+        project_id: ProjectId,
+        version_number: &str,
+        version_jar: TestFile,
+        ordering: Option<i32>,
+        modify_json: Option<json_patch::Patch>,
+        pat: &str,
+    ) -> CommonVersion;
     async fn get_version(&self, id_or_slug: &str, pat: &str) -> ServiceResponse;
     async fn get_version_deserialized_common(&self, id_or_slug: &str, pat: &str) -> CommonVersion;
+    async fn get_versions(&self, ids_or_slugs: Vec<String>, pat: &str) -> ServiceResponse;
+    async fn get_versions_deserialized_common(&self, ids_or_slugs: Vec<String>, pat: &str) -> Vec<CommonVersion>;
     async fn edit_version(&self, id_or_slug: &str, patch: serde_json::Value, pat: &str) -> ServiceResponse;
     async fn get_version_from_hash(&self, id_or_slug: &str, hash: &str, pat: &str) -> ServiceResponse;
     async fn get_version_from_hash_deserialized_common(&self, id_or_slug: &str, hash: &str, pat: &str) -> CommonVersion;

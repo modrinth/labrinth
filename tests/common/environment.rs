@@ -34,23 +34,25 @@ where
     Fut: Future<Output = ()>,
     F: Fn(TestEnvironment<GenericApi>) -> Fut,
 {
+    println!("Test environment: API v3");
     let test_env_api_v3 = TestEnvironment::<ApiV3>::build(max_connections).await;
     let test_env_api_v3 = TestEnvironment {
         db: test_env_api_v3.db.clone(),
         api: GenericApi::V3(test_env_api_v3.api),
         setup_api: test_env_api_v3.setup_api,
-        dummy: None,
+        dummy: test_env_api_v3.dummy,
     };
     let db = test_env_api_v3.db.clone();
     f(test_env_api_v3).await;
     db.cleanup().await;
 
+    println!("Test environment: API v2");
     let test_env_api_v2 = TestEnvironment::<ApiV2>::build(max_connections).await;
     let test_env_api_v2 = TestEnvironment {
         db: test_env_api_v2.db.clone(),
         api: GenericApi::V2(test_env_api_v2.api),
         setup_api: test_env_api_v2.setup_api,
-        dummy: None,
+        dummy: test_env_api_v2.dummy,
     };
     let db = test_env_api_v2.db.clone();
     f(test_env_api_v2).await;

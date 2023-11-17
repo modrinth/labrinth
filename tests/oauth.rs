@@ -2,12 +2,12 @@ use actix_http::StatusCode;
 use actix_web::test::{self};
 use common::{
     api_v3::oauth::get_redirect_location_query_params,
-    api_v3::oauth::{get_auth_code_from_redirect_params, get_authorize_accept_flow_id},
+    api_v3::{oauth::{get_auth_code_from_redirect_params, get_authorize_accept_flow_id}, ApiV3},
     asserts::{assert_any_status_except, assert_status},
     database::FRIEND_USER_ID,
     database::{FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},
     dummy_data::DummyOAuthClientAlpha,
-    environment::{with_test_environment, with_test_environment_all},
+    environment::{with_test_environment, TestEnvironment},
 };
 use labrinth::auth::oauth::TokenResponse;
 use reqwest::header::{CACHE_CONTROL, PRAGMA};
@@ -16,7 +16,7 @@ mod common;
 
 #[actix_rt::test]
 async fn oauth_flow_happy_path() {
-    with_test_environment_all(None, |env| async move {
+    with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {
             valid_redirect_uri: base_redirect_uri,
             client_id,
@@ -78,7 +78,7 @@ async fn oauth_flow_happy_path() {
 
 #[actix_rt::test]
 async fn oauth_authorize_for_already_authorized_scopes_returns_auth_code() {
-    with_test_environment_all(None, |env| async move {
+    with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha { client_id, .. } = env.dummy.unwrap().oauth_client_alpha.clone();
 
         let resp = env
@@ -111,7 +111,7 @@ async fn oauth_authorize_for_already_authorized_scopes_returns_auth_code() {
 
 #[actix_rt::test]
 async fn get_oauth_token_with_already_used_auth_code_fails() {
-    with_test_environment_all(None, |env| async move {
+    with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {
             client_id,
             client_secret,
@@ -144,7 +144,7 @@ async fn get_oauth_token_with_already_used_auth_code_fails() {
 
 #[actix_rt::test]
 async fn authorize_with_broader_scopes_can_complete_flow() {
-    with_test_environment_all(None, |env| async move {
+    with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {
             client_id,
             client_secret,
@@ -193,7 +193,7 @@ async fn authorize_with_broader_scopes_can_complete_flow() {
 
 #[actix_rt::test]
 async fn oauth_authorize_with_broader_scopes_requires_user_accept() {
-    with_test_environment_all(None, |env| async move {
+    with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let client_id = env.dummy.unwrap().oauth_client_alpha.client_id.clone();
         let resp = env
             .api
@@ -221,7 +221,7 @@ async fn oauth_authorize_with_broader_scopes_requires_user_accept() {
 
 #[actix_rt::test]
 async fn reject_authorize_ends_authorize_flow() {
-    with_test_environment_all(None, |env| async move {
+    with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let client_id = env.dummy.unwrap().oauth_client_alpha.client_id.clone();
         let resp = env
             .api
@@ -240,7 +240,7 @@ async fn reject_authorize_ends_authorize_flow() {
 
 #[actix_rt::test]
 async fn accept_authorize_after_already_accepting_fails() {
-    with_test_environment_all(None, |env| async move {
+    with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let client_id = env.dummy.unwrap().oauth_client_alpha.client_id.clone();
         let resp = env
             .api
@@ -258,7 +258,7 @@ async fn accept_authorize_after_already_accepting_fails() {
 
 #[actix_rt::test]
 async fn revoke_authorization_after_issuing_token_revokes_token() {
-    with_test_environment_all(None, |env| async move {
+    with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {
             client_id,
             client_secret,
