@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use actix_web::dev::ServiceResponse;
 use async_trait::async_trait;
-use labrinth::{search::SearchResults, models::{teams::{ProjectPermissions, OrganizationPermissions}, projects::VersionType}};
+use labrinth::{search::SearchResults, models::{teams::{ProjectPermissions, OrganizationPermissions}, projects::{VersionType, ProjectId}}};
 
-use crate::common::{api_v2::ApiV2, api_v3::ApiV3};
+use crate::common::{api_v2::ApiV2, api_v3::ApiV3, dummy_data::TestFile};
 
 use super::{Api, ApiProject, ApiTags, ApiTeams, ApiVersion, models::{CommonProject, CommonImageData, CommonVersion}};
 
@@ -59,6 +59,7 @@ impl Api for GenericApi {
 delegate_api_variant!(
     #[async_trait(?Send)]
     impl ApiProject for GenericApi {
+        [add_public_project, (CommonProject, Vec<CommonVersion>), slug: &str, version_jar: Option<TestFile>, modify_json: Option<json_patch::Patch>, pat: &str],
         [remove_project, ServiceResponse, project_slug_or_id: &str, pat: &str],
         [get_project, ServiceResponse, id_or_slug: &str, pat: &str],
         [get_project_deserialized_common, CommonProject, id_or_slug: &str, pat: &str],
@@ -107,8 +108,12 @@ delegate_api_variant!(
 delegate_api_variant!(
     #[async_trait(?Send)]
     impl ApiVersion for GenericApi {
+        [add_public_version, ServiceResponse, project_id: ProjectId, version_number: &str, version_jar: TestFile, ordering: Option<i32>, modify_json: Option<json_patch::Patch>, pat: &str],
+        [add_public_version_deserialized_common, CommonVersion, project_id: ProjectId, version_number: &str, version_jar: TestFile, ordering: Option<i32>, modify_json: Option<json_patch::Patch>, pat: &str],
         [get_version, ServiceResponse, id_or_slug: &str, pat: &str],
         [get_version_deserialized_common, CommonVersion, id_or_slug: &str, pat: &str],
+        [get_versions, ServiceResponse, ids_or_slugs: Vec<String>, pat: &str],
+        [get_versions_deserialized_common, Vec<CommonVersion>, ids_or_slugs: Vec<String>, pat: &str],
         [edit_version, ServiceResponse, id_or_slug: &str, patch: serde_json::Value, pat: &str],
         [get_version_from_hash, ServiceResponse, id_or_slug: &str, hash: &str, pat: &str],
         [get_version_from_hash_deserialized_common, CommonVersion, id_or_slug: &str, hash: &str, pat: &str],

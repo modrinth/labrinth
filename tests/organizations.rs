@@ -7,7 +7,7 @@ use actix_web::test;
 use bytes::Bytes;
 use common::{
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
-    permissions::{PermissionsTest, PermissionsTestContext}, environment::with_test_environment_all, api_common::generic::GenericApi, 
+    permissions::{PermissionsTest, PermissionsTestContext}, environment::{with_test_environment_all, TestEnvironment, with_test_environment}, api_v3::ApiV3, 
 };
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
@@ -16,7 +16,7 @@ mod common;
 
 #[actix_rt::test]
 async fn create_organization() {
-    with_test_environment_all(None, |test_env| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
         let zeta_organization_slug = &test_env
             .dummy
@@ -83,7 +83,7 @@ async fn create_organization() {
 
 #[actix_rt::test]
 async fn patch_organization() {
-    with_test_environment_all(None, |test_env| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
         let zeta_organization_id = &test_env
@@ -164,7 +164,7 @@ async fn patch_organization() {
 // add/remove icon
 #[actix_rt::test]
 async fn add_remove_icon() {
-    with_test_environment_all(None, |test_env| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
         let zeta_organization_id = &test_env
             .dummy
@@ -215,7 +215,7 @@ async fn add_remove_icon() {
 // delete org
 #[actix_rt::test]
 async fn delete_org() {
-    with_test_environment_all(None, |test_env| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
         let zeta_organization_id = &test_env
             .dummy
@@ -240,7 +240,7 @@ async fn delete_org() {
 // add/remove organization projects
 #[actix_rt::test]
 async fn add_remove_organization_projects() {
-    with_test_environment_all(None, |test_env| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_project_slug: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
         let zeta_organization_id: &str = &test_env

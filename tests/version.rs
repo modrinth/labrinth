@@ -1,24 +1,20 @@
 use std::collections::HashMap;
 
 use actix_web::test;
+use common::api_v3::ApiV3;
+use common::asserts::assert_common_version_ids;
 use common::environment::{with_test_environment_all, with_test_environment};
 use futures::StreamExt;
 use labrinth::database::models::version_item::VERSIONS_NAMESPACE;
 use labrinth::models::ids::base62_impl::parse_base62;
-use labrinth::models::projects::{ProjectId, VersionId, VersionStatus, VersionType};
+use labrinth::models::projects::{VersionId, VersionStatus, VersionType};
 use labrinth::routes::v3::version_file::FileUpdateData;
 use serde_json::json;
-
 use crate::common::{asserts::assert_status, get_json_val_str};
 use actix_http::StatusCode;
-use common::{
-    asserts::assert_version_ids, database::USER_USER_PAT,
-};
-
+use common::database::USER_USER_PAT;
 use crate::common::api_common::ApiVersion;
-use crate::common::api_v3::request_data::get_public_version_creation_data;
 use crate::common::database::*;
-
 use crate::common::dummy_data::TestFile;
 
 // importing common module.
@@ -77,10 +73,11 @@ async fn test_get_version() {
 #[actix_rt::test]
 async fn version_updates() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env| async move {
+    with_test_environment(None, |test_env: common::environment::TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
         let alpha_project_id: &String = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
+        let alpha_project_id_parsed = test_env.dummy.as_ref().unwrap().project_alpha.project_id_parsed;
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
         let beta_version_id = &test_env.dummy.as_ref().unwrap().project_beta.version_id;
         let alpha_version_hash = &test_env.dummy.as_ref().unwrap().project_alpha.file_hash;
@@ -165,13 +162,12 @@ async fn version_updates() {
         {
             let version = api
                 .add_public_version_deserialized(
-                    get_public_version_creation_data(
-                        ProjectId(parse_base62(alpha_project_id).unwrap()),
+                        alpha_project_id_parsed,
                         version_number,
                         TestFile::build_random_jar(),
-                        None::<fn(&mut serde_json::Value)>,
-                    ),
-                    USER_USER_PAT,
+                        None,
+                        None,
+                        USER_USER_PAT,
                 )
                 .await;
             update_ids.push(version.id);
@@ -499,18 +495,25 @@ pub async fn test_project_versions() {
 #[actix_rt::test]
 async fn can_create_version_with_ordering() {
     with_test_environment_all(None, |env| async move {
-        let alpha_project_id = env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
+        let alpha_project_id_parsed = env.dummy.as_ref().unwrap().project_alpha.project_id_parsed.clone();
 
         let new_version_id = get_json_val_str(
             env.api
-                .create_default_version(&alpha_project_id, Some(1), USER_USER_PAT)
+                .add_public_version_deserialized_common(
+                    alpha_project_id_parsed,
+                    "1.2.3.4",
+                    TestFile::BasicMod,
+                    Some(1),
+                    None,
+                    USER_USER_PAT,
+                )
                 .await
                 .id,
         );
 
         let versions = env
             .api
-            .get_versions(vec![new_version_id.clone()], USER_USER_PAT)
+            .get_versions_deserialized_common(vec![new_version_id.clone()], USER_USER_PAT)
             .await;
         assert_eq!(versions[0].ordering, Some(1));
     })
@@ -530,7 +533,7 @@ async fn edit_version_ordering_works() {
 
         let versions = env
             .api
-            .get_versions(vec![alpha_version_id.clone()], USER_USER_PAT)
+            .get_versions_deserialized_common(vec![alpha_version_id.clone()], USER_USER_PAT)
             .await;
         assert_eq!(versions[0].ordering, Some(10));
     })
@@ -540,26 +543,33 @@ async fn edit_version_ordering_works() {
 #[actix_rt::test]
 async fn version_ordering_for_specified_orderings_orders_lower_order_first() {
     with_test_environment_all(None, |env| async move {
-        let alpha_project_id = env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
+        let alpha_project_id_parsed = env.dummy.as_ref().unwrap().project_alpha.project_id_parsed.clone();
         let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
         let new_version_id = get_json_val_str(
             env.api
-                .create_default_version(&alpha_project_id, Some(1), USER_USER_PAT)
-                .await
-                .id,
-        );
+            .add_public_version_deserialized_common(
+                alpha_project_id_parsed,
+                "1.2.3.4",
+                TestFile::BasicMod,
+                Some(1),
+                None,
+                USER_USER_PAT,
+            )
+            .await
+            .id,
+    );
         env.api
             .edit_version_ordering(&alpha_version_id, Some(10), USER_USER_PAT)
             .await;
 
         let versions = env
             .api
-            .get_versions(
+            .get_versions_deserialized_common(
                 vec![alpha_version_id.clone(), new_version_id.clone()],
                 USER_USER_PAT,
             )
             .await;
-        assert_version_ids(&versions, vec![new_version_id, alpha_version_id]);
+        assert_common_version_ids(&versions, vec![new_version_id, alpha_version_id]);
     })
     .await;
 }
@@ -567,23 +577,29 @@ async fn version_ordering_for_specified_orderings_orders_lower_order_first() {
 #[actix_rt::test]
 async fn version_ordering_when_unspecified_orders_oldest_first() {
     with_test_environment_all(None, |env| async move {
-        let alpha_project_id = &env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
-        let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
+        let alpha_project_id_parsed = env.dummy.as_ref().unwrap().project_alpha.project_id_parsed.clone();
+        let alpha_version_id: String = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
         let new_version_id = get_json_val_str(
-            env.api
-                .create_default_version(alpha_project_id, None, USER_USER_PAT)
-                .await
-                .id,
-        );
+            env.api.add_public_version_deserialized_common(
+                alpha_project_id_parsed,
+                "1.2.3.4",
+                TestFile::BasicMod,
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await
+            .id,
+    );
 
         let versions = env
             .api
-            .get_versions(
+            .get_versions_deserialized_common(
                 vec![alpha_version_id.clone(), new_version_id.clone()],
                 USER_USER_PAT,
             )
             .await;
-        assert_version_ids(&versions, vec![alpha_version_id, new_version_id]);
+        assert_common_version_ids(&versions, vec![alpha_version_id, new_version_id]);
     })
     .await
 }
@@ -591,26 +607,33 @@ async fn version_ordering_when_unspecified_orders_oldest_first() {
 #[actix_rt::test]
 async fn version_ordering_when_specified_orders_specified_before_unspecified() {
     with_test_environment_all(None, |env| async move {
-        let alpha_project_id = &env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
+        let alpha_project_id_parsed = env.dummy.as_ref().unwrap().project_alpha.project_id_parsed.clone();
         let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
         let new_version_id = get_json_val_str(
             env.api
-                .create_default_version(alpha_project_id, Some(10000), USER_USER_PAT)
-                .await
-                .id,
-        );
+            .add_public_version_deserialized_common(
+                alpha_project_id_parsed,
+                "1.2.3.4",
+                TestFile::BasicMod,
+                Some(1000),
+                None,
+                USER_USER_PAT,
+            )
+            .await
+            .id,
+    );
         env.api
             .edit_version_ordering(&alpha_version_id, None, USER_USER_PAT)
             .await;
 
         let versions = env
             .api
-            .get_versions(
+            .get_versions_deserialized_common(
                 vec![alpha_version_id.clone(), new_version_id.clone()],
                 USER_USER_PAT,
             )
             .await;
-        assert_version_ids(&versions, vec![new_version_id, alpha_version_id]);
+        assert_common_version_ids(&versions, vec![new_version_id, alpha_version_id]);
     })
     .await;
 }

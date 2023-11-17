@@ -7,9 +7,9 @@ use serde_json::json;
 use crate::common::{database::{generate_random_name, ADMIN_USER_PAT}, api_common::ApiTeams};
 
 use super::{
-    api_v3::{request_data, ApiV3},
+    api_v3::ApiV3,
     database::{ENEMY_USER_PAT, USER_USER_ID, USER_USER_PAT},
-    environment::TestEnvironment, api_common::Api,
+    environment::TestEnvironment, api_common::{Api, ApiProject},
 };
 
 // A reusable test type that works for any permissions test testing an endpoint that:
@@ -919,8 +919,7 @@ async fn create_dummy_project(setup_api: &ApiV3) -> (String, String) {
     // Create a very simple project
     let slug = generate_random_name("test_project");
 
-    let creation_data = request_data::get_public_project_creation_data(&slug, None);
-    let (project, _) = setup_api.add_public_project(creation_data, ADMIN_USER_PAT).await;
+    let (project, _) = setup_api.add_public_project(&slug, None, None, ADMIN_USER_PAT).await;
     let project_id = project.id.to_string();
     let team_id = project.team.to_string();
 

@@ -1,5 +1,5 @@
 use crate::common::{
-    api_v2::{request_data, ApiV2},
+    api_v2::ApiV2,
     database::{ENEMY_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, MOD_USER_PAT, USER_USER_PAT},
     dummy_data::{TestFile, DUMMY_CATEGORIES},
     permissions::{PermissionsTest, PermissionsTestContext}, api_common::ApiProject, environment::{with_test_environment, TestEnvironment},
@@ -19,20 +19,12 @@ async fn test_project_type_sanity() {
         let api = &test_env.api;
 
         // Perform all other patch tests on both 'mod' and 'modpack'
-        let test_creation_mod = request_data::get_public_project_creation_data(
-            "test-mod",
-            Some(TestFile::build_random_jar()),
-        );
-        let test_creation_modpack = request_data::get_public_project_creation_data(
-            "test-modpack",
-            Some(TestFile::build_random_mrpack()),
-        );
-        for (mod_or_modpack, test_creation_data) in [
-            ("mod", test_creation_mod),
-            ("modpack", test_creation_modpack),
+        for (mod_or_modpack, slug, file) in [
+            ("mod", "test-mod", TestFile::build_random_jar()),
+            ("modpack", "test-modpack", TestFile::build_random_mrpack()),
         ] {
             let (test_project, test_version) = api
-                .add_public_project(test_creation_data, USER_USER_PAT)
+                .add_public_project(slug, Some(file), None, USER_USER_PAT)
                 .await;
             let test_project_slug = test_project.slug.as_ref().unwrap();
 

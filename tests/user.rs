@@ -1,9 +1,8 @@
 use common::{
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},
-    environment::{with_test_environment, with_test_environment_all},
+    environment::with_test_environment_all,
 };
-
-use crate::common::{api_v3::request_data::get_public_project_creation_data, api_common::{ApiTeams, ApiProject}};
+use crate::common::api_common::{ApiTeams, ApiProject};
 use common::dummy_data::TestFile;
 
 mod common;
@@ -25,11 +24,7 @@ pub async fn get_user_projects_after_creating_project_returns_new_project() {
             .await;
 
         let (project, _) = api
-            .add_public_project(
-                get_public_project_creation_data("slug", Some(TestFile::BasicMod)),
-                USER_USER_PAT,
-            )
-            .await;
+            .add_public_project("slug", Some(TestFile::BasicMod), None, USER_USER_PAT).await;
 
         let resp_projects = api
             .get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
@@ -45,10 +40,7 @@ pub async fn get_user_projects_after_deleting_project_shows_removal() {
         let api = test_env.api;
         let (project, _) = api
             .add_public_project(
-                get_public_project_creation_data("iota", Some(TestFile::BasicMod)),
-                USER_USER_PAT,
-            )
-            .await;
+                "iota", Some(TestFile::BasicMod), None, USER_USER_PAT).await;
         api.get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
             .await;
 

@@ -237,7 +237,8 @@ pub struct LegacyVersion {
     /// A list of loaders this project supports (has a newtype struct)
     pub loaders: Vec<Loader>,
 
-    // TODO: remove this once we have v3 testing, as this is a v3 field and tests for it should be isolated to v3
+    // TODO: should we remove this? as this is a v3 field and tests for it should be isolated to v3
+    // it allows us to keep tests that use this struct in common
     pub ordering: Option<i32>,
 
     pub id: VersionId,

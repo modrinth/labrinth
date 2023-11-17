@@ -9,26 +9,35 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
-    models::v3::projects::{Project, Version},
     search::SearchResults,
     util::actix::AppendsMultipart,
 };
 use rust_decimal::Decimal;
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, database::MOD_USER_PAT, api_common::{ApiProject, models::{CommonProject, CommonImageData}, Api}};
+use crate::common::{asserts::assert_status, database::MOD_USER_PAT, api_common::{ApiProject, models::{CommonProject, CommonImageData, CommonVersion}, Api}, dummy_data::TestFile};
 
 use super::{
-    request_data::ProjectCreationRequestData,
+    request_data::get_public_project_creation_data,
     ApiV3,
 };
 
-impl ApiV3 {
-    pub async fn add_public_project(
+#[async_trait(?Send)]
+impl ApiProject for ApiV3 {
+    async fn add_public_project(
         &self,
-        creation_data: ProjectCreationRequestData,
+        slug : &str,
+        version_jar: Option<TestFile>,
+        modify_json: Option<json_patch::Patch>,
         pat: &str,
-    ) -> (Project, Vec<Version>) {
+    ) -> (CommonProject, Vec<CommonVersion>) {
+
+        let creation_data = get_public_project_creation_data(
+            slug,
+            version_jar,
+            modify_json,
+        );
+
         // Add a project.
         let req = TestRequest::post()
             .uri("/v3/project")
@@ -62,14 +71,11 @@ impl ApiV3 {
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
-        let versions: Vec<Version> = test::read_body_json(resp).await;
+        let versions: Vec<CommonVersion> = test::read_body_json(resp).await;
 
         (project, versions)
     }
-}
 
-#[async_trait(?Send)]
-impl ApiProject for ApiV3 {
     async fn remove_project(&self, project_slug_or_id: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v3/project/{project_slug_or_id}"))

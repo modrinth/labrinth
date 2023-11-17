@@ -1,4 +1,4 @@
-use crate::common::{api_v2::request_data::ProjectCreationRequestData, api_common::{ApiProject, models::{CommonImageData, CommonProject, CommonVersion}, Api}};
+use crate::common::{api_common::{ApiProject, models::{CommonImageData, CommonProject, CommonVersion}, Api}, dummy_data::TestFile};
 use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
@@ -17,14 +17,42 @@ use std::collections::HashMap;
 
 use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
 
-use super::ApiV2;
+use super::{ApiV2, request_data::get_public_project_creation_data};
 
 impl ApiV2 {
-    pub async fn add_public_project(
+    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> LegacyProject {
+        let resp = self.get_project(id_or_slug, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
+    pub async fn get_user_projects_deserialized(
         &self,
-        creation_data: ProjectCreationRequestData,
+        user_id_or_username: &str,
+        pat: &str,
+    ) -> Vec<LegacyProject> {
+        let resp = self.get_user_projects(user_id_or_username, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+}
+
+#[async_trait(?Send)]
+impl ApiProject for ApiV2 {
+    async fn add_public_project(
+        &self,
+        slug : &str,
+        version_jar: Option<TestFile>,
+        modify_json: Option<json_patch::Patch>,
         pat: &str,
     ) -> (CommonProject, Vec<CommonVersion>) {
+
+        let creation_data = get_public_project_creation_data(
+            slug,
+            version_jar,
+            modify_json,
+        );
+
         // Add a project.
         let req = TestRequest::post()
             .uri("/v2/project")
@@ -62,27 +90,6 @@ impl ApiV2 {
         (project, versions)
     }
 
-    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> LegacyProject {
-        let resp = self.get_project(id_or_slug, pat).await;
-        assert_eq!(resp.status(), 200);
-        test::read_body_json(resp).await
-    }
-
-    pub async fn get_user_projects_deserialized(
-        &self,
-        user_id_or_username: &str,
-        pat: &str,
-    ) -> Vec<LegacyProject> {
-        let resp = self.get_user_projects(user_id_or_username, pat).await;
-        assert_eq!(resp.status(), 200);
-        test::read_body_json(resp).await
-    }
-
-
-}
-
-#[async_trait(?Send)]
-impl ApiProject for ApiV2 {
     async fn remove_project(&self, project_slug_or_id: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v2/project/{project_slug_or_id}"))

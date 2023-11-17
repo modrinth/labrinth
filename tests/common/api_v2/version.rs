@@ -7,15 +7,13 @@ use actix_web::{
 };
 use async_trait::async_trait;
 use labrinth::{
-    models::{projects::VersionType, v2::projects::LegacyVersion},
+    models::{projects::{VersionType, ProjectId}, v2::projects::LegacyVersion},
     routes::v2::version_file::FileUpdateData,
     util::actix::AppendsMultipart,
 };
 use serde_json::json;
-
-use crate::common::{asserts::assert_status, api_common::{ApiVersion, models::CommonVersion, Api}};
-
-use super::{request_data::VersionCreationRequestData, ApiV2};
+use crate::common::{asserts::assert_status, api_common::{ApiVersion, models::CommonVersion, Api}, dummy_data::TestFile};
+use super::{request_data::get_public_version_creation_data, ApiV2};
 
 pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
     let serialized = serde_json::to_string(&elements).unwrap();
@@ -23,39 +21,6 @@ pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
 }
 
 impl ApiV2 {
-    pub async fn add_public_version(
-        &self,
-        creation_data: VersionCreationRequestData,
-        pat: &str,
-    ) -> LegacyVersion {
-        // Add a project.
-        let req = TestRequest::post()
-            .uri("/v2/version")
-            .append_header(("Authorization", pat))
-            .set_multipart(creation_data.segment_data)
-            .to_request();
-        let resp = self.call(req).await;
-        assert_status(&resp, StatusCode::OK);
-        let value: serde_json::Value = test::read_body_json(resp).await;
-        let version_id = value["id"].as_str().unwrap();
-
-        // // Approve as a moderator.
-        // let req = TestRequest::patch()
-        //     .uri(&format!("/v2/project/{}", creation_data.slug))
-        //     .append_header(("Authorization", MOD_USER_PAT))
-        //     .set_json(json!(
-        //         {
-        //             "status": "approved"
-        //         }
-        //     ))
-        //     .to_request();
-        // let resp = self.call(req).await;
-        // assert_status(resp, StatusCode::NO_CONTENT);
-
-        let version = self.get_version(version_id, pat).await;
-        assert_status(&version, StatusCode::OK);
-        test::read_body_json(version).await
-    }
 
     pub async fn get_version_deserialized(&self, id: &str, pat: &str) -> LegacyVersion {
         let resp = self.get_version(id, pat).await;
@@ -115,7 +80,50 @@ impl ApiV2 {
 }
 
 #[async_trait(?Send)]
-impl ApiVersion for ApiV2{
+impl ApiVersion for ApiV2 {
+    async fn add_public_version(
+        &self,
+        project_id: ProjectId,
+        version_number: &str,
+        version_jar: TestFile,
+        ordering: Option<i32>,
+        modify_json: Option<json_patch::Patch>,
+        pat: &str,
+    ) -> ServiceResponse {
+
+        let creation_data = get_public_version_creation_data(
+            project_id,
+            version_number,
+            version_jar,
+            ordering,
+            modify_json,
+        );
+
+        // Add a project.
+        let req = TestRequest::post()
+            .uri("/v2/version")
+            .append_header(("Authorization", pat))
+            .set_multipart(creation_data.segment_data)
+            .to_request();
+        self.call(req).await
+    }
+
+    async fn add_public_version_deserialized_common(
+        &self,
+        project_id: ProjectId,
+        version_number: &str,
+        version_jar: TestFile,
+        ordering: Option<i32>,
+        modify_json: Option<json_patch::Patch>,
+        pat: &str,
+    ) -> CommonVersion {
+        let resp = self
+            .add_public_version(project_id, version_number, version_jar, ordering, modify_json, pat)
+            .await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
     async fn get_version(&self, id: &str, pat: &str) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!("/v2/version/{id}"))
@@ -378,65 +386,24 @@ impl ApiVersion for ApiV2{
             .to_request();
         self.call(request).await
     }
-}
 
-impl ApiV2 {
-    // TODO: remove redundancy in these functions- these are essentially repeat functions and are probably not necessary
-    async fn create_default_version(
-        &self,
-        project_id: &str,
-        ordering: Option<i32>,
-        pat: &str,
-    ) -> CommonVersion {
-        let json_data = json!(
-                {
-                    "project_id": project_id,
-                    "file_parts": ["basic-mod-different.jar"],
-                    "version_number": "1.2.3.4",
-                    "version_title": "start",
-                    "dependencies": [],
-                    "game_versions": ["1.20.1"] ,
-                    "release_channel": "release",
-                    "loaders": ["fabric"],
-                    "featured": true,
-                    "ordering": ordering,
-                }
-        );
-        let json_segment = labrinth::util::actix::MultipartSegment {
-            name: "data".to_string(),
-            filename: None,
-            content_type: Some("application/json".to_string()),
-            data: labrinth::util::actix::MultipartSegmentData::Text(
-                serde_json::to_string(&json_data).unwrap(),
-            ),
-        };
-        let file_segment = labrinth::util::actix::MultipartSegment {
-            name: "basic-mod-different.jar".to_string(),
-            filename: Some("basic-mod.jar".to_string()),
-            content_type: Some("application/java-archive".to_string()),
-            data: labrinth::util::actix::MultipartSegmentData::Binary(
-                include_bytes!("../../../tests/files/basic-mod-different.jar").to_vec(),
-            ),
-        };
-
-        let request = test::TestRequest::post()
-            .uri("/v2/version")
-            .set_multipart(vec![json_segment.clone(), file_segment.clone()])
-            .append_header((AUTHORIZATION, pat))
-            .to_request();
-        let resp = self.call(request).await;
-        assert_status(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
-    }
-
-    async fn get_versions_common(&self, version_ids: Vec<String>, pat: &str) -> Vec<LegacyVersion> {
+    async fn get_versions(&self, version_ids: Vec<String>, pat: &str) -> ServiceResponse {
         let ids = url_encode_json_serialized_vec(&version_ids);
         let request = test::TestRequest::get()
             .uri(&format!("/v2/versions?ids={}", ids))
             .append_header((AUTHORIZATION, pat))
             .to_request();
-        let resp = self.call(request).await;
+        self.call(request).await
+    }
+
+    async fn get_versions_deserialized_common(
+        &self,
+        version_ids: Vec<String>,
+        pat: &str,
+    ) -> Vec<CommonVersion> {
+        let resp = self.get_versions(version_ids, pat).await;
         assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
-    }    
+    }
+
 }
