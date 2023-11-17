@@ -155,9 +155,7 @@ impl User {
             &mut redis
                 .multi_get::<i64>(
                     USER_USERNAMES_NAMESPACE,
-                    users_strings
-                        .iter()
-                        .map(|x| x.to_string().to_lowercase()),
+                    users_strings.iter().map(|x| x.to_string().to_lowercase()),
                 )
                 .await?
                 .into_iter()
@@ -167,10 +165,7 @@ impl User {
 
         if !user_ids.is_empty() {
             let users = redis
-                .multi_get::<String>(
-                    USERS_NAMESPACE,
-                    user_ids.iter().map(|x| x.to_string()),
-                )
+                .multi_get::<String>(USERS_NAMESPACE, user_ids.iter().map(|x| x.to_string()))
                 .await?;
             for user in users {
                 if let Some(user) = user.and_then(|x| serde_json::from_str::<User>(&x).ok()) {

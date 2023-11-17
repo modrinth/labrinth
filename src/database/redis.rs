@@ -124,8 +124,8 @@ impl RedisConnection {
         &mut self,
         namespace: &str,
         ids: impl IntoIterator<Item = impl Display>,
-    ) -> Result<Vec<Option<R>>, DatabaseError> 
-    where 
+    ) -> Result<Vec<Option<R>>, DatabaseError>
+    where
         R: for<'a> serde::Deserialize<'a>,
     {
         let mut cmd = cmd("MGET");
@@ -137,7 +137,8 @@ impl RedisConnection {
                 .collect_vec(),
         );
         let res: Vec<Option<String>> = redis_execute(&mut cmd, &mut self.connection).await?;
-        Ok(res.into_iter()
+        Ok(res
+            .into_iter()
             .map(|x| x.and_then(|x| serde_json::from_str(&x).ok()))
             .collect())
     }

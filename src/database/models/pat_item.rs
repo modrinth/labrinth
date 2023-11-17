@@ -120,10 +120,7 @@ impl PersonalAccessToken {
 
         if !pat_ids.is_empty() {
             let pats = redis
-                .multi_get::<String>(
-                    PATS_NAMESPACE,
-                    pat_ids.iter().map(|x| x.to_string()),
-                )
+                .multi_get::<String>(PATS_NAMESPACE, pat_ids.iter().map(|x| x.to_string()))
                 .await?;
             for pat in pats {
                 if let Some(pat) =

@@ -530,9 +530,7 @@ impl Project {
             &mut redis
                 .multi_get::<i64>(
                     PROJECTS_SLUGS_NAMESPACE,
-                    project_strings
-                        .iter()
-                        .map(|x| x.to_string().to_lowercase()),
+                    project_strings.iter().map(|x| x.to_string().to_lowercase()),
                 )
                 .await?
                 .into_iter()

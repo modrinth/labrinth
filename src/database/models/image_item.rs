@@ -192,10 +192,7 @@ impl Image {
 
         if !image_ids.is_empty() {
             let images = redis
-                .multi_get::<String>(
-                    IMAGES_NAMESPACE,
-                    image_ids.iter().map(|x| x.to_string()),
-                )
+                .multi_get::<String>(IMAGES_NAMESPACE, image_ids.iter().map(|x| x.to_string()))
                 .await?;
             for image in images {
                 if let Some(image) = image.and_then(|x| serde_json::from_str::<Image>(&x).ok()) {
