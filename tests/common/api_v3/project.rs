@@ -1,4 +1,5 @@
-use crate::common::api_v2::request_data::ProjectCreationRequestData;
+use std::collections::HashMap;
+
 use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
@@ -7,34 +8,29 @@ use actix_web::{
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
-    models::v2::projects::{LegacyProject, LegacyVersion},
+    models::v3::projects::{Project, Version},
     search::SearchResults,
     util::actix::AppendsMultipart,
 };
 use rust_decimal::Decimal;
 use serde_json::json;
-use std::collections::HashMap;
 
 use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
 
-use super::{request_data::get_public_project_creation_data, ImageData, ApiV2};
+use super::{
+    request_data::{ImageData, ProjectCreationRequestData},
+    ApiV3,
+};
 
-impl ApiV2 {
-    pub async fn add_default_org_project(&self, org_id: &str, pat: &str) -> LegacyProject {
-        let project_create_data =
-            get_public_project_creation_data("thisisaslug", None, Some(org_id));
-        let (project, _) = self.add_public_project(project_create_data, pat).await;
-        project
-    }
-
+impl ApiV3 {
     pub async fn add_public_project(
         &self,
         creation_data: ProjectCreationRequestData,
         pat: &str,
-    ) -> (LegacyProject, Vec<LegacyVersion>) {
+    ) -> (Project, Vec<Version>) {
         // Add a project.
         let req = TestRequest::post()
-            .uri("/v2/project")
+            .uri("/v3/project")
             .append_header(("Authorization", pat))
             .set_multipart(creation_data.segment_data)
             .to_request();
@@ -43,7 +39,7 @@ impl ApiV2 {
 
         // Approve as a moderator.
         let req = TestRequest::patch()
-            .uri(&format!("/v2/project/{}", creation_data.slug))
+            .uri(&format!("/v3/project/{}", creation_data.slug))
             .append_header(("Authorization", MOD_USER_PAT))
             .set_json(json!(
                 {
@@ -60,18 +56,18 @@ impl ApiV2 {
 
         // Get project's versions
         let req = TestRequest::get()
-            .uri(&format!("/v2/project/{}/version", creation_data.slug))
+            .uri(&format!("/v3/project/{}/version", creation_data.slug))
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
-        let versions: Vec<LegacyVersion> = test::read_body_json(resp).await;
+        let versions: Vec<Version> = test::read_body_json(resp).await;
 
         (project, versions)
     }
 
     pub async fn remove_project(&self, project_slug_or_id: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::delete()
-            .uri(&format!("/v2/project/{project_slug_or_id}"))
+            .uri(&format!("/v3/project/{project_slug_or_id}"))
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
@@ -81,12 +77,12 @@ impl ApiV2 {
 
     pub async fn get_project(&self, id_or_slug: &str, pat: &str) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v2/project/{id_or_slug}"))
+            .uri(&format!("/v3/project/{id_or_slug}"))
             .append_header(("Authorization", pat))
             .to_request();
         self.call(req).await
     }
-    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> LegacyProject {
+    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {
         let resp = self.get_project(id_or_slug, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
@@ -94,7 +90,7 @@ impl ApiV2 {
 
     pub async fn get_user_projects(&self, user_id_or_username: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::get()
-            .uri(&format!("/v2/user/{}/projects", user_id_or_username))
+            .uri(&format!("/v3/user/{}/projects", user_id_or_username))
             .append_header(("Authorization", pat))
             .to_request();
         self.call(req).await
@@ -104,7 +100,7 @@ impl ApiV2 {
         &self,
         user_id_or_username: &str,
         pat: &str,
-    ) -> Vec<LegacyProject> {
+    ) -> Vec<Project> {
         let resp = self.get_user_projects(user_id_or_username, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
@@ -117,7 +113,7 @@ impl ApiV2 {
         pat: &str,
     ) -> ServiceResponse {
         let req = test::TestRequest::patch()
-            .uri(&format!("/v2/project/{id_or_slug}"))
+            .uri(&format!("/v3/project/{id_or_slug}"))
             .append_header(("Authorization", pat))
             .set_json(patch)
             .to_request();
@@ -138,7 +134,7 @@ impl ApiV2 {
             .join(",");
         let req = test::TestRequest::patch()
             .uri(&format!(
-                "/v2/projects?ids={encoded}",
+                "/v3/projects?ids={encoded}",
                 encoded = urlencoding::encode(&format!("[{projects_str}]"))
             ))
             .append_header(("Authorization", pat))
@@ -158,7 +154,7 @@ impl ApiV2 {
             // If an icon is provided, upload it
             let req = test::TestRequest::patch()
                 .uri(&format!(
-                    "/v2/project/{id_or_slug}/icon?ext={ext}",
+                    "/v3/project/{id_or_slug}/icon?ext={ext}",
                     ext = icon.extension
                 ))
                 .append_header(("Authorization", pat))
@@ -169,7 +165,7 @@ impl ApiV2 {
         } else {
             // If no icon is provided, delete the icon
             let req = test::TestRequest::delete()
-                .uri(&format!("/v2/project/{id_or_slug}/icon"))
+                .uri(&format!("/v3/project/{id_or_slug}/icon"))
                 .append_header(("Authorization", pat))
                 .to_request();
 
@@ -196,7 +192,7 @@ impl ApiV2 {
         };
 
         let req = test::TestRequest::get()
-            .uri(&format!("/v2/search?{}{}", query_field, facets_field))
+            .uri(&format!("/v3/search?{}{}", query_field, facets_field))
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
@@ -235,7 +231,7 @@ impl ApiV2 {
 
         let req = test::TestRequest::get()
             .uri(&format!(
-                "/v2/analytics/revenue?{projects_string}{extra_args}",
+                "/v3/analytics/revenue?{projects_string}{extra_args}",
             ))
             .append_header(("Authorization", pat))
             .to_request();

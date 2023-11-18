@@ -45,7 +45,7 @@ use database::models::creator_follows::UserFollow as DBUserFollow;
 use database::models::event_item::Event as DBEvent;
 use database::models::user_item::User as DBUser;
 
-use super::ApiError;
+use super::{oauth_clients::get_user_clients, ApiError};
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("user", web::get().to(user_auth_get));
@@ -66,6 +66,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("{id}/payouts", web::get().to(user_payouts))
             .route("{id}/payouts_fees", web::get().to(user_payouts_fees))
             .route("{id}/payouts", web::post().to(user_payouts_request))
+            .route("{id}/oauth_apps", web::get().to(get_user_clients))
             .route("{id}/follow", web::post().to(user_follow))
             .route("{id}/follow", web::delete().to(user_unfollow)),
     );
