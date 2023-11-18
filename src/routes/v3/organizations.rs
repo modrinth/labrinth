@@ -4,6 +4,7 @@ use std::sync::Arc;
 use super::ApiError;
 use crate::auth::{filter_authorized_projects, get_user_from_headers};
 use crate::database::models::team_item::TeamMember;
+use crate::database::models::DatabaseError;
 use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -17,6 +18,8 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
 use actix_web::{web, HttpRequest, HttpResponse};
+use database::models::creator_follows::OrganizationFollow as DBOrganizationFollow;
+use database::models::organization_item::Organization as DBOrganization;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -41,7 +44,9 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "{id}/members",
                 web::get().to(super::teams::team_members_get_organization),
-            ),
+            )
+            .route("{id}/follow", web::post().to(organization_follow))
+            .route("{id}/follow", web::delete().to(organization_unfollow)),
     );
 }
 
@@ -84,7 +89,7 @@ pub async fn organization_projects_get(
     let projects_data =
         crate::database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
 
-    let projects = filter_authorized_projects(projects_data, &current_user, &pool).await?;
+    let projects = filter_authorized_projects(projects_data, current_user.as_ref(), &pool).await?;
     Ok(HttpResponse::Ok().json(projects))
 }
 
@@ -915,6 +920,74 @@ pub async fn delete_organization_icon(
     .await?;
 
     transaction.commit().await?;
+
+    Ok(HttpResponse::NoContent().body(""))
+}
+
+pub async fn organization_follow(
+    req: HttpRequest,
+    target_id: web::Path<String>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let (_, current_user) = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_WRITE]),
+    )
+    .await?;
+
+    let target = DBOrganization::get(&target_id, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified organization does not exist!".to_string())
+        })?;
+
+    DBOrganizationFollow {
+        follower_id: current_user.id.into(),
+        target_id: target.id,
+    }
+    .insert(&**pool)
+    .await
+    .map_err(|e| match e {
+        DatabaseError::Database(e)
+            if e.as_database_error()
+                .is_some_and(|e| e.is_unique_violation()) =>
+        {
+            ApiError::InvalidInput("You are already following this organization!".to_string())
+        }
+        e => e.into(),
+    })?;
+
+    Ok(HttpResponse::NoContent().body(""))
+}
+
+pub async fn organization_unfollow(
+    req: HttpRequest,
+    target_id: web::Path<String>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let (_, current_user) = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_WRITE]),
+    )
+    .await?;
+
+    let target = DBOrganization::get(&target_id, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified organization does not exist!".to_string())
+        })?;
+
+    DBOrganizationFollow::unfollow(current_user.id.into(), target.id, &**pool).await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }

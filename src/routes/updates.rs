@@ -73,7 +73,7 @@ pub async fn forge_updates(
             .into_iter()
             .filter(|x| x.loaders.iter().any(loaders))
             .collect(),
-        &user_option,
+        user_option.as_ref(),
         &pool,
     )
     .await?;

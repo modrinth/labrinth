@@ -7,10 +7,14 @@ use crate::common::{
 use actix_web::test;
 use bytes::Bytes;
 use common::{
+    api_v3::request_data::get_public_project_creation_data,
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
     permissions::{PermissionsTest, PermissionsTestContext},
 };
-use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
+use labrinth::{
+    models::teams::{OrganizationPermissions, ProjectPermissions},
+    util::actix::AppendsMultipart,
+};
 use serde_json::json;
 
 mod common;
@@ -285,6 +289,75 @@ async fn add_remove_organization_projects() {
             .await;
         assert!(projects.is_empty());
     }
+
+    test_env.cleanup().await;
+}
+
+#[actix_rt::test]
+async fn create_project_in_organization() {
+    let test_env = TestEnvironment::build(None).await;
+    let zeta_organization_id: &str = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .organization_zeta
+        .organization_id;
+
+    // Create project in organization
+    let resp = test_env
+        .v2
+        .add_default_org_project(zeta_organization_id, USER_USER_PAT)
+        .await;
+
+    // Get project
+    let project = test_env
+        .v2
+        .get_project_deserialized(&resp.id.to_string(), USER_USER_PAT)
+        .await;
+
+    // Ensure organization id is correectly set in both returned project and
+    // fetched project.
+    assert_eq!(resp.organization.unwrap().to_string(), zeta_organization_id);
+    assert_eq!(
+        project.organization.unwrap().to_string(),
+        zeta_organization_id
+    );
+
+    test_env.cleanup().await;
+}
+
+#[actix_rt::test]
+async fn permissions_create_project_in_organization() {
+    let test_env = TestEnvironment::build(None).await;
+
+    let zeta_organization_id = &test_env
+        .dummy
+        .as_ref()
+        .unwrap()
+        .organization_zeta
+        .organization_id;
+    let zeta_team_id = &test_env.dummy.as_ref().unwrap().organization_zeta.team_id;
+
+    // Requires ADD_PROJECT to create project in org
+    let add_project = OrganizationPermissions::ADD_PROJECT;
+
+    let req_gen = |ctx: &PermissionsTestContext| {
+        let multipart = get_public_project_creation_data(
+            &generate_random_name("randomslug"),
+            None,
+            Some(ctx.organization_id.unwrap()),
+        )
+        .segment_data;
+        test::TestRequest::post()
+            .uri("/v2/project")
+            .set_multipart(multipart)
+    };
+    PermissionsTest::new(&test_env)
+        .with_existing_organization(zeta_organization_id, zeta_team_id)
+        .with_user(FRIEND_USER_ID, FRIEND_USER_PAT, true)
+        .simple_organization_permissions_test(add_project, req_gen)
+        .await
+        .unwrap();
 
     test_env.cleanup().await;
 }

@@ -49,7 +49,9 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(threads::config)
             .configure(users::config)
             .configure(version_file::config)
-            .configure(versions::config),
+            .configure(versions::config)
+            .configure(users::config)
+            .configure(organizations::config),
     );
 }
 

@@ -1,7 +1,6 @@
 use crate::database::models::version_item;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models;
 use crate::models::ids::ImageId;
 use crate::models::projects::{DonationLink, Loader, Project, ProjectStatus, SideType};
 use crate::models::v2::projects::LegacyProject;
@@ -130,7 +129,7 @@ struct ProjectCreateData {
     pub uploaded_images: Vec<ImageId>,
 
     /// The id of the organization to create the project in
-    pub organization_id: Option<models::ids::OrganizationId>,
+    pub organization_id: Option<crate::models::ids::OrganizationId>,
 }
 
 #[post("project")]

@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 pub use super::collections::CollectionId;
+pub use super::feeds::FeedItemId;
 pub use super::images::ImageId;
 pub use super::notifications::NotificationId;
 pub use super::oauth_clients::OAuthClientAuthorizationId;
@@ -127,6 +128,7 @@ base62_id_impl!(ImageId, ImageId);
 base62_id_impl!(OAuthClientId, OAuthClientId);
 base62_id_impl!(OAuthRedirectUriId, OAuthRedirectUriId);
 base62_id_impl!(OAuthClientAuthorizationId, OAuthClientAuthorizationId);
+base62_id_impl!(FeedItemId, FeedItemId);
 
 pub mod base62_impl {
     use serde::de::{self, Deserializer, Visitor};

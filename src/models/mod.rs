@@ -4,6 +4,7 @@ pub mod v3;
 pub use v3::analytics;
 pub use v3::collections;
 pub use v3::error;
+pub use v3::feeds;
 pub use v3::ids;
 pub use v3::images;
 pub use v3::notifications;

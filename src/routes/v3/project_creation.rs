@@ -12,7 +12,7 @@ use crate::models::pats::Scopes;
 use crate::models::projects::{
     DonationLink, License, MonetizationStatus, ProjectId, ProjectStatus, VersionId, VersionStatus,
 };
-use crate::models::teams::ProjectPermissions;
+use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
@@ -442,6 +442,29 @@ async fn project_create_inner(
 
             if results.exists.unwrap_or(false) {
                 return Err(CreateError::SlugCollision);
+            }
+        }
+
+        // If organization_id is set, make sure the user is a member of the organization
+        if let Some(organization_id) = create_data.organization_id {
+            let organization_team_member =
+                models::team_item::TeamMember::get_from_user_id_organization(
+                    organization_id.into(),
+                    current_user.id.into(),
+                    &mut **transaction,
+                )
+                .await?;
+
+            let permissions = OrganizationPermissions::get_permissions_by_role(
+                &current_user.role,
+                &organization_team_member,
+            )
+            .unwrap_or_default();
+
+            if !permissions.contains(OrganizationPermissions::ADD_PROJECT) {
+                return Err(CreateError::CustomAuthenticationError(
+                    "You do not have permission to add projects to this organization!".to_string(),
+                ));
             }
         }
 

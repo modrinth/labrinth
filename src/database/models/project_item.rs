@@ -285,14 +285,16 @@ impl Project {
                 published, downloads, icon_url, issues_url,
                 source_url, wiki_url, status, requested_status, discord_url,
                 license_url, license,
-                slug, color, monetization_status
+                slug, color, monetization_status,
+                organization_id
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8, $9,
                 $10, $11, $12, $13, $14,
                 $15, $16, 
-                LOWER($17), $18, $19
+                LOWER($17), $18, $19,
+                $20
             )
             ",
             self.id as ProjectId,
@@ -314,6 +316,7 @@ impl Project {
             self.slug.as_ref(),
             self.color.map(|x| x as i32),
             self.monetization_status.as_str(),
+            self.organization_id.map(|x| x.0),
         )
         .execute(&mut **transaction)
         .await?;
@@ -330,16 +333,6 @@ impl Project {
 
         if let Some(project) = project {
             Project::clear_cache(id, project.inner.slug, Some(true), redis).await?;
-
-            sqlx::query!(
-                "
-                DELETE FROM mod_follows
-                WHERE mod_id = $1
-                ",
-                id as ProjectId
-            )
-            .execute(&mut **transaction)
-            .await?;
 
             sqlx::query!(
                 "

@@ -79,7 +79,7 @@ pub async fn is_authorized(
 
 pub async fn filter_authorized_projects(
     projects: Vec<QueryProject>,
-    user_option: &Option<User>,
+    user_option: Option<&User>,
     pool: &web::Data<PgPool>,
 ) -> Result<Vec<crate::models::projects::Project>, ApiError> {
     let mut return_projects = Vec::new();
@@ -87,10 +87,7 @@ pub async fn filter_authorized_projects(
 
     for project in projects {
         if !project.inner.status.is_hidden()
-            || user_option
-                .as_ref()
-                .map(|x| x.role.is_mod())
-                .unwrap_or(false)
+            || user_option.map(|x| x.role.is_mod()).unwrap_or(false)
         {
             return_projects.push(project.into());
         } else if user_option.is_some() {
@@ -194,7 +191,7 @@ impl ValidateAuthorized for crate::database::models::OAuthClient {
 
 pub async fn filter_authorized_versions(
     versions: Vec<QueryVersion>,
-    user_option: &Option<User>,
+    user_option: Option<&User>,
     pool: &web::Data<PgPool>,
 ) -> Result<Vec<crate::models::projects::Version>, ApiError> {
     let mut return_versions = Vec::new();
