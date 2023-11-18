@@ -84,20 +84,27 @@ pub struct LoaderData {
     pub name: String,
     pub supported_project_types: Vec<String>,
     pub supported_games: Vec<String>,
+    pub supported_fields: Vec<String>, // Available loader fields for this loader
 }
 
 pub async fn loader_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let mut results = Loader::list(&**pool, &redis)
-        .await?
+    let loaders = Loader::list(&**pool, &redis)
+        .await?;
+
+    let loader_fields = LoaderField::get_fields_per_loader(&loaders.iter().map(|x| x.id).collect_vec(), &**pool, &redis)
+        .await?;
+    
+    let mut results = loaders
         .into_iter()
         .map(|x| LoaderData {
             icon: x.icon,
             name: x.loader,
             supported_project_types: x.supported_project_types,
             supported_games: x.supported_games,
+            supported_fields: loader_fields.get(&x.id).map(|x| x.iter().map(|x| x.field.clone()).collect_vec()).unwrap_or_default()
         })
         .collect::<Vec<_>>();
 

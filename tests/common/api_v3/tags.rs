@@ -3,8 +3,8 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use async_trait::async_trait;
+use labrinth::routes::v3::tags::{GameData, LoaderData};
 use labrinth::database::models::loader_fields::LoaderFieldEnumValue;
-use labrinth::routes::v3::tags::GameData;
 
 use crate::common::{
     api_common::{
@@ -15,6 +15,7 @@ use crate::common::{
 };
 
 use super::ApiV3;
+
 
 #[async_trait(?Send)]
 impl ApiTags for ApiV3 {
@@ -76,6 +77,12 @@ impl ApiV3 {
 
     pub async fn get_games_deserialized(&self) -> Vec<GameData> {
         let resp = self.get_games().await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
+    pub async fn get_loaders_deserialized(&self) -> Vec<LoaderData> {
+        let resp = self.get_loaders().await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }

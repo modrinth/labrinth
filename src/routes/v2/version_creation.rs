@@ -1,3 +1,5 @@
+use crate::database::models::loader_fields::VersionField;
+use crate::database::models::{version_item, project_item};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::ImageId;
@@ -88,6 +90,10 @@ pub async fn version_create(
         payload,
         req.headers().clone(),
         |legacy_create: InitialVersionData| {
+            let client = client.clone();
+            let redis = redis.clone();
+            async move {
+
             // Convert input data to V3 format
             let mut fields = HashMap::new();
             fields.insert(
@@ -95,10 +101,22 @@ pub async fn version_create(
                 json!(legacy_create.game_versions),
             );
 
-            // TODO: will be overhauled with side-types overhaul
-            // TODO: if not, should default to previous version
-            fields.insert("client_side".to_string(), json!("required"));
-            fields.insert("server_side".to_string(), json!("optional"));
+            // Copies side types of another version of the project.
+            // If no version exists, defaults to all false.
+            // TODO: write test for this to ensure predictible unchanging behaviour
+            // This is inherently lossy, but not much can be done about it, as side types are no longer associated with projects,
+            // so the 'missing' ones can't be easily accessed.
+            let side_type_loader_field_names = ["singleplayer", "client_and_server", "client_only", "server_only"];
+            fields.extend(side_type_loader_field_names.iter().map(|f| (f.to_string(), json!(false))));
+            if let Some(example_version_fields) = get_example_version_fields(legacy_create.project_id, client, &redis).await? {
+                fields.extend(example_version_fields.into_iter().filter_map(|f| {
+                    if side_type_loader_field_names.contains(&f.field_name.as_str()) {
+                        Some((f.field_name, f.value.serialize_internal()))
+                    } else {
+                        None
+                    }
+                }));
+            }
 
             // Handle project type via file extension prediction
             let mut project_type = None;
@@ -145,6 +163,7 @@ pub async fn version_create(
                 ordering: legacy_create.ordering,
                 fields,
             })
+        }
         },
     )
     .await?;
@@ -168,6 +187,30 @@ pub async fn version_create(
         }
         Err(response) => Ok(response),
     }
+}
+
+// Gets version fields of an example version of a project, if one exists.
+async fn get_example_version_fields(
+    project_id : Option<ProjectId>,
+    pool: Data<PgPool>,
+    redis: &RedisPool,
+) -> Result<Option<Vec<VersionField>>, CreateError> 
+{
+    let project_id = match project_id {
+        Some(project_id) => project_id,
+        None => return Ok(None),
+    };
+
+    let vid = match project_item::Project::get_id(project_id.into(), &**pool, &redis).await?.and_then(|p| p.versions.get(0).cloned()) {
+        Some(vid) => vid,
+        None => return Ok(None),
+    };
+
+    let example_version = match version_item::Version::get(vid, &**pool, &redis).await? {
+        Some(version) => version,
+        None => return Ok(None),
+    };
+    Ok(Some(example_version.version_fields))
 }
 
 // under /api/v1/version/{version_id}

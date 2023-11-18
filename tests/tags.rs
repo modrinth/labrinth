@@ -13,6 +13,8 @@ async fn get_tags() {
         let loaders = api.get_loaders_deserialized_common().await;
         let categories = api.get_categories_deserialized_common().await;
 
+        // Examine the loader names
+        // supported_fields is tested in tests/loader_fields.rs
         let loader_names = loaders.into_iter().map(|x| x.name).collect::<HashSet<_>>();
         assert_eq!(
             loader_names,
