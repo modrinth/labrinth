@@ -17,7 +17,10 @@ use std::collections::HashMap;
 
 use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
 
-use super::{request_data::get_public_project_creation_data, ImageData, ApiV2};
+use super::{
+    request_data::{get_public_project_creation_data, ImageData},
+    ApiV2,
+};
 
 impl ApiV2 {
     pub async fn add_default_org_project(&self, org_id: &str, pat: &str) -> LegacyProject {

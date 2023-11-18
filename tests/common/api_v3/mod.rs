@@ -11,8 +11,8 @@ pub mod project;
 pub mod request_data;
 pub mod tags;
 pub mod team;
-pub mod version;
 pub mod user;
+pub mod version;
 
 #[derive(Clone)]
 pub struct ApiV3 {

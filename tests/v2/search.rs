@@ -37,7 +37,7 @@ async fn search_projects() {
                 TestFile::build_random_jar()
             };
             let mut basic_project_json =
-                request_data::get_public_project_creation_data_json(&slug, Some(&jar));
+                request_data::get_public_project_creation_data_json(&slug, Some(&jar), None);
             modify_json(&mut basic_project_json);
 
             let basic_project_multipart =

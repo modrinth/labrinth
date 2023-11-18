@@ -4,7 +4,8 @@ use actix_web::{
 };
 use bytes::Bytes;
 use labrinth::models::{organizations::Organization, v3::projects::Project};
-use serde_json::json;
+use labrinth::util::actix::TestRequestExtensions;
+use serde_json::json; // TODO: extend other tests to do this
 
 use super::{request_data::ImageData, ApiV3};
 
@@ -24,6 +25,19 @@ impl ApiV3 {
             }))
             .to_request();
         self.call(req).await
+    }
+
+    pub async fn create_organization_deserialized(
+        &self,
+        organization_title: &str,
+        description: &str,
+        pat: &str,
+    ) -> Organization {
+        let resp = self
+            .create_organization(organization_title, description, pat)
+            .await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
     }
 
     pub async fn get_organization(&self, id_or_title: &str, pat: &str) -> ServiceResponse {
@@ -147,13 +161,7 @@ impl ApiV3 {
 
         self.call(req).await
     }
-}
-use actix_web::{dev::ServiceResponse, test::TestRequest};
-use labrinth::util::actix::TestRequestExtensions; // TODO: extend other tests to do this
 
-use super::ApiV3;
-
-impl ApiV3 {
     pub async fn follow_organization(&self, organization_id: &str, pat: &str) -> ServiceResponse {
         let req = TestRequest::post()
             .uri(&format!("/v3/organization/{}/follow", organization_id))

@@ -51,7 +51,7 @@ async fn get_feed_after_following_user_shows_previously_created_public_versions(
 
         // Add version
         let v = env
-            .v2
+            .v3
             .create_default_version(&alpha_project_id, None, USER_USER_PAT)
             .await;
 
@@ -74,8 +74,8 @@ async fn get_feed_after_following_user_shows_previously_created_public_versions(
 async fn get_feed_when_following_user_that_creates_project_as_org_only_shows_event_when_following_org(
 ) {
     with_test_environment(|env| async move {
-        let org_id = env.v2.create_default_organization(USER_USER_PAT).await;
-        let project = env.v2.add_default_org_project(&org_id, USER_USER_PAT).await;
+        let org_id = env.v3.create_organization_deserialized("test", "desc", USER_USER_PAT).await.id.to_string();
+        let project = env.v3.add_default_org_project(&org_id, USER_USER_PAT).await;
 
         env.v3.follow_user(USER_USER_ID, FRIEND_USER_PAT).await;
         let feed = env.v3.get_feed(FRIEND_USER_PAT).await;
@@ -107,8 +107,13 @@ async fn get_feed_after_unfollowing_user_no_longer_shows_feed_items() {
 #[actix_rt::test]
 async fn get_feed_after_unfollowing_organization_no_longer_shows_feed_items() {
     with_test_environment(|env| async move {
-        let org_id = env.v2.create_default_organization(USER_USER_PAT).await;
-        env.v2.add_default_org_project(&org_id, USER_USER_PAT).await;
+        let org_id = env
+            .v3
+            .create_organization_deserialized("test", "desc", USER_USER_PAT)
+            .await
+            .id
+            .to_string();
+        env.v3.add_default_org_project(&org_id, USER_USER_PAT).await;
         env.v3.follow_organization(&org_id, FRIEND_USER_PAT).await;
 
         env.v3.unfollow_organization(&org_id, FRIEND_USER_PAT).await;
