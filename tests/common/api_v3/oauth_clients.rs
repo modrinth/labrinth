@@ -13,7 +13,7 @@ use labrinth::{
 use reqwest::header::AUTHORIZATION;
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, api_common::Api};
+use crate::common::{api_common::Api, asserts::assert_status};
 
 use super::ApiV3;
 

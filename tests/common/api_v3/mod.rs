@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 
-use super::{api_common::{Api, ApiBuildable}, environment::LocalService};
-use actix_web::{dev::ServiceResponse, App, test};
+use super::{
+    api_common::{Api, ApiBuildable},
+    environment::LocalService,
+};
+use actix_web::{dev::ServiceResponse, test, App};
 use async_trait::async_trait;
 use labrinth::LabrinthConfig;
 use std::rc::Rc;
@@ -32,7 +35,6 @@ impl ApiBuildable for ApiV3 {
 
 #[async_trait(?Send)]
 impl Api for ApiV3 {
-
     async fn call(&self, req: actix_http::Request) -> ServiceResponse {
         self.test_app.call(req).await.unwrap()
     }

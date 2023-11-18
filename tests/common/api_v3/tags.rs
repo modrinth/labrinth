@@ -3,10 +3,16 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use async_trait::async_trait;
-use labrinth::routes::v3::tags::GameData;
 use labrinth::database::models::loader_fields::LoaderFieldEnumValue;
+use labrinth::routes::v3::tags::GameData;
 
-use crate::common::{database::ADMIN_USER_PAT, api_common::{ApiTags, models::{CommonLoaderData, CommonCategoryData}, Api}};
+use crate::common::{
+    api_common::{
+        models::{CommonCategoryData, CommonLoaderData},
+        Api, ApiTags,
+    },
+    database::ADMIN_USER_PAT,
+};
 
 use super::ApiV3;
 
@@ -39,7 +45,6 @@ impl ApiTags for ApiV3 {
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
-
 }
 
 impl ApiV3 {

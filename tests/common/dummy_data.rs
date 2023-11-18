@@ -4,18 +4,23 @@ use std::io::{Cursor, Write};
 use actix_http::StatusCode;
 use actix_web::test::{self, TestRequest};
 use labrinth::models::{
-    oauth_clients::OAuthClient,
-    organizations::Organization,
-    pats::Scopes, projects::ProjectId,
+    oauth_clients::OAuthClient, organizations::Organization, pats::Scopes, projects::ProjectId,
 };
 use serde_json::json;
 use sqlx::Executor;
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
-use crate::common::{database::USER_USER_PAT, api_common::Api};
+use crate::common::{api_common::Api, database::USER_USER_PAT};
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
-use super::{api_v3::ApiV3, database::TemporaryDatabase, api_common::{ApiProject, models::{CommonProject, CommonVersion}}};
+use super::{
+    api_common::{
+        models::{CommonProject, CommonVersion},
+        ApiProject,
+    },
+    api_v3::ApiV3,
+    database::TemporaryDatabase,
+};
 
 use super::{asserts::assert_status, database::USER_USER_ID, get_json_val_str};
 
@@ -253,7 +258,7 @@ pub struct DummyOAuthClientAlpha {
     pub valid_redirect_uri: String,
 }
 
-pub async fn add_dummy_data(api : &ApiV3, db : TemporaryDatabase) -> DummyData {
+pub async fn add_dummy_data(api: &ApiV3, db: TemporaryDatabase) -> DummyData {
     // Adds basic dummy data to the database directly with sql (user, pats)
     let pool = &db.pool.clone();
 
@@ -308,7 +313,13 @@ pub async fn get_dummy_data(api: &ApiV3) -> DummyData {
 
 pub async fn add_project_alpha(api: &ApiV3) -> (CommonProject, CommonVersion) {
     let (project, versions) = api
-        .add_public_project("alpha", Some(TestFile::DummyProjectAlpha), None, USER_USER_PAT).await;
+        .add_public_project(
+            "alpha",
+            Some(TestFile::DummyProjectAlpha),
+            None,
+            USER_USER_PAT,
+        )
+        .await;
     (project, versions.into_iter().next().unwrap())
 }
 
@@ -409,7 +420,7 @@ pub async fn get_project_alpha(api: &ApiV3) -> (CommonProject, CommonVersion) {
     (project, version)
 }
 
-pub async fn get_project_beta(api : &ApiV3) -> (CommonProject, CommonVersion) {
+pub async fn get_project_beta(api: &ApiV3) -> (CommonProject, CommonVersion) {
     // Get project
     let req = TestRequest::get()
         .uri("/v3/project/beta")
@@ -433,7 +444,7 @@ pub async fn get_project_beta(api : &ApiV3) -> (CommonProject, CommonVersion) {
     (project, version)
 }
 
-pub async fn get_organization_zeta(api : &ApiV3) -> Organization {
+pub async fn get_organization_zeta(api: &ApiV3) -> Organization {
     // Get organization
     let req = TestRequest::get()
         .uri("/v3/organization/zeta")

@@ -49,7 +49,8 @@ pub fn get_public_version_creation_data(
     ordering: Option<i32>,
     modify_json: Option<json_patch::Patch>,
 ) -> VersionCreationRequestData {
-    let mut json_data = get_public_version_creation_data_json(version_number, ordering, &version_jar);
+    let mut json_data =
+        get_public_version_creation_data_json(version_number, ordering, &version_jar);
     json_data["project_id"] = json!(project_id);
     if let Some(modify_json) = modify_json {
         json_patch::patch(&mut json_data, &modify_json).unwrap();

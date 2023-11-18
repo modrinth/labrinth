@@ -1,4 +1,10 @@
-use crate::common::{api_common::{ApiProject, models::{CommonImageData, CommonProject, CommonVersion}, Api}, dummy_data::TestFile};
+use crate::common::{
+    api_common::{
+        models::{CommonImageData, CommonProject, CommonVersion},
+        Api, ApiProject,
+    },
+    dummy_data::TestFile,
+};
 use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
@@ -8,8 +14,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
-    search::SearchResults,
-    util::actix::AppendsMultipart, models::v2::projects::LegacyProject,
+    models::v2::projects::LegacyProject, search::SearchResults, util::actix::AppendsMultipart,
 };
 use rust_decimal::Decimal;
 use serde_json::json;
@@ -17,7 +22,7 @@ use std::collections::HashMap;
 
 use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
 
-use super::{ApiV2, request_data::get_public_project_creation_data};
+use super::{request_data::get_public_project_creation_data, ApiV2};
 
 impl ApiV2 {
     pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> LegacyProject {
@@ -41,17 +46,12 @@ impl ApiV2 {
 impl ApiProject for ApiV2 {
     async fn add_public_project(
         &self,
-        slug : &str,
+        slug: &str,
         version_jar: Option<TestFile>,
         modify_json: Option<json_patch::Patch>,
         pat: &str,
     ) -> (CommonProject, Vec<CommonVersion>) {
-
-        let creation_data = get_public_project_creation_data(
-            slug,
-            version_jar,
-            modify_json,
-        );
+        let creation_data = get_public_project_creation_data(slug, version_jar, modify_json);
 
         // Add a project.
         let req = TestRequest::post()
@@ -149,12 +149,12 @@ impl ApiProject for ApiV2 {
 
     async fn edit_project_bulk(
         &self,
-        ids_or_slugs:  &[&str],
+        ids_or_slugs: &[&str],
         patch: serde_json::Value,
         pat: &str,
     ) -> ServiceResponse {
         let projects_str = ids_or_slugs
-            .into_iter()
+            .iter()
             .map(|s| format!("\"{}\"", s))
             .collect::<Vec<_>>()
             .join(",");

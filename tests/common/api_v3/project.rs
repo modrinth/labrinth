@@ -8,35 +8,32 @@ use actix_web::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use labrinth::{
-    search::SearchResults,
-    util::actix::AppendsMultipart,
-};
+use labrinth::{search::SearchResults, util::actix::AppendsMultipart};
 use rust_decimal::Decimal;
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, database::MOD_USER_PAT, api_common::{ApiProject, models::{CommonProject, CommonImageData, CommonVersion}, Api}, dummy_data::TestFile};
-
-use super::{
-    request_data::get_public_project_creation_data,
-    ApiV3,
+use crate::common::{
+    api_common::{
+        models::{CommonImageData, CommonProject, CommonVersion},
+        Api, ApiProject,
+    },
+    asserts::assert_status,
+    database::MOD_USER_PAT,
+    dummy_data::TestFile,
 };
+
+use super::{request_data::get_public_project_creation_data, ApiV3};
 
 #[async_trait(?Send)]
 impl ApiProject for ApiV3 {
     async fn add_public_project(
         &self,
-        slug : &str,
+        slug: &str,
         version_jar: Option<TestFile>,
         modify_json: Option<json_patch::Patch>,
         pat: &str,
     ) -> (CommonProject, Vec<CommonVersion>) {
-
-        let creation_data = get_public_project_creation_data(
-            slug,
-            version_jar,
-            modify_json,
-        );
+        let creation_data = get_public_project_creation_data(slug, version_jar, modify_json);
 
         // Add a project.
         let req = TestRequest::post()
@@ -60,9 +57,7 @@ impl ApiProject for ApiV3 {
         let resp = self.call(req).await;
         assert_status(&resp, StatusCode::NO_CONTENT);
 
-        let project = self
-            .get_project(&creation_data.slug, pat)
-            .await;
+        let project = self.get_project(&creation_data.slug, pat).await;
         let project = test::read_body_json(project).await;
 
         // Get project's versions
@@ -140,7 +135,7 @@ impl ApiProject for ApiV3 {
         pat: &str,
     ) -> ServiceResponse {
         let projects_str = ids_or_slugs
-            .into_iter()
+            .iter()
             .map(|s| format!("\"{}\"", s))
             .collect::<Vec<_>>()
             .join(",");

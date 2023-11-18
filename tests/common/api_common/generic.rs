@@ -2,11 +2,20 @@ use std::collections::HashMap;
 
 use actix_web::dev::ServiceResponse;
 use async_trait::async_trait;
-use labrinth::{search::SearchResults, models::{teams::{ProjectPermissions, OrganizationPermissions}, projects::{VersionType, ProjectId}}};
+use labrinth::{
+    models::{
+        projects::{ProjectId, VersionType},
+        teams::{OrganizationPermissions, ProjectPermissions},
+    },
+    search::SearchResults,
+};
 
 use crate::common::{api_v2::ApiV2, api_v3::ApiV3, dummy_data::TestFile};
 
-use super::{Api, ApiProject, ApiTags, ApiTeams, ApiVersion, models::{CommonProject, CommonImageData, CommonVersion}};
+use super::{
+    models::{CommonImageData, CommonProject, CommonVersion},
+    Api, ApiProject, ApiTags, ApiTeams, ApiVersion,
+};
 
 #[derive(Clone)]
 pub enum GenericApi {
@@ -22,7 +31,7 @@ macro_rules! delegate_api_variant {
                 [$method_name:ident, $ret:ty, $($param_name:ident: $param_type:ty),*]
             ),* $(,)?
         }
-        
+
     ) => {
         $(#[$meta])*
         impl $impl_name for $struct_name {
@@ -53,7 +62,6 @@ impl Api for GenericApi {
             Self::V3(api) => api.reset_search_index().await,
         }
     }
-
 }
 
 delegate_api_variant!(

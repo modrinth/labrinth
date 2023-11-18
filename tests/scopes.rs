@@ -23,7 +23,6 @@ mod common;
 async fn user_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-   
         // User reading
         let read_user = Scopes::USER_READ;
         let req_gen = || TestRequest::get().uri("/v3/user");
@@ -81,8 +80,8 @@ async fn user_scopes() {
             .test(req_gen, delete_user)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Notifications
@@ -128,7 +127,8 @@ pub async fn notifications_scopes() {
             .await
             .unwrap();
 
-        let req_gen = || test::TestRequest::get().uri(&format!("/v3/notification/{notification_id}"));
+        let req_gen =
+            || test::TestRequest::get().uri(&format!("/v3/notification/{notification_id}"));
         ScopeTest::new(&test_env)
             .with_user_id(FRIEND_USER_ID_PARSED)
             .test(req_gen, read_notifications)
@@ -149,7 +149,8 @@ pub async fn notifications_scopes() {
             .await
             .unwrap();
 
-        let req_gen = || test::TestRequest::patch().uri(&format!("/v3/notification/{notification_id}"));
+        let req_gen =
+            || test::TestRequest::patch().uri(&format!("/v3/notification/{notification_id}"));
         ScopeTest::new(&test_env)
             .with_user_id(FRIEND_USER_ID_PARSED)
             .test(req_gen, write_notifications)
@@ -173,7 +174,8 @@ pub async fn notifications_scopes() {
             .await;
         assert_eq!(resp.status(), 204);
         let read_notifications = Scopes::NOTIFICATION_READ;
-        let req_gen = || test::TestRequest::get().uri(&format!("/v3/user/{MOD_USER_ID}/notifications"));
+        let req_gen =
+            || test::TestRequest::get().uri(&format!("/v3/user/{MOD_USER_ID}/notifications"));
         let (_, success) = ScopeTest::new(&test_env)
             .with_user_id(MOD_USER_ID_PARSED)
             .test(req_gen, read_notifications)
@@ -192,7 +194,8 @@ pub async fn notifications_scopes() {
             .test(req_gen, write_notifications)
             .await
             .unwrap();
-    }).await;
+    })
+    .await;
 }
 
 // Project version creation scopes
@@ -233,7 +236,9 @@ pub async fn project_version_create_scopes() {
             name: "basic-mod.jar".to_string(),
             filename: Some("basic-mod.jar".to_string()),
             content_type: Some("application/java-archive".to_string()),
-            data: MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod.jar").to_vec()),
+            data: MultipartSegmentData::Binary(
+                include_bytes!("../tests/files/basic-mod.jar").to_vec(),
+            ),
         };
 
         let req_gen = || {
@@ -288,8 +293,8 @@ pub async fn project_version_create_scopes() {
             .test(req_gen, create_version)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Project management scopes
@@ -436,7 +441,8 @@ pub async fn project_version_reads_scopes() {
         let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 204);
 
-        let req_gen = || test::TestRequest::get().uri(&format!("/v3/version_file/{beta_file_hash}"));
+        let req_gen =
+            || test::TestRequest::get().uri(&format!("/v3/version_file/{beta_file_hash}"));
         ScopeTest::new(&test_env)
             .with_failure_code(404)
             .test(req_gen, read_version)
@@ -522,8 +528,8 @@ pub async fn project_version_reads_scopes() {
         //     .uri(&format!("/v3/project/{beta_project_id}/version/{beta_version_id}"))
         // };
         // ScopeTest::new(&test_env).with_failure_code(404).test(req_gen, read_project_and_version).await.unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Project writing
@@ -719,7 +725,8 @@ pub async fn project_write_scopes() {
 
         // Now as 'friend', delete 'user'
         let req_gen = || {
-            test::TestRequest::delete().uri(&format!("/v3/team/{alpha_team_id}/members/{USER_USER_ID}"))
+            test::TestRequest::delete()
+                .uri(&format!("/v3/team/{alpha_team_id}/members/{USER_USER_ID}"))
         };
         ScopeTest::new(&test_env)
             .with_user_id(FRIEND_USER_ID_PARSED)
@@ -737,8 +744,8 @@ pub async fn project_write_scopes() {
         //     .uri(&format!("/v3/project/{beta_project_id}"))
         // };
         // ScopeTest::new(&test_env).test(req_gen, delete_version).await.unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Version write
@@ -864,13 +871,14 @@ pub async fn version_write_scopes() {
 
         // Delete version
         let delete_version = Scopes::VERSION_DELETE;
-        let req_gen = || test::TestRequest::delete().uri(&format!("/v3/version/{alpha_version_id}"));
+        let req_gen =
+            || test::TestRequest::delete().uri(&format!("/v3/version/{alpha_version_id}"));
         ScopeTest::new(&test_env)
             .test(req_gen, delete_version)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Report scopes
@@ -950,7 +958,8 @@ pub async fn report_scopes() {
             .test(req_gen, report_delete)
             .await
             .unwrap();
-    }).await;
+    })
+    .await;
 }
 
 // Thread scopes
@@ -1039,21 +1048,21 @@ pub async fn thread_scopes() {
         let success: serde_json::Value = test::read_body_json(resp).await;
         let thread_message_id = success["messages"][0]["id"].as_str().unwrap();
 
-        let req_gen = || test::TestRequest::delete().uri(&format!("/v3/message/{thread_message_id}"));
+        let req_gen =
+            || test::TestRequest::delete().uri(&format!("/v3/message/{thread_message_id}"));
         ScopeTest::new(&test_env)
             .with_user_id(MOD_USER_ID_PARSED)
             .test(req_gen, thread_write)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Pat scopes
 #[actix_rt::test]
 pub async fn pat_scopes() {
     with_test_environment_all(None, |test_env| async move {
-
         // Pat create
         let pat_create = Scopes::PAT_CREATE;
         let req_gen = || {
@@ -1096,8 +1105,8 @@ pub async fn pat_scopes() {
             .test(req_gen, pat_delete)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Collection scopes
@@ -1169,7 +1178,8 @@ pub async fn collections_scopes() {
         assert_eq!(failure.as_array().unwrap().len(), 0);
         assert_eq!(success.as_array().unwrap().len(), 1);
 
-        let req_gen = || test::TestRequest::get().uri(&format!("/v3/user/{USER_USER_ID}/collections"));
+        let req_gen =
+            || test::TestRequest::get().uri(&format!("/v3/user/{USER_USER_ID}/collections"));
         let (failure, success) = ScopeTest::new(&test_env)
             .with_failure_code(200)
             .test(req_gen, collection_read)
@@ -1196,7 +1206,8 @@ pub async fn collections_scopes() {
             .test(req_gen, collection_write)
             .await
             .unwrap();
-    }).await;
+    })
+    .await;
 }
 
 // Organization scopes (and a couple PROJECT_WRITE scopes that are only allowed for orgs)
@@ -1278,7 +1289,8 @@ pub async fn organization_scopes() {
 
         // Organization reads
         let organization_read = Scopes::ORGANIZATION_READ;
-        let req_gen = || test::TestRequest::get().uri(&format!("/v3/organization/{organization_id}"));
+        let req_gen =
+            || test::TestRequest::get().uri(&format!("/v3/organization/{organization_id}"));
         let (failure, success) = ScopeTest::new(&test_env)
             .with_failure_code(200)
             .test(req_gen, organization_read)
@@ -1303,8 +1315,9 @@ pub async fn organization_scopes() {
         assert!(!success[0]["members"][0]["permissions"].is_null());
 
         let organization_project_read = Scopes::PROJECT_READ | Scopes::ORGANIZATION_READ;
-        let req_gen =
-            || test::TestRequest::get().uri(&format!("/v3/organization/{organization_id}/projects"));
+        let req_gen = || {
+            test::TestRequest::get().uri(&format!("/v3/organization/{organization_id}/projects"))
+        };
         let (failure, success) = ScopeTest::new(&test_env)
             .with_failure_code(200)
             .with_failure_scopes(Scopes::all() ^ Scopes::ORGANIZATION_READ)
@@ -1334,8 +1347,8 @@ pub async fn organization_scopes() {
             .test(req_gen, organization_delete)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // TODO: Analytics scopes

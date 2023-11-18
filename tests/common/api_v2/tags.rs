@@ -5,7 +5,13 @@ use actix_web::{
 use async_trait::async_trait;
 use labrinth::routes::v2::tags::{CategoryData, GameVersionQueryData, LoaderData};
 
-use crate::common::{database::ADMIN_USER_PAT, api_common::{ApiTags, models::{CommonLoaderData, CommonCategoryData}, Api}};
+use crate::common::{
+    api_common::{
+        models::{CommonCategoryData, CommonLoaderData},
+        Api, ApiTags,
+    },
+    database::ADMIN_USER_PAT,
+};
 
 use super::ApiV2;
 
@@ -82,5 +88,4 @@ impl ApiTags for ApiV2 {
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
-
 }

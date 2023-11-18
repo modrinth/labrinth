@@ -26,7 +26,6 @@ pub fn assert_common_version_ids(versions: &[CommonVersion], expected_ids: Vec<S
     assert_eq!(version_ids, expected_ids);
 }
 
-
 pub fn assert_any_status_except(
     response: &actix_web::dev::ServiceResponse,
     status: actix_http::StatusCode,

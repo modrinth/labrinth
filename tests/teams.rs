@@ -1,6 +1,6 @@
 use crate::common::database::*;
-use common::environment::with_test_environment_all;
 use actix_web::test;
+use common::environment::with_test_environment_all;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
@@ -129,7 +129,8 @@ async fn test_get_team() {
                 assert!(!friend_user["permissions"].is_null());
             }
         }
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -199,8 +200,8 @@ async fn test_get_team_project_orgs() {
         let value: serde_json::Value = test::read_body_json(resp).await;
         let members = value.as_array().unwrap();
         assert_eq!(members.len(), 2);
-
-    }).await;
+    })
+    .await;
 }
 
 // edit team member (Varying permissions, varying roles)
@@ -598,7 +599,8 @@ async fn transfer_ownership() {
 
         let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 401);
-    }).await;
+    })
+    .await;
 }
 
 // This test is currently not working.

@@ -1,13 +1,16 @@
 use crate::common::{
+    api_common::ApiTeams,
     api_v3::request_data::get_icon_data,
     database::{generate_random_name, ADMIN_USER_PAT, MOD_USER_ID, MOD_USER_PAT, USER_USER_ID},
-    dummy_data::DummyImage, api_common::ApiTeams,
+    dummy_data::DummyImage,
 };
 use actix_web::test;
 use bytes::Bytes;
 use common::{
+    api_v3::ApiV3,
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
-    permissions::{PermissionsTest, PermissionsTestContext}, environment::{with_test_environment_all, TestEnvironment, with_test_environment}, api_v3::ApiV3, 
+    environment::{with_test_environment, with_test_environment_all, TestEnvironment},
+    permissions::{PermissionsTest, PermissionsTestContext},
 };
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
@@ -78,7 +81,8 @@ async fn create_organization() {
             Some(OrganizationPermissions::all())
         );
         assert_eq!(members[0].role, "Owner");
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -158,7 +162,8 @@ async fn patch_organization() {
             .await;
         assert_eq!(new_title.title, "new_title");
         assert_eq!(new_title.description, "not url safe%&^!#$##!@#$%^&");
-    }).await;
+    })
+    .await;
 }
 
 // add/remove icon
@@ -209,7 +214,8 @@ async fn add_remove_icon() {
             .get_organization_deserialized(zeta_organization_id, USER_USER_PAT)
             .await;
         assert!(zeta_org.icon_url.is_none());
-    }).await;
+    })
+    .await;
 }
 
 // delete org
@@ -234,7 +240,8 @@ async fn delete_org() {
             .get_organization(zeta_organization_id, USER_USER_PAT)
             .await;
         assert_eq!(resp.status(), 404);
-    }).await;
+    })
+    .await;
 }
 
 // add/remove organization projects
@@ -280,7 +287,8 @@ async fn add_remove_organization_projects() {
                 .await;
             assert!(projects.is_empty());
         }
-        }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -313,7 +321,8 @@ async fn permissions_patch_organization() {
                 .await
                 .unwrap();
         }
-    }).await;
+    })
+    .await;
 }
 
 // Not covered by PATCH /organization
@@ -363,7 +372,8 @@ async fn permissions_edit_details() {
             .simple_organization_permissions_test(edit_details, req_gen)
             .await
             .unwrap();
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -456,7 +466,8 @@ async fn permissions_manage_invites() {
             .simple_organization_permissions_test(remove_member, req_gen)
             .await
             .unwrap();
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -522,8 +533,8 @@ async fn permissions_add_remove_project() {
             .simple_organization_permissions_test(remove_project, req_gen)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -543,8 +554,8 @@ async fn permissions_delete_organization() {
             .simple_organization_permissions_test(delete_organization, req_gen)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -635,6 +646,6 @@ async fn permissions_organization_permissions_consistency_test() {
             .full_organization_permissions_tests(success_permissions, req_gen)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }

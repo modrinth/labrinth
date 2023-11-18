@@ -152,7 +152,8 @@ pub async fn pat_full_test() {
             .to_request();
         let resp = test_env.call(req).await;
         assert_eq!(resp.status().as_u16(), 204);
-    }).await;
+    })
+    .await;
 }
 
 // Test illegal PAT setting, both in POST and PATCH
@@ -280,6 +281,6 @@ pub async fn bad_pats() {
                 if scope.is_restricted() { 400 } else { 204 }
             );
         }
-
-    }).await;
+    })
+    .await;
 }

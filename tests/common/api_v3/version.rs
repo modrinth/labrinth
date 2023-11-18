@@ -1,5 +1,11 @@
 use std::collections::HashMap;
 
+use super::{request_data::get_public_version_creation_data, ApiV3};
+use crate::common::{
+    api_common::{models::CommonVersion, Api, ApiVersion},
+    asserts::assert_status,
+    dummy_data::TestFile,
+};
 use actix_http::{header::AUTHORIZATION, StatusCode};
 use actix_web::{
     dev::ServiceResponse,
@@ -7,13 +13,14 @@ use actix_web::{
 };
 use async_trait::async_trait;
 use labrinth::{
-    models::{projects::{VersionType, ProjectId}, v3::projects::Version},
+    models::{
+        projects::{ProjectId, VersionType},
+        v3::projects::Version,
+    },
     routes::v3::version_file::FileUpdateData,
     util::actix::AppendsMultipart,
 };
 use serde_json::json;
-use crate::common::{asserts::assert_status, api_common::{ApiVersion, models::CommonVersion, Api}, dummy_data::TestFile};
-use super::{request_data::get_public_version_creation_data, ApiV3};
 
 pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
     let serialized = serde_json::to_string(&elements).unwrap();
@@ -30,14 +37,16 @@ impl ApiV3 {
         modify_json: Option<json_patch::Patch>,
         pat: &str,
     ) -> Version {
-        let resp = self.add_public_version(
-            project_id,
-            version_number,
-            version_jar,
-            ordering,
-            modify_json,
-            pat,
-        ).await;
+        let resp = self
+            .add_public_version(
+                project_id,
+                version_number,
+                version_jar,
+                ordering,
+                modify_json,
+                pat,
+            )
+            .await;
         assert_status(&resp, StatusCode::OK);
         let value: serde_json::Value = test::read_body_json(resp).await;
         let version_id = value["id"].as_str().unwrap();
@@ -92,7 +101,6 @@ impl ApiVersion for ApiV3 {
         modify_json: Option<json_patch::Patch>,
         pat: &str,
     ) -> ServiceResponse {
-
         let creation_data = get_public_version_creation_data(
             project_id,
             version_number,
@@ -120,7 +128,14 @@ impl ApiVersion for ApiV3 {
         pat: &str,
     ) -> CommonVersion {
         let resp = self
-            .add_public_version(project_id, version_number, version_jar, ordering, modify_json, pat)
+            .add_public_version(
+                project_id,
+                version_number,
+                version_jar,
+                ordering,
+                modify_json,
+                pat,
+            )
             .await;
         assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await

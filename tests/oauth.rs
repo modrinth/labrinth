@@ -2,7 +2,10 @@ use actix_http::StatusCode;
 use actix_web::test;
 use common::{
     api_v3::oauth::get_redirect_location_query_params,
-    api_v3::{oauth::{get_auth_code_from_redirect_params, get_authorize_accept_flow_id}, ApiV3},
+    api_v3::{
+        oauth::{get_auth_code_from_redirect_params, get_authorize_accept_flow_id},
+        ApiV3,
+    },
     asserts::{assert_any_status_except, assert_status},
     database::FRIEND_USER_ID,
     database::{FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},

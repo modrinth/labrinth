@@ -14,7 +14,7 @@ mod common;
 
 #[actix_rt::test]
 async fn creating_loader_fields() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
         let alpha_project_id = &test_env
@@ -37,15 +37,23 @@ async fn creating_loader_fields() {
         // Cannot create a version with an extra argument that cannot be tied to a loader field ("invalid loader field")
         // TODO: - Create project
         // - Create version
-        let resp = api.add_public_version(alpha_project_id,
-            "1.0.0",
-            TestFile::build_random_jar(),
-            None,
-            Some(serde_json::from_value(json!([{
-                "op": "add",
-                "path": "/invalid",
-                "value": "invalid"
-        }])).unwrap()), USER_USER_PAT).await;
+        let resp = api
+            .add_public_version(
+                alpha_project_id,
+                "1.0.0",
+                TestFile::build_random_jar(),
+                None,
+                Some(
+                    serde_json::from_value(json!([{
+                            "op": "add",
+                            "path": "/invalid",
+                            "value": "invalid"
+                    }]))
+                    .unwrap(),
+                ),
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 400);
         // - Patch
         let resp = api
@@ -62,15 +70,23 @@ async fn creating_loader_fields() {
         // Cannot create a version with a loader field that isnt used by the loader
         // TODO: - Create project
         // - Create version
-        let resp = api.add_public_version(alpha_project_id,
-            "1.0.0",
-            TestFile::build_random_jar(),
-            None,
-            Some(serde_json::from_value(json!([{
-                "op": "add",
-                "path": "/mrpack_loaders",
-                "value": ["fabric"]
-            }])).unwrap()), USER_USER_PAT).await;
+        let resp = api
+            .add_public_version(
+                alpha_project_id,
+                "1.0.0",
+                TestFile::build_random_jar(),
+                None,
+                Some(
+                    serde_json::from_value(json!([{
+                        "op": "add",
+                        "path": "/mrpack_loaders",
+                        "value": ["fabric"]
+                    }]))
+                    .unwrap(),
+                ),
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 400);
         // - Patch
         let resp = api
@@ -87,57 +103,80 @@ async fn creating_loader_fields() {
         // Cannot create a version without an applicable loader field that is not optional
         // TODO: - Create project
         // - Create version
-        let resp = api.add_public_version(alpha_project_id,
-            "1.0.0",
-            TestFile::build_random_jar(),
-            None,
-            Some(serde_json::from_value(json!([{
-                "op": "remove",
-                "path": "/client_side"
-            }])).unwrap()), USER_USER_PAT).await;
+        let resp = api
+            .add_public_version(
+                alpha_project_id,
+                "1.0.0",
+                TestFile::build_random_jar(),
+                None,
+                Some(
+                    serde_json::from_value(json!([{
+                        "op": "remove",
+                        "path": "/client_side"
+                    }]))
+                    .unwrap(),
+                ),
+                USER_USER_PAT,
+            )
+            .await;
 
         assert_eq!(resp.status(), 400);
 
         // Cannot create a version without a loader field array that has a minimum of 1
         // TODO: - Create project
         // - Create version
-        let resp = api.add_public_version(alpha_project_id,
-            "1.0.0",
-            TestFile::build_random_jar(),
-            None,
-            Some(serde_json::from_value(json!([{
-                "op": "remove",
-                "path": "/game_versions"
-            }])).unwrap()), USER_USER_PAT).await;
+        let resp = api
+            .add_public_version(
+                alpha_project_id,
+                "1.0.0",
+                TestFile::build_random_jar(),
+                None,
+                Some(
+                    serde_json::from_value(json!([{
+                        "op": "remove",
+                        "path": "/game_versions"
+                    }]))
+                    .unwrap(),
+                ),
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 400);
 
-    // TODO: Create a test for too many elements in the array when we have a LF that has a max (past max)
-    // Cannot create a version with a loader field array that has fewer than the minimum elements
-    // TODO: - Create project
-    // - Create version
-    let resp: actix_web::dev::ServiceResponse =
-    api.add_public_version(alpha_project_id,
-        "1.0.0",
-        TestFile::build_random_jar(),
-        None,
-        Some(serde_json::from_value(json!([{
-            "op": "add",
-            "path": "/game_versions",
-            "value": []
-        }])).unwrap()), USER_USER_PAT).await;
-    assert_eq!(resp.status(), 400);
+        // TODO: Create a test for too many elements in the array when we have a LF that has a max (past max)
+        // Cannot create a version with a loader field array that has fewer than the minimum elements
+        // TODO: - Create project
+        // - Create version
+        let resp: actix_web::dev::ServiceResponse = api
+            .add_public_version(
+                alpha_project_id,
+                "1.0.0",
+                TestFile::build_random_jar(),
+                None,
+                Some(
+                    serde_json::from_value(json!([{
+                        "op": "add",
+                        "path": "/game_versions",
+                        "value": []
+                    }]))
+                    .unwrap(),
+                ),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(resp.status(), 400);
 
-    // - Patch
-    let resp = api
-        .edit_version(
-            alpha_version_id,
-            json!({
-                "game_versions": []
-            }),
-            USER_USER_PAT,
-        )
-        .await;
-    assert_eq!(resp.status(), 400);
+        // - Patch
+        let resp = api
+            .edit_version(
+                alpha_version_id,
+                json!({
+                    "game_versions": []
+                }),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(resp.status(), 400);
 
         // Cannot create an invalid data type for the loader field type (including bad variant for the type)
         for bad_type_game_versions in [
@@ -148,16 +187,23 @@ async fn creating_loader_fields() {
         ] {
             // TODO: - Create project
             // - Create version
-            let resp = api.add_public_version(alpha_project_id,
-                "1.0.0",
-                TestFile::build_random_jar(),
-                None,
-                Some(serde_json::from_value(json!([{
-                    "op": "add",
-                    "path": "/game_versions",
-                    "value": bad_type_game_versions
-                }])).unwrap()),                
-                 USER_USER_PAT).await;
+            let resp = api
+                .add_public_version(
+                    alpha_project_id,
+                    "1.0.0",
+                    TestFile::build_random_jar(),
+                    None,
+                    Some(
+                        serde_json::from_value(json!([{
+                            "op": "add",
+                            "path": "/game_versions",
+                            "value": bad_type_game_versions
+                        }]))
+                        .unwrap(),
+                    ),
+                    USER_USER_PAT,
+                )
+                .await;
             assert_eq!(resp.status(), 400);
 
             // - Patch
@@ -177,14 +223,21 @@ async fn creating_loader_fields() {
         // TODO: - Create project
         // - Create version
         let v = api
-            .add_public_version_deserialized(alpha_project_id, "1.0.0", TestFile::build_random_jar(), 
-            None,
-            Some(serde_json::from_value(json!([{
-                "op": "add",
-                "path": "/test_fabric_optional",
-                "value": 555
-            }])).unwrap()),
-             USER_USER_PAT)
+            .add_public_version_deserialized(
+                alpha_project_id,
+                "1.0.0",
+                TestFile::build_random_jar(),
+                None,
+                Some(
+                    serde_json::from_value(json!([{
+                        "op": "add",
+                        "path": "/test_fabric_optional",
+                        "value": 555
+                    }]))
+                    .unwrap(),
+                ),
+                USER_USER_PAT,
+            )
             .await;
         assert_eq!(v.fields.get("test_fabric_optional").unwrap(), &json!(555));
         // - Patch
@@ -206,25 +259,29 @@ async fn creating_loader_fields() {
         // Simply setting them as expected works
         // - Create
         let v = api
-            .add_public_version_deserialized(alpha_project_id,
+            .add_public_version_deserialized(
+                alpha_project_id,
                 "1.0.0",
                 TestFile::build_random_jar(),
                 None,
-                Some(serde_json::from_value(json!([{
-                    "op": "add",
-                    "path": "/game_versions",
-                    "value": ["1.20.1", "1.20.2"]
-                }, {
-                    "op": "add",
-                    "path": "/client_side",
-                    "value": "optional"
-                }, {
-                    "op": "add",
-                    "path": "/server_side",
-                    "value": "required"
-                }])).unwrap()),
-                
-                 USER_USER_PAT)
+                Some(
+                    serde_json::from_value(json!([{
+                        "op": "add",
+                        "path": "/game_versions",
+                        "value": ["1.20.1", "1.20.2"]
+                    }, {
+                        "op": "add",
+                        "path": "/client_side",
+                        "value": "optional"
+                    }, {
+                        "op": "add",
+                        "path": "/server_side",
+                        "value": "required"
+                    }]))
+                    .unwrap(),
+                ),
+                USER_USER_PAT,
+            )
             .await;
         assert_eq!(
             v.fields.get("game_versions").unwrap(),
@@ -252,13 +309,13 @@ async fn creating_loader_fields() {
             v.fields.get("game_versions").unwrap(),
             &json!(["1.20.1", "1.20.2"])
         );
-
-    }).await
+    })
+    .await
 }
 
 #[actix_rt::test]
 async fn get_loader_fields() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
         let game_versions = api
@@ -303,6 +360,6 @@ async fn get_loader_fields() {
                 .map(|s| s.to_string())
                 .collect()
         );
-
-    }).await
+    })
+    .await
 }

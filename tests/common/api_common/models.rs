@@ -1,10 +1,20 @@
-use chrono::{Utc, DateTime};
-use labrinth::models::{projects::{ProjectId, ProjectStatus, ModeratorMessage, License, VersionId, GalleryItem, MonetizationStatus, DonationLink, VersionStatus, VersionType, VersionFile, Dependency}, teams::{TeamId, ProjectPermissions, OrganizationPermissions}, organizations::OrganizationId, threads::ThreadId, users::{UserId, User}, notifications::{NotificationId, NotificationBody, NotificationAction}};
+use chrono::{DateTime, Utc};
+use labrinth::models::{
+    notifications::{NotificationAction, NotificationBody, NotificationId},
+    organizations::OrganizationId,
+    projects::{
+        Dependency, DonationLink, GalleryItem, License, ModeratorMessage, MonetizationStatus,
+        ProjectId, ProjectStatus, VersionFile, VersionId, VersionStatus, VersionType,
+    },
+    teams::{OrganizationPermissions, ProjectPermissions, TeamId},
+    threads::ThreadId,
+    users::{User, UserId},
+};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
 // Fields shared by every version of the API.
-// No struct in here should have ANY field that 
+// No struct in here should have ANY field that
 // is not present in *every* version of the API.
 
 // These are used for common tests- tests that can be used on both V2 AND v3 of the API and have the same results.
@@ -97,7 +107,6 @@ pub struct CommonCategoryData {
     pub header: String,
 }
 
-
 /// A member of a team
 #[derive(Deserialize)]
 pub struct CommonTeamMember {
@@ -113,7 +122,6 @@ pub struct CommonTeamMember {
     pub payouts_split: Option<Decimal>,
     pub ordering: i64,
 }
-
 
 #[derive(Deserialize)]
 pub struct CommonNotification {

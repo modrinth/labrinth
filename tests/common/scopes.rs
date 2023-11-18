@@ -2,7 +2,10 @@
 use actix_web::test::{self, TestRequest};
 use labrinth::models::pats::Scopes;
 
-use super::{database::USER_USER_ID_PARSED, environment::TestEnvironment, pats::create_test_pat, api_common::Api};
+use super::{
+    api_common::Api, database::USER_USER_ID_PARSED, environment::TestEnvironment,
+    pats::create_test_pat,
+};
 
 // A reusable test type that works for any scope test testing an endpoint that:
 // - returns a known 'expected_failure_code' if the scope is not present (defaults to 401)
@@ -20,7 +23,7 @@ pub struct ScopeTest<'a, A> {
     expected_failure_code: u16,
 }
 
-impl<'a, A : Api> ScopeTest<'a, A> {
+impl<'a, A: Api> ScopeTest<'a, A> {
     pub fn new(test_env: &'a TestEnvironment<A>) -> Self {
         Self {
             test_env,

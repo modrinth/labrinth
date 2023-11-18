@@ -5,8 +5,8 @@ use crate::common::api_v2::ApiV2;
 use crate::common::database::*;
 use crate::common::dummy_data::TestFile;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
-use crate::common::environment::TestEnvironment;
 use crate::common::environment::with_test_environment;
+use crate::common::environment::TestEnvironment;
 use futures::stream::StreamExt;
 use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
@@ -19,7 +19,7 @@ async fn search_projects() {
     // It should drastically simplify this function
 
     // Test setup and dummy data
-    with_test_environment(Some(8), |test_env : TestEnvironment<ApiV2>| async move {
+    with_test_environment(Some(8), |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
         let test_name = test_env.db.database_name.clone();
 
@@ -28,9 +28,9 @@ async fn search_projects() {
 
         let create_async_future =
             |id: u64,
-            pat: &'static str,
-            is_modpack: bool,
-            modify_json: Option<json_patch::Patch>| {
+             pat: &'static str,
+             is_modpack: bool,
+             modify_json: Option<json_patch::Patch>| {
                 let slug = format!("{test_name}-searchable-project-{id}");
 
                 let jar = if is_modpack {
@@ -40,12 +40,7 @@ async fn search_projects() {
                 };
                 async move {
                     // Add a project- simple, should work.
-                    let req = api.add_public_project(
-                        &slug,
-                        Some(jar),
-                        modify_json,
-                        pat,
-                    );
+                    let req = api.add_public_project(&slug, Some(jar), modify_json, pat);
                     let (project, _) = req.await;
 
                     // Approve, so that the project is searchable
@@ -69,7 +64,8 @@ async fn search_projects() {
             { "op": "add", "path": "/categories", "value": DUMMY_CATEGORIES[4..6] },
             { "op": "add", "path": "/server_side", "value": "required" },
             { "op": "add", "path": "/license_id", "value": "LGPL-3.0-or-later" },
-        ])).unwrap();
+        ]))
+        .unwrap();
         project_creation_futures.push(create_async_future(
             id,
             USER_USER_PAT,
@@ -82,7 +78,8 @@ async fn search_projects() {
         let modify_json = serde_json::from_value(json!([
             { "op": "add", "path": "/categories", "value": DUMMY_CATEGORIES[0..2] },
             { "op": "add", "path": "/client_side", "value": "optional" },
-        ])).unwrap();
+        ]))
+        .unwrap();
         project_creation_futures.push(create_async_future(
             id,
             USER_USER_PAT,
@@ -96,7 +93,8 @@ async fn search_projects() {
             { "op": "add", "path": "/categories", "value": DUMMY_CATEGORIES[0..2] },
             { "op": "add", "path": "/server_side", "value": "required" },
             { "op": "add", "path": "/title", "value": "Mysterious Project" },
-        ])).unwrap();
+        ]))
+        .unwrap();
         project_creation_futures.push(create_async_future(
             id,
             USER_USER_PAT,
@@ -112,7 +110,8 @@ async fn search_projects() {
             { "op": "add", "path": "/initial_versions/0/game_versions", "value": ["1.20.4"] },
             { "op": "add", "path": "/title", "value": "Mysterious Project" },
             { "op": "add", "path": "/license_id", "value": "LicenseRef-All-Rights-Reserved" },
-        ])).unwrap();
+        ]))
+        .unwrap();
         project_creation_futures.push(create_async_future(
             id,
             FRIEND_USER_PAT,
@@ -126,7 +125,8 @@ async fn search_projects() {
             { "op": "add", "path": "/categories", "value": DUMMY_CATEGORIES[0..3] },
             { "op": "add", "path": "/client_side", "value": "optional" },
             { "op": "add", "path": "/initial_versions/0/game_versions", "value": ["1.20.5"] },
-        ])).unwrap();
+        ]))
+        .unwrap();
         project_creation_futures.push(create_async_future(
             id,
             USER_USER_PAT,
@@ -141,7 +141,8 @@ async fn search_projects() {
             { "op": "add", "path": "/client_side", "value": "optional" },
             { "op": "add", "path": "/initial_versions/0/game_versions", "value": ["1.20.5"] },
             { "op": "add", "path": "/license_id", "value": "LGPL-3.0-or-later" },
-        ])).unwrap();
+        ]))
+        .unwrap();
         project_creation_futures.push(create_async_future(
             id,
             USER_USER_PAT,
@@ -156,7 +157,8 @@ async fn search_projects() {
             { "op": "add", "path": "/client_side", "value": "optional" },
             { "op": "add", "path": "/server_side", "value": "required" },
             { "op": "add", "path": "/license_id", "value": "LGPL-3.0-or-later" },
-        ])).unwrap();
+        ]))
+        .unwrap();
         project_creation_futures.push(create_async_future(
             id,
             FRIEND_USER_PAT,
@@ -175,7 +177,8 @@ async fn search_projects() {
             { "op": "add", "path": "/license_id", "value": "LGPL-3.0-or-later" },
             { "op": "add", "path": "/initial_versions/0/loaders", "value": ["forge"] },
             { "op": "add", "path": "/initial_versions/0/game_versions", "value": ["1.20.2"] },
-        ])).unwrap();
+        ]))
+        .unwrap();
         project_creation_futures.push(create_async_future(
             id,
             USER_USER_PAT,
@@ -198,8 +201,11 @@ async fn search_projects() {
             .get_project_deserialized(&format!("{test_name}-searchable-project-7"), USER_USER_PAT)
             .await;
         api.add_public_version(
-            project_7.id, "1.0.0", TestFile::build_random_jar(),
-            None, None,
+            project_7.id,
+            "1.0.0",
+            TestFile::build_random_jar(),
+            None,
+            None,
             USER_USER_PAT,
         )
         .await;
@@ -275,7 +281,11 @@ async fn search_projects() {
                 let test_name = test_name.clone();
                 async move {
                     let projects = api
-                        .search_deserialized_common(Some(&test_name), Some(facets.clone()), USER_USER_PAT)
+                        .search_deserialized_common(
+                            Some(&test_name),
+                            Some(facets.clone()),
+                            USER_USER_PAT,
+                        )
                         .await;
                     let mut found_project_ids: Vec<u64> = projects
                         .hits
@@ -288,6 +298,6 @@ async fn search_projects() {
                 }
             })
             .await;
-
-    }).await;
+    })
+    .await;
 }

@@ -1,5 +1,11 @@
 use std::collections::HashMap;
 
+use super::{request_data::get_public_version_creation_data, ApiV2};
+use crate::common::{
+    api_common::{models::CommonVersion, Api, ApiVersion},
+    asserts::assert_status,
+    dummy_data::TestFile,
+};
 use actix_http::{header::AUTHORIZATION, StatusCode};
 use actix_web::{
     dev::ServiceResponse,
@@ -7,13 +13,14 @@ use actix_web::{
 };
 use async_trait::async_trait;
 use labrinth::{
-    models::{projects::{VersionType, ProjectId}, v2::projects::LegacyVersion},
+    models::{
+        projects::{ProjectId, VersionType},
+        v2::projects::LegacyVersion,
+    },
     routes::v2::version_file::FileUpdateData,
     util::actix::AppendsMultipart,
 };
 use serde_json::json;
-use crate::common::{asserts::assert_status, api_common::{ApiVersion, models::CommonVersion, Api}, dummy_data::TestFile};
-use super::{request_data::get_public_version_creation_data, ApiV2};
 
 pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
     let serialized = serde_json::to_string(&elements).unwrap();
@@ -21,7 +28,6 @@ pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
 }
 
 impl ApiV2 {
-
     pub async fn get_version_deserialized(&self, id: &str, pat: &str) -> LegacyVersion {
         let resp = self.get_version(id, pat).await;
         assert_eq!(resp.status(), 200);
@@ -90,7 +96,6 @@ impl ApiVersion for ApiV2 {
         modify_json: Option<json_patch::Patch>,
         pat: &str,
     ) -> ServiceResponse {
-
         let creation_data = get_public_version_creation_data(
             project_id,
             version_number,
@@ -118,7 +123,14 @@ impl ApiVersion for ApiV2 {
         pat: &str,
     ) -> CommonVersion {
         let resp = self
-            .add_public_version(project_id, version_number, version_jar, ordering, modify_json, pat)
+            .add_public_version(
+                project_id,
+                version_number,
+                version_jar,
+                ordering,
+                modify_json,
+                pat,
+            )
             .await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
@@ -405,5 +417,4 @@ impl ApiVersion for ApiV2 {
         assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
-
 }

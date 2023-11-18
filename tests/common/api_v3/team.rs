@@ -4,7 +4,13 @@ use async_trait::async_trait;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::common::{asserts::assert_status, api_common::{ApiTeams, models::{CommonTeamMember, CommonNotification}, Api}};
+use crate::common::{
+    api_common::{
+        models::{CommonNotification, CommonTeamMember},
+        Api, ApiTeams,
+    },
+    asserts::assert_status,
+};
 
 use super::ApiV3;
 
@@ -72,12 +78,7 @@ impl ApiTeams for ApiV3 {
         self.call(req).await
     }
 
-    async fn remove_from_team(
-        &self,
-        team_id: &str,
-        user_id: &str,
-        pat: &str,
-    ) -> ServiceResponse {
+    async fn remove_from_team(&self, team_id: &str, user_id: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v3/team/{team_id}/members/{user_id}"))
             .append_header(("Authorization", pat))
@@ -134,11 +135,7 @@ impl ApiTeams for ApiV3 {
         test::read_body_json(resp).await
     }
 
-    async fn mark_notification_read(
-        &self,
-        notification_id: &str,
-        pat: &str,
-    ) -> ServiceResponse {
+    async fn mark_notification_read(&self, notification_id: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::patch()
             .uri(&format!("/v3/notification/{notification_id}"))
             .append_header(("Authorization", pat))

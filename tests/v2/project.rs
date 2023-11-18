@@ -1,8 +1,10 @@
 use crate::common::{
+    api_common::ApiProject,
     api_v2::ApiV2,
     database::{ENEMY_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, MOD_USER_PAT, USER_USER_PAT},
     dummy_data::{TestFile, DUMMY_CATEGORIES},
-    permissions::{PermissionsTest, PermissionsTestContext}, api_common::ApiProject, environment::{with_test_environment, TestEnvironment},
+    environment::{with_test_environment, TestEnvironment},
+    permissions::{PermissionsTest, PermissionsTestContext},
 };
 use actix_web::test;
 use itertools::Itertools;
@@ -15,7 +17,7 @@ use serde_json::json;
 
 #[actix_rt::test]
 async fn test_project_type_sanity() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
 
         // Perform all other patch tests on both 'mod' and 'modpack'
@@ -31,10 +33,7 @@ async fn test_project_type_sanity() {
             // TODO:
             // assert_eq!(test_project.project_type, mod_or_modpack);
             assert_eq!(test_project.loaders, vec!["fabric"]);
-            assert_eq!(
-                test_version[0].loaders,
-                vec!["fabric"]
-            );
+            assert_eq!(test_version[0].loaders, vec!["fabric"]);
 
             let project = api
                 .get_project_deserialized(test_project_slug, USER_USER_PAT)
@@ -53,13 +52,14 @@ async fn test_project_type_sanity() {
 
         // TODO: as we get more complicated strucures with v3 testing, and alpha/beta get more complicated, we should add more tests here,
         // to ensure that projects created with v3 routes are still valid and work with v3 routes.
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
 async fn test_add_remove_project() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
 
         // Generate test project data.
@@ -236,13 +236,13 @@ async fn test_add_remove_project() {
         // Old slug no longer works
         let resp = api.get_project("demo", USER_USER_PAT).await;
         assert_eq!(resp.status(), 404);
-
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
 async fn permissions_upload_version() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
@@ -363,13 +363,13 @@ async fn permissions_upload_version() {
             .simple_project_permissions_test(delete_version, req_gen)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
 pub async fn test_patch_project() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
 
         let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
@@ -524,5 +524,6 @@ pub async fn test_patch_project() {
         assert_eq!(project.client_side.as_str(), "optional");
         assert_eq!(project.server_side.as_str(), "required");
         assert_eq!(project.donation_urls.unwrap()[0].url, "https://patreon.com");
-    }).await;
+    })
+    .await;
 }

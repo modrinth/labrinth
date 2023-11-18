@@ -1,21 +1,24 @@
 #![allow(dead_code)]
 
 use super::{
+    api_common::{generic::GenericApi, Api, ApiBuildable},
     api_v2::ApiV2,
     api_v3::ApiV3,
     asserts::assert_status,
     database::{TemporaryDatabase, FRIEND_USER_ID, USER_USER_PAT},
-    dummy_data, api_common::{Api, generic::GenericApi, ApiBuildable},
+    dummy_data,
 };
 use crate::common::setup;
 use actix_http::StatusCode;
 use actix_web::dev::ServiceResponse;
 use futures::Future;
 
-pub async fn with_test_environment<Fut, A>(max_connections : Option<u32>, f: impl FnOnce(TestEnvironment<A>) -> Fut)
-where
+pub async fn with_test_environment<Fut, A>(
+    max_connections: Option<u32>,
+    f: impl FnOnce(TestEnvironment<A>) -> Fut,
+) where
     Fut: Future<Output = ()>,
-    A: ApiBuildable + 'static
+    A: ApiBuildable + 'static,
 {
     let test_env: TestEnvironment<A> = TestEnvironment::build(max_connections).await;
     let db = test_env.db.clone();
@@ -26,10 +29,7 @@ where
 // TODO: This needs to be slightly redesigned in order to do both V2 and v3 tests.
 // TODO: Most tests, since they use API functions, can be applied to both. The ones that weren't are in v2/, but
 // all tests that can be applied to both should use both v2 and v3 (extract api to a trait  with all the API functions and call both).
-pub async fn with_test_environment_all<Fut, F>(
-    max_connections: Option<u32>,
-    f: F,
-)
+pub async fn with_test_environment_all<Fut, F>(max_connections: Option<u32>, f: F)
 where
     Fut: Future<Output = ()>,
     F: Fn(TestEnvironment<GenericApi>) -> Fut,
@@ -72,9 +72,8 @@ pub struct TestEnvironment<A> {
     pub dummy: Option<dummy_data::DummyData>,
 }
 
-impl<A : ApiBuildable> TestEnvironment<A> {
-    async fn build(max_connections: Option<u32>) -> Self 
-    {
+impl<A: ApiBuildable> TestEnvironment<A> {
+    async fn build(max_connections: Option<u32>) -> Self {
         let db = TemporaryDatabase::create(max_connections).await;
         let mut test_env = Self::build_with_db(db).await;
 
@@ -83,8 +82,7 @@ impl<A : ApiBuildable> TestEnvironment<A> {
         test_env
     }
 
-    pub async fn build_with_db(db: TemporaryDatabase) -> Self 
-    {
+    pub async fn build_with_db(db: TemporaryDatabase) -> Self {
         let labrinth_config = setup(&db).await;
         Self {
             db,
@@ -96,7 +94,7 @@ impl<A : ApiBuildable> TestEnvironment<A> {
     }
 }
 
-impl<A : Api> TestEnvironment<A>  {
+impl<A: Api> TestEnvironment<A> {
     pub async fn cleanup(self) {
         self.db.cleanup().await;
     }

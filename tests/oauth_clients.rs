@@ -1,10 +1,11 @@
 use actix_http::StatusCode;
 use actix_web::test;
 use common::{
+    api_v3::ApiV3,
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},
     dummy_data::DummyOAuthClientAlpha,
     environment::{with_test_environment, TestEnvironment},
-    get_json_val_str, api_v3::ApiV3,
+    get_json_val_str,
 };
 use labrinth::{
     models::{

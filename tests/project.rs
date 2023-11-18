@@ -93,7 +93,8 @@ async fn test_get_project() {
 
         let resp = test_env.call(req).await;
         assert_eq!(resp.status(), 404);
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -155,7 +156,9 @@ async fn test_add_remove_project() {
             filename: Some("basic-mod.jar".to_string()),
             content_type: Some("application/java-archive".to_string()),
             // TODO: look at these: can be used in the reuse data
-            data: MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod.jar").to_vec()),
+            data: MultipartSegmentData::Binary(
+                include_bytes!("../tests/files/basic-mod.jar").to_vec(),
+            ),
         };
 
         // Differently named file, with the same content (for hash testing)
@@ -163,7 +166,9 @@ async fn test_add_remove_project() {
             name: "basic-mod-different.jar".to_string(),
             filename: Some("basic-mod-different.jar".to_string()),
             content_type: Some("application/java-archive".to_string()),
-            data: MultipartSegmentData::Binary(include_bytes!("../tests/files/basic-mod.jar").to_vec()),
+            data: MultipartSegmentData::Binary(
+                include_bytes!("../tests/files/basic-mod.jar").to_vec(),
+            ),
         };
 
         // Differently named file, with different content
@@ -188,7 +193,9 @@ async fn test_add_remove_project() {
         assert_eq!(status, 200);
 
         // Get the project we just made, and confirm that it's correct
-        let project = api.get_project_deserialized_common("demo", USER_USER_PAT).await;
+        let project = api
+            .get_project_deserialized_common("demo", USER_USER_PAT)
+            .await;
         assert!(project.versions.len() == 1);
         let uploaded_version_id = project.versions[0];
 
@@ -242,7 +249,9 @@ async fn test_add_remove_project() {
         assert_eq!(resp.status(), 200);
 
         // Get
-        let project = api.get_project_deserialized_common("demo", USER_USER_PAT).await;
+        let project = api
+            .get_project_deserialized_common("demo", USER_USER_PAT)
+            .await;
         let id = project.id.to_string();
 
         // Remove the project
@@ -272,7 +281,8 @@ async fn test_add_remove_project() {
         // Old slug no longer works
         let resp = api.get_project("demo", USER_USER_PAT).await;
         assert_eq!(resp.status(), 404);
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -416,7 +426,9 @@ pub async fn test_patch_project() {
         assert_eq!(resp.status(), 404);
 
         // New slug does work
-        let project = api.get_project_deserialized_common("newslug", USER_USER_PAT).await;
+        let project = api
+            .get_project_deserialized_common("newslug", USER_USER_PAT)
+            .await;
 
         assert_eq!(project.slug.unwrap(), "newslug");
         assert_eq!(project.title, "New successful title");
@@ -429,9 +441,10 @@ pub async fn test_patch_project() {
         assert_eq!(project.wiki_url, Some("https://wiki.com".to_string()));
         assert_eq!(project.donation_urls.unwrap()[0].url, "https://patreon.com");
 
-    // TODO:
-    // for loader fields?
-    }).await;
+        // TODO:
+        // for loader fields?
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -577,15 +590,14 @@ async fn permissions_patch_project() {
             .simple_project_permissions_test(edit_body, req_gen)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Not covered by PATCH /project
 #[actix_rt::test]
 async fn permissions_edit_details() {
     with_test_environment_all(None, |test_env| async move {
-
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
         let beta_project_id = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
@@ -712,7 +724,8 @@ async fn permissions_edit_details() {
             .simple_project_permissions_test(edit_details, req_gen)
             .await
             .unwrap();
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -840,7 +853,8 @@ async fn permissions_upload_version() {
             .simple_project_permissions_test(delete_version, req_gen)
             .await
             .unwrap();
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -936,7 +950,8 @@ async fn permissions_manage_invites() {
             .simple_project_permissions_test(remove_member, req_gen)
             .await
             .unwrap();
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -955,13 +970,13 @@ async fn permissions_delete_project() {
             .unwrap();
 
         test_env.cleanup().await;
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
 async fn project_permissions_consistency_test() {
     with_test_environment_all(Some(10), |test_env| async move {
-
         // Test that the permissions are consistent with each other
         // For example, if we get the projectpermissions directly, from an organization's defaults, overriden, etc, they should all be correct & consistent
 
@@ -995,8 +1010,8 @@ async fn project_permissions_consistency_test() {
             .full_project_permissions_test(success_permissions, req_gen)
             .await
             .unwrap();
-
-    }).await;
+    })
+    .await;
 }
 
 // Route tests:

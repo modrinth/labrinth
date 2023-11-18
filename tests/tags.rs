@@ -1,4 +1,3 @@
-
 use std::collections::HashSet;
 
 use common::environment::with_test_environment_all;
@@ -42,6 +41,6 @@ async fn get_tags() {
             .map(|s| s.to_string())
             .collect()
         );
-
-    }).await;
+    })
+    .await;
 }
