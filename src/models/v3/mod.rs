@@ -7,6 +7,7 @@ pub mod oauth_clients;
 pub mod organizations;
 pub mod pack;
 pub mod pats;
+pub mod payouts;
 pub mod projects;
 pub mod reports;
 pub mod sessions;

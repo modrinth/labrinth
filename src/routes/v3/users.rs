@@ -21,7 +21,7 @@ use crate::{
         notifications::Notification,
         pats::Scopes,
         projects::Project,
-        users::{Badges, Payout, PayoutStatus, RecipientStatus, Role, UserPayoutData},
+        users::{Badges, Role, UserPayoutData},
     },
     queue::{payouts::PayoutsQueue, session::AuthQueue},
     util::{routes::read_from_payload, validate::validation_errors_to_string},
@@ -43,7 +43,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("{id}/icon", web::patch().to(user_icon_edit))
             .route("{id}", web::delete().to(user_delete))
             .route("{id}/follows", web::get().to(user_follows))
-            .route("{id}/notifications", web::get().to(user_notifications))
+            .route("{id}/notifications", web::get().to(user_notifications)),
     );
 }
 
@@ -448,8 +448,8 @@ pub async fn user_edit(
                     venmo_handle,
                     id as crate::database::models::ids::UserId,
                 )
-                    .execute(&mut *transaction)
-                    .await?;
+                .execute(&mut *transaction)
+                .await?;
             }
 
             User::clear_caches(&[(id, Some(actual_user.username))], &redis).await?;

@@ -556,7 +556,7 @@ impl User {
 
             sqlx::query!(
                 "
-                DELETE FROM historical_payouts
+                DELETE FROM payouts
                 WHERE user_id = $1
                 ",
                 id as UserId,

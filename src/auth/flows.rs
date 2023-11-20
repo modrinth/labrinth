@@ -21,6 +21,7 @@ use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use actix_ws::Closed;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use base64::Engine;
 use chrono::{Duration, Utc};
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -30,8 +31,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use base64::Engine;
-use tokio::sync::{RwLock};
+use tokio::sync::RwLock;
 use validator::Validate;
 
 pub fn config(cfg: &mut ServiceConfig) {
@@ -529,7 +529,14 @@ impl AuthProvider {
                 let token: AccessToken = reqwest::Client::new()
                     .post(&format!("{api_url}oauth2/token"))
                     .header(reqwest::header::ACCEPT, "application/json")
-                    .header(AUTHORIZATION, format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{client_id}:{client_secret}"))))
+                    .header(
+                        AUTHORIZATION,
+                        format!(
+                            "Basic {}",
+                            base64::engine::general_purpose::STANDARD
+                                .encode(format!("{client_id}:{client_secret}"))
+                        ),
+                    )
                     .form(&map)
                     .send()
                     .await?
@@ -786,7 +793,9 @@ impl AuthProvider {
                 let api_url = dotenvy::var("PAYPAL_API_URL")?;
 
                 let paypal_user: PayPalUser = reqwest::Client::new()
-                    .get(&format!("{api_url}identity/openidconnect/userinfo?schema=openid"))
+                    .get(&format!(
+                        "{api_url}identity/openidconnect/userinfo?schema=openid"
+                    ))
                     .header(reqwest::header::USER_AGENT, "Modrinth")
                     .header(AUTHORIZATION, format!("Bearer {token}"))
                     .send()
@@ -986,8 +995,8 @@ impl AuthProvider {
                         ",
                         user_id as crate::database::models::UserId,
                     )
-                        .execute(&mut **transaction)
-                        .await?;
+                    .execute(&mut **transaction)
+                    .await?;
                 } else {
                     sqlx::query!(
                         "
@@ -998,8 +1007,8 @@ impl AuthProvider {
                         user_id as crate::database::models::UserId,
                         id,
                     )
-                        .execute(&mut **transaction)
-                        .await?;
+                    .execute(&mut **transaction)
+                    .await?;
                 }
             }
         }

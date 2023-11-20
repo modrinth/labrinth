@@ -3,17 +3,14 @@ use crate::file_hosting::FileHost;
 use crate::models::projects::Project;
 use crate::models::users::{Badges, Role};
 use crate::models::v2::projects::LegacyProject;
-use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v2_reroute, v3, ApiError};
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
 use lazy_static::lazy_static;
 use regex::Regex;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -30,7 +27,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(user_edit)
             .service(user_icon_edit)
             .service(user_notifications)
-            .service(user_follows)
+            .service(user_follows),
     );
 }
 
@@ -155,6 +152,7 @@ pub async fn user_edit(
             bio: new_user.bio,
             role: new_user.role,
             badges: new_user.badges,
+            venmo_handle: None,
         }),
         pool,
         redis,

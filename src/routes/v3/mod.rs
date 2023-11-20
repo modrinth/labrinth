@@ -9,6 +9,7 @@ pub mod images;
 pub mod moderation;
 pub mod notifications;
 pub mod organizations;
+pub mod payouts;
 pub mod project_creation;
 pub mod projects;
 pub mod reports;
@@ -20,7 +21,6 @@ pub mod users;
 pub mod version_creation;
 pub mod version_file;
 pub mod versions;
-pub mod payouts;
 
 pub mod oauth_clients;
 
@@ -41,7 +41,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(version_file::config)
             .configure(versions::config)
             .configure(oauth::config)
-            .configure(oauth_clients::config),
+            .configure(oauth_clients::config)
+            .configure(payouts::config),
     );
 }
 

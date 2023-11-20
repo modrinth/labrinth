@@ -11,11 +11,17 @@ ALTER TABLE users
     DROP COLUMN payout_wallet_type,
     DROP COLUMN payout_address;
 
-
--- TODO FIGURE OUT
 ALTER TABLE historical_payouts
-    ADD COLUMN payment_method text NULL,
-    ADD COLUMN payment_id text NULL;
+    RENAME TO payouts;
 
-UPDATE historical_payouts
-SET status = 'processed'
+ALTER TABLE payouts
+    ADD COLUMN method text NULL,
+    ADD COLUMN method_address text NULL,
+    ADD COLUMN platform_id text NULL,
+    ALTER COLUMN id TYPE bigint,
+    ALTER COLUMN id DROP DEFAULT;
+
+UPDATE payouts
+SET status = 'success';
+
+DROP SEQUENCE IF EXISTS historical_payouts_id_seq;

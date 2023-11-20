@@ -1,29 +1,26 @@
 use crate::routes::ApiError;
 use crate::util::env::parse_var;
 use crate::{database::redis::RedisPool, models::projects::MonetizationStatus};
+use base64::Engine;
 use chrono::{DateTime, Datelike, Duration, Utc, Weekday};
-use hex::ToHex;
-use hmac::{Hmac, Mac, NewMac};
 use reqwest::Method;
 use rust_decimal::Decimal;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sha2::Sha256;
 use sqlx::PgPool;
 use std::collections::HashMap;
-use base64::Engine;
+use tokio::sync::RwLock;
 
 pub struct PayoutsQueue {
-    credential: PaypalCredential,
-    credential_expires: DateTime<Utc>,
+    credential: RwLock<Option<PayPalCredentials>>,
 }
 
-#[derive(Deserialize, Default)]
-struct PaypalCredential {
+#[derive(Deserialize, Clone)]
+struct PayPalCredentials {
     access_token: String,
     token_type: String,
-    expires_in: i64,
+    expires: DateTime<Utc>,
 }
 
 #[derive(Serialize)]
@@ -47,12 +44,12 @@ pub struct PayoutAmount {
 impl PayoutsQueue {
     pub fn new() -> Self {
         PayoutsQueue {
-            credential: Default::default(),
-            credential_expires: Utc::now() - Duration::days(30),
+            credential: RwLock::new(None),
         }
     }
 
-    pub async fn refresh_token(&mut self) -> Result<(), ApiError> {
+    async fn refresh_token(&self) -> Result<PayPalCredentials, ApiError> {
+        let mut creds = self.credential.write().await;
         let client = reqwest::Client::new();
 
         let combined_key = format!(
@@ -67,6 +64,13 @@ impl PayoutsQueue {
 
         let mut form = HashMap::new();
         form.insert("grant_type", "client_credentials");
+
+        #[derive(Deserialize)]
+        struct PaypalCredential {
+            access_token: String,
+            token_type: String,
+            expires_in: i64,
+        }
 
         let credential: PaypalCredential = client
             .post(&format!("{}oauth2/token", dotenvy::var("PAYPAL_API_URL")?))
@@ -85,21 +89,86 @@ impl PayoutsQueue {
                 )
             })?;
 
-        self.credential_expires = Utc::now() + Duration::seconds(credential.expires_in);
-        self.credential = credential;
+        let new_creds = PayPalCredentials {
+            access_token: credential.access_token,
+            token_type: credential.token_type,
+            expires: Utc::now() + Duration::seconds(credential.expires_in),
+        };
 
-        Ok(())
+        *creds = Some(new_creds.clone());
+
+        Ok(new_creds)
     }
 
-    pub async fn send_payout(&mut self, mut payout: PayoutItem) -> Result<Decimal, ApiError> {
-        if self.credential_expires < Utc::now() {
+    pub async fn make_paypal_request<T: Serialize, X: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<T>,
+        no_api_prefix: Option<bool>,
+    ) -> Result<X, ApiError> {
+        let read = self.credential.read().await;
+        let credentials = if let Some(credentials) = read.as_ref() {
+            if credentials.expires < Utc::now() {
+                drop(read);
+                self.refresh_token().await.map_err(|_| {
+                    ApiError::Payments("Error while authenticating with  PayPal".to_string())
+                })?
+            } else {
+                credentials.clone()
+            }
+        } else {
+            drop(read);
             self.refresh_token().await.map_err(|_| {
-                ApiError::Payments("Error while authenticating with PayPal".to_string())
-            })?;
+                ApiError::Payments("Error while authenticating with  PayPal".to_string())
+            })?
+        };
+
+        let client = reqwest::Client::new();
+        let mut request = client
+            .request(
+                method,
+                &if no_api_prefix.unwrap_or(false) {
+                    path.to_string()
+                } else {
+                    format!("{}{path}", dotenvy::var("PAYPAL_API_URL")?)
+                },
+            )
+            .header(
+                "Authorization",
+                format!("{} {}", credentials.token_type, credentials.access_token),
+            );
+
+        if let Some(body) = body {
+            request = request.json(&body);
         }
 
+        let resp = request
+            .send()
+            .await
+            .map_err(|_| ApiError::Payments("could not communicate with PayPal".to_string()))?;
+
+        let status = resp.status();
+
+        let value = resp.json::<Value>().await.map_err(|_| {
+            ApiError::Payments("could not retrieve PayPal response body".to_string())
+        })?;
+
+        if !status.is_success() {
+            println!("{}", serde_json::to_string(&value)?);
+
+            // TODO: error handling
+        }
+
+        println!("{}", serde_json::to_string(&value)?);
+
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub async fn send_payout(&self, mut payout: PayoutItem) -> Result<Decimal, ApiError> {
         let wallet = payout.recipient_wallet.clone();
 
+        // TODO: calculate fee based on actual country data we have from paypal
         let fee = if wallet == *"Venmo" {
             Decimal::ONE / Decimal::from(4)
         } else {
@@ -121,82 +190,51 @@ impl PayoutsQueue {
             ));
         }
 
-        let client = reqwest::Client::new();
+        #[derive(Deserialize)]
+        struct PayPalLink {
+            href: String,
+        }
 
-        let res = client.post(&format!("{}payments/payouts", dotenvy::var("PAYPAL_API_URL")?))
-            .header("Authorization", format!("{} {}", self.credential.token_type, self.credential.access_token))
-            .json(&json! ({
+        #[derive(Deserialize)]
+        struct PayoutsResponse {
+            pub links: Vec<PayPalLink>,
+        }
+
+        #[derive(Deserialize)]
+        struct PayoutDataItem {
+            payout_item_fee: PayoutAmount,
+        }
+
+        #[derive(Deserialize)]
+        struct PayoutData {
+            pub items: Vec<PayoutDataItem>,
+        }
+
+        // TODO: get payment ID for every request and then provide it
+        let res: PayoutsResponse = self.make_paypal_request(
+            Method::POST,
+            "payments/payouts",
+            Some(
+                json! ({
                     "sender_batch_header": {
                         "sender_batch_id": format!("{}-payouts", Utc::now().to_rfc3339()),
                         "email_subject": "You have received a payment from Modrinth!",
                         "email_message": "Thank you for creating projects on Modrinth. Please claim this payment within 30 days.",
                     },
                     "items": vec![payout]
-                }))
-            .send().await.map_err(|_| ApiError::Payments("Error while sending payout to PayPal".to_string()))?;
+                })
+            ),
+            None
+        ).await?;
 
-        if !res.status().is_success() {
-            #[derive(Deserialize)]
-            struct PayPalError {
-                pub body: PayPalErrorBody,
-            }
-
-            #[derive(Deserialize)]
-            struct PayPalErrorBody {
-                pub message: String,
-            }
-
-            let body: PayPalError = res.json().await.map_err(|_| {
-                ApiError::Payments("Error while registering payment in PayPal!".to_string())
-            })?;
-
-            return Err(ApiError::Payments(format!(
-                "Error while registering payment in PayPal: {}",
-                body.body.message
-            )));
-        } else if wallet != *"Venmo" {
-            #[derive(Deserialize)]
-            struct PayPalLink {
-                href: String,
-            }
-
-            #[derive(Deserialize)]
-            struct PayoutsResponse {
-                pub links: Vec<PayPalLink>,
-            }
-
-            #[derive(Deserialize)]
-            struct PayoutDataItem {
-                payout_item_fee: PayoutAmount,
-            }
-
-            #[derive(Deserialize)]
-            struct PayoutData {
-                pub items: Vec<PayoutDataItem>,
-            }
-
-            // Calculate actual fee + refund if we took too big of a fee.
-            if let Ok(res) = res.json::<PayoutsResponse>().await {
-                if let Some(link) = res.links.first() {
-                    if let Ok(res) = client
-                        .get(&link.href)
-                        .header(
-                            "Authorization",
-                            format!(
-                                "{} {}",
-                                self.credential.token_type, self.credential.access_token
-                            ),
-                        )
-                        .send()
-                        .await
-                    {
-                        if let Ok(res) = res.json::<PayoutData>().await {
-                            if let Some(data) = res.items.first() {
-                                if (fee - data.payout_item_fee.value) > Decimal::ZERO {
-                                    return Ok(fee - data.payout_item_fee.value);
-                                }
-                            }
-                        }
+        if let Some(link) = res.links.first() {
+            if let Ok(res) = self
+                .make_paypal_request::<(), PayoutData>(Method::GET, &link.href, None, Some(true))
+                .await
+            {
+                if let Some(data) = res.items.first() {
+                    if (fee - data.payout_item_fee.value) > Decimal::ZERO {
+                        return Ok(fee - data.payout_item_fee.value);
                     }
                 }
             }
