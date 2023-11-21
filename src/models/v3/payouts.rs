@@ -16,10 +16,27 @@ pub struct Payout {
     pub created: DateTime<Utc>,
     pub amount: Decimal,
 
+    pub fee: Option<Decimal>,
     pub method: Option<PayoutMethod>,
     /// the address this payout was sent to: ex: email, paypal email, venmo handle
     pub method_address: Option<String>,
     pub platform_id: Option<String>,
+}
+
+impl Payout {
+    pub fn from(data: crate::database::models::payout_item::Payout) -> Self {
+        Self {
+            id: data.id.into(),
+            user_id: data.user_id.into(),
+            status: data.status,
+            created: data.created,
+            amount: data.amount,
+            fee: data.fee,
+            method: data.method,
+            method_address: data.method_address,
+            platform_id: data.platform_id,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]

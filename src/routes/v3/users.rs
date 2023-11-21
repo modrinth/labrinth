@@ -1,14 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use actix_web::{web, HttpRequest, HttpResponse};
-use bitflags::Flags;
 use lazy_static::lazy_static;
 use regex::Regex;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::PgPool;
-use tokio::sync::Mutex;
 use validator::Validate;
 
 use crate::{
@@ -21,9 +17,9 @@ use crate::{
         notifications::Notification,
         pats::Scopes,
         projects::Project,
-        users::{Badges, Role, UserPayoutData},
+        users::{Badges, Role},
     },
-    queue::{payouts::PayoutsQueue, session::AuthQueue},
+    queue::session::AuthQueue,
     util::{routes::read_from_payload, validate::validation_errors_to_string},
 };
 

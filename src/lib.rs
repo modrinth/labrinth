@@ -361,6 +361,10 @@ pub fn check_env_vars() -> bool {
     failed |= check_var::<String>("GOOGLE_CLIENT_SECRET");
     failed |= check_var::<String>("STEAM_API_KEY");
 
+    failed |= check_var::<String>("TREMENDOUS_API_URL");
+    failed |= check_var::<String>("TREMENDOUS_API_KEY");
+    failed |= check_var::<String>("TREMENDOUS_PRIVATE_KEY");
+
     failed |= check_var::<String>("PAYPAL_API_URL");
     failed |= check_var::<String>("PAYPAL_WEBHOOK_ID");
     failed |= check_var::<String>("PAYPAL_CLIENT_ID");

@@ -13,6 +13,7 @@ pub struct Payout {
     pub status: PayoutStatus,
     pub amount: Decimal,
 
+    pub fee: Option<Decimal>,
     pub method: Option<PayoutMethod>,
     pub method_address: Option<String>,
     pub platform_id: Option<String>,
@@ -26,14 +27,15 @@ impl Payout {
         sqlx::query!(
             "
             INSERT INTO payouts (
-                id, amount, user_id, status, method, method_address, platform_id
+                id, amount, fee, user_id, status, method, method_address, platform_id
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7
+                $1, $2, $3, $4, $5, $6, $7, $8
             )
             ",
             self.id.0,
             self.amount,
+            self.fee,
             self.user_id.0,
             self.status.as_str(),
             self.method.map(|x| x.as_str()),
@@ -66,7 +68,7 @@ impl Payout {
 
         let results = sqlx::query!(
             "
-            SELECT id, user_id, created, amount, status, method, method_address, platform_id
+            SELECT id, user_id, created, amount, status, method, method_address, platform_id, fee
             FROM payouts
             WHERE id = ANY($1)
             ",
@@ -83,6 +85,7 @@ impl Payout {
                 method: r.method.map(|x| PayoutMethod::from_string(&x)),
                 method_address: r.method_address,
                 platform_id: r.platform_id,
+                fee: r.fee,
             }))
         })
         .try_collect::<Vec<Payout>>()

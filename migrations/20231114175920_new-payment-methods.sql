@@ -18,6 +18,7 @@ ALTER TABLE payouts
     ADD COLUMN method text NULL,
     ADD COLUMN method_address text NULL,
     ADD COLUMN platform_id text NULL,
+    ADD COLUMN fee numeric(40, 20) NULL,
     ALTER COLUMN id TYPE bigint,
     ALTER COLUMN id DROP DEFAULT;
 

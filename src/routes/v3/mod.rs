@@ -42,7 +42,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(versions::config)
             .configure(oauth::config)
             .configure(oauth_clients::config)
-            .configure(payouts::config),
+            .configure(payouts::config)
+            .configure(users::config),
     );
 }
 

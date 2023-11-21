@@ -7,7 +7,7 @@ use reqwest::Method;
 use rust_decimal::Decimal;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -21,23 +21,6 @@ struct PayPalCredentials {
     access_token: String,
     token_type: String,
     expires: DateTime<Utc>,
-}
-
-#[derive(Serialize)]
-pub struct PayoutItem {
-    pub amount: PayoutAmount,
-    pub receiver: String,
-    pub note: String,
-    pub recipient_type: String,
-    pub recipient_wallet: String,
-    pub sender_item_id: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct PayoutAmount {
-    pub currency: String,
-    #[serde(with = "rust_decimal::serde::str")]
-    pub value: Decimal,
 }
 
 // Batches payouts and handles token refresh
@@ -154,93 +137,104 @@ impl PayoutsQueue {
             ApiError::Payments("could not retrieve PayPal response body".to_string())
         })?;
 
-        if !status.is_success() {
-            println!("{}", serde_json::to_string(&value)?);
-
-            // TODO: error handling
-        }
-
+        // TODO: remove
         println!("{}", serde_json::to_string(&value)?);
+
+        if !status.is_success() {
+            #[derive(Deserialize)]
+            struct PayPalError {
+                pub name: String,
+                pub message: String,
+            }
+
+            #[derive(Deserialize)]
+            struct PayPalIdentityError {
+                pub error: String,
+                pub error_description: String,
+            }
+
+            if let Ok(error) = serde_json::from_value::<PayPalError>(value.clone()) {
+                return Err(ApiError::Payments(format!(
+                    "error name: {}, message: {}",
+                    error.name, error.message
+                )));
+            }
+
+            if let Ok(error) = serde_json::from_value::<PayPalIdentityError>(value) {
+                return Err(ApiError::Payments(format!(
+                    "error name: {}, message: {}",
+                    error.error, error.error_description
+                )));
+            }
+
+            return Err(ApiError::Payments(
+                "could not retrieve PayPal error body".to_string(),
+            ));
+        }
 
         Ok(serde_json::from_value(value)?)
     }
 
-    pub async fn send_payout(&self, mut payout: PayoutItem) -> Result<Decimal, ApiError> {
-        let wallet = payout.recipient_wallet.clone();
-
-        // TODO: calculate fee based on actual country data we have from paypal
-        let fee = if wallet == *"Venmo" {
-            Decimal::ONE / Decimal::from(4)
-        } else {
-            std::cmp::min(
-                std::cmp::max(
-                    Decimal::ONE / Decimal::from(4),
-                    (Decimal::from(2) / Decimal::ONE_HUNDRED) * payout.amount.value,
-                ),
-                Decimal::from(20),
+    pub async fn make_tremendous_request<T: Serialize, X: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<T>,
+    ) -> Result<X, ApiError> {
+        let client = reqwest::Client::new();
+        let mut request = client
+            .request(
+                method,
+                format!("{}{path}", dotenvy::var("TREMENDOUS_API_URL")?),
             )
-        };
+            .header(
+                "Authorization",
+                format!("Bearer {}", dotenvy::var("TREMENDOUS_API_KEY")?),
+            );
 
-        payout.amount.value -= fee;
-        payout.amount.value = payout.amount.value.round_dp(2);
-
-        if payout.amount.value <= Decimal::ZERO {
-            return Err(ApiError::InvalidInput(
-                "You do not have enough funds to make this payout!".to_string(),
-            ));
+        if let Some(body) = body {
+            request = request.json(&body);
         }
 
-        #[derive(Deserialize)]
-        struct PayPalLink {
-            href: String,
-        }
+        let resp = request
+            .send()
+            .await
+            .map_err(|_| ApiError::Payments("could not communicate with Tremendous".to_string()))?;
 
-        #[derive(Deserialize)]
-        struct PayoutsResponse {
-            pub links: Vec<PayPalLink>,
-        }
+        let status = resp.status();
 
-        #[derive(Deserialize)]
-        struct PayoutDataItem {
-            payout_item_fee: PayoutAmount,
-        }
+        let value = resp.json::<Value>().await.map_err(|_| {
+            ApiError::Payments("could not retrieve Tremendous response body".to_string())
+        })?;
 
-        #[derive(Deserialize)]
-        struct PayoutData {
-            pub items: Vec<PayoutDataItem>,
-        }
+        // TODO: remove
+        println!("{}", serde_json::to_string(&value)?);
 
-        // TODO: get payment ID for every request and then provide it
-        let res: PayoutsResponse = self.make_paypal_request(
-            Method::POST,
-            "payments/payouts",
-            Some(
-                json! ({
-                    "sender_batch_header": {
-                        "sender_batch_id": format!("{}-payouts", Utc::now().to_rfc3339()),
-                        "email_subject": "You have received a payment from Modrinth!",
-                        "email_message": "Thank you for creating projects on Modrinth. Please claim this payment within 30 days.",
-                    },
-                    "items": vec![payout]
-                })
-            ),
-            None
-        ).await?;
-
-        if let Some(link) = res.links.first() {
-            if let Ok(res) = self
-                .make_paypal_request::<(), PayoutData>(Method::GET, &link.href, None, Some(true))
-                .await
-            {
-                if let Some(data) = res.items.first() {
-                    if (fee - data.payout_item_fee.value) > Decimal::ZERO {
-                        return Ok(fee - data.payout_item_fee.value);
+        if !status.is_success() {
+            if let Some(obj) = value.as_object() {
+                if let Some(array) = obj.get("errors") {
+                    #[derive(Deserialize)]
+                    struct TremendousError {
+                        message: String,
                     }
+
+                    let err =
+                        serde_json::from_value::<TremendousError>(array.clone()).map_err(|_| {
+                            ApiError::Payments(
+                                "could not retrieve Tremendous error json body".to_string(),
+                            )
+                        })?;
+
+                    return Err(ApiError::Payments(err.message));
                 }
+
+                return Err(ApiError::Payments(
+                    "could not retrieve Tremendous error body".to_string(),
+                ));
             }
         }
 
-        Ok(Decimal::ZERO)
+        Ok(serde_json::from_value(value)?)
     }
 }
 

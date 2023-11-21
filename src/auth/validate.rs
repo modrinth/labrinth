@@ -64,7 +64,7 @@ where
         has_totp: Some(db_user.totp_secret.is_some()),
         github_id: None,
         payout_data: Some(UserPayoutData {
-            paypal_address: db_user.paypal_id,
+            paypal_address: db_user.paypal_email,
             paypal_country: db_user.paypal_country,
             venmo_handle: db_user.venmo_handle,
             balance: db_user.balance,
