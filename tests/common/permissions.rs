@@ -50,8 +50,8 @@ pub struct PermissionsTest<'a> {
     // Closures that check the JSON body of the response for failure and success cases.
     // These are used to perform more complex tests than just checking the status code.
     // (eg: checking that the response contains the correct data)
-    failure_json_check: Option<Box<dyn Fn(&serde_json::Value) -> () + Send>>,
-    success_json_check: Option<Box<dyn Fn(&serde_json::Value) -> () + Send>>,
+    failure_json_check: Option<Box<dyn Fn(&serde_json::Value) + Send>>,
+    success_json_check: Option<Box<dyn Fn(&serde_json::Value) + Send>>,
 }
 
 pub struct PermissionsTestContext<'a> {
@@ -102,8 +102,8 @@ impl<'a> PermissionsTest<'a> {
     // This is useful if, say, both expected status codes are 200.
     pub fn with_200_json_checks(
         mut self,
-        failure_json_check: impl Fn(&serde_json::Value) -> () + Send + 'static,
-        success_json_check: impl Fn(&serde_json::Value) -> () + Send + 'static,
+        failure_json_check: impl Fn(&serde_json::Value) + Send + 'static,
+        success_json_check: impl Fn(&serde_json::Value) + Send + 'static,
     ) -> Self {
         self.failure_json_check = Some(Box::new(failure_json_check));
         self.success_json_check = Some(Box::new(success_json_check));
@@ -203,7 +203,8 @@ impl<'a> PermissionsTest<'a> {
                     .join(","),
                 resp.status().as_u16()
             ));
-        } if resp.status() == StatusCode::OK {
+        }
+        if resp.status() == StatusCode::OK {
             if let Some(failure_json_check) = &self.failure_json_check {
                 failure_json_check(&test::read_body_json(resp).await);
             }
@@ -228,7 +229,8 @@ impl<'a> PermissionsTest<'a> {
                     .join(","),
                 resp.status().as_u16()
             ));
-        } if resp.status() == StatusCode::OK {
+        }
+        if resp.status() == StatusCode::OK {
             if let Some(failure_json_check) = &self.failure_json_check {
                 failure_json_check(&test::read_body_json(resp).await);
             }
@@ -253,7 +255,8 @@ impl<'a> PermissionsTest<'a> {
                     .join(","),
                 resp.status().as_u16()
             ));
-        } if resp.status() == StatusCode::OK {
+        }
+        if resp.status() == StatusCode::OK {
             if let Some(failure_json_check) = &self.failure_json_check {
                 failure_json_check(&test::read_body_json(resp).await);
             }
@@ -284,7 +287,8 @@ impl<'a> PermissionsTest<'a> {
                 "Success permissions test failed. Expected success, got {}",
                 resp.status().as_u16()
             ));
-        } if resp.status() == StatusCode::OK {
+        }
+        if resp.status() == StatusCode::OK {
             if let Some(success_json_check) = &self.success_json_check {
                 success_json_check(&test::read_body_json(resp).await);
             }

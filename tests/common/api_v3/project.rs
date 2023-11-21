@@ -216,7 +216,7 @@ impl ApiV3 {
             format!("version_ids={}", version_string)
         } else {
             let projects_string: String = serde_json::to_string(&id_or_slugs).unwrap();
-            let projects_string = urlencoding::encode(&projects_string);    
+            let projects_string = urlencoding::encode(&projects_string);
             format!("project_ids={}", projects_string)
         };
 
@@ -238,9 +238,7 @@ impl ApiV3 {
         }
 
         let req = test::TestRequest::get()
-            .uri(&format!(
-                "/v3/analytics/revenue?{pv_string}{extra_args}",
-            ))
+            .uri(&format!("/v3/analytics/revenue?{pv_string}{extra_args}",))
             .append_header(("Authorization", pat))
             .to_request();
 

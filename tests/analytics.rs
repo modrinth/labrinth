@@ -1,8 +1,8 @@
 use actix_web::test;
 use chrono::{DateTime, Duration, Utc};
+use common::environment::TestEnvironment;
 use common::permissions::PermissionsTest;
 use common::{database::*, permissions::PermissionsTestContext};
-use common::environment::TestEnvironment;
 use itertools::Itertools;
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::teams::ProjectPermissions;
@@ -139,7 +139,6 @@ fn to_f64_vec_rounded_up(d: Vec<Decimal>) -> Vec<f64> {
     d.into_iter().map(to_f64_rounded_up).collect_vec()
 }
 
-
 #[actix_rt::test]
 pub async fn permissions_analytics_revenue() {
     let test_env = TestEnvironment::build(None).await;
@@ -167,27 +166,26 @@ pub async fn permissions_analytics_revenue() {
         .clone();
 
     let view_analytics = ProjectPermissions::VIEW_ANALYTICS;
-    
+
     // first, do check with a project
     let req_gen = |ctx: &PermissionsTestContext| {
         let projects_string = serde_json::to_string(&vec![ctx.project_id]).unwrap();
         let projects_string = urlencoding::encode(&projects_string);
-        test::TestRequest::get()
-            .uri(&format!(
-                "/v3/analytics/revenue?project_ids={projects_string}&resolution_minutes=5",
-            ))
-        };
+        test::TestRequest::get().uri(&format!(
+            "/v3/analytics/revenue?project_ids={projects_string}&resolution_minutes=5",
+        ))
+    };
 
     PermissionsTest::new(&test_env)
         .with_failure_codes(vec![200, 401])
         .with_200_json_checks(
             // On failure, should have 0 projects returned
-            |value : &serde_json::Value| {
+            |value: &serde_json::Value| {
                 let value = value.as_object().unwrap();
                 assert_eq!(value.len(), 0);
             },
             // On success, should have 1 project returned
-            |value : &serde_json::Value| {
+            |value: &serde_json::Value| {
                 let value = value.as_object().unwrap();
                 assert_eq!(value.len(), 1);
             },
@@ -201,24 +199,23 @@ pub async fn permissions_analytics_revenue() {
     let req_gen = |_: &PermissionsTestContext| {
         let versions_string = serde_json::to_string(&vec![alpha_version_id.clone()]).unwrap();
         let versions_string = urlencoding::encode(&versions_string);
-        test::TestRequest::get()
-            .uri(&format!(
-                "/v3/analytics/revenue?version_ids={versions_string}&resolution_minutes=5",
-            ))
-        };
-    
+        test::TestRequest::get().uri(&format!(
+            "/v3/analytics/revenue?version_ids={versions_string}&resolution_minutes=5",
+        ))
+    };
+
     PermissionsTest::new(&test_env)
         .with_failure_codes(vec![200, 401])
         .with_existing_project(&alpha_project_id, &alpha_team_id)
         .with_user(FRIEND_USER_ID, FRIEND_USER_PAT, true)
         .with_200_json_checks(
             // On failure, should have 0 versions returned
-            |value : &serde_json::Value| {
+            |value: &serde_json::Value| {
                 let value = value.as_object().unwrap();
                 assert_eq!(value.len(), 0);
             },
             // On success, should have 1 versions returned
-            |value : &serde_json::Value| {
+            |value: &serde_json::Value| {
                 let value = value.as_object().unwrap();
                 assert_eq!(value.len(), 1);
             },
