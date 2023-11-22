@@ -1,4 +1,4 @@
-use crate::models::payouts::{PayoutMethod, PayoutStatus};
+use crate::models::payouts::{PayoutMethodType, PayoutStatus};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ pub struct Payout {
     pub amount: Decimal,
 
     pub fee: Option<Decimal>,
-    pub method: Option<PayoutMethod>,
+    pub method: Option<PayoutMethodType>,
     pub method_address: Option<String>,
     pub platform_id: Option<String>,
 }
@@ -82,7 +82,7 @@ impl Payout {
                 created: r.created,
                 status: PayoutStatus::from_string(&r.status),
                 amount: r.amount,
-                method: r.method.map(|x| PayoutMethod::from_string(&x)),
+                method: r.method.map(|x| PayoutMethodType::from_string(&x)),
                 method_address: r.method_address,
                 platform_id: r.platform_id,
                 fee: r.fee,

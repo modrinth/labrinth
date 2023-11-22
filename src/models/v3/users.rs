@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Hash)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct UserId(pub u64);
@@ -65,6 +65,7 @@ pub struct UserPayoutData {
     pub paypal_address: Option<String>,
     pub paypal_country: Option<String>,
     pub venmo_handle: Option<String>,
+    #[serde(with = "rust_decimal::serde::float")]
     pub balance: Decimal,
 }
 

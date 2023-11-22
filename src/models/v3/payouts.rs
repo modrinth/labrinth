@@ -1,7 +1,7 @@
 use crate::models::ids::{Base62Id, UserId};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(from = "Base62Id")]
@@ -14,10 +14,12 @@ pub struct Payout {
     pub user_id: UserId,
     pub status: PayoutStatus,
     pub created: DateTime<Utc>,
+    #[serde(with = "rust_decimal::serde::float")]
     pub amount: Decimal,
 
+    #[serde(with = "rust_decimal::serde::float_option")]
     pub fee: Option<Decimal>,
-    pub method: Option<PayoutMethod>,
+    pub method: Option<PayoutMethodType>,
     /// the address this payout was sent to: ex: email, paypal email, venmo handle
     pub method_address: Option<String>,
     pub platform_id: Option<String>,
@@ -41,35 +43,35 @@ impl Payout {
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
-pub enum PayoutMethod {
+pub enum PayoutMethodType {
     Venmo,
     PayPal,
     Tremendous,
     Unknown,
 }
 
-impl std::fmt::Display for PayoutMethod {
+impl std::fmt::Display for PayoutMethodType {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(fmt, "{}", self.as_str())
     }
 }
 
-impl PayoutMethod {
+impl PayoutMethodType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            PayoutMethod::Venmo => "venmo",
-            PayoutMethod::PayPal => "paypal",
-            PayoutMethod::Tremendous => "tremendous",
-            PayoutMethod::Unknown => "unknown",
+            PayoutMethodType::Venmo => "venmo",
+            PayoutMethodType::PayPal => "paypal",
+            PayoutMethodType::Tremendous => "tremendous",
+            PayoutMethodType::Unknown => "unknown",
         }
     }
 
-    pub fn from_string(string: &str) -> PayoutMethod {
+    pub fn from_string(string: &str) -> PayoutMethodType {
         match string {
-            "venmo" => PayoutMethod::Venmo,
-            "paypal" => PayoutMethod::PayPal,
-            "tremendous" => PayoutMethod::Tremendous,
-            _ => PayoutMethod::Unknown,
+            "venmo" => PayoutMethodType::Venmo,
+            "paypal" => PayoutMethodType::PayPal,
+            "tremendous" => PayoutMethodType::Tremendous,
+            _ => PayoutMethodType::Unknown,
         }
     }
 }
@@ -80,6 +82,8 @@ pub enum PayoutStatus {
     Success,
     Processing,
     Cancelled,
+    Cancelling,
+    Failed,
     Unknown,
 }
 
@@ -95,6 +99,8 @@ impl PayoutStatus {
             PayoutStatus::Success => "success",
             PayoutStatus::Processing => "processing",
             PayoutStatus::Cancelled => "cancelled",
+            PayoutStatus::Cancelling => "cancelling",
+            PayoutStatus::Failed => "failed",
             PayoutStatus::Unknown => "unknown",
         }
     }
@@ -104,7 +110,67 @@ impl PayoutStatus {
             "success" => PayoutStatus::Success,
             "processing" => PayoutStatus::Processing,
             "cancelled" => PayoutStatus::Cancelled,
+            "cancelling" => PayoutStatus::Cancelling,
+            "failed" => PayoutStatus::Failed,
             _ => PayoutStatus::Unknown,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PayoutMethod {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub type_: PayoutMethodType,
+    pub name: String,
+    pub supported_countries: Vec<String>,
+    pub image_url: Option<String>,
+    pub interval: PayoutInterval,
+    pub fee: PayoutMethodFee,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PayoutMethodFee {
+    #[serde(with = "rust_decimal::serde::float")]
+    pub percentage: Decimal,
+    #[serde(with = "rust_decimal::serde::float")]
+    pub min: Decimal,
+    #[serde(with = "rust_decimal::serde::float_option")]
+    pub max: Option<Decimal>,
+}
+
+#[derive(Clone)]
+pub struct PayoutDecimal(pub Decimal);
+
+impl Serialize for PayoutDecimal {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        rust_decimal::serde::float::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for PayoutDecimal {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let decimal = rust_decimal::serde::float::deserialize(deserializer)?;
+        Ok(PayoutDecimal(decimal))
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum PayoutInterval {
+    Standard {
+        #[serde(with = "rust_decimal::serde::float")]
+        min: Decimal,
+        #[serde(with = "rust_decimal::serde::float")]
+        max: Decimal,
+    },
+    Fixed {
+        values: Vec<PayoutDecimal>,
+    },
 }

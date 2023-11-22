@@ -4,7 +4,7 @@ use crate::database::models::generate_payout_id;
 use crate::database::redis::RedisPool;
 use crate::models::ids::PayoutId;
 use crate::models::pats::Scopes;
-use crate::models::payouts::{PayoutMethod, PayoutStatus};
+use crate::models::payouts::{PayoutMethodType, PayoutStatus};
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
@@ -26,7 +26,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(tremendous_webhook)
             .service(user_payouts)
             .service(create_payout)
-            .service(cancel_payout),
+            .service(cancel_payout)
+            .service(payment_methods),
     );
 }
 
@@ -69,7 +70,7 @@ pub async fn paypal_webhook(
         verification_status: String,
     }
 
-    let payouts: WebHookResponse = payouts
+    let webhook_res: WebHookResponse = payouts
         .make_paypal_request(
             Method::POST,
             "notifications/verify-webhook-signature",
@@ -86,16 +87,103 @@ pub async fn paypal_webhook(
         )
         .await?;
 
-    if &payouts.verification_status != "SUCCESS" {
+    if &webhook_res.verification_status != "SUCCESS" {
         return Err(ApiError::InvalidInput(
             "Invalid webhook signature".to_string(),
         ));
     }
 
-    println!("{}", payouts.verification_status);
+    println!("{}", webhook_res.verification_status);
     println!("{:?}", body.0);
 
-    // TODO: Actually handle stuff here!!
+    #[derive(Deserialize)]
+    struct PayPalResource {
+        pub id: String,
+    }
+
+    #[derive(Deserialize)]
+    struct PayPalWebhook {
+        pub event_type: String,
+        pub resource: PayPalResource,
+    }
+
+    let webhook = serde_json::from_value::<PayPalWebhook>(body.0)?;
+
+    match &*webhook.event_type {
+        "PAYMENT.PAYOUTS-ITEM.BLOCKED"
+        | "PAYMENT.PAYOUTS-ITEM.DENIED"
+        | "PAYMENT.PAYOUTS-ITEM.REFUNDED"
+        | "PAYMENT.PAYOUTS-ITEM.RETURNED"
+        | "PAYMENT.PAYOUTS-ITEM.CANCELED" => {
+            let mut transaction = pool.begin().await?;
+
+            let result = sqlx::query!(
+                "SELECT user_id, amount, fee FROM payouts WHERE platform_id = $1",
+                webhook.resource.id
+            )
+            .fetch_optional(&mut *transaction)
+            .await?;
+
+            if let Some(result) = result {
+                let mtx =
+                    payouts.lock_user_payouts(crate::models::ids::UserId(result.user_id as u64));
+                let _guard = mtx.lock().await;
+
+                sqlx::query!(
+                    "
+                    UPDATE users
+                    SET balance = balance + $1
+                    WHERE id = $2
+                    ",
+                    result.amount + result.fee.unwrap_or(Decimal::ZERO),
+                    result.user_id
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                crate::database::models::user_item::User::clear_caches(
+                    &[(crate::database::models::UserId(result.user_id), None)],
+                    &redis,
+                )
+                .await?;
+
+                sqlx::query!(
+                    "
+                    UPDATE payouts
+                    SET status = $1
+                    WHERE platform_id = $2
+                    ",
+                    if &*webhook.event_type == "PAYMENT.PAYOUTS-ITEM.CANCELED" {
+                        PayoutStatus::Cancelled
+                    } else {
+                        PayoutStatus::Failed
+                    }
+                    .as_str(),
+                    webhook.resource.id
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                transaction.commit().await?;
+            }
+        }
+        "PAYMENT.PAYOUTS-ITEM.SUCCEEDED" => {
+            let mut transaction = pool.begin().await?;
+            sqlx::query!(
+                "
+                UPDATE payouts
+                SET status = $1
+                WHERE platform_id = $2
+                ",
+                PayoutStatus::Success.as_str(),
+                webhook.resource.id
+            )
+            .execute(&mut *transaction)
+            .await?;
+            transaction.commit().await?;
+        }
+        _ => {}
+    }
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -105,6 +193,7 @@ pub async fn tremendous_webhook(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
+    payouts: web::Data<PayoutsQueue>,
     body: String,
 ) -> Result<HttpResponse, ApiError> {
     let signature = req
@@ -126,13 +215,95 @@ pub async fn tremendous_webhook(
         ));
     }
 
-    // TODO: finish this
+    #[derive(Deserialize)]
+    pub struct TremendousResource {
+        pub id: String,
+    }
 
-    // https://developers.tremendous.com/docs/webhooks-1
-    // events:
-    // REWARDS.CANCELED
-    // REWARDS.DELIVERY.FAILED
-    // REWARDS.DELIVERY.SUCCEEDED
+    #[derive(Deserialize)]
+    struct TremendousPayload {
+        pub resource: TremendousResource,
+    }
+
+    #[derive(Deserialize)]
+    struct TremendousWebhook {
+        pub event: String,
+        pub payload: TremendousPayload,
+    }
+
+    let webhook = serde_json::from_str::<TremendousWebhook>(&body)?;
+
+    match &*webhook.event {
+        "REWARDS.CANCELED" | "REWARDS.DELIVERY.FAILED" => {
+            let mut transaction = pool.begin().await?;
+
+            let result = sqlx::query!(
+                "SELECT user_id, amount, fee FROM payouts WHERE platform_id = $1",
+                webhook.payload.resource.id
+            )
+            .fetch_optional(&mut *transaction)
+            .await?;
+
+            if let Some(result) = result {
+                let mtx =
+                    payouts.lock_user_payouts(crate::models::ids::UserId(result.user_id as u64));
+                let _guard = mtx.lock().await;
+
+                sqlx::query!(
+                    "
+                    UPDATE users
+                    SET balance = balance + $1
+                    WHERE id = $2
+                    ",
+                    result.amount + result.fee.unwrap_or(Decimal::ZERO),
+                    result.user_id
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                crate::database::models::user_item::User::clear_caches(
+                    &[(crate::database::models::UserId(result.user_id), None)],
+                    &redis,
+                )
+                .await?;
+
+                sqlx::query!(
+                    "
+                    UPDATE payouts
+                    SET status = $1
+                    WHERE platform_id = $2
+                    ",
+                    if &*webhook.event == "REWARDS.CANCELED" {
+                        PayoutStatus::Cancelled
+                    } else {
+                        PayoutStatus::Failed
+                    }
+                    .as_str(),
+                    webhook.payload.resource.id
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                transaction.commit().await?;
+            }
+        }
+        "PAYMENT.PAYOUTS-ITEM.SUCCEEDED" => {
+            let mut transaction = pool.begin().await?;
+            sqlx::query!(
+                "
+                UPDATE payouts
+                SET status = $1
+                WHERE platform_id = $2
+                ",
+                PayoutStatus::Success.as_str(),
+                webhook.payload.resource.id
+            )
+            .execute(&mut *transaction)
+            .await?;
+            transaction.commit().await?;
+        }
+        _ => {}
+    }
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -163,15 +334,17 @@ pub async fn user_payouts(
     Ok(HttpResponse::Ok().json(
         payouts
             .into_iter()
-            .map(|x| crate::models::payouts::Payout::from(x))
+            .map(crate::models::payouts::Payout::from)
             .collect::<Vec<_>>(),
     ))
 }
 
 #[derive(Deserialize)]
 pub struct Withdrawal {
+    #[serde(with = "rust_decimal::serde::float")]
     amount: Decimal,
-    method: PayoutMethod,
+    method: PayoutMethodType,
+    method_id: String,
 }
 
 #[post("")]
@@ -194,11 +367,34 @@ pub async fn create_payout(
         ));
     }
 
-    // TODO: hold payouts mutex
+    let mtx = payouts_queue.lock_user_payouts(user.id.into());
+    let _guard = mtx.lock().await;
 
-    if user.balance > body.amount {
+    if user.balance < body.amount || body.amount < Decimal::ZERO {
         return Err(ApiError::InvalidInput(
             "You do not have enough funds to make this payout!".to_string(),
+        ));
+    }
+
+    let payout_method = payouts_queue
+        .get_payout_methods()
+        .await?
+        .into_iter()
+        .find(|x| x.id == body.method_id)
+        .ok_or_else(|| ApiError::InvalidInput("Invalid payment method specified!".to_string()))?;
+
+    let fee = std::cmp::min(
+        std::cmp::max(
+            payout_method.fee.min,
+            payout_method.fee.percentage * body.amount,
+        ),
+        payout_method.fee.max.unwrap_or(Decimal::MAX),
+    );
+
+    let transfer = (body.amount - fee).round_dp(2);
+    if transfer <= Decimal::ZERO {
+        return Err(ApiError::InvalidInput(
+            "You need to withdraw more to cover the fee!".to_string(),
         ));
     }
 
@@ -206,62 +402,38 @@ pub async fn create_payout(
     let payout_id = generate_payout_id(&mut transaction).await?;
 
     let payout_item = match body.method {
-        PayoutMethod::Venmo | PayoutMethod::PayPal => {
-            let (fee, wallet, wallet_type, address) = if body.method == PayoutMethod::Venmo {
+        PayoutMethodType::Venmo | PayoutMethodType::PayPal => {
+            let (wallet, wallet_type, address) = if body.method == PayoutMethodType::Venmo {
                 if let Some(venmo) = user.venmo_handle {
-                    (
-                        Decimal::from(1) / Decimal::from(4),
-                        "Venmo",
-                        "user_handle",
-                        venmo,
-                    )
+                    ("Venmo", "user_handle", venmo)
                 } else {
                     return Err(ApiError::InvalidInput(
                         "Venmo address has not been set for account!".to_string(),
                     ));
                 }
-            } else {
-                if let Some(paypal_id) = user.paypal_id {
-                    if let Some(paypal_country) = user.paypal_country {
-                        let fee = if &paypal_country == "US" {
-                            std::cmp::min(
-                                std::cmp::max(
-                                    Decimal::ONE / Decimal::from(4),
-                                    (Decimal::from(2) / Decimal::ONE_HUNDRED) * body.amount,
-                                ),
-                                Decimal::from(1),
-                            )
-                        } else {
-                            std::cmp::min(
-                                (Decimal::from(2) / Decimal::ONE_HUNDRED) * body.amount,
-                                Decimal::from(20),
-                            )
-                        };
-
-                        (
-                            Decimal::from(1) / Decimal::from(4),
-                            "PayPal",
-                            "paypal_id",
-                            paypal_id,
-                        )
-                    } else {
+            } else if let Some(paypal_id) = user.paypal_id {
+                if let Some(paypal_country) = user.paypal_country {
+                    if &*paypal_country == "US" && &*body.method_id != "paypal_us" {
                         return Err(ApiError::InvalidInput(
-                            "Please re-link your PayPal account!".to_string(),
+                            "Please use the US PayPal transfer option!".to_string(),
+                        ));
+                    } else if &*paypal_country != "US" && &*body.method_id == "paypal_us" {
+                        return Err(ApiError::InvalidInput(
+                            "Please use the International PayPal transfer option!".to_string(),
                         ));
                     }
+
+                    ("PayPal", "paypal_id", paypal_id)
                 } else {
                     return Err(ApiError::InvalidInput(
-                        "You have not linked a PayPal account!".to_string(),
+                        "Please re-link your PayPal account!".to_string(),
                     ));
                 }
-            };
-
-            let transfer = (user.balance - fee).round_dp(2);
-            if transfer <= Decimal::ZERO {
+            } else {
                 return Err(ApiError::InvalidInput(
-                    "You do not have enough funds to make this payout!".to_string(),
+                    "You have not linked a PayPal account!".to_string(),
                 ));
-            }
+            };
 
             #[derive(Deserialize)]
             struct PayPalLink {
@@ -339,18 +511,81 @@ pub async fn create_payout(
 
             payout_item
         }
-        PayoutMethod::Tremendous => {
+        PayoutMethodType::Tremendous => {
             if let Some(email) = user.email {
                 if user.email_verified {
+                    let mut payout_item = crate::database::models::payout_item::Payout {
+                        id: payout_id,
+                        user_id: user.id,
+                        created: Utc::now(),
+                        status: PayoutStatus::Processing,
+                        amount: transfer,
+                        fee: Some(fee),
+                        method: Some(PayoutMethodType::Tremendous),
+                        method_address: Some(email.clone()),
+                        platform_id: None,
+                    };
+
+                    #[derive(Deserialize)]
+                    struct Reward {
+                        pub id: String,
+                    }
+
+                    #[derive(Deserialize)]
+                    struct Order {
+                        pub rewards: Vec<Reward>,
+                    }
+
+                    #[derive(Deserialize)]
+                    struct TremendousResponse {
+                        pub order: Order,
+                    }
+
+                    let res: TremendousResponse = payouts_queue
+                        .make_tremendous_request(
+                            Method::POST,
+                            "orders",
+                            Some(json! ({
+                                "payment": {
+                                    "funding_source_id": "BALANCE",
+                                },
+                                "rewards": [{
+                                    "value": {
+                                        "denomination": transfer
+                                    },
+                                    "delivery": {
+                                        "method": "EMAIL"
+                                    },
+                                    "recipient": {
+                                        "name": user.username,
+                                        "email": email
+                                    },
+                                    "products": [
+                                        &body.method_id,
+                                    ],
+                                    "campaign_id": dotenvy::var("TREMENDOUS_CAMPAIGN_ID")?,
+                                }]
+                            })),
+                        )
+                        .await?;
+
+                    if let Some(reward) = res.order.rewards.first() {
+                        payout_item.platform_id = Some(reward.id.clone())
+                    }
+
+                    payout_item
                 } else {
+                    return Err(ApiError::InvalidInput(
+                        "You must verify your account email to proceed!".to_string(),
+                    ));
                 }
             } else {
+                return Err(ApiError::InvalidInput(
+                    "You must add an email to your account to proceed!".to_string(),
+                ));
             }
-
-            // TODO: finish tremendous
-            unreachable!()
         }
-        PayoutMethod::Unknown => {
+        PayoutMethodType::Unknown => {
             return Err(ApiError::Payments(
                 "Invalid payment method specified!".to_string(),
             ))
@@ -363,7 +598,7 @@ pub async fn create_payout(
         SET balance = balance - $1
         WHERE id = $2
         ",
-        payout_item.amount,
+        body.amount,
         user.id as crate::database::models::ids::UserId
     )
     .execute(&mut *transaction)
@@ -372,8 +607,6 @@ pub async fn create_payout(
     crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
 
     transaction.commit().await?;
-
-    // todo: remove hold on user payouts mutex and release when error
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -407,14 +640,14 @@ pub async fn cancel_payout(
 
         if let Some(platform_id) = payout.platform_id {
             if let Some(method) = payout.method {
-                if payout.status == PayoutStatus::Success {
+                if payout.status != PayoutStatus::Processing {
                     return Err(ApiError::InvalidInput(
                         "Payout cannot be cancelled!".to_string(),
                     ));
                 }
 
                 match method {
-                    PayoutMethod::Venmo | PayoutMethod::PayPal => {
+                    PayoutMethodType::Venmo | PayoutMethodType::PayPal => {
                         payouts
                             .make_paypal_request::<(), ()>(
                                 Method::POST,
@@ -423,12 +656,8 @@ pub async fn cancel_payout(
                                 None,
                             )
                             .await?;
-
-                        // TODO: maybe update database status here? also credit back user
-
-                        Ok(HttpResponse::NoContent().finish())
                     }
-                    PayoutMethod::Tremendous => {
+                    PayoutMethodType::Tremendous => {
                         payouts
                             .make_tremendous_request::<(), ()>(
                                 Method::POST,
@@ -436,15 +665,29 @@ pub async fn cancel_payout(
                                 None,
                             )
                             .await?;
-
-                        // TODO: maybe update database status here? also credit back user
-
-                        Ok(HttpResponse::NoContent().finish())
                     }
-                    PayoutMethod::Unknown => Err(ApiError::InvalidInput(
-                        "Payout cannot be cancelled!".to_string(),
-                    )),
+                    PayoutMethodType::Unknown => {
+                        return Err(ApiError::InvalidInput(
+                            "Payout cannot be cancelled!".to_string(),
+                        ))
+                    }
                 }
+
+                let mut transaction = pool.begin().await?;
+                sqlx::query!(
+                    "
+                    UPDATE payouts
+                    SET status = $1
+                    WHERE platform_id = $2
+                    ",
+                    PayoutStatus::Cancelling.as_str(),
+                    platform_id
+                )
+                .execute(&mut *transaction)
+                .await?;
+                transaction.commit().await?;
+
+                Ok(HttpResponse::NoContent().finish())
             } else {
                 Err(ApiError::InvalidInput(
                     "Payout cannot be cancelled!".to_string(),
@@ -460,18 +703,30 @@ pub async fn cancel_payout(
     }
 }
 
-pub struct Currency {}
+#[derive(Deserialize)]
+pub struct MethodFilter {
+    pub country: Option<String>,
+}
 
 #[get("methods")]
 pub async fn payment_methods(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
     payouts_queue: web::Data<PayoutsQueue>,
+    filter: web::Query<MethodFilter>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: route for estimated fees?
-    // todo: maybe payout method / gift card list + filtering? (tremendous), with fees?
+    let methods = payouts_queue
+        .get_payout_methods()
+        .await?
+        .into_iter()
+        .filter(|x| {
+            let mut val = true;
 
-    Ok(HttpResponse::NoContent().finish())
+            if let Some(country) = &filter.country {
+                val &= x.supported_countries.contains(country);
+            }
+
+            val
+        })
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(methods))
 }
