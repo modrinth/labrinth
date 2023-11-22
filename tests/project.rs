@@ -6,7 +6,7 @@ use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
 
-use common::environment::{with_test_environment_all, TestEnvironment, with_test_environment};
+use common::environment::{with_test_environment, with_test_environment_all, TestEnvironment};
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
@@ -288,7 +288,7 @@ async fn test_add_remove_project() {
 
 #[actix_rt::test]
 pub async fn test_patch_project() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
         let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
@@ -410,7 +410,7 @@ pub async fn test_patch_project() {
                     "body": "New successful body",
                     "categories": [DUMMY_CATEGORIES[0]],
                     "license_id": "MIT",
-                    "link_urls": 
+                    "link_urls":
                         {
                             "patreon": "https://patreon.com",
                             "issues": "https://github.com",
@@ -429,9 +429,7 @@ pub async fn test_patch_project() {
         assert_eq!(resp.status(), 404);
 
         // New slug does work
-        let project = api
-            .get_project_deserialized("newslug", USER_USER_PAT)
-            .await;
+        let project = api.get_project_deserialized("newslug", USER_USER_PAT).await;
 
         assert_eq!(project.slug.unwrap(), "newslug");
         assert_eq!(project.title, "New successful title");
@@ -444,23 +442,23 @@ pub async fn test_patch_project() {
         assert_eq!(link_urls.len(), 4);
         assert_eq!(link_urls["patreon"].platform, "patreon");
         assert_eq!(link_urls["patreon"].url, "https://patreon.com");
-        assert_eq!(link_urls["patreon"].donation, true);
+        assert!(link_urls["patreon"].donation);
         assert_eq!(link_urls["issues"].platform, "issues");
         assert_eq!(link_urls["issues"].url, "https://github.com");
-        assert_eq!(link_urls["issues"].donation, false);
+        assert!(!link_urls["issues"].donation);
         assert_eq!(link_urls["discord"].platform, "discord");
         assert_eq!(link_urls["discord"].url, "https://discord.gg");
-        assert_eq!(link_urls["discord"].donation, false);
+        assert!(!link_urls["discord"].donation);
         assert_eq!(link_urls["wiki"].platform, "wiki");
         assert_eq!(link_urls["wiki"].url, "https://wiki.com");
-        assert_eq!(link_urls["wiki"].donation, false);
+        assert!(!link_urls["wiki"].donation);
 
         // Unset the set link_urls
         let resp = api
             .edit_project(
                 "newslug",
                 json!({
-                    "link_urls": 
+                    "link_urls":
                         {
                             "issues": null,
                         }
@@ -470,11 +468,9 @@ pub async fn test_patch_project() {
             .await;
         println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 204);
-        let project = api
-            .get_project_deserialized("newslug", USER_USER_PAT)
-            .await;
+        let project = api.get_project_deserialized("newslug", USER_USER_PAT).await;
         assert_eq!(project.link_urls.len(), 3);
-        assert_eq!(project.link_urls.contains_key("issues"), false);
+        assert!(!project.link_urls.contains_key("issues"));
     })
     .await;
 }
@@ -531,18 +527,18 @@ pub async fn test_bulk_edit_links() {
         // The first loop, sets issue, the second, clears it for all projects.
         for issues in [Some("https://www.issues.com"), None] {
             let resp = api
-            .edit_project_bulk(
-                &[alpha_project_id, beta_project_id],
-                json!({
-                    "link_urls": {
-                        "issues": issues,
-                        "wiki": "https://wiki.com",
-                        "patreon": "https://patreon.com",
-                    },
-                }),
-                ADMIN_USER_PAT,
-            )
-            .await;
+                .edit_project_bulk(
+                    &[alpha_project_id, beta_project_id],
+                    json!({
+                        "link_urls": {
+                            "issues": issues,
+                            "wiki": "https://wiki.com",
+                            "patreon": "https://patreon.com",
+                        },
+                    }),
+                    ADMIN_USER_PAT,
+                )
+                .await;
             assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
             let alpha_body = api
@@ -553,7 +549,7 @@ pub async fn test_bulk_edit_links() {
                 assert_eq!(alpha_body.link_urls["issues"].url, issues);
             } else {
                 assert_eq!(alpha_body.link_urls.len(), 2);
-                assert_eq!(alpha_body.link_urls.contains_key("issues"), false);
+                assert!(!alpha_body.link_urls.contains_key("issues"));
             }
             assert_eq!(alpha_body.link_urls["wiki"].url, "https://wiki.com");
             assert_eq!(alpha_body.link_urls["patreon"].url, "https://patreon.com");
@@ -566,7 +562,6 @@ pub async fn test_bulk_edit_links() {
                 beta_body.additional_categories,
                 alpha_body.additional_categories,
             );
-
         }
     })
     .await;

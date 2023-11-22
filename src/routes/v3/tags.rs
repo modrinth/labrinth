@@ -214,9 +214,7 @@ pub async fn link_platform_list(
     let results: Vec<LinkPlatformQueryData> = LinkPlatform::list(&**pool, &redis)
         .await?
         .into_iter()
-        .map(|x| LinkPlatformQueryData {
-            name: x.name,
-        })
+        .map(|x| LinkPlatformQueryData { name: x.name })
         .collect();
     Ok(HttpResponse::Ok().json(results))
 }

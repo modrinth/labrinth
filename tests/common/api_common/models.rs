@@ -3,8 +3,8 @@ use labrinth::models::{
     notifications::{NotificationAction, NotificationBody, NotificationId},
     organizations::OrganizationId,
     projects::{
-        Dependency, GalleryItem, License, ModeratorMessage, MonetizationStatus,
-        ProjectId, ProjectStatus, VersionFile, VersionId, VersionStatus, VersionType,
+        Dependency, GalleryItem, License, ModeratorMessage, MonetizationStatus, ProjectId,
+        ProjectStatus, VersionFile, VersionId, VersionStatus, VersionType,
     },
     teams::{OrganizationPermissions, ProjectPermissions, TeamId},
     threads::ThreadId,

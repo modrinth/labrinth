@@ -4,7 +4,7 @@ use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::ImageId;
 use crate::models::projects::{Loader, Project, ProjectStatus, SideType};
-use crate::models::v2::projects::{LegacyProject, DonationLink};
+use crate::models::v2::projects::{DonationLink, LegacyProject};
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::default_project_type;
 use crate::routes::v3::project_creation::{CreateError, NewGalleryItem};
@@ -212,7 +212,7 @@ pub async fn project_create(
                     link_urls.insert(donation_url.platform, donation_url.url);
                 }
             }
-        
+
             Ok(v3::project_creation::ProjectCreateData {
                 title: legacy_create.title,
                 slug: legacy_create.slug,

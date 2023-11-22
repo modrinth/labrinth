@@ -8,8 +8,8 @@ use crate::database::models::{version_item, DatabaseError};
 use crate::database::redis::RedisPool;
 use crate::models::ids::{ProjectId, VersionId};
 use crate::models::projects::{
-    Dependency, GalleryItem, License, Loader, ModeratorMessage, MonetizationStatus,
-    Project, ProjectStatus, Version, VersionFile, VersionStatus, VersionType, Link,
+    Dependency, GalleryItem, License, Link, Loader, ModeratorMessage, MonetizationStatus, Project,
+    ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
 };
 use crate::models::threads::ThreadId;
 use chrono::{DateTime, Utc};
@@ -125,25 +125,17 @@ impl LegacyProject {
                 }
             }
         }
-        
-        let issues_url = data
-            .link_urls.get("issues")
-            .map(|l| l.url.clone());
-        let source_url = data
-            .link_urls.get("source")
-            .map(|l| l.url.clone());
-        let wiki_url = data
-            .link_urls.get("wiki")
-            .map(|l| l.url.clone());
-        let discord_url = data
-            .link_urls.get("discord")
-            .map(|l| l.url.clone());
+
+        let issues_url = data.link_urls.get("issues").map(|l| l.url.clone());
+        let source_url = data.link_urls.get("source").map(|l| l.url.clone());
+        let wiki_url = data.link_urls.get("wiki").map(|l| l.url.clone());
+        let discord_url = data.link_urls.get("discord").map(|l| l.url.clone());
 
         let donation_urls = data
             .link_urls
             .iter()
-            .filter(|(_,l)| l.donation)
-            .map(|(_,l)| DonationLink::try_from(l.clone()).ok())
+            .filter(|(_, l)| l.donation)
+            .map(|(_, l)| DonationLink::try_from(l.clone()).ok())
             .collect::<Option<Vec<_>>>();
 
         Self {

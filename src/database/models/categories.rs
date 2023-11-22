@@ -130,10 +130,7 @@ impl Category {
 }
 
 impl LinkPlatform {
-    pub async fn get_id<'a, E>(
-        id: &str,
-        exec: E,
-    ) -> Result<Option<LinkPlatformId>, DatabaseError>
+    pub async fn get_id<'a, E>(id: &str, exec: E) -> Result<Option<LinkPlatformId>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
@@ -150,10 +147,7 @@ impl LinkPlatform {
         Ok(result.map(|r| LinkPlatformId(r.id)))
     }
 
-    pub async fn list<'a, E>(
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<LinkPlatform>, DatabaseError>
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<LinkPlatform>, DatabaseError>
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {

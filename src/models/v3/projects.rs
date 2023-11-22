@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::ids::{Base62Id, OrganizationId};
 use super::teams::TeamId;
 use super::users::UserId;
-use crate::database::models::project_item::{QueryProject, LinkUrl};
+use crate::database::models::project_item::{LinkUrl, QueryProject};
 use crate::database::models::version_item::QueryVersion;
 use crate::models::threads::ThreadId;
 use chrono::{DateTime, Utc};
@@ -89,7 +89,7 @@ pub struct Project {
     pub icon_url: Option<String>,
 
     /// A collection of links to the project's various pages.
-    pub link_urls : HashMap<String, Link>,
+    pub link_urls: HashMap<String, Link>,
 
     /// A string of URLs to visual content featuring the project
     pub gallery: Vec<GalleryItem>,
@@ -160,11 +160,11 @@ impl From<QueryProject> for Project {
             loaders: m.loaders,
             versions: data.versions.into_iter().map(|v| v.into()).collect(),
             icon_url: m.icon_url,
-            link_urls: 
-                data.urls
-                    .into_iter()
-                    .map(|d| (d.platform_name.clone(), Link::from(d)))
-                    .collect(),
+            link_urls: data
+                .urls
+                .into_iter()
+                .map(|d| (d.platform_name.clone(), Link::from(d)))
+                .collect(),
             gallery: data
                 .gallery_items
                 .into_iter()

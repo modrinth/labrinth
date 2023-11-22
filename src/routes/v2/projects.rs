@@ -4,9 +4,9 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::projects::{
-    MonetizationStatus, Project, ProjectStatus, SearchRequest, SideType, Link,
+    Link, MonetizationStatus, Project, ProjectStatus, SearchRequest, SideType,
 };
-use crate::models::v2::projects::{LegacyProject, DonationLink};
+use crate::models::v2::projects::{DonationLink, LegacyProject};
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::ProjectIds;
 use crate::routes::{v2_reroute, v3, ApiError};
@@ -342,7 +342,7 @@ pub async fn project_edit(
             new_links.insert("issues".to_string(), None);
         }
     }
-    
+
     if let Some(source_url) = v2_new_project.source_url {
         if let Some(source_url) = source_url {
             new_links.insert("source".to_string(), Some(source_url));
@@ -373,13 +373,20 @@ pub async fn project_edit(
         // Fetch current donation links from project so we know what to delete
         // Todo ensure secure
         let fetched_example_project = project_item::Project::get(&info.0, &**pool, &redis).await?;
-        let donation_links = fetched_example_project.map(|x| 
-            x.urls.into_iter().filter_map(|l|
-                if l.donation { 
-                    Some(Link::from(l)) // TODO: tests
-
-                } else { None }).collect::<Vec<_>>() 
-        ).unwrap_or_default();
+        let donation_links = fetched_example_project
+            .map(|x| {
+                x.urls
+                    .into_iter()
+                    .filter_map(|l| {
+                        if l.donation {
+                            Some(Link::from(l)) // TODO: tests
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         // Set existing donation links to None
         for old_link in donation_links {
@@ -391,7 +398,6 @@ pub async fn project_edit(
             new_links.insert(donation_url.id, Some(donation_url.url));
         }
     }
-            
 
     let new_project = v3::projects::EditProject {
         title: v2_new_project.title,
@@ -524,10 +530,10 @@ pub async fn projects_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let bulk_edit_project = bulk_edit_project.into_inner();
-    
+
     let mut link_urls = HashMap::new();
 
-    // If we are *setting* donation links, we will set every possible donation link to None, as 
+    // If we are *setting* donation links, we will set every possible donation link to None, as
     // setting will delete all of them then 're-add' the ones we want to keep
     if let Some(donation_url) = bulk_edit_project.donation_urls {
         let link_platforms = LinkPlatform::list(&**pool, &redis).await?;
@@ -586,7 +592,7 @@ pub async fn projects_edit(
         } else {
             link_urls.insert("discord".to_string(), None);
         }
-    }    
+    }
 
     v3::projects::projects_edit(
         req,

@@ -10,7 +10,7 @@ use crate::models::ids::{ImageId, OrganizationId};
 use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    Link, License, MonetizationStatus, ProjectId, ProjectStatus, VersionId, VersionStatus,
+    License, Link, MonetizationStatus, ProjectId, ProjectStatus, VersionId, VersionStatus,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::ThreadType;
@@ -190,9 +190,7 @@ pub struct ProjectCreateData {
     /// An optional link to the project's license page
     pub license_url: Option<String>,
     /// An optional list of all donation links the project has
-    #[validate(
-        custom(function = "crate::util::validate::validate_url_hashmap_values"),
-    )]
+    #[validate(custom(function = "crate::util::validate::validate_url_hashmap_values"))]
     #[serde(default)]
     pub link_urls: HashMap<String, String>,
 
@@ -648,10 +646,11 @@ async fn project_create_inner(
 
         let mut link_urls = vec![];
 
-        let link_platforms = models::categories::LinkPlatform::list(&mut **transaction, redis).await?;
+        let link_platforms =
+            models::categories::LinkPlatform::list(&mut **transaction, redis).await?;
         for (platform, url) in &project_create_data.link_urls {
             let platform_id =
-                models::categories::LinkPlatform::get_id(&platform, &mut **transaction)
+                models::categories::LinkPlatform::get_id(platform, &mut **transaction)
                     .await?
                     .ok_or_else(|| {
                         CreateError::InvalidInput(format!(
@@ -813,12 +812,12 @@ async fn project_create_inner(
                 .map(|v| v.version_id.into())
                 .collect::<Vec<_>>(),
             icon_url: project_builder.icon_url.clone(),
-            link_urls: project_builder.link_urls.clone().into_iter().map(|x| {
-                (
-                    x.platform_name.clone(),
-                    Link::from(x),
-                )
-            }).collect(),
+            link_urls: project_builder
+                .link_urls
+                .clone()
+                .into_iter()
+                .map(|x| (x.platform_name.clone(), Link::from(x)))
+                .collect(),
             gallery: gallery_urls,
             color: project_builder.color,
             thread_id: thread_id.into(),

@@ -194,11 +194,9 @@ pub struct EditProject {
         length(max = 2048)
     )]
     pub license_url: Option<Option<String>>,
-    #[validate(
-        custom(function = "crate::util::validate::validate_url_hashmap_optional_values"),
-    )]
+    #[validate(custom(function = "crate::util::validate::validate_url_hashmap_optional_values"))]
     // <name, url> (leave url empty to delete)
-    pub link_urls: Option<HashMap<String,Option<String>>>,
+    pub link_urls: Option<HashMap<String, Option<String>>>,
     pub license_id: Option<String>,
     #[validate(
         length(min = 3, max = 64),
@@ -687,12 +685,14 @@ pub async fn project_edit(
                     ",
                     id as db_ids::ProjectId,
                     &ids_to_delete
-                ).execute(&mut *transaction).await?;
+                )
+                .execute(&mut *transaction)
+                .await?;
 
                 for (platform, url) in links {
                     if let Some(url) = url {
                         let platform_id = db_models::categories::LinkPlatform::get_id(
-                            &platform,
+                            platform,
                             &mut *transaction,
                         )
                         .await?
@@ -712,7 +712,7 @@ pub async fn project_edit(
                             url
                         )
                         .execute(&mut *transaction)
-                        .await?;    
+                        .await?;
                     }
                 }
             }
@@ -1025,9 +1025,7 @@ pub struct BulkEditProject {
     pub add_additional_categories: Option<Vec<String>>,
     pub remove_additional_categories: Option<Vec<String>>,
 
-    #[validate(
-        custom(function = " crate::util::validate::validate_url_hashmap_optional_values")
-    )]
+    #[validate(custom(function = " crate::util::validate::validate_url_hashmap_optional_values"))]
     pub link_urls: Option<HashMap<String, Option<String>>>,
 }
 
@@ -1188,7 +1186,9 @@ pub async fn projects_edit(
                 ",
                 project.inner.id as db_ids::ProjectId,
                 &ids_to_delete
-            ).execute(&mut *transaction).await?;
+            )
+            .execute(&mut *transaction)
+            .await?;
 
             for (platform, url) in links {
                 if let Some(url) = url {
@@ -1213,7 +1213,6 @@ pub async fn projects_edit(
                     )
                     .execute(&mut *transaction)
                     .await?;
-
                 }
             }
         }

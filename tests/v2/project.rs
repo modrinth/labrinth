@@ -1,7 +1,10 @@
 use crate::common::{
     api_common::ApiProject,
     api_v2::ApiV2,
-    database::{ENEMY_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, MOD_USER_PAT, USER_USER_PAT, ADMIN_USER_PAT},
+    database::{
+        ADMIN_USER_PAT, ENEMY_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, MOD_USER_PAT,
+        USER_USER_PAT,
+    },
     dummy_data::{TestFile, DUMMY_CATEGORIES},
     environment::{with_test_environment, TestEnvironment},
     permissions::{PermissionsTest, PermissionsTestContext},
@@ -550,7 +553,7 @@ pub async fn test_bulk_edit_links() {
                 ADMIN_USER_PAT,
             )
             .await;
-            assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
@@ -558,7 +561,10 @@ pub async fn test_bulk_edit_links() {
         let donation_urls = alpha_body.donation_urls.unwrap();
         assert_eq!(donation_urls.len(), 1);
         assert_eq!(donation_urls[0].url, "https://www.patreon.com/my_user");
-        assert_eq!(alpha_body.issues_url, Some("https://github.com".to_string()));
+        assert_eq!(
+            alpha_body.issues_url,
+            Some("https://github.com".to_string())
+        );
         assert_eq!(alpha_body.discord_url, None);
 
         let beta_body = api
@@ -571,92 +577,118 @@ pub async fn test_bulk_edit_links() {
         assert_eq!(beta_body.discord_url, None);
 
         let resp = api
-        .edit_project_bulk(
-            &[alpha_project_id, beta_project_id],
-            json!({
-                "discord_url": "https://discord.gg",
-                "issues_url": null,
-                "add_donation_urls": [
-                    {
-                        "id": "bmac",
-                        "platform": "Buy Me a Coffee",
-                        "url": "https://www.buymeacoffee.com/my_user"
-                    }
-                ],
-            }),
-            ADMIN_USER_PAT,
-        )
-        .await;
+            .edit_project_bulk(
+                &[alpha_project_id, beta_project_id],
+                json!({
+                    "discord_url": "https://discord.gg",
+                    "issues_url": null,
+                    "add_donation_urls": [
+                        {
+                            "id": "bmac",
+                            "platform": "Buy Me a Coffee",
+                            "url": "https://www.buymeacoffee.com/my_user"
+                        }
+                    ],
+                }),
+                ADMIN_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
             .await;
-        let donation_urls = alpha_body.donation_urls.unwrap().into_iter().sorted_by_key(|x| x.id.clone()).collect_vec();
+        let donation_urls = alpha_body
+            .donation_urls
+            .unwrap()
+            .into_iter()
+            .sorted_by_key(|x| x.id.clone())
+            .collect_vec();
         assert_eq!(donation_urls.len(), 2);
         assert_eq!(donation_urls[0].url, "https://www.buymeacoffee.com/my_user");
         assert_eq!(donation_urls[1].url, "https://www.patreon.com/my_user");
         assert_eq!(alpha_body.issues_url, None);
-        assert_eq!(alpha_body.discord_url, Some("https://discord.gg".to_string()));
+        assert_eq!(
+            alpha_body.discord_url,
+            Some("https://discord.gg".to_string())
+        );
 
         let beta_body = api
             .get_project_deserialized(beta_project_id, ADMIN_USER_PAT)
             .await;
-        let donation_urls = beta_body.donation_urls.unwrap().into_iter().sorted_by_key(|x| x.id.clone()).collect_vec();
+        let donation_urls = beta_body
+            .donation_urls
+            .unwrap()
+            .into_iter()
+            .sorted_by_key(|x| x.id.clone())
+            .collect_vec();
         assert_eq!(donation_urls.len(), 2);
         assert_eq!(donation_urls[0].url, "https://www.buymeacoffee.com/my_user");
         assert_eq!(donation_urls[1].url, "https://www.patreon.com/my_user");
         assert_eq!(alpha_body.issues_url, None);
-        assert_eq!(alpha_body.discord_url, Some("https://discord.gg".to_string()));
+        assert_eq!(
+            alpha_body.discord_url,
+            Some("https://discord.gg".to_string())
+        );
 
         let resp = api
-        .edit_project_bulk(
-            &[alpha_project_id, beta_project_id],
-            json!({
-                "donation_urls": [
-                    {
-                        "id": "patreon",
-                        "platform": "Patreon",
-                        "url": "https://www.patreon.com/my_user"
-                    },
-                    {
-                        "id": "ko-fi",
-                        "platform": "Ko-fi",
-                        "url": "https://www.ko-fi.com/my_user"
-                    }
-                ],
-                "add_donation_urls": [
-                    {
-                        "id": "paypal",
-                        "platform": "PayPal",
-                        "url": "https://www.paypal.com/my_user"
-                    }
-                ],
-                "remove_donation_urls": [
-                    {
-                        "id": "ko-fi",
-                        "platform": "Ko-fi",    
-                        "url": "https://www.ko-fi.com/my_user"
-                    }
-                ],
-            }),
-            ADMIN_USER_PAT,
-        )
-        .await;
+            .edit_project_bulk(
+                &[alpha_project_id, beta_project_id],
+                json!({
+                    "donation_urls": [
+                        {
+                            "id": "patreon",
+                            "platform": "Patreon",
+                            "url": "https://www.patreon.com/my_user"
+                        },
+                        {
+                            "id": "ko-fi",
+                            "platform": "Ko-fi",
+                            "url": "https://www.ko-fi.com/my_user"
+                        }
+                    ],
+                    "add_donation_urls": [
+                        {
+                            "id": "paypal",
+                            "platform": "PayPal",
+                            "url": "https://www.paypal.com/my_user"
+                        }
+                    ],
+                    "remove_donation_urls": [
+                        {
+                            "id": "ko-fi",
+                            "platform": "Ko-fi",
+                            "url": "https://www.ko-fi.com/my_user"
+                        }
+                    ],
+                }),
+                ADMIN_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
             .await;
-        let donation_urls = alpha_body.donation_urls.unwrap().into_iter().sorted_by_key(|x| x.id.clone()).collect_vec();
+        let donation_urls = alpha_body
+            .donation_urls
+            .unwrap()
+            .into_iter()
+            .sorted_by_key(|x| x.id.clone())
+            .collect_vec();
         assert_eq!(donation_urls.len(), 2);
         assert_eq!(donation_urls[0].url, "https://www.patreon.com/my_user");
         assert_eq!(donation_urls[1].url, "https://www.paypal.com/my_user");
-        
+
         let beta_body = api
             .get_project_deserialized(beta_project_id, ADMIN_USER_PAT)
             .await;
-        let donation_urls = beta_body.donation_urls.unwrap().into_iter().sorted_by_key(|x| x.id.clone()).collect_vec();
+        let donation_urls = beta_body
+            .donation_urls
+            .unwrap()
+            .into_iter()
+            .sorted_by_key(|x| x.id.clone())
+            .collect_vec();
         assert_eq!(donation_urls.len(), 2);
         assert_eq!(donation_urls[0].url, "https://www.patreon.com/my_user");
         assert_eq!(donation_urls[1].url, "https://www.paypal.com/my_user");

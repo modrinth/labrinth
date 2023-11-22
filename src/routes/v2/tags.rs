@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use super::ApiError;
 use crate::database::models::loader_fields::LoaderFieldEnumValue;
 use crate::database::redis::RedisPool;
-use crate::routes::v3::tags::{LoaderData as LoaderDataV3, LoaderFieldsEnumQuery, LinkPlatformQueryData};
+use crate::routes::v3::tags::{
+    LinkPlatformQueryData, LoaderData as LoaderDataV3, LoaderFieldsEnumQuery,
+};
 use crate::routes::{v2_reroute, v3};
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -174,16 +176,14 @@ pub async fn donation_platform_list(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::tags::link_platform_list(pool, redis).await?;
-    
+
     // Convert to V2 format
     Ok(
         match v2_reroute::extract_ok_json::<Vec<LinkPlatformQueryData>>(response).await {
             Ok(platforms) => {
                 let platforms = platforms
                     .into_iter()
-                    .map(|p| DonationPlatformQueryData {
-                        name: p.name,
-                    })
+                    .map(|p| DonationPlatformQueryData { name: p.name })
                     .collect::<Vec<_>>();
                 HttpResponse::Ok().json(platforms)
             }

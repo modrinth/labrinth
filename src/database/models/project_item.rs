@@ -212,8 +212,7 @@ impl ProjectBuilder {
             version.insert(&mut *transaction).await?;
         }
 
-        LinkUrl::insert_many_projects(link_urls, self.project_id, &mut *transaction)
-            .await?;
+        LinkUrl::insert_many_projects(link_urls, self.project_id, &mut *transaction).await?;
 
         GalleryItem::insert_many(gallery_items, self.project_id, &mut *transaction).await?;
 

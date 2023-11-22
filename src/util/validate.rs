@@ -96,10 +96,8 @@ pub fn validate_url(value: &str) -> Result<(), validator::ValidationError> {
 pub fn validate_url_hashmap_optional_values(
     values: &std::collections::HashMap<String, Option<String>>,
 ) -> Result<(), validator::ValidationError> {
-    for value in values.values() {
-        if let Some(value) = value {
-            validate_url(value)?;
-        }
+    for value in values.values().flatten() {
+        validate_url(value)?;
     }
 
     Ok(())

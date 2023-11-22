@@ -8,7 +8,7 @@ use actix_web::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use labrinth::{search::SearchResults, util::actix::AppendsMultipart, models::projects::Project};
+use labrinth::{models::projects::Project, search::SearchResults, util::actix::AppendsMultipart};
 use rust_decimal::Decimal;
 use serde_json::json;
 
