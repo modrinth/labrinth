@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use crate::common::api_v2::request_data::ProjectCreationRequestData;
 use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
@@ -14,14 +13,11 @@ use labrinth::{
 };
 use rust_decimal::Decimal;
 use serde_json::json;
+use std::collections::HashMap;
 
-use crate::common::{
-    asserts::assert_status,
-    database::MOD_USER_PAT,
-    request_data::{ImageData, ProjectCreationRequestData},
-};
+use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
 
-use super::ApiV2;
+use super::{request_data::ImageData, ApiV2};
 
 impl ApiV2 {
     pub async fn add_public_project(

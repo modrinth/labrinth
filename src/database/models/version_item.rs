@@ -492,18 +492,27 @@ impl Version {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        use futures::stream::TryStreamExt;
+
         if version_ids.is_empty() {
             return Ok(Vec::new());
         }
 
-        use futures::stream::TryStreamExt;
+        let mut redis = redis.connect().await?;
 
         let mut version_ids_parsed: Vec<i64> = version_ids.iter().map(|x| x.0).collect();
 
         let mut found_versions = Vec::new();
 
         let versions = redis
-            .multi_get::<String, _>(VERSIONS_NAMESPACE, version_ids_parsed.clone())
+            .multi_get::<String>(
+                VERSIONS_NAMESPACE,
+                version_ids_parsed
+                    .clone()
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>(),
+            )
             .await?;
 
         for version in versions {
@@ -524,7 +533,7 @@ impl Version {
                 v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, v.ordering ordering,
                 ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
                 ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
-                ARRAY_AGG(DISTINCT g.name) filter (where g.name is not null) games,
+                ARRAY_AGG(DISTINCT g.slug) filter (where g.slug is not null) games,
                 JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,
                 JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,
                 JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies,
@@ -721,18 +730,20 @@ impl Version {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
+        use futures::stream::TryStreamExt;
+
+        let mut redis = redis.connect().await?;
+
         if hashes.is_empty() {
             return Ok(Vec::new());
         }
-
-        use futures::stream::TryStreamExt;
 
         let mut file_ids_parsed = hashes.to_vec();
 
         let mut found_files = Vec::new();
 
         let files = redis
-            .multi_get::<String, _>(
+            .multi_get::<String>(
                 VERSION_FILES_NAMESPACE,
                 file_ids_parsed
                     .iter()
@@ -829,6 +840,8 @@ impl Version {
         version: &QueryVersion,
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
+        let mut redis = redis.connect().await?;
+
         redis
             .delete_many(
                 iter::once((VERSIONS_NAMESPACE, Some(version.inner.id.0.to_string()))).chain(
