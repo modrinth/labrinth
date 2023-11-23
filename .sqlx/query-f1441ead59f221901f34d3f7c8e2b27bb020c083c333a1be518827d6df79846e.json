@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT user_id, amount, fee FROM payouts WHERE platform_id = $1",
+  "query": "SELECT user_id, amount, fee FROM payouts WHERE platform_id = $1 AND status = $2",
   "describe": {
     "columns": [
       {
@@ -21,6 +21,7 @@
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Text"
       ]
     },
@@ -30,5 +31,5 @@
       true
     ]
   },
-  "hash": "375abd1749adff1bccb4345a78cdc1ddd340355218f6137ad9ef659a146e90dd"
+  "hash": "f1441ead59f221901f34d3f7c8e2b27bb020c083c333a1be518827d6df79846e"
 }
