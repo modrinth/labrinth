@@ -64,15 +64,15 @@ pub async fn get_version_from_hash(
         let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
         if let Some(version) = version {
             if !is_authorized_version(&version.inner, &user_option, &pool).await? {
-                return Ok(HttpResponse::NotFound().body(""));
+                return Err(ApiError::NotFound);
             }
 
             Ok(HttpResponse::Ok().json(models::projects::Version::from(version)))
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            Err(ApiError::NotFound)
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -163,7 +163,7 @@ pub async fn get_update_from_hash(
 
             if let Some(first) = versions.last() {
                 if !is_authorized_version(&first.inner, &user_option, &pool).await? {
-                    return Ok(HttpResponse::NotFound().body(""));
+                    return Err(ApiError::NotFound);
                 }
 
                 return Ok(HttpResponse::Ok().json(models::projects::Version::from(first)));
@@ -171,7 +171,7 @@ pub async fn get_update_from_hash(
         }
     }
 
-    Ok(HttpResponse::NotFound().body(""))
+    Err(ApiError::NotFound)
 }
 
 // Requests above with multiple versions below
@@ -605,7 +605,7 @@ pub async fn delete_file(
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -649,16 +649,16 @@ pub async fn download_version(
 
         if let Some(version) = version {
             if !is_authorized_version(&version.inner, &user_option, &pool).await? {
-                return Ok(HttpResponse::NotFound().body(""));
+                return Err(ApiError::NotFound);
             }
 
             Ok(HttpResponse::TemporaryRedirect()
                 .append_header(("Location", &*file.url))
                 .json(DownloadRedirect { url: file.url }))
         } else {
-            Ok(HttpResponse::NotFound().body(""))
+            Err(ApiError::NotFound)
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }

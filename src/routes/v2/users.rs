@@ -44,7 +44,7 @@ pub async fn user_auth_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_auth_get(req, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::users::user_auth_get(req, pool, redis, session_queue).await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -58,7 +58,7 @@ pub async fn users_get(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis).await
+    v2_reroute::convert_v3_no_extract(v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis).await?)
 }
 
 #[get("{id}")]
@@ -67,7 +67,7 @@ pub async fn user_get(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_get(info, pool, redis).await
+    v2_reroute::convert_v3_no_extract(v3::users::user_get(info, pool, redis).await?)
 }
 
 #[get("{user_id}/projects")]
@@ -99,7 +99,7 @@ pub async fn collections_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::collections_list(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::users::collections_list(req, info, pool, redis, session_queue).await?)
 }
 
 #[get("{user_id}/organizations")]
@@ -110,7 +110,7 @@ pub async fn orgs_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::orgs_list(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::users::orgs_list(req, info, pool, redis, session_queue).await?)
 }
 
 lazy_static! {
@@ -149,7 +149,7 @@ pub async fn user_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let new_user = new_user.into_inner();
-    v3::users::user_edit(
+    v2_reroute::convert_v3_no_extract(v3::users::user_edit(
         req,
         info,
         web::Json(v3::users::EditUser {
@@ -163,7 +163,7 @@ pub async fn user_edit(
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -183,7 +183,7 @@ pub async fn user_icon_edit(
     payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_icon_edit(
+    v2_reroute::convert_v3_no_extract(v3::users::user_icon_edit(
         web::Query(v3::users::Extension { ext: ext.ext }),
         req,
         info,
@@ -193,7 +193,7 @@ pub async fn user_icon_edit(
         payload,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Deserialize)]
@@ -216,7 +216,7 @@ pub async fn user_delete(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let removal_type = removal_type.into_inner();
-    v3::users::user_delete(
+    v2_reroute::convert_v3_no_extract(v3::users::user_delete(
         req,
         info,
         pool,
@@ -226,7 +226,7 @@ pub async fn user_delete(
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[get("{id}/follows")]
@@ -237,7 +237,7 @@ pub async fn user_follows(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_follows(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::users::user_follows(req, info, pool, redis, session_queue).await?)
 }
 
 #[get("{id}/notifications")]
@@ -248,7 +248,7 @@ pub async fn user_notifications(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_notifications(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::users::user_notifications(req, info, pool, redis, session_queue).await?)
 }
 
 #[get("{id}/payouts")]
@@ -259,7 +259,7 @@ pub async fn user_payouts(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_payouts(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::users::user_payouts(req, info, pool, redis, session_queue).await?)
 }
 
 #[derive(Deserialize)]
@@ -277,7 +277,7 @@ pub async fn user_payouts_fees(
     session_queue: web::Data<AuthQueue>,
     payouts_queue: web::Data<Mutex<PayoutsQueue>>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_payouts_fees(
+    v2_reroute::convert_v3_no_extract(v3::users::user_payouts_fees(
         req,
         info,
         web::Query(v3::users::FeeEstimateAmount {
@@ -288,7 +288,7 @@ pub async fn user_payouts_fees(
         session_queue,
         payouts_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Deserialize)]
@@ -306,7 +306,7 @@ pub async fn user_payouts_request(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_payouts_request(
+    v2_reroute::convert_v3_no_extract(v3::users::user_payouts_request(
         req,
         info,
         pool,
@@ -317,5 +317,5 @@ pub async fn user_payouts_request(
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }

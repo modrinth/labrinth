@@ -145,8 +145,8 @@ pub struct License {
 }
 
 #[get("license")]
-pub async fn license_list() -> HttpResponse {
-    v3::tags::license_list().await
+pub async fn license_list() -> Result<HttpResponse, ApiError> {
+    v2_reroute::convert_v3_no_extract(v3::tags::license_list().await)
 }
 
 #[derive(serde::Serialize)]
@@ -157,7 +157,7 @@ pub struct LicenseText {
 
 #[get("license/{id}")]
 pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, ApiError> {
-    v3::tags::license_text(params).await
+    v2_reroute::convert_v3_no_extract(v3::tags::license_text(params).await?)
 }
 
 #[derive(serde::Serialize)]
@@ -171,7 +171,7 @@ pub async fn donation_platform_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::donation_platform_list(pool, redis).await
+    v2_reroute::convert_v3_no_extract(v3::tags::donation_platform_list(pool, redis).await?)
 }
 
 #[get("report_type")]
@@ -179,7 +179,7 @@ pub async fn report_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::report_type_list(pool, redis).await
+    v2_reroute::convert_v3_no_extract(v3::tags::report_type_list(pool, redis).await?)
 }
 
 #[get("project_type")]
@@ -187,7 +187,7 @@ pub async fn project_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::project_type_list(pool, redis).await
+    v2_reroute::convert_v3_no_extract(v3::tags::project_type_list(pool, redis).await?)
 }
 
 #[get("side_type")]

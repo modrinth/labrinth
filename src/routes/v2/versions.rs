@@ -242,7 +242,7 @@ pub async fn version_edit(
         fields,
     };
 
-    let response = v3::versions::version_edit(
+    let response = v2_reroute::convert_v3_no_extract(v3::versions::version_edit(
         req,
         info,
         pool,
@@ -250,7 +250,7 @@ pub async fn version_edit(
         web::Json(serde_json::to_value(new_version)?),
         session_queue,
     )
-    .await?;
+    .await?)?;
     Ok(response)
 }
 
@@ -269,7 +269,7 @@ pub async fn version_schedule(
     scheduling_data: web::Json<SchedulingData>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::versions::version_schedule(
+    v2_reroute::convert_v3_no_extract(v3::versions::version_schedule(
         req,
         info,
         pool,
@@ -280,7 +280,7 @@ pub async fn version_schedule(
         }),
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[delete("{version_id}")]
@@ -291,5 +291,5 @@ pub async fn version_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::versions::version_delete(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::versions::version_delete(req, info, pool, redis, session_queue).await?)
 }

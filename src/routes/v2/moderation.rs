@@ -1,5 +1,5 @@
 use super::ApiError;
-use crate::database::redis::RedisPool;
+use crate::{database::redis::RedisPool, routes::v2_reroute};
 use crate::queue::session::AuthQueue;
 use crate::routes::v3;
 use actix_web::{get, web, HttpRequest, HttpResponse};
@@ -28,12 +28,12 @@ pub async fn get_projects(
     count: web::Query<ResultCount>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::moderation::get_projects(
+    v2_reroute::convert_v3_no_extract(v3::moderation::get_projects(
         req,
         pool,
         redis,
         web::Query(v3::moderation::ResultCount { count: count.count }),
         session_queue,
     )
-    .await
+    .await?)
 }

@@ -1,6 +1,7 @@
 use crate::database::redis::RedisPool;
 use crate::models::ids::NotificationId;
 use crate::queue::session::AuthQueue;
+use crate::routes::v2_reroute;
 use crate::routes::v3;
 use crate::routes::ApiError;
 use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
@@ -33,14 +34,14 @@ pub async fn notifications_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notifications_get(
+    v2_reroute::convert_v3_no_extract(v3::notifications::notifications_get(
         req,
         web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[get("{id}")]
@@ -51,7 +52,7 @@ pub async fn notification_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_get(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::notifications::notification_get(req, info, pool, redis, session_queue).await?)
 }
 
 #[patch("{id}")]
@@ -62,7 +63,7 @@ pub async fn notification_read(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_read(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::notifications::notification_read(req, info, pool, redis, session_queue).await?)
 }
 
 #[delete("{id}")]
@@ -73,7 +74,7 @@ pub async fn notification_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_delete(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::notifications::notification_delete(req, info, pool, redis, session_queue).await?)
 }
 
 #[patch("notifications")]
@@ -84,14 +85,14 @@ pub async fn notifications_read(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notifications_read(
+    v2_reroute::convert_v3_no_extract(v3::notifications::notifications_read(
         req,
         web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[delete("notifications")]
@@ -102,12 +103,12 @@ pub async fn notifications_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notifications_delete(
+    v2_reroute::convert_v3_no_extract(v3::notifications::notifications_delete(
         req,
         web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }

@@ -165,7 +165,7 @@ pub async fn project_get(
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
     }
-    Ok(HttpResponse::NotFound().body(""))
+    Err(ApiError::NotFound)
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -958,7 +958,7 @@ pub async fn project_edit(
             ))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -1032,7 +1032,7 @@ pub async fn project_get_check(
             "id": models::ids::ProjectId::from(project.inner.id)
         })))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -1066,7 +1066,7 @@ pub async fn dependency_list(
 
     if let Some(project) = result {
         if !is_authorized(&project.inner, &user_option, &pool).await? {
-            return Ok(HttpResponse::NotFound().body(""));
+            return Err(ApiError::NotFound);
         }
 
         let dependencies =
@@ -1114,7 +1114,7 @@ pub async fn dependency_list(
 
         Ok(HttpResponse::Ok().json(DependencyInfo { projects, versions }))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -1614,7 +1614,7 @@ pub async fn project_schedule(
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -2338,7 +2338,7 @@ pub async fn project_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -2370,7 +2370,7 @@ pub async fn project_follow(
     let project_id: db_ids::ProjectId = result.inner.id;
 
     if !is_authorized(&result.inner, &Some(user), &pool).await? {
-        return Ok(HttpResponse::NotFound().body(""));
+        return Err(ApiError::NotFound);
     }
 
     let following = sqlx::query!(

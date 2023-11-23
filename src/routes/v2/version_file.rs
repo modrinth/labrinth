@@ -62,7 +62,7 @@ pub async fn download_version(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue).await?)
 }
 
 // under /api/v1/version_file/{hash}
@@ -75,7 +75,7 @@ pub async fn delete_file(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::version_file::delete_file(req, info, pool, redis, hash_query, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::version_file::delete_file(req, info, pool, redis, hash_query, session_queue).await?)
 }
 
 #[derive(Serialize, Deserialize)]

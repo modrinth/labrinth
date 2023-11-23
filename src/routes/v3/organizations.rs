@@ -243,7 +243,7 @@ pub async fn organization_get(
         let organization = models::organizations::Organization::from(data, team_members);
         return Ok(HttpResponse::Ok().json(organization));
     }
-    Ok(HttpResponse::NotFound().body(""))
+    Err(ApiError::NotFound)
 }
 
 #[derive(Deserialize)]
@@ -470,7 +470,7 @@ pub async fn organizations_edit(
             ))
         }
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -533,7 +533,7 @@ pub async fn organization_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 

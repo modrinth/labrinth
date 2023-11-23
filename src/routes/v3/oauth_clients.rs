@@ -88,7 +88,7 @@ pub async fn get_user_clients(
 
         Ok(HttpResponse::Ok().json(response))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -104,7 +104,7 @@ pub async fn get_client(
     if let Some(client) = clients.into_iter().next() {
         Ok(HttpResponse::Ok().json(client))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -226,7 +226,7 @@ pub async fn oauth_client_delete<'a>(
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -315,7 +315,7 @@ pub async fn oauth_client_edit(
 
         Ok(HttpResponse::Ok().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 

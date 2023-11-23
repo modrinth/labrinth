@@ -2,7 +2,7 @@ use crate::database::redis::RedisPool;
 use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId};
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v3, ApiError};
+use crate::routes::{v3, ApiError, v2_reroute};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ pub async fn team_members_get_project(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::team_members_get_project(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::teams::team_members_get_project(req, info, pool, redis, session_queue).await?)
 }
 
 #[get("{id}/members")]
@@ -45,7 +45,7 @@ pub async fn team_members_get_organization(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::team_members_get_organization(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::teams::team_members_get_organization(req, info, pool, redis, session_queue).await?)
 }
 
 // Returns all members of a team, but not necessarily those of a project-team's organization (unlike team_members_get_project)
@@ -57,7 +57,7 @@ pub async fn team_members_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::team_members_get(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::teams::team_members_get(req, info, pool, redis, session_queue).await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -73,14 +73,14 @@ pub async fn teams_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::teams_get(
+    v2_reroute::convert_v3_no_extract(v3::teams::teams_get(
         req,
         web::Query(v3::teams::TeamIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[post("{id}/join")]
@@ -91,7 +91,7 @@ pub async fn join_team(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::join_team(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::teams::join_team(req, info, pool, redis, session_queue).await?)
 }
 
 fn default_role() -> String {
@@ -126,7 +126,7 @@ pub async fn add_team_member(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::add_team_member(
+    v2_reroute::convert_v3_no_extract(v3::teams::add_team_member(
         req,
         info,
         pool,
@@ -141,7 +141,7 @@ pub async fn add_team_member(
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -162,7 +162,7 @@ pub async fn edit_team_member(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::edit_team_member(
+    v2_reroute::convert_v3_no_extract(v3::teams::edit_team_member(
         req,
         info,
         pool,
@@ -176,7 +176,7 @@ pub async fn edit_team_member(
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Deserialize)]
@@ -193,7 +193,7 @@ pub async fn transfer_ownership(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::transfer_ownership(
+    v2_reroute::convert_v3_no_extract(v3::teams::transfer_ownership(
         req,
         info,
         pool,
@@ -203,7 +203,7 @@ pub async fn transfer_ownership(
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[delete("{id}/members/{user_id}")]
@@ -214,5 +214,5 @@ pub async fn remove_team_member(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::remove_team_member(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::teams::remove_team_member(req, info, pool, redis, session_queue).await?)
 }

@@ -59,7 +59,7 @@ pub async fn team_members_get_project(
         .ok();
 
         if !is_authorized(&project.inner, &current_user, &pool).await? {
-            return Ok(HttpResponse::NotFound().body(""));
+            return Err(ApiError::NotFound);
         }
         let mut members_data =
             TeamMember::get_from_team_full(project.inner.team_id, &**pool, &redis).await?;
@@ -110,7 +110,7 @@ pub async fn team_members_get_project(
             .collect();
         Ok(HttpResponse::Ok().json(team_members))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -174,7 +174,7 @@ pub async fn team_members_get_organization(
 
         Ok(HttpResponse::Ok().json(team_members))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -938,6 +938,6 @@ pub async fn remove_team_member(
         transaction.commit().await?;
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }

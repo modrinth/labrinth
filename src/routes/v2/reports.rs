@@ -2,7 +2,7 @@ use crate::database::redis::RedisPool;
 use crate::models::ids::ImageId;
 use crate::models::reports::ItemType;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v3, ApiError};
+use crate::routes::{v3, ApiError, v2_reroute};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -37,7 +37,7 @@ pub async fn report_create(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::reports::report_create(req, pool, body, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::reports::report_create(req, pool, body, redis, session_queue).await?)
 }
 
 #[derive(Deserialize)]
@@ -63,7 +63,7 @@ pub async fn reports(
     count: web::Query<ReportsRequestOptions>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::reports::reports(
+    v2_reroute::convert_v3_no_extract(v3::reports::reports(
         req,
         pool,
         redis,
@@ -73,7 +73,7 @@ pub async fn reports(
         }),
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Deserialize)]
@@ -89,14 +89,14 @@ pub async fn reports_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::reports::reports_get(
+    v2_reroute::convert_v3_no_extract(v3::reports::reports_get(
         req,
         web::Query(v3::reports::ReportIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[get("report/{id}")]
@@ -107,7 +107,7 @@ pub async fn report_get(
     info: web::Path<(crate::models::reports::ReportId,)>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::reports::report_get(req, pool, redis, info, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::reports::report_get(req, pool, redis, info, session_queue).await?)
 }
 
 #[derive(Deserialize, Validate)]
@@ -127,7 +127,7 @@ pub async fn report_edit(
     edit_report: web::Json<EditReport>,
 ) -> Result<HttpResponse, ApiError> {
     let edit_report = edit_report.into_inner();
-    v3::reports::report_edit(
+    v2_reroute::convert_v3_no_extract(v3::reports::report_edit(
         req,
         pool,
         redis,
@@ -138,7 +138,7 @@ pub async fn report_edit(
             closed: edit_report.closed,
         }),
     )
-    .await
+    .await?)
 }
 
 #[delete("report/{id}")]
@@ -149,5 +149,5 @@ pub async fn report_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::reports::report_delete(req, pool, info, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::reports::report_delete(req, pool, info, redis, session_queue).await?)
 }

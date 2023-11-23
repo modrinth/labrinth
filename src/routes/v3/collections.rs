@@ -187,7 +187,7 @@ pub async fn collection_get(
             return Ok(HttpResponse::Ok().json(Collection::from(data)));
         }
     }
-    Ok(HttpResponse::NotFound().body(""))
+    Err(ApiError::NotFound)
 }
 
 #[derive(Deserialize, Validate)]
@@ -335,7 +335,7 @@ pub async fn collection_edit(
         transaction.commit().await?;
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -526,7 +526,7 @@ pub async fn collection_delete(
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
     } else {
-        Ok(HttpResponse::NotFound().body(""))
+        Err(ApiError::NotFound)
     }
 }
 

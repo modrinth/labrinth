@@ -189,7 +189,7 @@ pub async fn project_get_check(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::project_get_check(info, pool, redis).await
+    v2_reroute::convert_v3_no_extract(v3::projects::project_get_check(info, pool, redis).await?)
 }
 
 #[derive(Serialize)]
@@ -207,7 +207,7 @@ pub async fn dependency_list(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // TODO: requires V2 conversion and tests, probably
-    v3::projects::dependency_list(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::projects::dependency_list(req, info, pool, redis, session_queue).await?)
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -356,7 +356,7 @@ pub async fn project_edit(
 
     // This returns 204 or failure so we don't need to do anything with it
     let project_id = info.clone().0;
-    let mut response = v3::projects::project_edit(
+    let mut response = v2_reroute::convert_v3_no_extract(v3::projects::project_edit(
         req.clone(),
         info,
         pool.clone(),
@@ -365,7 +365,7 @@ pub async fn project_edit(
         redis.clone(),
         session_queue.clone(),
     )
-    .await?;
+    .await?)?;
 
     // If client and server side were set, we will call
     // the version setting route for each version to set the side types for each of them.
@@ -468,7 +468,7 @@ pub async fn projects_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let bulk_edit_project = bulk_edit_project.into_inner();
-    v3::projects::projects_edit(
+    v2_reroute::convert_v3_no_extract(v3::projects::projects_edit(
         req,
         web::Query(ids),
         pool.clone(),
@@ -490,7 +490,7 @@ pub async fn projects_edit(
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Deserialize)]
@@ -509,7 +509,7 @@ pub async fn project_schedule(
     scheduling_data: web::Json<SchedulingData>,
 ) -> Result<HttpResponse, ApiError> {
     let scheduling_data = scheduling_data.into_inner();
-    v3::projects::project_schedule(
+    v2_reroute::convert_v3_no_extract(v3::projects::project_schedule(
         req,
         info,
         pool,
@@ -520,7 +520,7 @@ pub async fn project_schedule(
             requested_status: scheduling_data.requested_status,
         }),
     )
-    .await
+    .await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -540,7 +540,7 @@ pub async fn project_icon_edit(
     payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::project_icon_edit(
+    v2_reroute::convert_v3_no_extract(v3::projects::project_icon_edit(
         web::Query(v3::projects::Extension { ext: ext.ext }),
         req,
         info,
@@ -550,7 +550,7 @@ pub async fn project_icon_edit(
         payload,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[delete("{id}/icon")]
@@ -562,7 +562,7 @@ pub async fn delete_project_icon(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::delete_project_icon(req, info, pool, redis, file_host, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::projects::delete_project_icon(req, info, pool, redis, file_host, session_queue).await?)
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -588,7 +588,7 @@ pub async fn add_gallery_item(
     payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::add_gallery_item(
+    v2_reroute::convert_v3_no_extract(v3::projects::add_gallery_item(
         web::Query(v3::projects::Extension { ext: ext.ext }),
         req,
         web::Query(v3::projects::GalleryCreateQuery {
@@ -604,7 +604,7 @@ pub async fn add_gallery_item(
         payload,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -638,7 +638,7 @@ pub async fn edit_gallery_item(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::edit_gallery_item(
+    v2_reroute::convert_v3_no_extract(v3::projects::edit_gallery_item(
         req,
         web::Query(v3::projects::GalleryEditQuery {
             url: item.url,
@@ -652,7 +652,7 @@ pub async fn edit_gallery_item(
         redis,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -670,7 +670,7 @@ pub async fn delete_gallery_item(
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::delete_gallery_item(
+    v2_reroute::convert_v3_no_extract(v3::projects::delete_gallery_item(
         req,
         web::Query(v3::projects::GalleryDeleteQuery { url: item.url }),
         info,
@@ -679,7 +679,7 @@ pub async fn delete_gallery_item(
         file_host,
         session_queue,
     )
-    .await
+    .await?)
 }
 
 #[delete("{id}")]
@@ -691,7 +691,7 @@ pub async fn project_delete(
     config: web::Data<SearchConfig>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::project_delete(req, info, pool, redis, config, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::projects::project_delete(req, info, pool, redis, config, session_queue).await?)
 }
 
 #[post("{id}/follow")]
@@ -702,7 +702,7 @@ pub async fn project_follow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::project_follow(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::projects::project_follow(req, info, pool, redis, session_queue).await?)
 }
 
 #[delete("{id}/follow")]
@@ -713,5 +713,5 @@ pub async fn project_unfollow(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::projects::project_unfollow(req, info, pool, redis, session_queue).await
+    v2_reroute::convert_v3_no_extract(v3::projects::project_unfollow(req, info, pool, redis, session_queue).await?)
 }
