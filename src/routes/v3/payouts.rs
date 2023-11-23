@@ -37,7 +37,7 @@ pub async fn paypal_webhook(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     payouts: web::Data<PayoutsQueue>,
-    body: web::Json<serde_json::Value>,
+    body: String,
 ) -> Result<HttpResponse, ApiError> {
     let auth_algo = req
         .headers()
@@ -70,19 +70,24 @@ pub async fn paypal_webhook(
         verification_status: String,
     }
 
-    let webhook_res: WebHookResponse = payouts
-        .make_paypal_request(
+    let webhook_res = payouts
+        .make_paypal_request::<(), WebHookResponse>(
             Method::POST,
             "notifications/verify-webhook-signature",
-            Some(json!({
-                "auth_algo": auth_algo,
-                "cert_url": cert_url,
-                "transmission_id": transmission_id,
-                "transmission_sig": transmission_sig,
-                "transmission_time": transmission_time,
-                "webhook_id": dotenvy::var("PAYPAL_WEBHOOK_ID")?,
-                "webhook_event": body.0,
-            })),
+            None,
+            // This is needed as serde re-orders fields, which causes the validation to fail for PayPal.
+            Some(format!(
+                "{{
+                    \"auth_algo\": \"{auth_algo}\",
+                    \"cert_url\": \"{cert_url}\",
+                    \"transmission_id\": \"{transmission_id}\",
+                    \"transmission_sig\": \"{transmission_sig}\",
+                    \"transmission_time\": \"{transmission_time}\",
+                    \"webhook_id\": \"{}\",
+                    \"webhook_event\": {body}
+                }}",
+                dotenvy::var("PAYPAL_WEBHOOK_ID")?
+            )),
             None,
         )
         .await?;
@@ -93,12 +98,9 @@ pub async fn paypal_webhook(
         ));
     }
 
-    println!("{}", webhook_res.verification_status);
-    println!("{:?}", body.0);
-
     #[derive(Deserialize)]
     struct PayPalResource {
-        pub id: String,
+        pub payout_item_id: String,
     }
 
     #[derive(Deserialize)]
@@ -107,7 +109,7 @@ pub async fn paypal_webhook(
         pub resource: PayPalResource,
     }
 
-    let webhook = serde_json::from_value::<PayPalWebhook>(body.0)?;
+    let webhook = serde_json::from_str::<PayPalWebhook>(&body)?;
 
     match &*webhook.event_type {
         "PAYMENT.PAYOUTS-ITEM.BLOCKED"
@@ -118,8 +120,9 @@ pub async fn paypal_webhook(
             let mut transaction = pool.begin().await?;
 
             let result = sqlx::query!(
-                "SELECT user_id, amount, fee FROM payouts WHERE platform_id = $1",
-                webhook.resource.id
+                "SELECT user_id, amount, fee FROM payouts WHERE platform_id = $1 AND status = $2",
+                webhook.resource.payout_item_id,
+                PayoutStatus::InTransit.as_str()
             )
             .fetch_optional(&mut *transaction)
             .await?;
@@ -159,7 +162,7 @@ pub async fn paypal_webhook(
                         PayoutStatus::Failed
                     }
                     .as_str(),
-                    webhook.resource.id
+                    webhook.resource.payout_item_id
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -176,7 +179,7 @@ pub async fn paypal_webhook(
                 WHERE platform_id = $2
                 ",
                 PayoutStatus::Success.as_str(),
-                webhook.resource.id
+                webhook.resource.payout_item_id
             )
             .execute(&mut *transaction)
             .await?;
@@ -238,8 +241,9 @@ pub async fn tremendous_webhook(
             let mut transaction = pool.begin().await?;
 
             let result = sqlx::query!(
-                "SELECT user_id, amount, fee FROM payouts WHERE platform_id = $1",
-                webhook.payload.resource.id
+                "SELECT user_id, amount, fee FROM payouts WHERE platform_id = $1 AND status = $2",
+                webhook.payload.resource.id,
+                PayoutStatus::InTransit.as_str()
             )
             .fetch_optional(&mut *transaction)
             .await?;
@@ -287,7 +291,7 @@ pub async fn tremendous_webhook(
                 transaction.commit().await?;
             }
         }
-        "PAYMENT.PAYOUTS-ITEM.SUCCEEDED" => {
+        "REWARDS.DELIVERY.SUCCEEDED" => {
             let mut transaction = pool.begin().await?;
             sqlx::query!(
                 "
@@ -403,37 +407,43 @@ pub async fn create_payout(
 
     let payout_item = match body.method {
         PayoutMethodType::Venmo | PayoutMethodType::PayPal => {
-            let (wallet, wallet_type, address) = if body.method == PayoutMethodType::Venmo {
-                if let Some(venmo) = user.venmo_handle {
-                    ("Venmo", "user_handle", venmo)
-                } else {
-                    return Err(ApiError::InvalidInput(
-                        "Venmo address has not been set for account!".to_string(),
-                    ));
-                }
-            } else if let Some(paypal_id) = user.paypal_id {
-                if let Some(paypal_country) = user.paypal_country {
-                    if &*paypal_country == "US" && &*body.method_id != "paypal_us" {
+            let (wallet, wallet_type, address, display_address) =
+                if body.method == PayoutMethodType::Venmo {
+                    if let Some(venmo) = user.venmo_handle {
+                        ("Venmo", "user_handle", venmo.clone(), venmo)
+                    } else {
                         return Err(ApiError::InvalidInput(
-                            "Please use the US PayPal transfer option!".to_string(),
-                        ));
-                    } else if &*paypal_country != "US" && &*body.method_id == "paypal_us" {
-                        return Err(ApiError::InvalidInput(
-                            "Please use the International PayPal transfer option!".to_string(),
+                            "Venmo address has not been set for account!".to_string(),
                         ));
                     }
+                } else if let Some(paypal_id) = user.paypal_id {
+                    if let Some(paypal_country) = user.paypal_country {
+                        if &*paypal_country == "US" && &*body.method_id != "paypal_us" {
+                            return Err(ApiError::InvalidInput(
+                                "Please use the US PayPal transfer option!".to_string(),
+                            ));
+                        } else if &*paypal_country != "US" && &*body.method_id == "paypal_us" {
+                            return Err(ApiError::InvalidInput(
+                                "Please use the International PayPal transfer option!".to_string(),
+                            ));
+                        }
 
-                    ("PayPal", "paypal_id", paypal_id)
+                        (
+                            "PayPal",
+                            "paypal_id",
+                            paypal_id.clone(),
+                            user.paypal_email.unwrap_or(paypal_id),
+                        )
+                    } else {
+                        return Err(ApiError::InvalidInput(
+                            "Please re-link your PayPal account!".to_string(),
+                        ));
+                    }
                 } else {
                     return Err(ApiError::InvalidInput(
-                        "Please re-link your PayPal account!".to_string(),
+                        "You have not linked a PayPal account!".to_string(),
                     ));
-                }
-            } else {
-                return Err(ApiError::InvalidInput(
-                    "You have not linked a PayPal account!".to_string(),
-                ));
-            };
+                };
 
             #[derive(Deserialize)]
             struct PayPalLink {
@@ -449,11 +459,11 @@ pub async fn create_payout(
                 id: payout_id,
                 user_id: user.id,
                 created: Utc::now(),
-                status: PayoutStatus::Processing,
+                status: PayoutStatus::InTransit,
                 amount: transfer,
                 fee: Some(fee),
                 method: Some(body.method),
-                method_address: Some(address.clone()),
+                method_address: Some(display_address),
                 platform_id: None,
             };
 
@@ -480,6 +490,7 @@ pub async fn create_payout(
                         }]
                     })
                 ),
+                None,
                 None
             ).await?;
 
@@ -498,6 +509,7 @@ pub async fn create_payout(
                     .make_paypal_request::<(), PayoutData>(
                         Method::GET,
                         &link.href,
+                        None,
                         None,
                         Some(true),
                     )
@@ -518,7 +530,7 @@ pub async fn create_payout(
                         id: payout_id,
                         user_id: user.id,
                         created: Utc::now(),
-                        status: PayoutStatus::Processing,
+                        status: PayoutStatus::InTransit,
                         amount: transfer,
                         fee: Some(fee),
                         method: Some(PayoutMethodType::Tremendous),
@@ -640,7 +652,7 @@ pub async fn cancel_payout(
 
         if let Some(platform_id) = payout.platform_id {
             if let Some(method) = payout.method {
-                if payout.status != PayoutStatus::Processing {
+                if payout.status != PayoutStatus::InTransit {
                     return Err(ApiError::InvalidInput(
                         "Payout cannot be cancelled!".to_string(),
                     ));
@@ -652,6 +664,7 @@ pub async fn cancel_payout(
                             .make_paypal_request::<(), ()>(
                                 Method::POST,
                                 &format!("payments/payouts-item/{}/cancel", platform_id),
+                                None,
                                 None,
                                 None,
                             )

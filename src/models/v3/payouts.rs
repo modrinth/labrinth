@@ -77,10 +77,10 @@ impl PayoutMethodType {
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum PayoutStatus {
     Success,
-    Processing,
+    InTransit,
     Cancelled,
     Cancelling,
     Failed,
@@ -97,7 +97,7 @@ impl PayoutStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             PayoutStatus::Success => "success",
-            PayoutStatus::Processing => "processing",
+            PayoutStatus::InTransit => "in-transit",
             PayoutStatus::Cancelled => "cancelled",
             PayoutStatus::Cancelling => "cancelling",
             PayoutStatus::Failed => "failed",
@@ -108,7 +108,7 @@ impl PayoutStatus {
     pub fn from_string(string: &str) -> PayoutStatus {
         match string {
             "success" => PayoutStatus::Success,
-            "processing" => PayoutStatus::Processing,
+            "in-transit" => PayoutStatus::InTransit,
             "cancelled" => PayoutStatus::Cancelled,
             "cancelling" => PayoutStatus::Cancelling,
             "failed" => PayoutStatus::Failed,

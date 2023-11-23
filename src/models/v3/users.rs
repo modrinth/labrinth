@@ -59,7 +59,6 @@ pub struct User {
     pub github_id: Option<u64>,
 }
 
-// TODO: make v2 supported version of this
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct UserPayoutData {
     pub paypal_address: Option<String>,

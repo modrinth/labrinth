@@ -109,6 +109,7 @@ impl PayoutsQueue {
         method: Method,
         path: &str,
         body: Option<T>,
+        raw_text: Option<String>,
         no_api_prefix: Option<bool>,
     ) -> Result<X, ApiError> {
         let read = self.credential.read().await;
@@ -145,6 +146,10 @@ impl PayoutsQueue {
 
         if let Some(body) = body {
             request = request.json(&body);
+        } else if let Some(body) = raw_text {
+            request = request
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(body);
         }
 
         let resp = request
