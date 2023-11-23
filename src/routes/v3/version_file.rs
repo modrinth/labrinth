@@ -52,8 +52,9 @@ pub async fn get_version_from_hash(
     .map(|x| x.1)
     .ok();
     let hash = info.into_inner().0.to_lowercase();
+    let algorithm = hash_query.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
     let file = database::models::Version::get_file_from_hash(
-        hash_query.algorithm.clone(),
+        algorithm,
         hash,
         hash_query.version_id.map(|x| x.into()),
         &**pool,
@@ -78,12 +79,22 @@ pub async fn get_version_from_hash(
 
 #[derive(Serialize, Deserialize)]
 pub struct HashQuery {
-    #[serde(default = "default_algorithm")]
-    pub algorithm: String,
+    pub algorithm: Option<String>, // Defaults to calculation based on size of hash
     pub version_id: Option<VersionId>,
 }
 
-pub fn default_algorithm() -> String {
+// Calculates whether or not to use sha1 or sha512 based on the size of the hash
+pub fn default_algorithm_from_hashes(hashes : &[String]) -> String {
+    // Gets first hash, optionally 
+    let empty_string = "".into();
+    let hash = hashes.get(0).unwrap_or(&empty_string);
+    let hash_len = hash.len();
+    // Sha1 = 40 characters
+    // Sha512 = 128 characters
+    // Favour sha1 as default, unless the hash is longer or equal to 128 characters
+    if hash_len >= 128 {
+        return "sha512".into()
+    }
     "sha1".into()
 }
 
@@ -122,7 +133,7 @@ pub async fn get_update_from_hash(
     let hash = info.into_inner().0.to_lowercase();
 
     if let Some(file) = database::models::Version::get_file_from_hash(
-        hash_query.algorithm.clone(),
+        hash_query.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()])),
         hash,
         hash_query.version_id.map(|x| x.into()),
         &**pool,
@@ -177,8 +188,7 @@ pub async fn get_update_from_hash(
 // Requests above with multiple versions below
 #[derive(Deserialize)]
 pub struct FileHashes {
-    #[serde(default = "default_algorithm")]
-    pub algorithm: String,
+    pub algorithm: Option<String>, // Defaults to calculation based on size of hash
     pub hashes: Vec<String>,
 }
 
@@ -200,8 +210,10 @@ pub async fn get_versions_from_hashes(
     .map(|x| x.1)
     .ok();
 
+    let algorithm = file_data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&file_data.hashes));
+
     let files = database::models::Version::get_files_from_hash(
-        file_data.algorithm.clone(),
+        algorithm.clone(),
         &file_data.hashes,
         &**pool,
         &redis,
@@ -220,7 +232,7 @@ pub async fn get_versions_from_hashes(
 
     for version in versions_data {
         for file in files.iter().filter(|x| x.version_id == version.id.into()) {
-            if let Some(hash) = file.hashes.get(&file_data.algorithm) {
+            if let Some(hash) = file.hashes.get(&algorithm) {
                 response.insert(hash.clone(), version.clone());
             }
         }
@@ -247,8 +259,9 @@ pub async fn get_projects_from_hashes(
     .map(|x| x.1)
     .ok();
 
+    let algorithm = file_data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&file_data.hashes));
     let files = database::models::Version::get_files_from_hash(
-        file_data.algorithm.clone(),
+        algorithm.clone(),
         &file_data.hashes,
         &**pool,
         &redis,
@@ -268,7 +281,7 @@ pub async fn get_projects_from_hashes(
 
     for project in projects_data {
         for file in files.iter().filter(|x| x.project_id == project.id.into()) {
-            if let Some(hash) = file.hashes.get(&file_data.algorithm) {
+            if let Some(hash) = file.hashes.get(&algorithm) {
                 response.insert(hash.clone(), project.clone());
             }
         }
@@ -279,8 +292,7 @@ pub async fn get_projects_from_hashes(
 
 #[derive(Deserialize)]
 pub struct ManyUpdateData {
-    #[serde(default = "default_algorithm")]
-    pub algorithm: String,
+    pub algorithm: Option<String>, // Defaults to calculation based on size of hash
     pub hashes: Vec<String>,
     pub loaders: Option<Vec<String>>,
     pub loader_fields: Option<HashMap<String, Vec<serde_json::Value>>>,
@@ -304,8 +316,9 @@ pub async fn update_files(
     .map(|x| x.1)
     .ok();
 
+    let algorithm = update_data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&update_data.hashes));
     let files = database::models::Version::get_files_from_hash(
-        update_data.algorithm.clone(),
+        algorithm.clone(),
         &update_data.hashes,
         &**pool,
         &redis,
@@ -366,7 +379,7 @@ pub async fn update_files(
 
             if let Some(version) = version {
                 if is_authorized_version(&version.inner, &user_option, &pool).await? {
-                    if let Some(hash) = file.hashes.get(&update_data.algorithm) {
+                    if let Some(hash) = file.hashes.get(&algorithm) {
                         response.insert(
                             hash.clone(),
                             models::projects::Version::from(version.clone()),
@@ -390,8 +403,7 @@ pub struct FileUpdateData {
 
 #[derive(Serialize, Deserialize)]
 pub struct ManyFileUpdateData {
-    #[serde(default = "default_algorithm")]
-    pub algorithm: String,
+    pub algorithm: Option<String>, // Defaults to calculation based on size of hash
     pub hashes: Vec<FileUpdateData>,
 }
 
@@ -413,8 +425,9 @@ pub async fn update_individual_files(
     .map(|x| x.1)
     .ok();
 
+    let algorithm = update_data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&update_data.hashes.iter().map(|x| x.hash.clone()).collect::<Vec<_>>()));
     let files = database::models::Version::get_files_from_hash(
-        update_data.algorithm.clone(),
+        algorithm.clone(),
         &update_data
             .hashes
             .iter()
@@ -445,7 +458,7 @@ pub async fn update_individual_files(
 
     for project in projects {
         for file in files.iter().filter(|x| x.project_id == project.inner.id) {
-            if let Some(hash) = file.hashes.get(&update_data.algorithm) {
+            if let Some(hash) = file.hashes.get(&algorithm) {
                 if let Some(query_file) = update_data.hashes.iter().find(|x| &x.hash == hash) {
                     let version = all_versions
                         .iter()
@@ -514,9 +527,9 @@ pub async fn delete_file(
     .1;
 
     let hash = info.into_inner().0.to_lowercase();
-
+    let algorithm = hash_query.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
     let file = database::models::Version::get_file_from_hash(
-        hash_query.algorithm.clone(),
+        algorithm.clone(),
         hash,
         hash_query.version_id.map(|x| x.into()),
         &**pool,
@@ -635,8 +648,9 @@ pub async fn download_version(
     .ok();
 
     let hash = info.into_inner().0.to_lowercase();
+    let algorithm = hash_query.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
     let file = database::models::Version::get_file_from_hash(
-        hash_query.algorithm.clone(),
+        algorithm.clone(),
         hash,
         hash_query.version_id.map(|x| x.into()),
         &**pool,

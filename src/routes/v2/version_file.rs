@@ -3,7 +3,7 @@ use crate::database::redis::RedisPool;
 use crate::models::projects::{Project, Version, VersionType};
 use crate::models::v2::projects::{LegacyProject, LegacyVersion};
 use crate::queue::session::AuthQueue;
-use crate::routes::v3::version_file::{default_algorithm, HashQuery};
+use crate::routes::v3::version_file::HashQuery;
 use crate::routes::{v2_reroute, v3};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -134,8 +134,7 @@ pub async fn get_update_from_hash(
 // Requests above with multiple versions below
 #[derive(Deserialize)]
 pub struct FileHashes {
-    #[serde(default = "default_algorithm")]
-    pub algorithm: String,
+    pub algorithm: Option<String>,
     pub hashes: Vec<String>,
 }
 
@@ -230,8 +229,7 @@ pub async fn get_projects_from_hashes(
 
 #[derive(Deserialize)]
 pub struct ManyUpdateData {
-    #[serde(default = "default_algorithm")]
-    pub algorithm: String,
+    pub algorithm: Option<String>, // Defaults to calculation based on size of hash
     pub hashes: Vec<String>,
     pub loaders: Option<Vec<String>>,
     pub game_versions: Option<Vec<String>>,
@@ -293,8 +291,7 @@ pub struct FileUpdateData {
 
 #[derive(Deserialize)]
 pub struct ManyFileUpdateData {
-    #[serde(default = "default_algorithm")]
-    pub algorithm: String,
+    pub algorithm: Option<String>, // Defaults to calculation based on size of hash
     pub hashes: Vec<FileUpdateData>,
 }
 
