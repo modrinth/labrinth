@@ -150,7 +150,10 @@ pub struct NewOAuthApp {
 
     pub redirect_uris: Vec<String>,
 
-    #[validate(custom(function = "crate::util::validate::validate_url"))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 255)
+    )]
     pub url: Option<String>,
 
     #[validate(length(max = 255))]
@@ -261,7 +264,10 @@ pub struct OAuthClientEdit {
     #[validate(length(min = 1))]
     pub redirect_uris: Option<Vec<String>>,
 
-    #[validate(custom(function = "crate::util::validate::validate_url"))]
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 255)
+    )]
     pub url: Option<Option<String>>,
 
     #[validate(length(max = 255))]

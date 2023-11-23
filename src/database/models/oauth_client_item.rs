@@ -161,12 +161,14 @@ impl OAuthClient {
         sqlx::query!(
             "
             UPDATE oauth_clients
-            SET name = $1, icon_url = $2, max_scopes = $3
-            WHERE (id = $4)
+            SET name = $1, icon_url = $2, max_scopes = $3, url = $4, description = $5
+            WHERE (id = $6)
             ",
             self.name,
             self.icon_url,
             self.max_scopes.to_postgres(),
+            self.url,
+            self.description,
             self.id.0,
         )
         .execute(exec)
