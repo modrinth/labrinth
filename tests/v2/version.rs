@@ -7,7 +7,7 @@ use labrinth::{
 };
 use serde_json::json;
 
-use crate::common::api_common::ApiVersion;
+use crate::common::api_common::{ApiProject, ApiVersion};
 use crate::common::api_v2::ApiV2;
 use crate::common::environment::{with_test_environment, TestEnvironment};
 use crate::common::{
@@ -406,6 +406,61 @@ async fn version_updates() {
             )
             .await;
         assert_eq!(versions.len(), 1);
+    })
+    .await;
+}
+
+#[actix_rt::test]
+async fn add_version_project_types_v2() {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
+        // Since v2 no longer keeps project_type at the project level but the version level,
+        // we have to test that the project_type is set correctly when adding a version, if its done in separate requests.
+        let api = &test_env.api;
+
+        // Create a project in v2 with project_type = modpack, and no initial version set.
+        let (test_project, test_versions) = api
+            .add_public_project("test-modpack", None, None, USER_USER_PAT)
+            .await;
+        assert_eq!(test_versions.len(), 0); // No initial version set
+
+        // Get as v2 project
+        let test_project = api
+            .get_project_deserialized(&test_project.slug.unwrap(), USER_USER_PAT)
+            .await;
+        assert_eq!(test_project.project_type, ""); // No project_type set, as no versions are set
+                                                   // This is a known difference between older v2 ,but is acceptable.
+                                                   // This would be the appropriate test on older v2:
+                                                   // assert_eq!(test_project.project_type, "modpack");
+
+        // Create a version with a modpack file attached
+        let test_version = api
+            .add_public_version_deserialized_common(
+                test_project.id,
+                "1.0.0",
+                TestFile::build_random_mrpack(),
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+
+        // When we get the version as v2, it should display 'fabric' as the loader (and no project_type)
+        let test_version = api
+            .get_version_deserialized(&test_version.id.to_string(), USER_USER_PAT)
+            .await;
+        assert_eq!(test_version.loaders, vec![Loader("fabric".to_string())]);
+
+        // When we get the project as v2, it should display 'modpack' as the project_type, and 'fabric' as the loader
+        let test_project = api
+            .get_project_deserialized(&test_project.slug.unwrap(), USER_USER_PAT)
+            .await;
+        assert_eq!(test_project.project_type, "modpack");
+        assert_eq!(test_project.loaders, vec!["fabric"]);
+
+        // When we get the version as v3, it should display 'mrpack' as the loader, and 'modpack' as the project_type
+        // When we get the project as v3, it should display 'modpack' as the project_type, and 'mrpack' as the loader
+
+        // The project should be a modpack project
     })
     .await;
 }

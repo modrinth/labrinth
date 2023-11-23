@@ -100,14 +100,40 @@ pub async fn version_create(
             fields.insert("client_side".to_string(), json!("required"));
             fields.insert("server_side".to_string(), json!("optional"));
 
-            // TODO: Some kind of handling here to ensure project type is fine.
-            // We expect the version uploaded to be of loader type modpack, but there might  not be a way to check here for that.
-            // After all, theoretically, they could be creating a genuine 'fabric' mod, and modpack no longer carries information on whether its a mod or modpack,
-            // as those are out to the versions.
+            // Handle project type via file extension prediction
+            let mut project_type = None;
+            for file_part in &legacy_create.file_parts {
+                if let Some(ext) = file_part.split('.').last() {
+                    match ext {
+                        "jar" => {
+                            project_type = Some("mod");
+                            break;
+                        }
+                        "mrpack" | "zip" => {
+                            project_type = Some("modpack");
+                            break;
+                        }
+                        _ => {}
+                    }
+                    break;
+                }
+            }
+            let project_type = project_type.ok_or(CreateError::InvalidInput(
+                "Could not determine project type from file parts for v2 version creation."
+                    .to_string(),
+            ))?;
 
-            // Ideally this would, if the project 'should' be a modpack:
-            // - change the loaders to mrpack only
-            // - add loader fields to the project for the corresponding loaders
+            // Modpacks now use the "mrpack" loader, and loaders are converted to loader fields.
+            // Setting of 'project_type' directly is removed, it's loader-based now.
+            if project_type == "modpack" {
+                fields.insert("mrpack_loaders".to_string(), json!(legacy_create.loaders));
+            }
+
+            let loaders = if project_type == "modpack" {
+                vec![Loader("mrpack".to_string())]
+            } else {
+                legacy_create.loaders
+            };
 
             Ok(v3::version_creation::InitialVersionData {
                 project_id: legacy_create.project_id,
@@ -117,7 +143,7 @@ pub async fn version_create(
                 version_body: legacy_create.version_body,
                 dependencies: legacy_create.dependencies,
                 release_channel: legacy_create.release_channel,
-                loaders: legacy_create.loaders,
+                loaders,
                 featured: legacy_create.featured,
                 primary_file: legacy_create.primary_file,
                 status: legacy_create.status,
