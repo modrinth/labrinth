@@ -8,6 +8,7 @@ mod common;
 
 // Such V2 tests are exported here
 mod v2 {
+    mod error;
     mod project;
     mod scopes;
     mod search;

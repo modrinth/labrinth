@@ -30,7 +30,7 @@ pub async fn thread_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::threads::thread_get(req, info, pool, redis, session_queue).await?)
+    v3::threads::thread_get(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Deserialize)]
@@ -46,14 +46,14 @@ pub async fn threads_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::threads::threads_get(
+    v3::threads::threads_get(
         req,
         web::Query(v3::threads::ThreadIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
     )
-    .await?)
+    .await.or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Deserialize)]
@@ -71,7 +71,7 @@ pub async fn thread_send_message(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let new_message = new_message.into_inner();
-    v2_reroute::convert_v3_no_extract(v3::threads::thread_send_message(
+    v3::threads::thread_send_message(
         req,
         info,
         pool,
@@ -81,7 +81,7 @@ pub async fn thread_send_message(
         redis,
         session_queue,
     )
-    .await?)
+    .await.or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("inbox")]
@@ -91,7 +91,7 @@ pub async fn moderation_inbox(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::threads::moderation_inbox(req, pool, redis, session_queue).await?)
+    v3::threads::moderation_inbox(req, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
 }
 
 #[post("{id}/read")]
@@ -102,7 +102,7 @@ pub async fn thread_read(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::threads::thread_read(req, info, pool, redis, session_queue).await?)
+    v3::threads::thread_read(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
 }
 
 #[delete("{id}")]
@@ -114,5 +114,5 @@ pub async fn message_delete(
     session_queue: web::Data<AuthQueue>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::threads::message_delete(req, info, pool, redis, session_queue, file_host).await?)
+    v3::threads::message_delete(req, info, pool, redis, session_queue, file_host).await.or_else(v2_reroute::flatten_404_error)
 }

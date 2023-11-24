@@ -101,7 +101,7 @@ pub async fn views_get(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let data = data.into_inner();
-    v2_reroute::convert_v3_no_extract(v3::analytics_get::views_get(
+    v3::analytics_get::views_get(
         req,
         clickhouse,
         web::Query(v3::analytics_get::GetData {
@@ -115,7 +115,7 @@ pub async fn views_get(
         pool,
         redis,
     )
-    .await?)
+    .await.or_else(v2_reroute::flatten_404_error)
 }
 
 /// Get download data for a set of projects or versions
@@ -137,7 +137,7 @@ pub async fn downloads_get(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let data = data.into_inner();
-    v2_reroute::convert_v3_no_extract(v3::analytics_get::downloads_get(
+    v3::analytics_get::downloads_get(
         req,
         clickhouse,
         web::Query(v3::analytics_get::GetData {
@@ -151,7 +151,7 @@ pub async fn downloads_get(
         pool,
         redis,
     )
-    .await?)
+    .await.or_else(v2_reroute::flatten_404_error)
 }
 
 /// Get payout data for a set of projects
@@ -172,7 +172,7 @@ pub async fn revenue_get(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let data = data.into_inner();
-    v2_reroute::convert_v3_no_extract(v3::analytics_get::revenue_get(
+    v3::analytics_get::revenue_get(
         req,
         web::Query(v3::analytics_get::GetData {
             project_ids: data.project_ids,
@@ -185,7 +185,7 @@ pub async fn revenue_get(
         pool,
         redis,
     )
-    .await?)
+    .await.or_else(v2_reroute::flatten_404_error)
 }
 
 /// Get country data for a set of projects or versions
@@ -210,7 +210,7 @@ pub async fn countries_downloads_get(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let data = data.into_inner();
-    v2_reroute::convert_v3_no_extract(v3::analytics_get::countries_downloads_get(
+    v3::analytics_get::countries_downloads_get(
         req,
         clickhouse,
         web::Query(v3::analytics_get::GetData {
@@ -224,7 +224,7 @@ pub async fn countries_downloads_get(
         pool,
         redis,
     )
-    .await?)
+    .await.or_else(v2_reroute::flatten_404_error)
 }
 
 /// Get country data for a set of projects or versions
@@ -249,7 +249,7 @@ pub async fn countries_views_get(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let data = data.into_inner();
-    v2_reroute::convert_v3_no_extract(v3::analytics_get::countries_views_get(
+    v3::analytics_get::countries_views_get(
         req,
         clickhouse,
         web::Query(v3::analytics_get::GetData {
@@ -263,5 +263,5 @@ pub async fn countries_views_get(
         pool,
         redis,
     )
-    .await?)
+    .await.or_else(v2_reroute::flatten_404_error)
 }

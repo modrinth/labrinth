@@ -28,12 +28,12 @@ pub async fn get_projects(
     count: web::Query<ResultCount>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::moderation::get_projects(
+    v3::moderation::get_projects(
         req,
         pool,
         redis,
         web::Query(v3::moderation::ResultCount { count: count.count }),
         session_queue,
     )
-    .await?)
+    .await.or_else(v2_reroute::flatten_404_error)
 }

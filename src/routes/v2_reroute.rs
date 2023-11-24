@@ -26,10 +26,6 @@ where
             .map_err(|_| failure_http_response())?;
         let json_value: T = serde_json::from_slice(&bytes).map_err(|_| failure_http_response())?;
         Ok(json_value)
-    // If the response is not OK, return the response, 
-    // but if the response is 404, remove the body (see convert_v3_no_extract)
-    } else if response.status() == actix_web::http::StatusCode::NOT_FOUND {
-        Err(HttpResponse::NotFound().body(""))
     } else {
         Err(response)
     }
@@ -37,13 +33,12 @@ where
 
 // This only removes the body of 404 responses
 // This should not be used on the fallback no-route-found handler
-pub fn convert_v3_no_extract(response: HttpResponse) -> Result<HttpResponse, ApiError> {
-    if response.status() == actix_web::http::StatusCode::NOT_FOUND {
-        Ok(HttpResponse::NotFound().body(""))
-    } else {
-        Ok(response)
+pub fn flatten_404_error(res : ApiError) -> Result<HttpResponse, ApiError> {
+    match res {
+        ApiError::NotFound => Ok(HttpResponse::NotFound().body("")),
+        _ => Err(res),
     }
-}   
+}
 
 pub async fn alter_actix_multipart<T, U>(
     mut multipart: Multipart,

@@ -40,10 +40,10 @@ pub async fn get_version_from_hash(
 ) -> Result<HttpResponse, ApiError> {
     let response =
         v3::version_file::get_version_from_hash(req, info, pool, redis, hash_query, session_queue)
-            .await;
+            .await.or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Version>(response?).await {
+    match v2_reroute::extract_ok_json::<Version>(response).await {
         Ok(version) => {
             let v2_version = LegacyVersion::from(version);
             Ok(HttpResponse::Ok().json(v2_version))
@@ -62,7 +62,7 @@ pub async fn download_version(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue).await?)
+    v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue).await.or_else(v2_reroute::flatten_404_error)
 }
 
 // under /api/v1/version_file/{hash}
@@ -75,7 +75,7 @@ pub async fn delete_file(
     hash_query: web::Query<HashQuery>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::version_file::delete_file(req, info, pool, redis, hash_query, session_queue).await?)
+    v3::version_file::delete_file(req, info, pool, redis, hash_query, session_queue).await.or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -119,7 +119,7 @@ pub async fn get_update_from_hash(
         web::Json(update_data),
         session_queue,
     )
-    .await?;
+    .await.or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Version>(response).await {
@@ -159,7 +159,7 @@ pub async fn get_versions_from_hashes(
         web::Json(file_data),
         session_queue,
     )
-    .await?;
+    .await.or_else(v2_reroute::flatten_404_error)?;
 
     // Convert to V2
     match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {
@@ -197,7 +197,7 @@ pub async fn get_projects_from_hashes(
         web::Json(file_data),
         session_queue,
     )
-    .await?;
+    .await.or_else(v2_reroute::flatten_404_error)?;
 
     // Convert to V2
     match v2_reroute::extract_ok_json::<HashMap<String, Project>>(response).await {
@@ -263,7 +263,7 @@ pub async fn update_files(
 
     let response =
         v3::version_file::update_files(req, pool, redis, web::Json(update_data), session_queue)
-            .await?;
+            .await.or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {
@@ -335,7 +335,7 @@ pub async fn update_individual_files(
         web::Json(update_data),
         session_queue,
     )
-    .await?;
+    .await.or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {

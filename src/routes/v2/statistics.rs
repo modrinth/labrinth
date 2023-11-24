@@ -8,5 +8,5 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 #[get("statistics")]
 pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
-    v2_reroute::convert_v3_no_extract(v3::statistics::get_stats(pool).await?)
+    v3::statistics::get_stats(pool).await.or_else(v2_reroute::flatten_404_error)
 }
