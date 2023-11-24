@@ -38,7 +38,7 @@ pub struct Project {
     /// The optional organization of people that have ownership of this project.
     pub organization: Option<OrganizationId>,
     /// The title or name of the project.
-    pub title: String,
+    pub name: String,
     /// A short description of the project.
     pub description: String,
     /// A long form description of the project.
@@ -121,7 +121,7 @@ impl From<QueryProject> for Project {
             games: data.games,
             team: m.team_id.into(),
             organization: m.organization_id.map(|i| i.into()),
-            title: m.title,
+            name: m.name,
             description: m.description,
             body: m.body,
             body_url: None,
@@ -187,7 +187,7 @@ impl From<QueryProject> for Project {
                 .map(|x| GalleryItem {
                     url: x.image_url,
                     featured: x.featured,
-                    title: x.title,
+                    name: x.name,
                     description: x.description,
                     created: x.created,
                     ordering: x.ordering,
@@ -204,7 +204,7 @@ impl From<QueryProject> for Project {
 pub struct GalleryItem {
     pub url: String,
     pub featured: bool,
-    pub title: Option<String>,
+    pub name : Option<String>,
     pub description: Option<String>,
     pub created: DateTime<Utc>,
     pub ordering: i64,

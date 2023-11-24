@@ -205,7 +205,7 @@ impl DummyData {
             organization_zeta: DummyOrganizationZeta {
                 organization_id: organization_zeta.id.to_string(),
                 team_id: organization_zeta.team_id.to_string(),
-                organization_title: organization_zeta.title,
+                organization_name: organization_zeta.name,
             },
 
             oauth_client_alpha: DummyOAuthClientAlpha {
@@ -247,7 +247,7 @@ pub struct DummyProjectBeta {
 #[derive(Clone)]
 pub struct DummyOrganizationZeta {
     pub organization_id: String,
-    pub organization_title: String,
+    pub organization_name: String,
     pub team_id: String,
 }
 
@@ -330,7 +330,7 @@ pub async fn add_project_beta(api: &ApiV3) -> (CommonProject, CommonVersion) {
     // TODO: this shouldnt be hardcoded (nor should other similar ones be)
     let json_data = json!(
         {
-            "title": "Test Project Beta",
+            "name": "Test Project Beta",
             "slug": "beta",
             "description": "A dummy project for testing with.",
             "body": "This project is not-yet-approved, and versions are draft.",
@@ -388,7 +388,7 @@ pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
         .uri("/v3/organization")
         .append_header(("Authorization", USER_USER_PAT))
         .set_json(json!({
-            "title": "zeta",
+            "name": "zeta",
             "description": "A dummy organization for testing with."
         }))
         .to_request();

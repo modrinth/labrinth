@@ -95,7 +95,7 @@ pub struct NewOrganization {
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
     // Title of the organization, also used as slug
-    pub title: String,
+    pub name: String,
     #[validate(length(min = 3, max = 256))]
     pub description: String,
 }
@@ -125,12 +125,12 @@ pub async fn organization_create(
 
     // Try title
     let title_organization_id_option: Option<OrganizationId> =
-        serde_json::from_str(&format!("\"{}\"", new_organization.title)).ok();
+        serde_json::from_str(&format!("\"{}\"", new_organization.name)).ok();
     let mut organization_strings = vec![];
     if let Some(title_organization_id) = title_organization_id_option {
         organization_strings.push(title_organization_id.to_string());
     }
-    organization_strings.push(new_organization.title.clone());
+    organization_strings.push(new_organization.name.clone());
     let results = Organization::get_many(&organization_strings, &mut *transaction, &redis).await?;
     if !results.is_empty() {
         return Err(CreateError::SlugCollision);
@@ -155,7 +155,7 @@ pub async fn organization_create(
     // Create organization
     let organization = Organization {
         id: organization_id,
-        title: new_organization.title.clone(),
+        name: new_organization.name.clone(),
         description: new_organization.description.clone(),
         team_id,
         icon_url: None,
@@ -335,7 +335,7 @@ pub struct OrganizationEdit {
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
     // Title of the organization, also used as slug
-    pub title: Option<String>,
+    pub name: Option<String>,
 }
 
 pub async fn organizations_edit(
@@ -397,7 +397,7 @@ pub async fn organizations_edit(
                 .await?;
             }
 
-            if let Some(title) = &new_organization.title {
+            if let Some(title) = &new_organization.name {
                 if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the title of this organization!"
@@ -425,7 +425,7 @@ pub async fn organizations_edit(
 
                 // Make sure the new title is different from the old one
                 // We are able to unwrap here because the title is always set
-                if !title.eq(&organization_item.title.clone()) {
+                if !title.eq(&organization_item.name.clone()) {
                     let results = sqlx::query!(
                         "
                       SELECT EXISTS(SELECT 1 FROM organizations WHERE title = LOWER($1))
@@ -457,7 +457,7 @@ pub async fn organizations_edit(
 
             database::models::Organization::clear_cache(
                 organization_item.id,
-                Some(organization_item.title),
+                Some(organization_item.name),
                 &redis,
             )
             .await?;
@@ -527,7 +527,7 @@ pub async fn organization_delete(
 
     transaction.commit().await?;
 
-    database::models::Organization::clear_cache(organization.id, Some(organization.title), &redis)
+    database::models::Organization::clear_cache(organization.id, Some(organization.name), &redis)
         .await?;
 
     if result.is_some() {
@@ -824,7 +824,7 @@ pub async fn organization_icon_edit(
 
         database::models::Organization::clear_cache(
             organization_item.id,
-            Some(organization_item.title),
+            Some(organization_item.name),
             &redis,
         )
         .await?;
@@ -909,7 +909,7 @@ pub async fn delete_organization_icon(
 
     database::models::Organization::clear_cache(
         organization_item.id,
-        Some(organization_item.title),
+        Some(organization_item.name),
         &redis,
     )
     .await?;

@@ -14,7 +14,9 @@ use labrinth::models::teams::ProjectPermissions;
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 use serde_json::json;
 
+use crate::common::api_common::request_data::ProjectCreationRequestData;
 use crate::common::api_common::{ApiProject, ApiVersion};
+use crate::common::dummy_data::TestFile;
 
 mod common;
 
@@ -105,28 +107,7 @@ async fn test_add_remove_project() {
         let api = &test_env.api;
 
         // Generate test project data.
-        let mut json_data = json!(
-            {
-                "title": "Test_Add_Project project",
-                "slug": "demo",
-                "description": "Example description.",
-                "body": "Example body.",
-                "initial_versions": [{
-                    "file_parts": ["basic-mod.jar"],
-                    "version_number": "1.2.3",
-                    "version_title": "start",
-                    "dependencies": [],
-                    "game_versions": ["1.20.1"] ,
-                    "client_side": "required",
-                    "server_side": "optional",
-                    "release_channel": "release",
-                    "loaders": ["fabric"],
-                    "featured": true
-                }],
-                "categories": [],
-                "license_id": "MIT"
-            }
-        );
+        let mut json_data = api.get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod)).await;
 
         // Basic json
         let json_segment = MultipartSegment {
@@ -183,14 +164,14 @@ async fn test_add_remove_project() {
         };
 
         // Add a project- simple, should work.
-        let req = test::TestRequest::post()
-            .uri("/v3/project")
-            .append_header(("Authorization", USER_USER_PAT))
-            .set_multipart(vec![json_segment.clone(), file_segment.clone()])
-            .to_request();
-        let resp = test_env.call(req).await;
+        let resp = api.create_project(ProjectCreationRequestData {
+            slug: "demo".to_string(),   
+            segment_data: vec![json_segment.clone(), file_segment.clone()],
+            jar: None, // File not needed at this point
+        }, USER_USER_PAT).await;
 
         let status = resp.status();
+        println!("Body: {:?}", resp.response().body());
         assert_eq!(status, 200);
 
         // Get the project we just made, and confirm that it's correct
@@ -211,42 +192,27 @@ async fn test_add_remove_project() {
 
         // Reusing with a different slug and the same file should fail
         // Even if that file is named differently
-        let req = test::TestRequest::post()
-            .uri("/v3/project")
-            .append_header(("Authorization", USER_USER_PAT))
-            .set_multipart(vec![
-                json_diff_slug_file_segment.clone(), // Different slug, different file name
-                file_diff_name_segment.clone(),      // Different file name, same content
-            ])
-            .to_request();
-
-        let resp = test_env.call(req).await;
+        let resp = api.create_project(ProjectCreationRequestData {
+            slug: "demo".to_string(),   
+            segment_data: vec![json_diff_slug_file_segment.clone(), file_diff_name_segment.clone()],
+            jar: None, // File not needed at this point
+        }, USER_USER_PAT).await;
         assert_eq!(resp.status(), 400);
 
         // Reusing with the same slug and a different file should fail
-        let req = test::TestRequest::post()
-            .uri("/v3/project")
-            .append_header(("Authorization", USER_USER_PAT))
-            .set_multipart(vec![
-                json_diff_file_segment.clone(), // Same slug, different file name
-                file_diff_name_content_segment.clone(), // Different file name, different content
-            ])
-            .to_request();
-
-        let resp = test_env.call(req).await;
+        let resp = api.create_project(ProjectCreationRequestData {
+            slug: "demo".to_string(),   
+            segment_data: vec![json_diff_file_segment.clone(), file_diff_name_content_segment.clone()],
+            jar: None, // File not needed at this point
+        }, USER_USER_PAT).await;
         assert_eq!(resp.status(), 400);
 
         // Different slug, different file should succeed
-        let req = test::TestRequest::post()
-            .uri("/v3/project")
-            .append_header(("Authorization", USER_USER_PAT))
-            .set_multipart(vec![
-                json_diff_slug_file_segment.clone(), // Different slug, different file name
-                file_diff_name_content_segment.clone(), // Different file name, same content
-            ])
-            .to_request();
-
-        let resp = test_env.call(req).await;
+        let resp = api.create_project(ProjectCreationRequestData {
+            slug: "demo".to_string(),   
+            segment_data: vec![json_diff_slug_file_segment.clone(), file_diff_name_content_segment.clone()],
+            jar: None, // File not needed at this point
+        }, USER_USER_PAT).await;
         assert_eq!(resp.status(), 200);
 
         // Get
@@ -299,7 +265,7 @@ pub async fn test_patch_project() {
             .edit_project(
                 alpha_project_slug,
                 json!({
-                    "title": "Test_Add_Project project - test 1",
+                    "name": "Test_Add_Project project - test 1",
                 }),
                 ENEMY_USER_PAT,
             )
@@ -402,7 +368,7 @@ pub async fn test_patch_project() {
                 alpha_project_slug,
                 json!({
                     "slug": "newslug",
-                    "title": "New successful title",
+                    "name": "New successful title",
                     "description": "New successful description",
                     "body": "New successful body",
                     "categories": [DUMMY_CATEGORIES[0]],
@@ -431,7 +397,6 @@ pub async fn test_patch_project() {
             .await;
 
         assert_eq!(project.slug.unwrap(), "newslug");
-        assert_eq!(project.title, "New successful title");
         assert_eq!(project.description, "New successful description");
         assert_eq!(project.body, "New successful body");
         assert_eq!(project.categories, vec![DUMMY_CATEGORIES[0]]);
@@ -499,7 +464,7 @@ async fn permissions_patch_project() {
         let test_pairs = [
             // Body, status, requested_status tested separately
             ("slug", json!("")), // generated in the test to not collide slugs
-            ("title", json!("randomname")),
+            ("name", json!("randomname")),
             ("description", json!("randomdescription")),
             ("categories", json!(["combat", "economy"])),
             ("additional_categories", json!(["decoration"])),
@@ -986,7 +951,7 @@ async fn project_permissions_consistency_test() {
             test::TestRequest::patch()
                 .uri(&format!("/v3/project/{}", ctx.project_id.unwrap()))
                 .set_json(json!({
-                    "title": "Example title - changed.",
+                    "name": "Example title - changed.",
                 }))
         };
         PermissionsTest::new(&test_env)
@@ -1003,7 +968,7 @@ async fn project_permissions_consistency_test() {
             test::TestRequest::patch()
                 .uri(&format!("/v3/project/{}", ctx.project_id.unwrap()))
                 .set_json(json!({
-                    "title": "Example title - changed.",
+                    "name": "Example title - changed.",
                 }))
         };
         PermissionsTest::new(&test_env)

@@ -157,7 +157,7 @@ pub struct ProjectCreateData {
     )]
     #[serde(alias = "mod_name")]
     /// The title or name of the project.
-    pub title: String,
+    pub name: String,
     #[validate(
         length(min = 3, max = 64),
         regex = "crate::util::validate::RE_URL_SAFE"
@@ -251,7 +251,7 @@ pub struct NewGalleryItem {
     pub featured: bool,
     #[validate(length(min = 1, max = 2048))]
     /// The title of the gallery item
-    pub title: Option<String>,
+    pub name: Option<String>,
     #[validate(length(min = 1, max = 2048))]
     /// The description of the gallery item
     pub description: Option<String>,
@@ -544,7 +544,7 @@ async fn project_create_inner(
                     gallery_urls.push(crate::models::projects::GalleryItem {
                         url: format!("{cdn_url}/{url}"),
                         featured: item.featured,
-                        title: item.title.clone(),
+                        name: item.name.clone(),
                         description: item.description.clone(),
                         created: Utc::now(),
                         ordering: item.ordering,
@@ -697,7 +697,7 @@ async fn project_create_inner(
             project_id: project_id.into(),
             team_id,
             organization_id: project_create_data.organization_id.map(|x| x.into()),
-            title: project_create_data.title,
+            name: project_create_data.name,
             description: project_create_data.description,
             body: project_create_data.body,
             icon_url: icon_data.clone().map(|x| x.0),
@@ -720,7 +720,7 @@ async fn project_create_inner(
                 .map(|x| models::project_item::GalleryItem {
                     image_url: x.url.clone(),
                     featured: x.featured,
-                    title: x.title.clone(),
+                    name: x.name.clone(),
                     description: x.description.clone(),
                     created: x.created,
                     ordering: x.ordering,
@@ -807,7 +807,7 @@ async fn project_create_inner(
             games,
             team: team_id.into(),
             organization: project_create_data.organization_id,
-            title: project_builder.title.clone(),
+            name: project_builder.name.clone(),
             description: project_builder.description.clone(),
             body: project_builder.body.clone(),
             body_url: None,

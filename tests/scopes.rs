@@ -2,6 +2,8 @@ use actix_web::test::{self, TestRequest};
 use bytes::Bytes;
 use chrono::{Duration, Utc};
 
+use common::api_common::ApiProject;
+use common::dummy_data::TestFile;
 use common::environment::with_test_environment_all;
 use common::{database::*, scopes::ScopeTest};
 use labrinth::models::pats::Scopes;
@@ -202,30 +204,11 @@ pub async fn notifications_scopes() {
 #[actix_rt::test]
 pub async fn project_version_create_scopes() {
     with_test_environment_all(None, |test_env| async move {
+        let api = &test_env.api;
+        
         // Create project
         let create_project = Scopes::PROJECT_CREATE;
-        let json_data = json!(
-            {
-                "title": "Test_Add_Project project",
-                "slug": "demo",
-                "description": "Example description.",
-                "body": "Example body.",
-                "initial_versions": [{
-                    "file_parts": ["basic-mod.jar"],
-                    "version_number": "1.2.3",
-                    "version_title": "start",
-                    "dependencies": [],
-                    "game_versions": ["1.20.1"] ,
-                    "client_side": "required",
-                    "server_side": "optional",
-                    "release_channel": "release",
-                    "loaders": ["fabric"],
-                    "featured": true
-                }],
-                "categories": [],
-                "license_id": "MIT"
-            }
-        );
+        let json_data = api.get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod)).await;
         let json_segment = MultipartSegment {
             name: "data".to_string(),
             filename: None,
@@ -559,7 +542,7 @@ pub async fn project_write_scopes() {
                 .uri(&format!("/v3/project/{beta_project_id}"))
                 .set_json(json!(
                     {
-                        "title": "test_project_version_write_scopes Title",
+                        "name": "test_project_version_write_scopes Title",
                     }
                 ))
         };
@@ -1128,7 +1111,7 @@ pub async fn collections_scopes() {
             test::TestRequest::post()
                 .uri("/v3/collection")
                 .set_json(json!({
-                    "title": "Test Collection",
+                    "name": "Test Collection",
                     "description": "Test Collection Description",
                     "projects": [alpha_project_id]
                 }))
@@ -1146,7 +1129,7 @@ pub async fn collections_scopes() {
             test::TestRequest::patch()
                 .uri(&format!("/v3/collection/{collection_id}"))
                 .set_json(json!({
-                    "title": "Test Collection patch",
+                    "name": "Test Collection patch",
                     "status": "private",
                 }))
         };
@@ -1229,7 +1212,7 @@ pub async fn organization_scopes() {
             test::TestRequest::post()
                 .uri("/v3/organization")
                 .set_json(json!({
-                    "title": "TestOrg",
+                    "name": "TestOrg",
                     "description": "TestOrg Description",
                 }))
         };

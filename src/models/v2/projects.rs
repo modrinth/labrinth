@@ -6,7 +6,7 @@ use crate::database::models::{version_item, DatabaseError};
 use crate::database::redis::RedisPool;
 use crate::models::ids::{ProjectId, VersionId};
 use crate::models::projects::{
-    Dependency, DonationLink, GalleryItem, License, Loader, ModeratorMessage, MonetizationStatus,
+    Dependency, DonationLink, License, Loader, ModeratorMessage, MonetizationStatus,
     Project, ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
 };
 use crate::models::threads::ThreadId;
@@ -57,7 +57,7 @@ pub struct LegacyProject {
     pub wiki_url: Option<String>,
     pub discord_url: Option<String>,
     pub donation_urls: Option<Vec<DonationLink>>,
-    pub gallery: Vec<GalleryItem>,
+    pub gallery: Vec<LegacyGalleryItem>,
     pub color: Option<u32>,
     pub thread_id: ThreadId,
     pub monetization_status: MonetizationStatus,
@@ -129,7 +129,7 @@ impl LegacyProject {
             project_type,
             team: data.team,
             organization: data.organization,
-            title: data.title,
+            title: data.name,
             description: data.description,
             body: data.body,
             body_url: data.body_url,
@@ -153,7 +153,7 @@ impl LegacyProject {
             wiki_url: data.wiki_url,
             discord_url: data.discord_url,
             donation_urls: data.donation_urls,
-            gallery: data.gallery,
+            gallery: data.gallery.into_iter().map(LegacyGalleryItem::from).collect(),
             color: data.color,
             thread_id: data.thread_id,
             monetization_status: data.monetization_status,
@@ -304,6 +304,29 @@ impl From<Version> for LegacyVersion {
             game_versions,
             ordering: data.ordering,
             loaders,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LegacyGalleryItem {
+    pub url: String,
+    pub featured: bool,
+    pub name : Option<String>,
+    pub description: Option<String>,
+    pub created: DateTime<Utc>,
+    pub ordering: i64,
+}
+
+impl LegacyGalleryItem {
+    fn from(data: crate::models::projects::GalleryItem) -> Self {
+        Self {
+            url: data.url,
+            featured: data.featured,
+            name: data.name,
+            description: data.description,
+            created: data.created,
+            ordering: data.ordering,
         }
     }
 }

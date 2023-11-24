@@ -195,7 +195,7 @@ pub async fn project_create(
                 .collect();
 
             Ok(v3::project_creation::ProjectCreateData {
-                title: legacy_create.title,
+                name: legacy_create.title,
                 slug: legacy_create.slug,
                 description: legacy_create.description,
                 body: legacy_create.body,

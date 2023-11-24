@@ -133,7 +133,7 @@ pub async fn index_local(
                     UploadSearchProject {
                         version_id: version_id.to_string(),
                         project_id: project_id.to_string(),
-                        title: m.title,
+                        name: m.title,
                         description: m.description,
                         categories,
                         follows: m.follows,

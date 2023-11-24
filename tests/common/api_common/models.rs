@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use labrinth::models::{
-    notifications::{NotificationAction, NotificationBody, NotificationId},
+    notifications::{NotificationBody, NotificationId},
     organizations::OrganizationId,
     projects::{
         Dependency, DonationLink, GalleryItem, License, ModeratorMessage, MonetizationStatus,
@@ -33,7 +33,6 @@ pub struct CommonProject {
     pub slug: Option<String>,
     pub team: TeamId,
     pub organization: Option<OrganizationId>,
-    pub title: String,
     pub description: String,
     pub body: String,
     pub body_url: Option<String>,
@@ -134,8 +133,12 @@ pub struct CommonNotification {
     // DEPRECATED: use body field instead
     #[serde(rename = "type")]
     pub type_: Option<String>,
-    pub title: String,
     pub text: String,
     pub link: String,
-    pub actions: Vec<NotificationAction>,
+    pub actions: Vec<CommonNotificationAction>,
+}
+
+#[derive(Deserialize)]
+pub struct CommonNotificationAction {
+    pub action_route: (String, String),
 }

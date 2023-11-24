@@ -1,7 +1,7 @@
 use actix_http::StatusCode;
 use actix_web::{dev::ServiceResponse, test};
 use async_trait::async_trait;
-use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
+use labrinth::models::{teams::{OrganizationPermissions, ProjectPermissions}, v2::notifications::LegacyNotification};
 use serde_json::json;
 
 use crate::common::{
@@ -31,6 +31,9 @@ impl ApiTeams for ApiV2 {
     ) -> Vec<CommonTeamMember> {
         let resp = self.get_team_members(id_or_title, pat).await;
         assert_eq!(resp.status(), 200);
+        // TODO: Note, this does NOT deserialize to any other struct first, as currently TeamMember is the same in v2 and v3.
+        // CommonTeamMember = TeamMember (v3)
+        // This may yet change, so we should keep common struct.
         test::read_body_json(resp).await
     }
 
@@ -49,6 +52,9 @@ impl ApiTeams for ApiV2 {
     ) -> Vec<CommonTeamMember> {
         let resp = self.get_project_members(id_or_title, pat).await;
         assert_eq!(resp.status(), 200);
+        // TODO: Note, this does NOT deserialize to any other struct first, as currently TeamMember is the same in v2 and v3.
+        // CommonTeamMember = TeamMember (v3)
+        // This may yet change, so we should keep common struct.
         test::read_body_json(resp).await
     }
 
@@ -67,6 +73,9 @@ impl ApiTeams for ApiV2 {
     ) -> Vec<CommonTeamMember> {
         let resp = self.get_organization_members(id_or_title, pat).await;
         assert_eq!(resp.status(), 200);
+        // TODO: Note, this does NOT deserialize to any other struct first, as currently TeamMember is the same in v2 and v3.
+        // CommonTeamMember = TeamMember (v3)
+        // This may yet change, so we should keep common struct.
         test::read_body_json(resp).await
     }
 
@@ -130,9 +139,14 @@ impl ApiTeams for ApiV2 {
         user_id: &str,
         pat: &str,
     ) -> Vec<CommonNotification> {
+        println!("V2 deserializing");
         let resp = self.get_user_notifications(user_id, pat).await;
         assert_status(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        // First, deserialize to the non-common format (to test the response is valid for this api version)
+        let v: Vec<LegacyNotification> = test::read_body_json(resp).await;
+        // Then, deserialize to the common format
+        let value = serde_json::to_value(v).unwrap();
+        serde_json::from_value(value).unwrap()
     }
 
     async fn mark_notification_read(&self, notification_id: &str, pat: &str) -> ServiceResponse {

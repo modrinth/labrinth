@@ -1,7 +1,9 @@
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
+use crate::models::notifications::Notification;
 use crate::models::projects::Project;
 use crate::models::users::{Badges, Role};
+use crate::models::v2::notifications::LegacyNotification;
 use crate::models::v2::projects::LegacyProject;
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
@@ -248,7 +250,17 @@ pub async fn user_notifications(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_notifications(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    println!("Gott notifications");
+    let response = v3::users::user_notifications(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Vec<Notification>>(response).await {
+        Ok(notifications) => {
+            let legacy_notifications : Vec<LegacyNotification> = notifications.into_iter().map(LegacyNotification::from).collect();
+            Ok(HttpResponse::Ok().json(legacy_notifications))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[get("{id}/payouts")]

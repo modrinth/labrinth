@@ -53,7 +53,7 @@ pub async fn collection_create(
     v3::collections::collection_create(
         req,
         web::Json(v3::collections::CollectionCreateData {
-            title: collection_create_data.title,
+            name: collection_create_data.title,
             description: collection_create_data.description,
             projects: collection_create_data.projects,
         }),
@@ -126,7 +126,7 @@ pub async fn collection_edit(
         info,
         pool,
         web::Json(v3::collections::EditCollection {
-            title: new_collection.title,
+            name: new_collection.title,
             description: new_collection.description,
             status: new_collection.status,
             new_projects: new_collection.new_projects,

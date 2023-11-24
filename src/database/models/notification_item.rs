@@ -25,7 +25,7 @@ pub struct Notification {
 pub struct NotificationAction {
     pub id: NotificationActionId,
     pub notification_id: NotificationId,
-    pub title: String,
+    pub name: String,
     pub action_route_method: String,
     pub action_route: String,
 }

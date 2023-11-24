@@ -310,7 +310,7 @@ pub async fn version_file(
             group_id: "maven.modrinth".to_string(),
             artifact_id: project_id,
             version: vnum,
-            name: project.inner.title,
+            name: project.inner.name,
             description: project.inner.description,
         };
         return Ok(HttpResponse::Ok()

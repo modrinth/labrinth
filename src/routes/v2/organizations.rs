@@ -51,7 +51,7 @@ pub async fn organization_create(
     v3::organizations::organization_create(
         req,
         web::Json(v3::organizations::NewOrganization {
-            title: new_organization.title,
+            name: new_organization.title,
             description: new_organization.description,
         }),
         pool.clone(),
@@ -121,7 +121,7 @@ pub async fn organizations_edit(
         info,
         web::Json(v3::organizations::OrganizationEdit {
             description: new_organization.description,
-            title: new_organization.title,
+            name: new_organization.title,
         }),
         pool.clone(),
         redis.clone(),

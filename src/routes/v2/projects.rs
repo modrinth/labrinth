@@ -76,6 +76,8 @@ pub async fn project_search(
                                 format!("game_versions:{}", val)
                             } else if facet.starts_with("project_type:") {
                                 format!("project_types:{}", val)
+                            } else if facet.starts_with("title:") {
+                                format!("name:{}", val)
                             } else {
                                 facet.to_string()
                             }
@@ -333,7 +335,7 @@ pub async fn project_edit(
     // - add categories to the project for the corresponding loaders
 
     let new_project = v3::projects::EditProject {
-        title: v2_new_project.title,
+        name: v2_new_project.title,
         description: v2_new_project.description,
         body: v2_new_project.body,
         categories: v2_new_project.categories,
@@ -592,7 +594,7 @@ pub async fn add_gallery_item(
         req,
         web::Query(v3::projects::GalleryCreateQuery {
             featured: item.featured,
-            title: item.title,
+            name: item.title,
             description: item.description,
             ordering: item.ordering,
         }),
@@ -642,7 +644,7 @@ pub async fn edit_gallery_item(
         web::Query(v3::projects::GalleryEditQuery {
             url: item.url,
             featured: item.featured,
-            title: item.title,
+            name: item.title,
             description: item.description,
             ordering: item.ordering,
         }),

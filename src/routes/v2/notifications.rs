@@ -1,5 +1,7 @@
 use crate::database::redis::RedisPool;
 use crate::models::ids::NotificationId;
+use crate::models::notifications::Notification;
+use crate::models::v2::notifications::LegacyNotification;
 use crate::queue::session::AuthQueue;
 use crate::routes::v2_reroute;
 use crate::routes::v3;
@@ -34,14 +36,21 @@ pub async fn notifications_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notifications_get(
+    let resp = v3::notifications::notifications_get(
         req,
         web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await.or_else(v2_reroute::flatten_404_error);
+    match v2_reroute::extract_ok_json::<Vec<Notification>>(resp?).await {
+        Ok(notifications) => {
+            let notifications : Vec<LegacyNotification> = notifications.into_iter().map(LegacyNotification::from).collect();
+            Ok(HttpResponse::Ok().json(notifications))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[get("{id}")]
@@ -52,7 +61,14 @@ pub async fn notification_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_get(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    let response = v3::notifications::notification_get(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    match v2_reroute::extract_ok_json::<Notification>(response).await {
+        Ok(notification) => {
+            let notification = LegacyNotification::from(notification);
+            Ok(HttpResponse::Ok().json(notification))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[patch("{id}")]

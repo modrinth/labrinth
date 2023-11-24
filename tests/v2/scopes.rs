@@ -1,4 +1,6 @@
+use crate::common::api_common::ApiProject;
 use crate::common::api_v2::ApiV2;
+use crate::common::dummy_data::TestFile;
 use crate::common::environment::with_test_environment;
 use crate::common::environment::TestEnvironment;
 use crate::common::scopes::ScopeTest;
@@ -14,29 +16,9 @@ use serde_json::json;
 pub async fn project_version_create_scopes() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         // Create project
+        let api = &test_env.api;
         let create_project = Scopes::PROJECT_CREATE;
-        let json_data = json!(
-            {
-                "title": "Test_Add_Project project",
-                "slug": "demo",
-                "description": "Example description.",
-                "body": "Example body.",
-                "initial_versions": [{
-                    "file_parts": ["basic-mod.jar"],
-                    "version_number": "1.2.3",
-                    "version_title": "start",
-                    "dependencies": [],
-                    "game_versions": ["1.20.1"] ,
-                    "client_side": "required",
-                    "server_side": "optional",
-                    "release_channel": "release",
-                    "loaders": ["fabric"],
-                    "featured": true
-                }],
-                "categories": [],
-                "license_id": "MIT"
-            }
-        );
+        let json_data = api.get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod)).await;
         let json_segment = MultipartSegment {
             name: "data".to_string(),
             filename: None,
@@ -54,7 +36,7 @@ pub async fn project_version_create_scopes() {
 
         let req_gen = || {
             test::TestRequest::post()
-                .uri("/v3/project")
+                .uri("/v2/project")
                 .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         };
         let (_, success) = ScopeTest::new(&test_env)
@@ -97,7 +79,7 @@ pub async fn project_version_create_scopes() {
 
         let req_gen = || {
             test::TestRequest::post()
-                .uri("/v3/version")
+                .uri("/v2/version")
                 .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         };
         ScopeTest::new(&test_env)

@@ -12,7 +12,7 @@ const COLLECTIONS_NAMESPACE: &str = "collections";
 pub struct CollectionBuilder {
     pub collection_id: CollectionId,
     pub user_id: UserId,
-    pub title: String,
+    pub name: String,
     pub description: String,
     pub status: CollectionStatus,
     pub projects: Vec<ProjectId>,
@@ -25,7 +25,7 @@ impl CollectionBuilder {
     ) -> Result<CollectionId, DatabaseError> {
         let collection_struct = Collection {
             id: self.collection_id,
-            title: self.title,
+            name: self.name,
             user_id: self.user_id,
             description: self.description,
             created: Utc::now(),
@@ -44,7 +44,7 @@ impl CollectionBuilder {
 pub struct Collection {
     pub id: CollectionId,
     pub user_id: UserId,
-    pub title: String,
+    pub name: String,
     pub description: String,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
@@ -72,7 +72,7 @@ impl Collection {
             ",
             self.id as CollectionId,
             self.user_id as UserId,
-            &self.title,
+            &self.name,
             &self.description,
             self.created,
             self.icon_url.as_ref(),
@@ -209,7 +209,7 @@ impl Collection {
                     Collection {
                         id: CollectionId(id),
                         user_id: UserId(m.user_id),
-                        title: m.title.clone(),
+                        name: m.title.clone(),
                         description: m.description.clone(),
                         icon_url: m.icon_url.clone(),
                         color: m.color.map(|x| x as u32),

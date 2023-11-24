@@ -174,7 +174,7 @@ pub struct EditProject {
         length(min = 3, max = 64),
         custom(function = "crate::util::validate::validate_name")
     )]
-    pub title: Option<String>,
+    pub name: Option<String>,
     #[validate(length(min = 3, max = 256))]
     pub description: Option<String>,
     #[validate(length(max = 65536))]
@@ -310,7 +310,7 @@ pub async fn project_edit(
         if let Some(perms) = permissions {
             let mut transaction = pool.begin().await?;
 
-            if let Some(title) = &new_project.title {
+            if let Some(name) = &new_project.name {
                 if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
                         "You do not have the permissions to edit the title of this project!"
@@ -324,7 +324,7 @@ pub async fn project_edit(
                     SET title = $1
                     WHERE (id = $2)
                     ",
-                    title.trim(),
+                    name.trim(),
                     id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
@@ -1284,7 +1284,7 @@ pub async fn projects_edit(
                 if !permissions.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(format!(
                         "You do not have the permissions to bulk edit project {}!",
-                        project.inner.title
+                        project.inner.name
                     )));
                 }
             } else if project.inner.status.is_hidden() {
@@ -1295,7 +1295,7 @@ pub async fn projects_edit(
             } else {
                 return Err(ApiError::CustomAuthentication(format!(
                     "You are not a member of project {}!",
-                    project.inner.title
+                    project.inner.name
                 )));
             };
         }
@@ -1828,7 +1828,7 @@ pub async fn delete_project_icon(
 pub struct GalleryCreateQuery {
     pub featured: bool,
     #[validate(length(min = 1, max = 255))]
-    pub title: Option<String>,
+    pub name: Option<String>,
     #[validate(length(min = 1, max = 2048))]
     pub description: Option<String>,
     pub ordering: Option<i64>,
@@ -1949,7 +1949,7 @@ pub async fn add_gallery_item(
         let gallery_item = vec![db_models::project_item::GalleryItem {
             image_url: file_url,
             featured: item.featured,
-            title: item.title,
+            name: item.name,
             description: item.description,
             created: Utc::now(),
             ordering: item.ordering.unwrap_or(0),
@@ -1986,7 +1986,7 @@ pub struct GalleryEditQuery {
         with = "::serde_with::rust::double_option"
     )]
     #[validate(length(min = 1, max = 255))]
-    pub title: Option<Option<String>>,
+    pub name: Option<Option<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -2101,7 +2101,7 @@ pub async fn edit_gallery_item(
         .execute(&mut *transaction)
         .await?;
     }
-    if let Some(title) = item.title {
+    if let Some(name) = item.name {
         sqlx::query!(
             "
             UPDATE mods_gallery
@@ -2109,7 +2109,7 @@ pub async fn edit_gallery_item(
             WHERE id = $1
             ",
             id,
-            title
+            name
         )
         .execute(&mut *transaction)
         .await?;

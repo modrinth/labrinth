@@ -16,7 +16,7 @@ pub struct Organization {
     pub id: OrganizationId,
 
     /// The title (and slug) of the organization
-    pub title: String,
+    pub name: String,
 
     /// The associated team of the organization
     pub team_id: TeamId,
@@ -40,7 +40,7 @@ impl Organization {
             VALUES ($1, $2, $3, $4, $5, $6)
             ",
             self.id.0,
-            self.title,
+            self.name,
             self.team_id as TeamId,
             self.description,
             self.icon_url,
@@ -149,7 +149,7 @@ impl Organization {
                 {
                     remaining_strings.retain(|x| {
                         &to_base62(organization.id.0 as u64) != x
-                            && organization.title.to_lowercase() != x.to_lowercase()
+                            && organization.name.to_lowercase() != x.to_lowercase()
                     });
                     found_organizations.push(organization);
                     continue;
@@ -181,7 +181,7 @@ impl Organization {
             .try_filter_map(|e| async {
                 Ok(e.right().map(|m| Organization {
                     id: OrganizationId(m.id),
-                    title: m.title,
+                    name: m.title,
                     team_id: TeamId(m.team_id),
                     description: m.description,
                     icon_url: m.icon_url,
@@ -203,7 +203,7 @@ impl Organization {
                 redis
                     .set(
                         ORGANIZATIONS_TITLES_NAMESPACE,
-                        &organization.title.to_lowercase(),
+                        &organization.name.to_lowercase(),
                         &organization.id.0.to_string(),
                         None,
                     )
@@ -240,7 +240,7 @@ impl Organization {
         if let Some(result) = result {
             Ok(Some(Organization {
                 id: OrganizationId(result.id),
-                title: result.title,
+                name: result.title,
                 team_id: TeamId(result.team_id),
                 description: result.description,
                 icon_url: result.icon_url,
@@ -279,7 +279,7 @@ impl Organization {
                     super::project_item::Project::remove(project_id, transaction, redis).await?;
             }
 
-            Organization::clear_cache(id, Some(organization.title), redis).await?;
+            Organization::clear_cache(id, Some(organization.name), redis).await?;
 
             sqlx::query!(
                 "

@@ -53,7 +53,7 @@ impl DonationUrl {
 pub struct GalleryItem {
     pub image_url: String,
     pub featured: bool,
-    pub title: Option<String>,
+    pub name: Option<String>,
     pub description: Option<String>,
     pub created: DateTime<Utc>,
     pub ordering: i64,
@@ -65,7 +65,7 @@ impl GalleryItem {
         project_id: ProjectId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), sqlx::error::Error> {
-        let (project_ids, image_urls, featureds, titles, descriptions, orderings): (
+        let (project_ids, image_urls, featureds, names, descriptions, orderings): (
             Vec<_>,
             Vec<_>,
             Vec<_>,
@@ -79,7 +79,7 @@ impl GalleryItem {
                     project_id.0,
                     gi.image_url,
                     gi.featured,
-                    gi.title,
+                    gi.name,
                     gi.description,
                     gi.ordering,
                 )
@@ -95,7 +95,7 @@ impl GalleryItem {
             &project_ids[..],
             &image_urls[..],
             &featureds[..],
-            &titles[..] as &[Option<String>],
+            &names[..] as &[Option<String>],
             &descriptions[..] as &[Option<String>],
             &orderings[..]
         )
@@ -143,7 +143,7 @@ pub struct ProjectBuilder {
     pub project_id: ProjectId,
     pub team_id: TeamId,
     pub organization_id: Option<OrganizationId>,
-    pub title: String,
+    pub name: String,
     pub description: String,
     pub body: String,
     pub icon_url: Option<String>,
@@ -174,7 +174,7 @@ impl ProjectBuilder {
             id: self.project_id,
             team_id: self.team_id,
             organization_id: self.organization_id,
-            title: self.title,
+            name: self.name,
             description: self.description,
             body: self.body,
             body_url: None,
@@ -245,7 +245,7 @@ pub struct Project {
     pub id: ProjectId,
     pub team_id: TeamId,
     pub organization_id: Option<OrganizationId>,
-    pub title: String,
+    pub name: String,
     pub description: String,
     pub body: String,
     pub body_url: Option<String>,
@@ -297,7 +297,7 @@ impl Project {
             ",
             self.id as ProjectId,
             self.team_id as TeamId,
-            &self.title,
+            &self.name,
             &self.description,
             &self.body,
             self.published,
@@ -612,7 +612,7 @@ impl Project {
                             id: ProjectId(id),
                             team_id: TeamId(m.team_id),
                             organization_id: m.organization_id.map(OrganizationId),
-                            title: m.title.clone(),
+                            name: m.title.clone(),
                             description: m.description.clone(),
                             downloads: m.downloads,
                             body_url: None,

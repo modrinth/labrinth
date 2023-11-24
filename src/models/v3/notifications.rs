@@ -24,7 +24,7 @@ pub struct Notification {
     // DEPRECATED: use body field instead
     #[serde(rename = "type")]
     pub type_: Option<String>,
-    pub title: String,
+    pub name: String,
     pub text: String,
     pub link: String,
     pub actions: Vec<NotificationAction>,
@@ -73,7 +73,7 @@ pub enum NotificationBody {
 
 impl From<DBNotification> for Notification {
     fn from(notif: DBNotification) -> Self {
-        let (type_, title, text, link, actions) = {
+        let (type_, name, text, link, actions) = {
             match &notif.body {
                 NotificationBody::ProjectUpdate {
                     project_id,
@@ -100,11 +100,11 @@ impl From<DBNotification> for Notification {
                     format!("/project/{}", project_id),
                     vec![
                         NotificationAction {
-                            title: "Accept".to_string(),
+                            name: "Accept".to_string(),
                             action_route: ("POST".to_string(), format!("team/{team_id}/join")),
                         },
                         NotificationAction {
-                            title: "Deny".to_string(),
+                            name: "Deny".to_string(),
                             action_route: (
                                 "DELETE".to_string(),
                                 format!("team/{team_id}/members/{}", UserId::from(notif.user_id)),
@@ -127,11 +127,11 @@ impl From<DBNotification> for Notification {
                     format!("/organization/{}", organization_id),
                     vec![
                         NotificationAction {
-                            title: "Accept".to_string(),
+                            name: "Accept".to_string(),
                             action_route: ("POST".to_string(), format!("team/{team_id}/join")),
                         },
                         NotificationAction {
-                            title: "Deny".to_string(),
+                            name: "Deny".to_string(),
                             action_route: (
                                 "DELETE".to_string(),
                                 format!(
@@ -206,7 +206,7 @@ impl From<DBNotification> for Notification {
 
             // DEPRECATED
             type_,
-            title,
+            name,
             text,
             link,
             actions,
@@ -216,7 +216,7 @@ impl From<DBNotification> for Notification {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct NotificationAction {
-    pub title: String,
+    pub name: String,
     /// The route to call when this notification action is called. Formatted HTTP Method, route
     pub action_route: (String, String),
 }
@@ -224,7 +224,7 @@ pub struct NotificationAction {
 impl From<DBNotificationAction> for NotificationAction {
     fn from(act: DBNotificationAction) -> Self {
         Self {
-            title: act.title,
+            name: act.name,
             action_route: (act.action_route_method, act.action_route),
         }
     }
