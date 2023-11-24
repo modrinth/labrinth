@@ -39,7 +39,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("{id}/icon", web::patch().to(user_icon_edit))
             .route("{id}", web::delete().to(user_delete))
             .route("{id}/follows", web::get().to(user_follows))
-            .route("{id}/notifications", web::get().to(user_notifications)),
+            .route("{id}/notifications", web::get().to(user_notifications))
             .route("{id}/oauth_apps", web::get().to(get_user_clients)),
     );
 }
