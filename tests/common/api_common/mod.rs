@@ -1,5 +1,9 @@
 use std::collections::HashMap;
 
+use self::models::{
+    CommonCategoryData, CommonImageData, CommonLoaderData, CommonNotification, CommonProject,
+    CommonTeamMember, CommonVersion,
+};
 use actix_web::dev::ServiceResponse;
 use async_trait::async_trait;
 use labrinth::{
@@ -9,10 +13,6 @@ use labrinth::{
     },
     search::SearchResults,
     LabrinthConfig,
-};
-use self::models::{
-    CommonCategoryData, CommonImageData, CommonLoaderData, CommonNotification, CommonProject,
-    CommonTeamMember, CommonVersion,
 };
 
 use super::dummy_data::TestFile;

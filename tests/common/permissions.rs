@@ -22,6 +22,7 @@ use super::{
 // - returns a 200-299 if the scope is present
 // - returns failure and success JSON bodies for requests that are 200 (for performing non-simple follow-up tests on)
 // This uses a builder format, so you can chain methods to set the parameters to non-defaults (most will probably be not need to be set).
+type JsonCheck = Box<dyn Fn(&serde_json::Value) + Send>;
 pub struct PermissionsTest<'a, A: Api> {
     test_env: &'a TestEnvironment<A>,
     // Permissions expected to fail on this test. By default, this is all permissions except the success permissions.
@@ -54,8 +55,8 @@ pub struct PermissionsTest<'a, A: Api> {
     // Closures that check the JSON body of the response for failure and success cases.
     // These are used to perform more complex tests than just checking the status code.
     // (eg: checking that the response contains the correct data)
-    failure_json_check: Option<Box<dyn Fn(&serde_json::Value) + Send>>,
-    success_json_check: Option<Box<dyn Fn(&serde_json::Value) + Send>>,
+    failure_json_check: Option<JsonCheck>,
+    success_json_check: Option<JsonCheck>,
 }
 
 pub struct PermissionsTestContext<'a> {

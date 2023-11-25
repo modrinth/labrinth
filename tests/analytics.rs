@@ -1,12 +1,12 @@
 use actix_web::test;
 use chrono::{DateTime, Duration, Utc};
+use common::permissions::PermissionsTest;
+use common::permissions::PermissionsTestContext;
 use common::{
     api_v3::ApiV3,
     database::*,
     environment::{with_test_environment, TestEnvironment},
 };
-use common::permissions::PermissionsTest;
-use common::permissions::PermissionsTestContext;
 use itertools::Itertools;
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::teams::ProjectPermissions;
@@ -78,7 +78,7 @@ pub async fn analytics_revenue() {
             .get_analytics_revenue_deserialized(
                 vec![&alpha_project_id],
                 false,
-            None,
+                None,
                 None,
                 None,
                 USER_USER_PAT,
@@ -108,7 +108,7 @@ pub async fn analytics_revenue() {
             .get_analytics_revenue_deserialized(
                 vec![&alpha_project_id],
                 false,
-            Some(Utc::now() - Duration::days(801)),
+                Some(Utc::now() - Duration::days(801)),
                 None,
                 None,
                 USER_USER_PAT,
@@ -144,8 +144,7 @@ fn to_f64_vec_rounded_up(d: Vec<Decimal>) -> Vec<f64> {
 
 #[actix_rt::test]
 pub async fn permissions_analytics_revenue() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
-
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id = test_env
             .dummy
             .as_ref()
@@ -229,6 +228,6 @@ pub async fn permissions_analytics_revenue() {
 
         // Cleanup test db
         test_env.cleanup().await;
-    }).await;
-
+    })
+    .await;
 }

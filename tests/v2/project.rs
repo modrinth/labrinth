@@ -213,24 +213,24 @@ async fn test_add_remove_project() {
         let resp = test_env.api.remove_project("demo", USER_USER_PAT).await;
         assert_eq!(resp.status(), 204);
 
-    // Confirm that the project is gone from the cache
-    let mut redis_conn = test_env.db.redis_pool.connect().await.unwrap();
-    assert_eq!(
-        redis_conn
-            .get(PROJECTS_SLUGS_NAMESPACE, "demo")
-            .await
-            .unwrap()
-            .map(|x| x.parse::<i64>().unwrap()),
-        None
-    );
-    assert_eq!(
-        redis_conn
-            .get(PROJECTS_SLUGS_NAMESPACE, &id)
-            .await
-            .unwrap()
-            .map(|x| x.parse::<i64>().unwrap()),
-        None
-    );
+        // Confirm that the project is gone from the cache
+        let mut redis_conn = test_env.db.redis_pool.connect().await.unwrap();
+        assert_eq!(
+            redis_conn
+                .get(PROJECTS_SLUGS_NAMESPACE, "demo")
+                .await
+                .unwrap()
+                .map(|x| x.parse::<i64>().unwrap()),
+            None
+        );
+        assert_eq!(
+            redis_conn
+                .get(PROJECTS_SLUGS_NAMESPACE, &id)
+                .await
+                .unwrap()
+                .map(|x| x.parse::<i64>().unwrap()),
+            None
+        );
 
         // Old slug no longer works
         let resp = api.get_project("demo", USER_USER_PAT).await;
