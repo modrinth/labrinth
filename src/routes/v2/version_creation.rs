@@ -105,31 +105,24 @@ pub async fn version_create(
             for file_part in &legacy_create.file_parts {
                 if let Some(ext) = file_part.split('.').last() {
                     match ext {
-                        "jar" => {
-                            project_type = Some("mod");
-                            break;
-                        }
-                        "mrpack" | "zip" => {
+                        "mrpack" => {
                             project_type = Some("modpack");
                             break;
                         }
+                        // No other type matters
                         _ => {}
                     }
                     break;
                 }
             }
-            let project_type = project_type.ok_or(CreateError::InvalidInput(
-                "Could not determine project type from file parts for v2 version creation."
-                    .to_string(),
-            ))?;
 
             // Modpacks now use the "mrpack" loader, and loaders are converted to loader fields.
             // Setting of 'project_type' directly is removed, it's loader-based now.
-            if project_type == "modpack" {
+            if project_type == Some("modpack") {
                 fields.insert("mrpack_loaders".to_string(), json!(legacy_create.loaders));
             }
 
-            let loaders = if project_type == "modpack" {
+            let loaders = if project_type == Some("modpack") {
                 vec![Loader("mrpack".to_string())]
             } else {
                 legacy_create.loaders
