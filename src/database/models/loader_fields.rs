@@ -415,7 +415,7 @@ impl LoaderField {
         if let Some(cached_fields) = cached_fields {
             return Ok(cached_fields);
         }
-            
+
         let result = sqlx::query!(
             "
             SELECT DISTINCT lf.id, lf.field, lf.field_type, lf.optional, lf.min_val, lf.max_val, lf.enum_type
@@ -439,12 +439,11 @@ impl LoaderField {
         .await?;
 
         redis
-            .set_serialized_to_json(LOADER_FIELDS_NAMESPACE_ALL, "",  &result, None)
+            .set_serialized_to_json(LOADER_FIELDS_NAMESPACE_ALL, "", &result, None)
             .await?;
 
         Ok(result)
     }
-
 }
 impl LoaderFieldEnum {
     pub async fn get<'a, E>(

@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::search::ResultSearchProject;
 
@@ -39,17 +39,19 @@ pub struct LegacyResultSearchProject {
 
 // TODO: In other PR, when these are merged, make sure the v2 search testing functions use these
 impl LegacyResultSearchProject {
-    pub fn from(result_search_project : ResultSearchProject) -> Self {
+    pub fn from(result_search_project: ResultSearchProject) -> Self {
         let mut categories = result_search_project.categories;
         if categories.contains(&"mrpack".to_string()) {
-            if let Some(mrpack_loaders) = result_search_project.loader_fields.get("mrpack_loaders") {
+            if let Some(mrpack_loaders) = result_search_project.loader_fields.get("mrpack_loaders")
+            {
                 categories.extend(mrpack_loaders.clone());
                 categories.retain(|c| c != "mrpack");
             }
         }
         let mut display_categories = result_search_project.display_categories;
         if display_categories.contains(&"mrpack".to_string()) {
-            if let Some(mrpack_loaders) = result_search_project.loader_fields.get("mrpack_loaders") {
+            if let Some(mrpack_loaders) = result_search_project.loader_fields.get("mrpack_loaders")
+            {
                 display_categories.extend(mrpack_loaders.clone());
                 display_categories.retain(|c| c != "mrpack");
             }
@@ -62,10 +64,28 @@ impl LegacyResultSearchProject {
         display_categories.dedup();
 
         Self {
-            project_type: result_search_project.project_types.first().cloned().unwrap_or_default(),
-            client_side: result_search_project.loader_fields.get("client_side").cloned().unwrap_or_default().join(","),
-            server_side: result_search_project.loader_fields.get("server_side").cloned().unwrap_or_default().join(","),
-            versions: result_search_project.loader_fields.get("game_versions").cloned().unwrap_or_default(),
+            project_type: result_search_project
+                .project_types
+                .first()
+                .cloned()
+                .unwrap_or_default(),
+            client_side: result_search_project
+                .loader_fields
+                .get("client_side")
+                .cloned()
+                .unwrap_or_default()
+                .join(","),
+            server_side: result_search_project
+                .loader_fields
+                .get("server_side")
+                .cloned()
+                .unwrap_or_default()
+                .join(","),
+            versions: result_search_project
+                .loader_fields
+                .get("game_versions")
+                .cloned()
+                .unwrap_or_default(),
             latest_version: result_search_project.version_id,
             categories,
 
@@ -89,9 +109,13 @@ impl LegacyResultSearchProject {
 }
 
 impl LegacySearchResults {
-    pub fn from(search_results : crate::search::SearchResults) -> Self {
+    pub fn from(search_results: crate::search::SearchResults) -> Self {
         Self {
-            hits: search_results.hits.into_iter().map(LegacyResultSearchProject::from).collect(),
+            hits: search_results
+                .hits
+                .into_iter()
+                .map(LegacyResultSearchProject::from)
+                .collect(),
             offset: search_results.offset,
             limit: search_results.limit,
             total_hits: search_results.total_hits,

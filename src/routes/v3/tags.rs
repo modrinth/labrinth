@@ -7,7 +7,7 @@ use crate::database::models::loader_fields::{
 };
 use crate::database::redis::RedisPool;
 use actix_web::{web, HttpResponse};
-use itertools::Itertools;
+
 use serde_json::Value;
 use sqlx::PgPool;
 
@@ -119,17 +119,16 @@ pub async fn loader_fields_list(
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let query = query.into_inner();
-    let loader_field =
-        LoaderField::get_fields_all(&**pool, &redis)
-            .await?
-            .into_iter()
-            .find(|x| x.field == query.loader_field)
-            .ok_or_else(|| {
-                ApiError::InvalidInput(format!(
-                    "'{}' was not a valid loader field.",
-                    query.loader_field
-                ))
-            })?;
+    let loader_field = LoaderField::get_fields_all(&**pool, &redis)
+        .await?
+        .into_iter()
+        .find(|x| x.field == query.loader_field)
+        .ok_or_else(|| {
+            ApiError::InvalidInput(format!(
+                "'{}' was not a valid loader field.",
+                query.loader_field
+            ))
+        })?;
 
     let loader_field_enum_id = match loader_field.field_type {
         LoaderFieldType::Enum(enum_id) | LoaderFieldType::ArrayEnum(enum_id) => enum_id,

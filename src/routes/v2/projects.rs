@@ -97,7 +97,7 @@ pub async fn project_search(
     let results = search_for_project(&info, &config).await?;
 
     let results = LegacySearchResults::from(results);
-    
+
     Ok(HttpResponse::Ok().json(results))
 }
 
