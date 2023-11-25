@@ -77,8 +77,6 @@ delegate_api_variant!(
         [edit_project_bulk, ServiceResponse, ids_or_slugs: &[&str], patch: serde_json::Value, pat: &str],
         [edit_project_icon, ServiceResponse, id_or_slug: &str, icon: Option<CommonImageData>, pat: &str],
         [search_deserialized_common, SearchResults, query: Option<&str>, facets: Option<serde_json::Value>, pat: &str],
-        [get_analytics_revenue, ServiceResponse, id_or_slugs: Vec<&str>, start_date: Option<chrono::DateTime<chrono::Utc>>, end_date: Option<chrono::DateTime<chrono::Utc>>, resolution_minutes: Option<u32>, pat: &str],
-        [get_analytics_revenue_deserialized, std::collections::HashMap<String, std::collections::HashMap<i64, rust_decimal::Decimal>>, id_or_slugs: Vec<&str>, start_date: Option<chrono::DateTime<chrono::Utc>>, end_date: Option<chrono::DateTime<chrono::Utc>>, resolution_minutes: Option<u32>, pat: &str],
     }
 );
 

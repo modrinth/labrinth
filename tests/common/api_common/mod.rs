@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use actix_web::dev::ServiceResponse;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use labrinth::{
     models::{
         projects::{ProjectId, VersionType},
@@ -11,8 +10,6 @@ use labrinth::{
     search::SearchResults,
     LabrinthConfig,
 };
-use rust_decimal::Decimal;
-
 use self::models::{
     CommonCategoryData, CommonImageData, CommonLoaderData, CommonNotification, CommonProject,
     CommonTeamMember, CommonVersion,
@@ -75,22 +72,6 @@ pub trait ApiProject {
         facets: Option<serde_json::Value>,
         pat: &str,
     ) -> SearchResults;
-    async fn get_analytics_revenue(
-        &self,
-        id_or_slugs: Vec<&str>,
-        start_date: Option<DateTime<Utc>>,
-        end_date: Option<DateTime<Utc>>,
-        resolution_minutes: Option<u32>,
-        pat: &str,
-    ) -> ServiceResponse;
-    async fn get_analytics_revenue_deserialized(
-        &self,
-        id_or_slugs: Vec<&str>,
-        start_date: Option<DateTime<Utc>>,
-        end_date: Option<DateTime<Utc>>,
-        resolution_minutes: Option<u32>,
-        pat: &str,
-    ) -> HashMap<String, HashMap<i64, Decimal>>;
 }
 
 #[async_trait(?Send)]
