@@ -7,8 +7,10 @@ use actix_web::{
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
-    models::v2::projects::{LegacyProject, LegacyVersion},
-    search::SearchResults,
+    models::v2::{
+        projects::{LegacyProject, LegacyVersion},
+        search::LegacySearchResults,
+    },
     util::actix::AppendsMultipart,
 };
 use rust_decimal::Decimal;
@@ -175,7 +177,7 @@ impl ApiV2 {
         query: Option<&str>,
         facets: Option<serde_json::Value>,
         pat: &str,
-    ) -> SearchResults {
+    ) -> LegacySearchResults {
         let query_field = if let Some(query) = query {
             format!("&query={}", urlencoding::encode(query))
         } else {
