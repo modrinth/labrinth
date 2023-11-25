@@ -44,6 +44,7 @@ impl Game {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let mut redis = redis.connect().await?;
         let cached_games: Option<Vec<Game>> = redis
             .get_deserialized_from_json(GAMES_LIST_NAMESPACE, "games")
             .await?;
@@ -96,6 +97,7 @@ impl Loader {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let mut redis = redis.connect().await?;
         let cached_id: Option<i32> = redis.get_deserialized_from_json(LOADER_ID, name).await?;
         if let Some(cached_id) = cached_id {
             return Ok(Some(LoaderId(cached_id)));
@@ -125,6 +127,7 @@ impl Loader {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let mut redis = redis.connect().await?;
         let cached_loaders: Option<Vec<Loader>> = redis
             .get_deserialized_from_json(LOADERS_LIST_NAMESPACE, "all")
             .await?;
@@ -321,9 +324,11 @@ impl LoaderField {
     {
         type RedisLoaderFieldTuple = (LoaderId, Vec<LoaderField>);
 
+        let mut redis = redis.connect().await?;
+
         let mut loader_ids = loader_ids.to_vec();
         let cached_fields: Vec<RedisLoaderFieldTuple> = redis
-            .multi_get::<String, _>(LOADER_FIELDS_NAMESPACE, loader_ids.iter().map(|x| x.0))
+            .multi_get::<String>(LOADER_FIELDS_NAMESPACE, loader_ids.iter().map(|x| x.0))
             .await?
             .into_iter()
             .flatten()
@@ -402,6 +407,8 @@ impl LoaderFieldEnum {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let mut redis = redis.connect().await?;
+
         let cached_enum = redis
             .get_deserialized_from_json(LOADER_FIELD_ENUMS_ID_NAMESPACE, enum_name)
             .await?;
@@ -491,12 +498,13 @@ impl LoaderFieldEnumValue {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let mut redis = redis.connect().await?;
         let mut found_enums = Vec::new();
         let mut remaining_enums: Vec<LoaderFieldEnumId> = loader_field_enum_ids.to_vec();
 
         if !remaining_enums.is_empty() {
             let enums = redis
-                .multi_get::<String, _>(
+                .multi_get::<String>(
                     LOADER_FIELD_ENUM_VALUES_NAMESPACE,
                     loader_field_enum_ids.iter().map(|x| x.0),
                 )
