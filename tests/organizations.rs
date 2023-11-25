@@ -71,7 +71,7 @@ async fn create_organization() {
 
         // Get created team
         let members = api
-            .get_organization_members_deserialized_common("theta", USER_USER_PAT)
+            .get_organization_members_deserialized("theta", USER_USER_PAT)
             .await;
 
         // Should only be one member, which is USER_USER_ID, and is the owner with full permissions
@@ -81,6 +81,7 @@ async fn create_organization() {
             Some(OrganizationPermissions::all())
         );
         assert_eq!(members[0].role, "Owner");
+        assert_eq!(members[0].is_owner, true);
     })
     .await;
 }

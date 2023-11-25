@@ -380,7 +380,6 @@ pub async fn add_project_beta(api: &ApiV3) -> (Project, Version) {
         .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         .to_request();
     let resp = api.call(req).await;
-    println!("{:?}", resp.response().body());
     assert_eq!(resp.status(), 200);
 
     get_project_beta(api).await

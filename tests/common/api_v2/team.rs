@@ -1,7 +1,7 @@
 use actix_http::StatusCode;
 use actix_web::{dev::ServiceResponse, test};
 use async_trait::async_trait;
-use labrinth::models::{teams::{OrganizationPermissions, ProjectPermissions}, v2::notifications::LegacyNotification};
+use labrinth::models::{teams::{OrganizationPermissions, ProjectPermissions}, v2::{notifications::LegacyNotification, teams::LegacyTeamMember}};
 use serde_json::json;
 
 use crate::common::{
@@ -13,6 +13,29 @@ use crate::common::{
 };
 
 use super::ApiV2;
+
+impl ApiV2 {
+    pub async fn get_organization_members_deserialized(
+        &self,
+        id_or_title: &str,
+        pat: &str,
+    ) -> Vec<LegacyTeamMember> {
+        let resp = self.get_organization_members(id_or_title, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
+    pub async fn get_team_members_deserialized(
+        &self,
+        team_id: &str,
+        pat: &str,
+    ) -> Vec<LegacyTeamMember> {
+        let resp = self.get_team_members(team_id, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }   
+
+}
 
 #[async_trait(?Send)]
 impl ApiTeams for ApiV2 {
@@ -139,7 +162,6 @@ impl ApiTeams for ApiV2 {
         user_id: &str,
         pat: &str,
     ) -> Vec<CommonNotification> {
-        println!("V2 deserializing");
         let resp = self.get_user_notifications(user_id, pat).await;
         assert_status(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)

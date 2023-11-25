@@ -13,5 +13,6 @@ mod v2 {
     mod scopes;
     mod search;
     mod tags;
+    mod teams;
     mod version;
 }

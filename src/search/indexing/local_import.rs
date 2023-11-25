@@ -72,7 +72,7 @@ pub async fn index_local(
             LEFT JOIN loaders_project_types_games lptg ON lptg.loader_id = lo.id AND lptg.project_type_id = pt.id
             LEFT JOIN games g ON lptg.game_id = g.id
             LEFT OUTER JOIN mods_gallery mg ON mg.mod_id = m.id
-            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
+            INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.is_owner = TRUE AND tm.accepted = TRUE
             INNER JOIN users u ON tm.user_id = u.id
             LEFT OUTER JOIN version_fields vf on v.id = vf.version_id
             LEFT OUTER JOIN loader_fields lf on vf.field_id = lf.id
@@ -83,7 +83,6 @@ pub async fn index_local(
             ",
             &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>(),
             &*crate::models::projects::ProjectStatus::iterator().filter(|x| x.is_searchable()).map(|x| x.to_string()).collect::<Vec<String>>(),
-            crate::models::teams::OWNER_ROLE,
         )
             .fetch_many(&pool)
             .try_filter_map(|e| {

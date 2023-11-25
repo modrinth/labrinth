@@ -1,12 +1,13 @@
 use crate::common::{
     api_common::ApiProject,
     api_v2::ApiV2,
-    database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
+    database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT, generate_random_name},
     dummy_data::TestFile,
     environment::{with_test_environment, TestEnvironment},
     permissions::{PermissionsTest, PermissionsTestContext},
 };
 use actix_web::test;
+use futures::StreamExt;
 use itertools::Itertools;
 use labrinth::{
     database::models::project_item::PROJECTS_SLUGS_NAMESPACE,
@@ -397,3 +398,67 @@ pub async fn test_patch_v2() {
         }).await;
 }
 
+#[actix_rt::test]
+async fn permissions_patch_project_v2() {
+    with_test_environment(Some(8), |test_env: TestEnvironment<ApiV2>| async move {
+        // TODO: This only includes v2 ones (as it should. See v3)
+        // For each permission covered by EDIT_DETAILS, ensure the permission is required
+        let edit_details = ProjectPermissions::EDIT_DETAILS;
+        let test_pairs = [
+            ("description", json!("description")),
+            ("issues_url", json!("https://issues.com")),
+            ("source_url", json!("https://source.com")),
+            ("wiki_url", json!("https://wiki.com")),
+            (
+                "donation_urls",
+                json!([{
+                    "id": "paypal",
+                    "platform": "Paypal",
+                    "url": "https://paypal.com"
+                }]),
+            ),
+            ("discord_url", json!("https://discord.com")),
+        ];
+
+        futures::stream::iter(test_pairs)
+            .map(|(key, value)| {
+                let test_env = test_env.clone();
+                async move {
+                    let req_gen = |ctx: &PermissionsTestContext| {
+                        test::TestRequest::patch()
+                            .uri(&format!("/v2/project/{}", ctx.project_id.unwrap()))
+                            .set_json(json!({
+                                key: if key == "slug" {
+                                    json!(generate_random_name("randomslug"))
+                                } else {
+                                    value.clone()
+                                },
+                            }))
+                    };
+                    PermissionsTest::new(&test_env)
+                        .simple_project_permissions_test(edit_details, req_gen)
+                        .await
+                        .into_iter();
+                }
+            })
+            .buffer_unordered(4)
+            .collect::<Vec<_>>()
+            .await;
+
+        // Edit body
+        // Cannot bulk edit body
+        let edit_body = ProjectPermissions::EDIT_BODY;
+        let req_gen = |ctx: &PermissionsTestContext| {
+            test::TestRequest::patch()
+                .uri(&format!("/v2/project/{}", ctx.project_id.unwrap()))
+                .set_json(json!({
+                    "body": "new body!", // new body
+                }))
+        };
+        PermissionsTest::new(&test_env)
+            .simple_project_permissions_test(edit_body, req_gen)
+            .await
+            .unwrap();
+    })
+    .await;
+}

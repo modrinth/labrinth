@@ -143,6 +143,7 @@ pub async fn organization_create(
         members: vec![team_item::TeamMemberBuilder {
             user_id: current_user.id.into(),
             role: crate::models::teams::OWNER_ROLE.to_owned(),
+            is_owner: true,
             permissions: ProjectPermissions::all(),
             organization_permissions: Some(OrganizationPermissions::all()),
             accepted: true,
@@ -598,8 +599,7 @@ pub async fn organization_projects_add(
     // Require ownership of a project to add it to an organization
     if !current_user.role.is_admin()
         && !project_team_member
-            .role
-            .eq(crate::models::teams::OWNER_ROLE)
+            .is_owner
     {
         return Err(ApiError::CustomAuthentication(
             "You need to be an owner of a project to add it to an organization!".to_string(),

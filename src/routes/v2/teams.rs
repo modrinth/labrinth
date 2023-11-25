@@ -1,6 +1,7 @@
 use crate::database::redis::RedisPool;
-use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId};
+use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId, TeamMember};
 use crate::models::users::UserId;
+use crate::models::v2::teams::LegacyTeamMember;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v3, ApiError, v2_reroute};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
@@ -34,7 +35,15 @@ pub async fn team_members_get_project(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::team_members_get_project(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    let response = v3::teams::team_members_get_project(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Vec<TeamMember>>(response).await {
+        Ok(members) => {
+            let members = members.into_iter().map(LegacyTeamMember::from).collect::<Vec<_>>();
+            Ok(HttpResponse::Ok().json(members))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[get("{id}/members")]
@@ -45,7 +54,15 @@ pub async fn team_members_get_organization(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::team_members_get_organization(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    let response = v3::teams::team_members_get_organization(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Vec<TeamMember>>(response).await {
+        Ok(members) => {
+            let members = members.into_iter().map(LegacyTeamMember::from).collect::<Vec<_>>();
+            Ok(HttpResponse::Ok().json(members))
+        }
+        Err(response) => Ok(response),
+    }    
 }
 
 // Returns all members of a team, but not necessarily those of a project-team's organization (unlike team_members_get_project)
@@ -57,7 +74,15 @@ pub async fn team_members_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::team_members_get(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    let response = v3::teams::team_members_get(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Vec<TeamMember>>(response).await {
+        Ok(members) => {
+            let members = members.into_iter().map(LegacyTeamMember::from).collect::<Vec<_>>();
+            Ok(HttpResponse::Ok().json(members))
+        }
+        Err(response) => Ok(response),
+    }    
 }
 
 #[derive(Serialize, Deserialize)]
@@ -73,14 +98,22 @@ pub async fn teams_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::teams::teams_get(
+    let response = v3::teams::teams_get(
         req,
         web::Query(v3::teams::TeamIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await.or_else(v2_reroute::flatten_404_error);
+    // Convert response to V2 format
+    match v2_reroute::extract_ok_json::<Vec<Vec<TeamMember>>>(response?).await {
+        Ok(members) => {
+            let members = members.into_iter().map(|members| members.into_iter().map(LegacyTeamMember::from).collect::<Vec<_>>()).collect::<Vec<_>>();
+            Ok(HttpResponse::Ok().json(members))
+        }
+        Err(response) => Ok(response),
+    }
 }
 
 #[post("{id}/join")]

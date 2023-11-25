@@ -250,9 +250,7 @@ pub async fn user_notifications(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    println!("Gott notifications");
     let response = v3::users::user_notifications(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
-
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Notification>>(response).await {
         Ok(notifications) => {

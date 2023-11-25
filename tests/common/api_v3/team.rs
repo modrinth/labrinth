@@ -14,6 +14,28 @@ use crate::common::{
 
 use super::ApiV3;
 
+impl ApiV3 {
+    pub async fn get_organization_members_deserialized(
+        &self,
+        id_or_title: &str,
+        pat: &str,
+    ) -> Vec<TeamMember> {
+        let resp = self.get_organization_members(id_or_title, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
+    pub async fn get_team_members_deserialized(
+        &self,
+        team_id: &str,
+        pat: &str,
+    ) -> Vec<TeamMember> {
+        let resp = self.get_team_members(team_id, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }   
+}
+
 #[async_trait(?Send)]
 impl ApiTeams for ApiV3 {
     async fn get_team_members(&self, id_or_title: &str, pat: &str) -> ServiceResponse {
@@ -144,8 +166,6 @@ impl ApiTeams for ApiV3 {
     ) -> Vec<CommonNotification> {
         let resp = self.get_user_notifications(user_id, pat).await;
         assert_status(&resp, StatusCode::OK);
-        println!("v3 deserializing");
-
         // First, deserialize to the non-common format (to test the response is valid for this api version)
         let v: Vec<Notification> = test::read_body_json(resp).await;
         // Then, deserialize to the common format

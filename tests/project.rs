@@ -172,7 +172,6 @@ async fn test_add_remove_project() {
         }, USER_USER_PAT).await;
 
         let status = resp.status();
-        println!("Body: {:?}", resp.response().body());
         assert_eq!(status, 200);
 
         // Get the project we just made, and confirm that it's correct
@@ -482,11 +481,15 @@ pub async fn test_bulk_edit_categories() {
 }
 
 #[actix_rt::test]
-async fn permissions_patch_project() {
-    with_test_environment_all(Some(8), |test_env| async move {
+async fn permissions_patch_project_v3() {
+    with_test_environment(Some(8), |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
 
+        // TODO: This should be a separate test from v3
+        // - only a couple of these fields are v3-specific
+        // once we have permissions/scope tests setup to not just take closures, we can split this up
+        
         // For each permission covered by EDIT_DETAILS, ensure the permission is required
         let edit_details = ProjectPermissions::EDIT_DETAILS;
         let test_pairs = [
@@ -496,18 +499,10 @@ async fn permissions_patch_project() {
             ("description", json!("randomdescription")),
             ("categories", json!(["combat", "economy"])),
             ("additional_categories", json!(["decoration"])),
-            ("issues_url", json!("https://issues.com")),
-            ("source_url", json!("https://source.com")),
-            ("wiki_url", json!("https://wiki.com")),
-            (
-                "donation_urls",
-                json!([{
-                    "id": "paypal",
-                    "platform": "Paypal",
-                    "url": "https://paypal.com"
-                }]),
-            ),
-            ("discord_url", json!("https://discord.com")),
+            ("links", json!({
+                "issues": "https://issues.com",
+                "source": "https://source.com",
+            })),
             ("license_id", json!("MIT")),
         ];
 
@@ -576,7 +571,7 @@ async fn permissions_patch_project() {
             test::TestRequest::patch()
                 .uri(&format!("/v3/project/{}", ctx.project_id.unwrap()))
                 .set_json(json!({
-                    "body": "new body!",
+                    "description": "new description!",
                 }))
         };
         PermissionsTest::new(&test_env)

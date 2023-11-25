@@ -642,6 +642,7 @@ async fn project_create_inner(
             members: vec![models::team_item::TeamMemberBuilder {
                 user_id: current_user.id.into(),
                 role: crate::models::teams::OWNER_ROLE.to_owned(),
+                is_owner: true,
                 // Allow all permissions for project creator, even if attached to a project
                 permissions: ProjectPermissions::all(),
                 organization_permissions: None,
