@@ -19,7 +19,7 @@ pub async fn index_local(
     let uploads =
         sqlx::query!(
             "
-            SELECT m.id id, v.id version_id, m.title title, m.description description, m.downloads downloads, m.follows follows,
+            SELECT m.id id, v.id version_id, m.name name, m.description description, m.downloads downloads, m.follows follows,
             m.icon_url icon_url, m.published published, m.approved approved, m.updated updated,
             m.team_id team_id, m.license license, m.slug slug, m.status status_name, m.color color,
             u.username username,
@@ -133,7 +133,7 @@ pub async fn index_local(
                     UploadSearchProject {
                         version_id: version_id.to_string(),
                         project_id: project_id.to_string(),
-                        name: m.title,
+                        name: m.name,
                         description: m.description,
                         categories,
                         follows: m.follows,

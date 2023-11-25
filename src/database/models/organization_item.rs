@@ -36,7 +36,7 @@ impl Organization {
     ) -> Result<(), super::DatabaseError> {
         sqlx::query!(
             "
-            INSERT INTO organizations (id, title, team_id, description, icon_url, color)
+            INSERT INTO organizations (id, name, team_id, description, icon_url, color)
             VALUES ($1, $2, $3, $4, $5, $6)
             ",
             self.id.0,
@@ -166,9 +166,9 @@ impl Organization {
 
             let organizations: Vec<Organization> = sqlx::query!(
                 "
-                SELECT o.id, o.title, o.team_id, o.description, o.icon_url, o.color
+                SELECT o.id, o.name, o.team_id, o.description, o.icon_url, o.color
                 FROM organizations o
-                WHERE o.id = ANY($1) OR LOWER(o.title) = ANY($2)
+                WHERE o.id = ANY($1) OR LOWER(o.name) = ANY($2)
                 GROUP BY o.id;
                 ",
                 &organization_ids_parsed,
@@ -181,7 +181,7 @@ impl Organization {
             .try_filter_map(|e| async {
                 Ok(e.right().map(|m| Organization {
                     id: OrganizationId(m.id),
-                    name: m.title,
+                    name: m.name,
                     team_id: TeamId(m.team_id),
                     description: m.description,
                     icon_url: m.icon_url,
@@ -226,7 +226,7 @@ impl Organization {
     {
         let result = sqlx::query!(
             "
-            SELECT o.id, o.title, o.team_id, o.description, o.icon_url, o.color
+            SELECT o.id, o.name, o.team_id, o.description, o.icon_url, o.color
             FROM organizations o
             LEFT JOIN mods m ON m.organization_id = o.id
             WHERE m.id = $1
@@ -240,7 +240,7 @@ impl Organization {
         if let Some(result) = result {
             Ok(Some(Organization {
                 id: OrganizationId(result.id),
-                name: result.title,
+                name: result.name,
                 team_id: TeamId(result.team_id),
                 description: result.description,
                 icon_url: result.icon_url,

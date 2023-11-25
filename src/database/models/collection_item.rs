@@ -62,7 +62,7 @@ impl Collection {
         sqlx::query!(
             "
             INSERT INTO collections (
-                id, user_id, title, description, 
+                id, user_id, name, description, 
                 created, icon_url, status
             )
             VALUES (
@@ -190,7 +190,7 @@ impl Collection {
                 remaining_collections.iter().map(|x| x.0).collect();
             let db_collections: Vec<Collection> = sqlx::query!(
                 "
-                SELECT c.id id, c.title title, c.description description,
+                SELECT c.id id, c.name name, c.description description,
                 c.icon_url icon_url, c.color color, c.created created, c.user_id user_id,
                 c.updated updated, c.status status,
                 ARRAY_AGG(DISTINCT cm.mod_id) filter (where cm.mod_id is not null) mods
@@ -209,7 +209,7 @@ impl Collection {
                     Collection {
                         id: CollectionId(id),
                         user_id: UserId(m.user_id),
-                        name: m.title.clone(),
+                        name: m.name.clone(),
                         description: m.description.clone(),
                         icon_url: m.icon_url.clone(),
                         color: m.color.map(|x| x as u32),

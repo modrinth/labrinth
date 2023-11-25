@@ -243,7 +243,7 @@ pub async fn collection_edit(
             sqlx::query!(
                 "
                 UPDATE collections
-                SET title = $1
+                SET name = $1
                 WHERE (id = $2)
                 ",
                 name.trim(),

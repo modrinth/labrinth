@@ -63,7 +63,7 @@ pub enum NotificationBody {
     },
     LegacyMarkdown {
         notification_type: Option<String>,
-        title: String,
+        name: String, // TODO: Check to make sure this change doesnt break anything
         text: String,
         link: String,
         actions: Vec<NotificationAction>,
@@ -176,13 +176,13 @@ impl From<DBNotification> for Notification {
                 ),
                 NotificationBody::LegacyMarkdown {
                     notification_type,
-                    title,
+                    name,
                     text,
                     link,
                     actions,
                 } => (
                     notification_type.clone(),
-                    title.clone(),
+                    name.clone(),
                     text.clone(),
                     link.clone(),
                     actions.clone().into_iter().map(Into::into).collect(),

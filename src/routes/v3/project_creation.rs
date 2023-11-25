@@ -168,11 +168,11 @@ pub struct ProjectCreateData {
     #[validate(length(min = 3, max = 255))]
     #[serde(alias = "mod_description")]
     /// A short description of the project.
-    pub description: String,
+    pub summary: String,
     #[validate(length(max = 65536))]
     #[serde(alias = "mod_body")]
     /// A long description of the project, in markdown.
-    pub body: String,
+    pub description: String,
 
     #[validate(length(max = 32))]
     #[validate]
@@ -698,8 +698,8 @@ async fn project_create_inner(
             team_id,
             organization_id: project_create_data.organization_id.map(|x| x.into()),
             name: project_create_data.name,
+            summary: project_create_data.summary,
             description: project_create_data.description,
-            body: project_create_data.body,
             icon_url: icon_data.clone().map(|x| x.0),
             issues_url: project_create_data.issues_url,
             source_url: project_create_data.source_url,
@@ -805,12 +805,11 @@ async fn project_create_inner(
             slug: project_builder.slug.clone(),
             project_types,
             games,
-            team: team_id.into(),
+            team_id: team_id.into(),
             organization: project_create_data.organization_id,
             name: project_builder.name.clone(),
+            summary: project_builder.summary.clone(),
             description: project_builder.description.clone(),
-            body: project_builder.body.clone(),
-            body_url: None,
             published: now,
             updated: now,
             approved: None,

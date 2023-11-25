@@ -2,10 +2,11 @@ use actix_http::StatusCode;
 use actix_web::test;
 use bytes::Bytes;
 use chrono::{Duration, Utc};
+use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
 
-use common::environment::with_test_environment_all;
+use common::environment::{with_test_environment_all, with_test_environment, TestEnvironment};
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
@@ -368,9 +369,6 @@ pub async fn test_patch_project() {
                 alpha_project_slug,
                 json!({
                     "slug": "newslug",
-                    "name": "New successful title",
-                    "description": "New successful description",
-                    "body": "New successful body",
                     "categories": [DUMMY_CATEGORIES[0]],
                     "license_id": "MIT",
                     "issues_url": "https://github.com",
@@ -397,8 +395,6 @@ pub async fn test_patch_project() {
             .await;
 
         assert_eq!(project.slug.unwrap(), "newslug");
-        assert_eq!(project.description, "New successful description");
-        assert_eq!(project.body, "New successful body");
         assert_eq!(project.categories, vec![DUMMY_CATEGORIES[0]]);
         assert_eq!(project.license.id, "MIT");
         assert_eq!(project.issues_url, Some("https://github.com".to_string()));
@@ -410,6 +406,38 @@ pub async fn test_patch_project() {
         // for loader fields?
     })
     .await;
+}
+
+#[actix_rt::test]
+pub async fn test_patch_v3() {
+    // Hits V3-specific patchable fields
+    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+        let api = &test_env.api;
+
+        let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
+
+        // Sucessful request to patch many fields.
+        let resp = api
+            .edit_project(
+                alpha_project_slug,
+                json!({
+                    "name": "New successful title",
+                    "summary": "New successful summary",
+                    "description": "New successful description",
+                }),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(resp.status(), 204);
+
+        let project = api
+            .get_project_deserialized(alpha_project_slug, USER_USER_PAT)
+            .await;
+
+        assert_eq!(project.name, "New successful title");
+        assert_eq!(project.summary, "New successful summary");
+        assert_eq!(project.description, "New successful description");
+    }).await;
 }
 
 #[actix_rt::test]

@@ -24,6 +24,14 @@ use crate::common::{
 
 use super::{request_data::{get_public_project_creation_data, self}, ApiV3};
 
+impl ApiV3 {
+    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {
+        let resp = self.get_project(id_or_slug, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+}
+
 #[async_trait(?Send)]
 impl ApiProject for ApiV3 {
     async fn add_public_project(

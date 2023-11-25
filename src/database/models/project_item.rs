@@ -88,7 +88,7 @@ impl GalleryItem {
         sqlx::query!(
             "
             INSERT INTO mods_gallery (
-                mod_id, image_url, featured, title, description, ordering
+                mod_id, image_url, featured, name, description, ordering
             )
             SELECT * FROM UNNEST ($1::bigint[], $2::varchar[], $3::bool[], $4::varchar[], $5::varchar[], $6::bigint[])
             ",
@@ -144,8 +144,8 @@ pub struct ProjectBuilder {
     pub team_id: TeamId,
     pub organization_id: Option<OrganizationId>,
     pub name: String,
+    pub summary: String,
     pub description: String,
-    pub body: String,
     pub icon_url: Option<String>,
     pub issues_url: Option<String>,
     pub source_url: Option<String>,
@@ -175,9 +175,8 @@ impl ProjectBuilder {
             team_id: self.team_id,
             organization_id: self.organization_id,
             name: self.name,
+            summary: self.summary,
             description: self.description,
-            body: self.body,
-            body_url: None,
             published: Utc::now(),
             updated: Utc::now(),
             approved: None,
@@ -246,9 +245,8 @@ pub struct Project {
     pub team_id: TeamId,
     pub organization_id: Option<OrganizationId>,
     pub name: String,
+    pub summary: String,
     pub description: String,
-    pub body: String,
-    pub body_url: Option<String>,
     pub published: DateTime<Utc>,
     pub updated: DateTime<Utc>,
     pub approved: Option<DateTime<Utc>>,
@@ -281,7 +279,7 @@ impl Project {
         sqlx::query!(
             "
             INSERT INTO mods (
-                id, team_id, title, description, body,
+                id, team_id, name, summary, description,
                 published, downloads, icon_url, issues_url,
                 source_url, wiki_url, status, requested_status, discord_url,
                 license_url, license,
@@ -298,8 +296,8 @@ impl Project {
             self.id as ProjectId,
             self.team_id as TeamId,
             &self.name,
+            &self.summary,
             &self.description,
-            &self.body,
             self.published,
             self.downloads,
             self.icon_url.as_ref(),
@@ -567,8 +565,8 @@ impl Project {
 
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
-                SELECT m.id id, m.title title, m.description description, m.downloads downloads, m.follows follows,
-                m.icon_url icon_url, m.body body, m.published published,
+                SELECT m.id id, m.name name, m.summary summary, m.downloads downloads, m.follows follows,
+                m.icon_url icon_url, m.description description, m.published published,
                 m.updated updated, m.approved approved, m.queued, m.status status, m.requested_status requested_status,
                 m.issues_url issues_url, m.source_url source_url, m.wiki_url wiki_url, m.discord_url discord_url, m.license_url license_url,
                 m.team_id team_id, m.organization_id organization_id, m.license license, m.slug slug, m.moderation_message moderation_message, m.moderation_message_body moderation_message_body,
@@ -580,7 +578,7 @@ impl Project {
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is false) categories,
                 ARRAY_AGG(DISTINCT c.category) filter (where c.category is not null and mc.is_additional is true) additional_categories,
                 JSONB_AGG(DISTINCT jsonb_build_object('id', v.id, 'date_published', v.date_published)) filter (where v.id is not null) versions,
-                JSONB_AGG(DISTINCT jsonb_build_object('image_url', mg.image_url, 'featured', mg.featured, 'title', mg.title, 'description', mg.description, 'created', mg.created, 'ordering', mg.ordering)) filter (where mg.image_url is not null) gallery,
+                JSONB_AGG(DISTINCT jsonb_build_object('image_url', mg.image_url, 'featured', mg.featured, 'name', mg.name, 'description', mg.description, 'created', mg.created, 'ordering', mg.ordering)) filter (where mg.image_url is not null) gallery,
                 JSONB_AGG(DISTINCT jsonb_build_object('platform_id', md.joining_platform_id, 'platform_short', dp.short, 'platform_name', dp.name,'url', md.url)) filter (where md.joining_platform_id is not null) donations
                 FROM mods m                
                 INNER JOIN threads t ON t.mod_id = m.id
@@ -612,10 +610,9 @@ impl Project {
                             id: ProjectId(id),
                             team_id: TeamId(m.team_id),
                             organization_id: m.organization_id.map(OrganizationId),
-                            name: m.title.clone(),
-                            description: m.description.clone(),
+                            name: m.name.clone(),
+                            summary: m.summary.clone(),
                             downloads: m.downloads,
-                            body_url: None,
                             icon_url: m.icon_url.clone(),
                             published: m.published,
                             updated: m.updated,
@@ -632,7 +629,7 @@ impl Project {
                             )),
                             license: m.license.clone(),
                             slug: m.slug.clone(),
-                            body: m.body.clone(),
+                            description: m.description.clone(),
                             follows: m.follows,
                             moderation_message: m.moderation_message,
                             moderation_message_body: m.moderation_message_body,

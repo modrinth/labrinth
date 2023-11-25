@@ -336,8 +336,8 @@ pub async fn project_edit(
 
     let new_project = v3::projects::EditProject {
         name: v2_new_project.title,
-        description: v2_new_project.description,
-        body: v2_new_project.body,
+        summary: v2_new_project.description, // Description becomes summary
+        description: v2_new_project.body, // Body becomes description
         categories: v2_new_project.categories,
         additional_categories: v2_new_project.additional_categories,
         issues_url: v2_new_project.issues_url,

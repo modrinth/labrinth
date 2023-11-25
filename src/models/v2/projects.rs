@@ -127,12 +127,12 @@ impl LegacyProject {
             id: data.id,
             slug: data.slug,
             project_type,
-            team: data.team,
+            team: data.team_id,
             organization: data.organization,
             title: data.name,
-            description: data.description,
-            body: data.body,
-            body_url: data.body_url,
+            description: data.summary, // V2 description is V3 summary
+            body: data.description,   // V2 body is V3 description
+            body_url: None, // Always None even in V2
             published: data.published,
             updated: data.updated,
             approved: data.approved,
@@ -293,7 +293,7 @@ impl From<Version> for LegacyVersion {
             name: data.name,
             version_number: data.version_number,
             changelog: data.changelog,
-            changelog_url: data.changelog_url,
+            changelog_url: None, // Always None even in V2
             date_published: data.date_published,
             downloads: data.downloads,
             version_type: data.version_type,

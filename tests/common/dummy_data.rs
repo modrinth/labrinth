@@ -4,7 +4,7 @@ use std::io::{Cursor, Write};
 use actix_http::StatusCode;
 use actix_web::test::{self, TestRequest};
 use labrinth::models::{
-    oauth_clients::OAuthClient, organizations::Organization, pats::Scopes, projects::ProjectId,
+    oauth_clients::OAuthClient, organizations::Organization, pats::Scopes, projects::{ProjectId, Project, Version},
 };
 use serde_json::json;
 use sqlx::Executor;
@@ -14,10 +14,7 @@ use crate::common::{api_common::Api, database::USER_USER_PAT};
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
 use super::{
-    api_common::{
-        models::{CommonProject, CommonVersion},
-        ApiProject,
-    },
+    api_common::ApiProject,
     api_v3::ApiV3,
     database::TemporaryDatabase,
 };
@@ -174,16 +171,16 @@ pub struct DummyData {
 
 impl DummyData {
     pub fn new(
-        project_alpha: CommonProject,
-        project_alpha_version: CommonVersion,
-        project_beta: CommonProject,
-        project_beta_version: CommonVersion,
+        project_alpha: Project,
+        project_alpha_version: Version,
+        project_beta: Project,
+        project_beta_version: Version,
         organization_zeta: Organization,
         oauth_client_alpha: OAuthClient,
     ) -> Self {
         DummyData {
             project_alpha: DummyProjectAlpha {
-                team_id: project_alpha.team.to_string(),
+                team_id: project_alpha.team_id.to_string(),
                 project_id: project_alpha.id.to_string(),
                 project_slug: project_alpha.slug.unwrap(),
                 project_id_parsed: project_alpha.id,
@@ -193,7 +190,7 @@ impl DummyData {
             },
 
             project_beta: DummyProjectBeta {
-                team_id: project_beta.team.to_string(),
+                team_id: project_beta.team_id.to_string(),
                 project_id: project_beta.id.to_string(),
                 project_slug: project_beta.slug.unwrap(),
                 project_id_parsed: project_beta.id,
@@ -311,7 +308,7 @@ pub async fn get_dummy_data(api: &ApiV3) -> DummyData {
     )
 }
 
-pub async fn add_project_alpha(api: &ApiV3) -> (CommonProject, CommonVersion) {
+pub async fn add_project_alpha(api: &ApiV3) -> (Project, Version) {
     let (project, versions) = api
         .add_public_project(
             "alpha",
@@ -320,10 +317,16 @@ pub async fn add_project_alpha(api: &ApiV3) -> (CommonProject, CommonVersion) {
             USER_USER_PAT,
         )
         .await;
-    (project, versions.into_iter().next().unwrap())
+    let alpha_project = api
+        .get_project_deserialized(project.id.to_string().as_str(), USER_USER_PAT)
+        .await;
+    let alpha_version = api
+        .get_version_deserialized(&versions.into_iter().next().unwrap().id.to_string(), USER_USER_PAT)
+        .await;
+    (alpha_project, alpha_version)
 }
 
-pub async fn add_project_beta(api: &ApiV3) -> (CommonProject, CommonVersion) {
+pub async fn add_project_beta(api: &ApiV3) -> (Project, Version) {
     // Adds dummy data to the database with sqlx (projects, versions, threads)
     // Generate test project data.
     let jar = TestFile::DummyProjectBeta;
@@ -332,8 +335,8 @@ pub async fn add_project_beta(api: &ApiV3) -> (CommonProject, CommonVersion) {
         {
             "name": "Test Project Beta",
             "slug": "beta",
-            "description": "A dummy project for testing with.",
-            "body": "This project is not-yet-approved, and versions are draft.",
+            "summary": "A dummy project for testing with.",
+            "description": "This project is not-yet-approved, and versions are draft.",
             "initial_versions": [{
                 "file_parts": [jar.filename()],
                 "version_number": "1.2.3",
@@ -377,6 +380,7 @@ pub async fn add_project_beta(api: &ApiV3) -> (CommonProject, CommonVersion) {
         .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         .to_request();
     let resp = api.call(req).await;
+    println!("{:?}", resp.response().body());
     assert_eq!(resp.status(), 200);
 
     get_project_beta(api).await
@@ -399,14 +403,14 @@ pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
     get_organization_zeta(api).await
 }
 
-pub async fn get_project_alpha(api: &ApiV3) -> (CommonProject, CommonVersion) {
+pub async fn get_project_alpha(api: &ApiV3) -> (Project, Version) {
     // Get project
     let req = TestRequest::get()
         .uri("/v3/project/alpha")
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = api.call(req).await;
-    let project: CommonProject = test::read_body_json(resp).await;
+    let project: Project = test::read_body_json(resp).await;
 
     // Get project's versions
     let req = TestRequest::get()
@@ -414,13 +418,13 @@ pub async fn get_project_alpha(api: &ApiV3) -> (CommonProject, CommonVersion) {
         .append_header(("Authorization", USER_USER_PAT))
         .to_request();
     let resp = api.call(req).await;
-    let versions: Vec<CommonVersion> = test::read_body_json(resp).await;
+    let versions: Vec<Version> = test::read_body_json(resp).await;
     let version = versions.into_iter().next().unwrap();
 
     (project, version)
 }
 
-pub async fn get_project_beta(api: &ApiV3) -> (CommonProject, CommonVersion) {
+pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
     // Get project
     let req = TestRequest::get()
         .uri("/v3/project/beta")
@@ -429,7 +433,7 @@ pub async fn get_project_beta(api: &ApiV3) -> (CommonProject, CommonVersion) {
     let resp = api.call(req).await;
     assert_status(&resp, StatusCode::OK);
     let project: serde_json::Value = test::read_body_json(resp).await;
-    let project: CommonProject = serde_json::from_value(project).unwrap();
+    let project: Project = serde_json::from_value(project).unwrap();
 
     // Get project's versions
     let req = TestRequest::get()
@@ -438,7 +442,7 @@ pub async fn get_project_beta(api: &ApiV3) -> (CommonProject, CommonVersion) {
         .to_request();
     let resp = api.call(req).await;
     assert_status(&resp, StatusCode::OK);
-    let versions: Vec<CommonVersion> = test::read_body_json(resp).await;
+    let versions: Vec<Version> = test::read_body_json(resp).await;
     let version = versions.into_iter().next().unwrap();
 
     (project, version)

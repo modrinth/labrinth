@@ -176,9 +176,9 @@ pub struct EditProject {
     )]
     pub name: Option<String>,
     #[validate(length(min = 3, max = 256))]
-    pub description: Option<String>,
+    pub summary: Option<String>,
     #[validate(length(max = 65536))]
-    pub body: Option<String>,
+    pub description: Option<String>,
     #[validate(length(max = 3))]
     pub categories: Option<Vec<String>>,
     #[validate(length(max = 256))]
@@ -313,7 +313,7 @@ pub async fn project_edit(
             if let Some(name) = &new_project.name {
                 if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the title of this project!"
+                        "You do not have the permissions to edit the name of this project!"
                             .to_string(),
                     ));
                 }
@@ -321,7 +321,7 @@ pub async fn project_edit(
                 sqlx::query!(
                     "
                     UPDATE mods
-                    SET title = $1
+                    SET name = $1
                     WHERE (id = $2)
                     ",
                     name.trim(),
@@ -331,10 +331,10 @@ pub async fn project_edit(
                 .await?;
             }
 
-            if let Some(description) = &new_project.description {
+            if let Some(summary) = &new_project.summary {
                 if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
                     return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the description of this project!"
+                        "You do not have the permissions to edit the summary of this project!"
                             .to_string(),
                     ));
                 }
@@ -342,10 +342,10 @@ pub async fn project_edit(
                 sqlx::query!(
                     "
                     UPDATE mods
-                    SET description = $1
+                    SET summary = $1
                     WHERE (id = $2)
                     ",
-                    description,
+                    summary,
                     id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
@@ -877,10 +877,10 @@ pub async fn project_edit(
                 .await?;
             }
 
-            if let Some(body) = &new_project.body {
+            if let Some(description) = &new_project.description {
                 if !perms.contains(ProjectPermissions::EDIT_BODY) {
                     return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the body of this project!"
+                        "You do not have the permissions to edit the description (body) of this project!"
                             .to_string(),
                     ));
                 }
@@ -888,10 +888,10 @@ pub async fn project_edit(
                 sqlx::query!(
                     "
                     UPDATE mods
-                    SET body = $1
+                    SET description = $1
                     WHERE (id = $2)
                     ",
-                    body,
+                    description,
                     id as db_ids::ProjectId,
                 )
                 .execute(&mut *transaction)
@@ -932,7 +932,7 @@ pub async fn project_edit(
 
             // check new description and body for links to associated images
             // if they no longer exist in the description or body, delete them
-            let checkable_strings: Vec<&str> = vec![&new_project.description, &new_project.body]
+            let checkable_strings: Vec<&str> = vec![&new_project.description, &new_project.summary]
                 .into_iter()
                 .filter_map(|x| x.as_ref().map(|y| y.as_str()))
                 .collect();
@@ -2105,7 +2105,7 @@ pub async fn edit_gallery_item(
         sqlx::query!(
             "
             UPDATE mods_gallery
-            SET title = $2
+            SET name = $2
             WHERE id = $1
             ",
             id,

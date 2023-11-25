@@ -92,8 +92,8 @@ pub fn get_public_project_creation_data_json(
         {
             "name": format!("Test Project {slug}"),
             "slug": slug,
-            "description": "A dummy project for testing with.",
-            "body": "This project is approved, and versions are listed.",
+            "summary": "A dummy project for testing with.",
+            "description": "This project is approved, and versions are listed.",
             "initial_versions": initial_versions,
             "is_draft": is_draft,
             "categories": [],
