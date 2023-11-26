@@ -85,6 +85,7 @@ pub struct LoaderData {
     pub supported_project_types: Vec<String>,
     pub supported_games: Vec<String>,
     pub supported_fields: Vec<String>, // Available loader fields for this loader
+    pub metadata: Value,
 }
 
 pub async fn loader_list(
@@ -105,6 +106,7 @@ pub async fn loader_list(
             supported_project_types: x.supported_project_types,
             supported_games: x.supported_games,
             supported_fields: loader_fields.get(&x.id).map(|x| x.iter().map(|x| x.field.clone()).collect_vec()).unwrap_or_default()
+            metadata: x.metadata,
         })
         .collect::<Vec<_>>();
 
