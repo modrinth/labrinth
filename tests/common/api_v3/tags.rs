@@ -2,18 +2,25 @@ use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
 };
+use async_trait::async_trait;
 use labrinth::routes::v3::tags::GameData;
 use labrinth::{
-    database::models::loader_fields::LoaderFieldEnumValue,
-    routes::v3::tags::{CategoryData, LoaderData},
+    database::models::loader_fields::LoaderFieldEnumValue, routes::v3::tags::LoaderData,
 };
 
-use crate::common::database::ADMIN_USER_PAT;
+use crate::common::{
+    api_common::{
+        models::{CommonCategoryData, CommonLoaderData},
+        Api, ApiTags,
+    },
+    database::ADMIN_USER_PAT,
+};
 
 use super::ApiV3;
 
-impl ApiV3 {
-    pub async fn get_loaders(&self) -> ServiceResponse {
+#[async_trait(?Send)]
+impl ApiTags for ApiV3 {
+    async fn get_loaders(&self) -> ServiceResponse {
         let req = TestRequest::get()
             .uri("/v3/tag/loader")
             .append_header(("Authorization", ADMIN_USER_PAT))
@@ -21,13 +28,13 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_loaders_deserialized(&self) -> Vec<LoaderData> {
+    async fn get_loaders_deserialized_common(&self) -> Vec<CommonLoaderData> {
         let resp = self.get_loaders().await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
 
-    pub async fn get_categories(&self) -> ServiceResponse {
+    async fn get_categories(&self) -> ServiceResponse {
         let req = TestRequest::get()
             .uri("/v3/tag/category")
             .append_header(("Authorization", ADMIN_USER_PAT))
@@ -35,8 +42,16 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_categories_deserialized(&self) -> Vec<CategoryData> {
+    async fn get_categories_deserialized_common(&self) -> Vec<CommonCategoryData> {
         let resp = self.get_categories().await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+}
+
+impl ApiV3 {
+    pub async fn get_loaders_deserialized(&self) -> Vec<LoaderData> {
+        let resp = self.get_loaders().await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
@@ -59,7 +74,7 @@ impl ApiV3 {
     }
 
     // TODO: fold this into v3 API of other v3 testing PR
-    pub async fn get_games(&self) -> ServiceResponse {
+    async fn get_games(&self) -> ServiceResponse {
         let req = TestRequest::get()
             .uri("/v3/games")
             .append_header(("Authorization", ADMIN_USER_PAT))
