@@ -371,7 +371,6 @@ pub async fn project_edit(
     // (resetting to the new ones)
     if let Some(donation_urls) = v2_new_project.donation_urls {
         // Fetch current donation links from project so we know what to delete
-        // Todo ensure secure
         let fetched_example_project = project_item::Project::get(&info.0, &**pool, &redis).await?;
         let donation_links = fetched_example_project
             .map(|x| {
