@@ -1,7 +1,10 @@
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::models::{ids::{NotificationId, UserId}, notifications::{NotificationBody, Notification, NotificationAction}};
+use crate::models::{
+    ids::{NotificationId, UserId},
+    notifications::{Notification, NotificationAction, NotificationBody},
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct LegacyNotification {
@@ -28,7 +31,7 @@ pub struct LegacyNotificationAction {
 }
 
 impl LegacyNotification {
-    pub fn from(notification : Notification) -> Self {
+    pub fn from(notification: Notification) -> Self {
         Self {
             id: notification.id,
             user_id: notification.user_id,
@@ -39,16 +42,20 @@ impl LegacyNotification {
             title: notification.name,
             text: notification.text,
             link: notification.link,
-            actions: notification.actions.into_iter().map(LegacyNotificationAction::from).collect()
+            actions: notification
+                .actions
+                .into_iter()
+                .map(LegacyNotificationAction::from)
+                .collect(),
         }
     }
 }
 
 impl LegacyNotificationAction {
-    pub fn from(notification_action : NotificationAction) -> Self {
+    pub fn from(notification_action: NotificationAction) -> Self {
         Self {
             title: notification_action.name,
-            action_route: notification_action.action_route
+            action_route: notification_action.action_route,
         }
     }
 }

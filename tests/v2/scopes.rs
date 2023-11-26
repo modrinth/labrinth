@@ -18,7 +18,9 @@ pub async fn project_version_create_scopes() {
         // Create project
         let api = &test_env.api;
         let create_project = Scopes::PROJECT_CREATE;
-        let json_data = api.get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod)).await;
+        let json_data = api
+            .get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod))
+            .await;
         let json_segment = MultipartSegment {
             name: "data".to_string(),
             filename: None,
@@ -92,13 +94,15 @@ pub async fn project_version_create_scopes() {
 
 #[actix_rt::test]
 pub async fn project_version_create_scopes_v2() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         // TODO: If possible, find a way to use generic api functions with the Permissions/Scopes test, then this can be recombined with the V2 version of this test
         let api = &test_env.api;
-        
+
         // Create project
         let create_project = Scopes::PROJECT_CREATE;
-        let json_data = api.get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod)).await;
+        let json_data = api
+            .get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod))
+            .await;
         let json_segment = MultipartSegment {
             name: "data".to_string(),
             filename: None,

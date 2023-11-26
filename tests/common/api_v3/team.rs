@@ -1,7 +1,10 @@
 use actix_http::StatusCode;
 use actix_web::{dev::ServiceResponse, test};
 use async_trait::async_trait;
-use labrinth::models::{teams::{OrganizationPermissions, ProjectPermissions, TeamMember}, notifications::Notification};
+use labrinth::models::{
+    notifications::Notification,
+    teams::{OrganizationPermissions, ProjectPermissions, TeamMember},
+};
 use serde_json::json;
 
 use crate::common::{
@@ -25,15 +28,11 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
-    pub async fn get_team_members_deserialized(
-        &self,
-        team_id: &str,
-        pat: &str,
-    ) -> Vec<TeamMember> {
+    pub async fn get_team_members_deserialized(&self, team_id: &str, pat: &str) -> Vec<TeamMember> {
         let resp = self.get_team_members(team_id, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
-    }   
+    }
 }
 
 #[async_trait(?Send)]

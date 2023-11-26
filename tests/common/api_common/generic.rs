@@ -14,7 +14,8 @@ use crate::common::{api_v2::ApiV2, api_v3::ApiV3, dummy_data::TestFile};
 
 use super::{
     models::{CommonImageData, CommonProject, CommonVersion},
-    Api, ApiProject, ApiTags, ApiTeams, ApiVersion, request_data::ProjectCreationRequestData,
+    request_data::ProjectCreationRequestData,
+    Api, ApiProject, ApiTags, ApiTeams, ApiVersion,
 };
 
 #[derive(Clone)]

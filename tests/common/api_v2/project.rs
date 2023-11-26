@@ -1,7 +1,8 @@
 use crate::common::{
     api_common::{
         models::{CommonImageData, CommonProject, CommonVersion},
-        Api, ApiProject, request_data::ProjectCreationRequestData,
+        request_data::ProjectCreationRequestData,
+        Api, ApiProject,
     },
     dummy_data::TestFile,
 };
@@ -19,7 +20,10 @@ use serde_json::json;
 
 use crate::common::{asserts::assert_status, database::MOD_USER_PAT};
 
-use super::{request_data::{get_public_project_creation_data, self}, ApiV2};
+use super::{
+    request_data::{self, get_public_project_creation_data},
+    ApiV2,
+};
 
 impl ApiV2 {
     pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> LegacyProject {
@@ -68,9 +72,7 @@ impl ApiProject for ApiV2 {
         let resp = self.call(req).await;
         assert_status(&resp, StatusCode::NO_CONTENT);
 
-        let project = self
-            .get_project_deserialized_common(&slug, pat)
-            .await;
+        let project = self.get_project_deserialized_common(&slug, pat).await;
 
         // Get project's versions
         let req = TestRequest::get()
@@ -83,11 +85,19 @@ impl ApiProject for ApiV2 {
         (project, versions)
     }
 
-    async fn get_public_project_creation_data_json(&self, slug: &str, version_jar: Option<&TestFile>) -> serde_json::Value {
-        request_data::get_public_project_creation_data_json(slug, version_jar)   
+    async fn get_public_project_creation_data_json(
+        &self,
+        slug: &str,
+        version_jar: Option<&TestFile>,
+    ) -> serde_json::Value {
+        request_data::get_public_project_creation_data_json(slug, version_jar)
     }
 
-    async fn create_project(&self, creation_data: ProjectCreationRequestData, pat: &str) -> ServiceResponse {
+    async fn create_project(
+        &self,
+        creation_data: ProjectCreationRequestData,
+        pat: &str,
+    ) -> ServiceResponse {
         println!("Creating v2 project");
         let req = TestRequest::post()
             .uri("/v2/project")

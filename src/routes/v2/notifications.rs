@@ -43,10 +43,14 @@ pub async fn notifications_get(
         redis,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error);
+    .await
+    .or_else(v2_reroute::flatten_404_error);
     match v2_reroute::extract_ok_json::<Vec<Notification>>(resp?).await {
         Ok(notifications) => {
-            let notifications : Vec<LegacyNotification> = notifications.into_iter().map(LegacyNotification::from).collect();
+            let notifications: Vec<LegacyNotification> = notifications
+                .into_iter()
+                .map(LegacyNotification::from)
+                .collect();
             Ok(HttpResponse::Ok().json(notifications))
         }
         Err(response) => Ok(response),
@@ -61,7 +65,9 @@ pub async fn notification_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let response = v3::notifications::notification_get(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::notifications::notification_get(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)?;
     match v2_reroute::extract_ok_json::<Notification>(response).await {
         Ok(notification) => {
             let notification = LegacyNotification::from(notification);
@@ -79,7 +85,9 @@ pub async fn notification_read(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_read(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    v3::notifications::notification_read(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[delete("{id}")]
@@ -90,7 +98,9 @@ pub async fn notification_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::notifications::notification_delete(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    v3::notifications::notification_delete(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[patch("notifications")]
@@ -108,7 +118,8 @@ pub async fn notifications_read(
         redis,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 #[delete("notifications")]
@@ -126,5 +137,6 @@ pub async fn notifications_delete(
         redis,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }

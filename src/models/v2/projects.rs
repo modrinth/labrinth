@@ -6,8 +6,8 @@ use crate::database::models::{version_item, DatabaseError};
 use crate::database::redis::RedisPool;
 use crate::models::ids::{ProjectId, VersionId};
 use crate::models::projects::{
-    Dependency, DonationLink, License, Loader, ModeratorMessage, MonetizationStatus,
-    Project, ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
+    Dependency, DonationLink, License, Loader, ModeratorMessage, MonetizationStatus, Project,
+    ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
 };
 use crate::models::threads::ThreadId;
 use chrono::{DateTime, Utc};
@@ -131,8 +131,8 @@ impl LegacyProject {
             organization: data.organization,
             title: data.name,
             description: data.summary, // V2 description is V3 summary
-            body: data.description,   // V2 body is V3 description
-            body_url: None, // Always None even in V2
+            body: data.description,    // V2 body is V3 description
+            body_url: None,            // Always None even in V2
             published: data.published,
             updated: data.updated,
             approved: data.approved,
@@ -153,7 +153,11 @@ impl LegacyProject {
             wiki_url: data.wiki_url,
             discord_url: data.discord_url,
             donation_urls: data.donation_urls,
-            gallery: data.gallery.into_iter().map(LegacyGalleryItem::from).collect(),
+            gallery: data
+                .gallery
+                .into_iter()
+                .map(LegacyGalleryItem::from)
+                .collect(),
             color: data.color,
             thread_id: data.thread_id,
             monetization_status: data.monetization_status,
@@ -312,7 +316,7 @@ impl From<Version> for LegacyVersion {
 pub struct LegacyGalleryItem {
     pub url: String,
     pub featured: bool,
-    pub name : Option<String>,
+    pub name: Option<String>,
     pub description: Option<String>,
     pub created: DateTime<Utc>,
     pub ordering: i64,

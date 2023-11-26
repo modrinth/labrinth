@@ -1,7 +1,10 @@
 use actix_http::StatusCode;
 use actix_web::{dev::ServiceResponse, test};
 use async_trait::async_trait;
-use labrinth::models::{teams::{OrganizationPermissions, ProjectPermissions}, v2::{notifications::LegacyNotification, teams::LegacyTeamMember}};
+use labrinth::models::{
+    teams::{OrganizationPermissions, ProjectPermissions},
+    v2::{notifications::LegacyNotification, teams::LegacyTeamMember},
+};
 use serde_json::json;
 
 use crate::common::{
@@ -33,8 +36,7 @@ impl ApiV2 {
         let resp = self.get_team_members(team_id, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
-    }   
-
+    }
 }
 
 #[async_trait(?Send)]

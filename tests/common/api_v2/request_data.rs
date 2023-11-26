@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 use serde_json::json;
 
-use crate::common::{dummy_data::{DummyImage, TestFile}, api_common::request_data::{ProjectCreationRequestData, VersionCreationRequestData, ImageData}};
+use crate::common::{
+    api_common::request_data::{ImageData, ProjectCreationRequestData, VersionCreationRequestData},
+    dummy_data::{DummyImage, TestFile},
+};
 use labrinth::{
     models::projects::ProjectId,
     util::actix::{MultipartSegment, MultipartSegmentData},

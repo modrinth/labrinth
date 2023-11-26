@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                      SELECT EXISTS(SELECT 1 FROM organizations WHERE title = LOWER($1))\n                      ",
+  "query": "\n                      SELECT EXISTS(SELECT 1 FROM organizations WHERE name = LOWER($1))\n                      ",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       null
     ]
   },
-  "hash": "e3389d233c75649e95456d504d1b716d520a03a8a3e0cc5311a4a753f1f04614"
+  "hash": "da30019590b9d0f7e21668997e780044c67a7c5d225e556c7ec2a4d7709db5ea"
 }

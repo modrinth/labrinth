@@ -1,10 +1,12 @@
-
+use crate::common::api_common::ApiProject;
 use actix_web::test;
 use bytes::Bytes;
-use crate::common::api_common::ApiProject;
 
 use crate::common::database::USER_USER_PAT;
-use crate::common::{environment::{with_test_environment, TestEnvironment}, api_v2::ApiV2};
+use crate::common::{
+    api_v2::ApiV2,
+    environment::{with_test_environment, TestEnvironment},
+};
 #[actix_rt::test]
 pub async fn error_404_empty() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
@@ -15,7 +17,6 @@ pub async fn error_404_empty() {
         let body = test::read_body(resp).await;
         let empty_bytes = Bytes::from_static(b"");
         assert_eq!(body, empty_bytes);
-        
     })
     .await;
 }

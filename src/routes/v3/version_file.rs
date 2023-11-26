@@ -52,7 +52,10 @@ pub async fn get_version_from_hash(
     .map(|x| x.1)
     .ok();
     let hash = info.into_inner().0.to_lowercase();
-    let algorithm = hash_query.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
+    let algorithm = hash_query
+        .algorithm
+        .clone()
+        .unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
     let file = database::models::Version::get_file_from_hash(
         algorithm,
         hash,
@@ -84,16 +87,16 @@ pub struct HashQuery {
 }
 
 // Calculates whether or not to use sha1 or sha512 based on the size of the hash
-pub fn default_algorithm_from_hashes(hashes : &[String]) -> String {
-    // Gets first hash, optionally 
+pub fn default_algorithm_from_hashes(hashes: &[String]) -> String {
+    // Gets first hash, optionally
     let empty_string = "".into();
-    let hash = hashes.get(0).unwrap_or(&empty_string);
+    let hash = hashes.first().unwrap_or(&empty_string);
     let hash_len = hash.len();
     // Sha1 = 40 characters
     // Sha512 = 128 characters
     // Favour sha1 as default, unless the hash is longer or equal to 128 characters
     if hash_len >= 128 {
-        return "sha512".into()
+        return "sha512".into();
     }
     "sha1".into()
 }
@@ -133,7 +136,10 @@ pub async fn get_update_from_hash(
     let hash = info.into_inner().0.to_lowercase();
 
     if let Some(file) = database::models::Version::get_file_from_hash(
-        hash_query.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()])),
+        hash_query
+            .algorithm
+            .clone()
+            .unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()])),
         hash,
         hash_query.version_id.map(|x| x.into()),
         &**pool,
@@ -210,7 +216,10 @@ pub async fn get_versions_from_hashes(
     .map(|x| x.1)
     .ok();
 
-    let algorithm = file_data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&file_data.hashes));
+    let algorithm = file_data
+        .algorithm
+        .clone()
+        .unwrap_or_else(|| default_algorithm_from_hashes(&file_data.hashes));
 
     let files = database::models::Version::get_files_from_hash(
         algorithm.clone(),
@@ -259,7 +268,10 @@ pub async fn get_projects_from_hashes(
     .map(|x| x.1)
     .ok();
 
-    let algorithm = file_data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&file_data.hashes));
+    let algorithm = file_data
+        .algorithm
+        .clone()
+        .unwrap_or_else(|| default_algorithm_from_hashes(&file_data.hashes));
     let files = database::models::Version::get_files_from_hash(
         algorithm.clone(),
         &file_data.hashes,
@@ -316,7 +328,10 @@ pub async fn update_files(
     .map(|x| x.1)
     .ok();
 
-    let algorithm = update_data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&update_data.hashes));
+    let algorithm = update_data
+        .algorithm
+        .clone()
+        .unwrap_or_else(|| default_algorithm_from_hashes(&update_data.hashes));
     let files = database::models::Version::get_files_from_hash(
         algorithm.clone(),
         &update_data.hashes,
@@ -425,7 +440,15 @@ pub async fn update_individual_files(
     .map(|x| x.1)
     .ok();
 
-    let algorithm = update_data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&update_data.hashes.iter().map(|x| x.hash.clone()).collect::<Vec<_>>()));
+    let algorithm = update_data.algorithm.clone().unwrap_or_else(|| {
+        default_algorithm_from_hashes(
+            &update_data
+                .hashes
+                .iter()
+                .map(|x| x.hash.clone())
+                .collect::<Vec<_>>(),
+        )
+    });
     let files = database::models::Version::get_files_from_hash(
         algorithm.clone(),
         &update_data
@@ -527,7 +550,10 @@ pub async fn delete_file(
     .1;
 
     let hash = info.into_inner().0.to_lowercase();
-    let algorithm = hash_query.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
+    let algorithm = hash_query
+        .algorithm
+        .clone()
+        .unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
     let file = database::models::Version::get_file_from_hash(
         algorithm.clone(),
         hash,
@@ -648,7 +674,10 @@ pub async fn download_version(
     .ok();
 
     let hash = info.into_inner().0.to_lowercase();
-    let algorithm = hash_query.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
+    let algorithm = hash_query
+        .algorithm
+        .clone()
+        .unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()]));
     let file = database::models::Version::get_file_from_hash(
         algorithm.clone(),
         hash,

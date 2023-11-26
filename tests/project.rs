@@ -6,7 +6,7 @@ use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
 
-use common::environment::{with_test_environment_all, with_test_environment, TestEnvironment};
+use common::environment::{with_test_environment, with_test_environment_all, TestEnvironment};
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
@@ -108,7 +108,9 @@ async fn test_add_remove_project() {
         let api = &test_env.api;
 
         // Generate test project data.
-        let mut json_data = api.get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod)).await;
+        let mut json_data = api
+            .get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod))
+            .await;
 
         // Basic json
         let json_segment = MultipartSegment {
@@ -165,11 +167,16 @@ async fn test_add_remove_project() {
         };
 
         // Add a project- simple, should work.
-        let resp = api.create_project(ProjectCreationRequestData {
-            slug: "demo".to_string(),   
-            segment_data: vec![json_segment.clone(), file_segment.clone()],
-            jar: None, // File not needed at this point
-        }, USER_USER_PAT).await;
+        let resp = api
+            .create_project(
+                ProjectCreationRequestData {
+                    slug: "demo".to_string(),
+                    segment_data: vec![json_segment.clone(), file_segment.clone()],
+                    jar: None, // File not needed at this point
+                },
+                USER_USER_PAT,
+            )
+            .await;
 
         let status = resp.status();
         assert_eq!(status, 200);
@@ -192,27 +199,51 @@ async fn test_add_remove_project() {
 
         // Reusing with a different slug and the same file should fail
         // Even if that file is named differently
-        let resp = api.create_project(ProjectCreationRequestData {
-            slug: "demo".to_string(),   
-            segment_data: vec![json_diff_slug_file_segment.clone(), file_diff_name_segment.clone()],
-            jar: None, // File not needed at this point
-        }, USER_USER_PAT).await;
+        let resp = api
+            .create_project(
+                ProjectCreationRequestData {
+                    slug: "demo".to_string(),
+                    segment_data: vec![
+                        json_diff_slug_file_segment.clone(),
+                        file_diff_name_segment.clone(),
+                    ],
+                    jar: None, // File not needed at this point
+                },
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 400);
 
         // Reusing with the same slug and a different file should fail
-        let resp = api.create_project(ProjectCreationRequestData {
-            slug: "demo".to_string(),   
-            segment_data: vec![json_diff_file_segment.clone(), file_diff_name_content_segment.clone()],
-            jar: None, // File not needed at this point
-        }, USER_USER_PAT).await;
+        let resp = api
+            .create_project(
+                ProjectCreationRequestData {
+                    slug: "demo".to_string(),
+                    segment_data: vec![
+                        json_diff_file_segment.clone(),
+                        file_diff_name_content_segment.clone(),
+                    ],
+                    jar: None, // File not needed at this point
+                },
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 400);
 
         // Different slug, different file should succeed
-        let resp = api.create_project(ProjectCreationRequestData {
-            slug: "demo".to_string(),   
-            segment_data: vec![json_diff_slug_file_segment.clone(), file_diff_name_content_segment.clone()],
-            jar: None, // File not needed at this point
-        }, USER_USER_PAT).await;
+        let resp = api
+            .create_project(
+                ProjectCreationRequestData {
+                    slug: "demo".to_string(),
+                    segment_data: vec![
+                        json_diff_slug_file_segment.clone(),
+                        file_diff_name_content_segment.clone(),
+                    ],
+                    jar: None, // File not needed at this point
+                },
+                USER_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 200);
 
         // Get
@@ -410,7 +441,7 @@ pub async fn test_patch_project() {
 #[actix_rt::test]
 pub async fn test_patch_v3() {
     // Hits V3-specific patchable fields
-    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
         let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
@@ -436,7 +467,8 @@ pub async fn test_patch_v3() {
         assert_eq!(project.name, "New successful title");
         assert_eq!(project.summary, "New successful summary");
         assert_eq!(project.description, "New successful description");
-    }).await;
+    })
+    .await;
 }
 
 #[actix_rt::test]
@@ -489,7 +521,7 @@ async fn permissions_patch_project_v3() {
         // TODO: This should be a separate test from v3
         // - only a couple of these fields are v3-specific
         // once we have permissions/scope tests setup to not just take closures, we can split this up
-        
+
         // For each permission covered by EDIT_DETAILS, ensure the permission is required
         let edit_details = ProjectPermissions::EDIT_DETAILS;
         let test_pairs = [
@@ -499,10 +531,13 @@ async fn permissions_patch_project_v3() {
             ("description", json!("randomdescription")),
             ("categories", json!(["combat", "economy"])),
             ("additional_categories", json!(["decoration"])),
-            ("links", json!({
-                "issues": "https://issues.com",
-                "source": "https://source.com",
-            })),
+            (
+                "links",
+                json!({
+                    "issues": "https://issues.com",
+                    "source": "https://source.com",
+                }),
+            ),
             ("license_id", json!("MIT")),
         ];
 

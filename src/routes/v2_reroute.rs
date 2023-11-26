@@ -1,5 +1,5 @@
-use super::ApiError;
 use super::v3::project_creation::CreateError;
+use super::ApiError;
 use crate::util::actix::{generate_multipart, MultipartSegment, MultipartSegmentData};
 use actix_multipart::Multipart;
 use actix_web::http::header::{HeaderMap, TryIntoHeaderPair};
@@ -33,7 +33,7 @@ where
 
 // This only removes the body of 404 responses
 // This should not be used on the fallback no-route-found handler
-pub fn flatten_404_error(res : ApiError) -> Result<HttpResponse, ApiError> {
+pub fn flatten_404_error(res: ApiError) -> Result<HttpResponse, ApiError> {
     match res {
         ApiError::NotFound => Ok(HttpResponse::NotFound().body("")),
         _ => Err(res),

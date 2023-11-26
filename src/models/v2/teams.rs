@@ -1,14 +1,17 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{ids::TeamId, users::User, teams::{ProjectPermissions, OrganizationPermissions, TeamMember}};
+use crate::models::{
+    ids::TeamId,
+    teams::{OrganizationPermissions, ProjectPermissions, TeamMember},
+    users::User,
+};
 
 /// A member of a team
 #[derive(Serialize, Deserialize, Clone)]
 pub struct LegacyTeamMember {
     pub role: String,
     // is_owner removed, and role hardcoded to Owner if true,
-    
     pub team_id: TeamId,
     pub user: User,
     pub permissions: Option<ProjectPermissions>,
@@ -21,7 +24,7 @@ pub struct LegacyTeamMember {
 }
 
 impl LegacyTeamMember {
-    pub fn from(team_member : TeamMember) -> Self {
+    pub fn from(team_member: TeamMember) -> Self {
         LegacyTeamMember {
             role: match (team_member.is_owner, team_member.role.as_str()) {
                 (true, _) => "Owner".to_string(),

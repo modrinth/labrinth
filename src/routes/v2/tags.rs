@@ -157,7 +157,9 @@ pub struct LicenseText {
 
 #[get("license/{id}")]
 pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, ApiError> {
-    v3::tags::license_text(params).await.or_else(v2_reroute::flatten_404_error)
+    v3::tags::license_text(params)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(serde::Serialize)]
@@ -171,7 +173,9 @@ pub async fn donation_platform_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::donation_platform_list(pool, redis).await.or_else(v2_reroute::flatten_404_error)
+    v3::tags::donation_platform_list(pool, redis)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("report_type")]
@@ -179,7 +183,9 @@ pub async fn report_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::report_type_list(pool, redis).await.or_else(v2_reroute::flatten_404_error)
+    v3::tags::report_type_list(pool, redis)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("project_type")]
@@ -187,7 +193,9 @@ pub async fn project_type_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::tags::project_type_list(pool, redis).await.or_else(v2_reroute::flatten_404_error)
+    v3::tags::project_type_list(pool, redis)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("side_type")]
@@ -203,7 +211,8 @@ pub async fn side_type_list(
         }),
         redis,
     )
-    .await.or_else(v2_reroute::flatten_404_error)?;
+    .await
+    .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert to V2 format
     Ok(

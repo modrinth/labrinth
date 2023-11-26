@@ -75,7 +75,8 @@ pub async fn version_list(
 
     let response =
         v3::versions::version_list(req, info, web::Query(filters), pool, redis, session_queue)
-            .await.or_else(v2_reroute::flatten_404_error)?;
+            .await
+            .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Version>>(response).await {
@@ -100,8 +101,9 @@ pub async fn version_project_get(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner();
-    let response =
-        v3::versions::version_project_get_helper(req, id, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::versions::version_project_get_helper(req, id, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)?;
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Version>(response).await {
         Ok(version) => {
@@ -126,8 +128,9 @@ pub async fn versions_get(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = v3::versions::VersionIds { ids: ids.ids };
-    let response =
-        v3::versions::versions_get(req, web::Query(ids), pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::versions::versions_get(req, web::Query(ids), pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Version>>(response).await {
@@ -151,7 +154,9 @@ pub async fn version_get(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
-    let response = v3::versions::version_get_helper(req, id, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::versions::version_get_helper(req, id, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)?;
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Version>(response).await {
         Ok(version) => {
@@ -250,7 +255,8 @@ pub async fn version_edit(
         web::Json(serde_json::to_value(new_version)?),
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)?;
+    .await
+    .or_else(v2_reroute::flatten_404_error)?;
     Ok(response)
 }
 
@@ -280,7 +286,8 @@ pub async fn version_schedule(
         }),
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 #[delete("{version_id}")]
@@ -291,5 +298,7 @@ pub async fn version_delete(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::versions::version_delete(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    v3::versions::version_delete(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }

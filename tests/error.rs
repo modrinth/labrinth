@@ -1,4 +1,3 @@
-
 use actix_web::test;
 use bytes::Bytes;
 use common::api_common::ApiProject;
@@ -19,7 +18,6 @@ pub async fn error_404_body() {
         let body = test::read_body(resp).await;
         let empty_bytes = Bytes::from_static(b"");
         assert_ne!(body, empty_bytes);
-        
     })
     .await;
 }

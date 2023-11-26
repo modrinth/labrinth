@@ -8,21 +8,25 @@ use actix_web::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use labrinth::{search::SearchResults, util::actix::AppendsMultipart, models::projects::Project};
+use labrinth::{models::projects::Project, search::SearchResults, util::actix::AppendsMultipart};
 use rust_decimal::Decimal;
 use serde_json::json;
 
 use crate::common::{
     api_common::{
         models::{CommonImageData, CommonProject, CommonVersion},
-        Api, ApiProject, request_data::ProjectCreationRequestData,
+        request_data::ProjectCreationRequestData,
+        Api, ApiProject,
     },
     asserts::assert_status,
     database::MOD_USER_PAT,
     dummy_data::TestFile,
 };
 
-use super::{request_data::{get_public_project_creation_data, self}, ApiV3};
+use super::{
+    request_data::{self, get_public_project_creation_data},
+    ApiV3,
+};
 
 impl ApiV3 {
     pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {
@@ -75,11 +79,19 @@ impl ApiProject for ApiV3 {
         (project, versions)
     }
 
-    async fn get_public_project_creation_data_json(&self, slug: &str, version_jar: Option<&TestFile>) -> serde_json::Value {
-        request_data::get_public_project_creation_data_json(slug, version_jar)   
+    async fn get_public_project_creation_data_json(
+        &self,
+        slug: &str,
+        version_jar: Option<&TestFile>,
+    ) -> serde_json::Value {
+        request_data::get_public_project_creation_data_json(slug, version_jar)
     }
 
-    async fn create_project(&self, creation_data: ProjectCreationRequestData, pat: &str) -> ServiceResponse {
+    async fn create_project(
+        &self,
+        creation_data: ProjectCreationRequestData,
+        pat: &str,
+    ) -> ServiceResponse {
         let req = TestRequest::post()
             .uri("/v3/project")
             .append_header(("Authorization", pat))

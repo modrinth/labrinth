@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT m.id FROM organizations o\n        INNER JOIN mods m ON m.organization_id = o.id\n        WHERE (o.id = $1 AND $1 IS NOT NULL) OR (o.title = $2 AND $2 IS NOT NULL)\n        ",
+  "query": "\n        SELECT m.id FROM organizations o\n        INNER JOIN mods m ON m.organization_id = o.id\n        WHERE (o.id = $1 AND $1 IS NOT NULL) OR (o.name = $2 AND $2 IS NOT NULL)\n        ",
   "describe": {
     "columns": [
       {
@@ -19,5 +19,5 @@
       false
     ]
   },
-  "hash": "009bce5eee6ed65d9dc0899a4e24da528507a3f00b7ec997fa9ccdd7599655b1"
+  "hash": "da962cbb02919ea79e1106e6e5de39224d240d9b8afb5cead28578ca65e281ae"
 }

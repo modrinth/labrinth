@@ -1,6 +1,6 @@
 use super::ApiError;
 use crate::database::redis::RedisPool;
-use crate::routes::{v3, v2_reroute};
+use crate::routes::{v2_reroute, v3};
 use crate::{models::ids::VersionId, queue::session::AuthQueue};
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -115,7 +115,8 @@ pub async fn views_get(
         pool,
         redis,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 /// Get download data for a set of projects or versions
@@ -151,7 +152,8 @@ pub async fn downloads_get(
         pool,
         redis,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 /// Get payout data for a set of projects
@@ -185,7 +187,8 @@ pub async fn revenue_get(
         pool,
         redis,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 /// Get country data for a set of projects or versions
@@ -224,7 +227,8 @@ pub async fn countries_downloads_get(
         pool,
         redis,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 /// Get country data for a set of projects or versions
@@ -263,5 +267,6 @@ pub async fn countries_views_get(
         pool,
         redis,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }

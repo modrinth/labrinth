@@ -81,7 +81,7 @@ async fn create_organization() {
             Some(OrganizationPermissions::all())
         );
         assert_eq!(members[0].role, "Owner");
-        assert_eq!(members[0].is_owner, true);
+        assert!(members[0].is_owner);
     })
     .await;
 }

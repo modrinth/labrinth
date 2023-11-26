@@ -201,7 +201,7 @@ impl From<QueryProject> for Project {
 pub struct GalleryItem {
     pub url: String,
     pub featured: bool,
-    pub name : Option<String>,
+    pub name: Option<String>,
     pub description: Option<String>,
     pub created: DateTime<Utc>,
     pub ordering: i64,

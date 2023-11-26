@@ -232,7 +232,7 @@ impl ApiVersion for ApiV3 {
         let resp = self.get_versions_from_hashes(hashes, algorithm, pat).await;
         assert_eq!(resp.status(), 200);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
-        let v: HashMap<String,Version> = test::read_body_json(resp).await;
+        let v: HashMap<String, Version> = test::read_body_json(resp).await;
         // Then, deserialize to the common format
         let value = serde_json::to_value(v).unwrap();
         serde_json::from_value(value).unwrap()
@@ -344,7 +344,7 @@ impl ApiVersion for ApiV3 {
             .await;
         assert_eq!(resp.status(), 200);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
-        let v: HashMap<String,Version> = test::read_body_json(resp).await;
+        let v: HashMap<String, Version> = test::read_body_json(resp).await;
         // Then, deserialize to the common format
         let value = serde_json::to_value(v).unwrap();
         serde_json::from_value(value).unwrap()

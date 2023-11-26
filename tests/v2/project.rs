@@ -1,7 +1,7 @@
 use crate::common::{
     api_common::ApiProject,
     api_v2::ApiV2,
-    database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT, generate_random_name},
+    database::{generate_random_name, FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
     dummy_data::TestFile,
     environment::{with_test_environment, TestEnvironment},
     permissions::{PermissionsTest, PermissionsTestContext},
@@ -371,7 +371,7 @@ async fn permissions_upload_version() {
 pub async fn test_patch_v2() {
     // Hits V3-specific patchable fields
     // Other fields are tested in test_patch_project (the v2 version of that test)
-    with_test_environment(None, |test_env : TestEnvironment<ApiV2>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
 
         let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
@@ -393,9 +393,10 @@ pub async fn test_patch_v2() {
             .get_project_deserialized(alpha_project_slug, USER_USER_PAT)
             .await;
 
-            assert_eq!(project.client_side.as_str(), "optional");
-            assert_eq!(project.server_side.as_str(), "required");
-        }).await;
+        assert_eq!(project.client_side.as_str(), "optional");
+        assert_eq!(project.server_side.as_str(), "required");
+    })
+    .await;
 }
 
 #[actix_rt::test]

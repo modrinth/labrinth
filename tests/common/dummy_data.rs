@@ -4,7 +4,10 @@ use std::io::{Cursor, Write};
 use actix_http::StatusCode;
 use actix_web::test::{self, TestRequest};
 use labrinth::models::{
-    oauth_clients::OAuthClient, organizations::Organization, pats::Scopes, projects::{ProjectId, Project, Version},
+    oauth_clients::OAuthClient,
+    organizations::Organization,
+    pats::Scopes,
+    projects::{Project, ProjectId, Version},
 };
 use serde_json::json;
 use sqlx::Executor;
@@ -13,11 +16,7 @@ use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 use crate::common::{api_common::Api, database::USER_USER_PAT};
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
-use super::{
-    api_common::ApiProject,
-    api_v3::ApiV3,
-    database::TemporaryDatabase,
-};
+use super::{api_common::ApiProject, api_v3::ApiV3, database::TemporaryDatabase};
 
 use super::{asserts::assert_status, database::USER_USER_ID, get_json_val_str};
 
@@ -321,7 +320,10 @@ pub async fn add_project_alpha(api: &ApiV3) -> (Project, Version) {
         .get_project_deserialized(project.id.to_string().as_str(), USER_USER_PAT)
         .await;
     let alpha_version = api
-        .get_version_deserialized(&versions.into_iter().next().unwrap().id.to_string(), USER_USER_PAT)
+        .get_version_deserialized(
+            &versions.into_iter().next().unwrap().id.to_string(),
+            USER_USER_PAT,
+        )
         .await;
     (alpha_project, alpha_version)
 }

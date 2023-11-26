@@ -46,7 +46,9 @@ pub async fn user_auth_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_auth_get(req, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    v3::users::user_auth_get(req, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -60,7 +62,9 @@ pub async fn users_get(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis).await.or_else(v2_reroute::flatten_404_error)
+    v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("{id}")]
@@ -69,7 +73,9 @@ pub async fn user_get(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_get(info, pool, redis).await.or_else(v2_reroute::flatten_404_error)
+    v3::users::user_get(info, pool, redis)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("{user_id}/projects")]
@@ -80,8 +86,9 @@ pub async fn projects_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let response =
-        v3::users::projects_list(req, info, pool.clone(), redis.clone(), session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::users::projects_list(req, info, pool.clone(), redis.clone(), session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert to V2 projects
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
@@ -101,7 +108,9 @@ pub async fn collections_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::collections_list(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    v3::users::collections_list(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("{user_id}/organizations")]
@@ -112,7 +121,9 @@ pub async fn orgs_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::orgs_list(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    v3::users::orgs_list(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 lazy_static! {
@@ -165,7 +176,8 @@ pub async fn user_edit(
         redis,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -195,7 +207,8 @@ pub async fn user_icon_edit(
         payload,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Deserialize)]
@@ -228,7 +241,8 @@ pub async fn user_delete(
         redis,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("{id}/follows")]
@@ -239,7 +253,9 @@ pub async fn user_follows(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_follows(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    v3::users::user_follows(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("{id}/notifications")]
@@ -250,11 +266,16 @@ pub async fn user_notifications(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::user_notifications(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::users::user_notifications(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)?;
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Notification>>(response).await {
         Ok(notifications) => {
-            let legacy_notifications : Vec<LegacyNotification> = notifications.into_iter().map(LegacyNotification::from).collect();
+            let legacy_notifications: Vec<LegacyNotification> = notifications
+                .into_iter()
+                .map(LegacyNotification::from)
+                .collect();
             Ok(HttpResponse::Ok().json(legacy_notifications))
         }
         Err(response) => Ok(response),
@@ -269,7 +290,9 @@ pub async fn user_payouts(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::users::user_payouts(req, info, pool, redis, session_queue).await.or_else(v2_reroute::flatten_404_error)
+    v3::users::user_payouts(req, info, pool, redis, session_queue)
+        .await
+        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Deserialize)]
@@ -298,7 +321,8 @@ pub async fn user_payouts_fees(
         session_queue,
         payouts_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Deserialize)]
@@ -327,5 +351,6 @@ pub async fn user_payouts_request(
         redis,
         session_queue,
     )
-    .await.or_else(v2_reroute::flatten_404_error)
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }

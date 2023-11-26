@@ -1019,7 +1019,9 @@ async fn create_dummy_project(setup_api: &ApiV3) -> (String, String) {
         .await;
     let project_id = project.id.to_string();
 
-    let project = setup_api.get_project_deserialized(&project_id, ADMIN_USER_PAT).await;
+    let project = setup_api
+        .get_project_deserialized(&project_id, ADMIN_USER_PAT)
+        .await;
     let team_id = project.team_id.to_string();
 
     (project_id, team_id)

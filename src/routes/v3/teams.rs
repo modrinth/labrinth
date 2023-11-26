@@ -593,8 +593,7 @@ pub async fn edit_team_member(
 
     let mut transaction = pool.begin().await?;
 
-    if edit_member_db.is_owner && edit_member.permissions.is_some()
-    {
+    if edit_member_db.is_owner && edit_member.permissions.is_some() {
         return Err(ApiError::InvalidInput(
             "The owner's permission's in a team cannot be edited".to_string(),
         ));

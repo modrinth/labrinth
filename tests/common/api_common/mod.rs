@@ -4,6 +4,7 @@ use self::models::{
     CommonCategoryData, CommonImageData, CommonLoaderData, CommonNotification, CommonProject,
     CommonTeamMember, CommonVersion,
 };
+use self::request_data::ProjectCreationRequestData;
 use actix_web::dev::ServiceResponse;
 use async_trait::async_trait;
 use labrinth::{
@@ -14,12 +15,6 @@ use labrinth::{
     search::SearchResults,
     LabrinthConfig,
 };
-use rust_decimal::Decimal;
-
-use self::{models::{
-    CommonCategoryData, CommonImageData, CommonLoaderData, CommonNotification, CommonProject,
-    CommonTeamMember, CommonVersion,
-}, request_data::ProjectCreationRequestData};
 
 use super::dummy_data::TestFile;
 
@@ -50,7 +45,7 @@ pub trait ApiProject {
         &self,
         creation_data: ProjectCreationRequestData,
         pat: &str,
-    ) -> ServiceResponse;   
+    ) -> ServiceResponse;
     async fn get_public_project_creation_data_json(
         &self,
         slug: &str,

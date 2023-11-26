@@ -431,7 +431,7 @@ pub async fn organizations_edit(
                         "
                       SELECT EXISTS(SELECT 1 FROM organizations WHERE name = LOWER($1))
                       ",
-                      name
+                        name
                     )
                     .fetch_one(&mut *transaction)
                     .await?;
@@ -597,10 +597,7 @@ pub async fn organization_projects_add(
     })?;
 
     // Require ownership of a project to add it to an organization
-    if !current_user.role.is_admin()
-        && !project_team_member
-            .is_owner
-    {
+    if !current_user.role.is_admin() && !project_team_member.is_owner {
         return Err(ApiError::CustomAuthentication(
             "You need to be an owner of a project to add it to an organization!".to_string(),
         ));
