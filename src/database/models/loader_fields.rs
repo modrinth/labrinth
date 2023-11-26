@@ -86,6 +86,7 @@ pub struct Loader {
     pub icon: String,
     pub supported_project_types: Vec<String>,
     pub supported_games: Vec<String>, // slugs
+    pub metadata: serde_json::Value,
 }
 
 impl Loader {
@@ -137,7 +138,7 @@ impl Loader {
 
         let result = sqlx::query!(
             "
-            SELECT l.id id, l.loader loader, l.icon icon,
+            SELECT l.id id, l.loader loader, l.icon icon, l.metadata metadata,
             ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
             ARRAY_AGG(DISTINCT g.slug) filter (where g.slug is not null) games
             FROM loaders l            
@@ -162,7 +163,9 @@ impl Loader {
                     .collect(),
                 supported_games: x
                     .games
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                metadata: x.metadata
+
             }))
         })
         .try_collect::<Vec<_>>()
