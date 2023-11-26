@@ -214,7 +214,7 @@ async fn test_patch_project_team_member() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
         let api = &test_env.api;
-        
+
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
 
         // Edit team as admin/mod but not a part of the team should be OK
@@ -237,8 +237,8 @@ async fn test_patch_project_team_member() {
         // (true for both project and org)
 
         // first, invite friend
-        let resp = api.add_user_to_team(alpha_team_id, FRIEND_USER_ID, 
-            Some(ProjectPermissions::EDIT_MEMBER | ProjectPermissions::EDIT_BODY), 
+        let resp = api.add_user_to_team(alpha_team_id, FRIEND_USER_ID,
+            Some(ProjectPermissions::EDIT_MEMBER | ProjectPermissions::EDIT_BODY),
             None, USER_USER_PAT).await;
         assert_eq!(resp.status(), 204);
 
@@ -256,7 +256,7 @@ async fn test_patch_project_team_member() {
         for payout in [-1, 5001] {
             let resp = api.edit_team_member(alpha_team_id, FRIEND_USER_ID, json!({
                 "payouts_split": payout
-            }), USER_USER_PAT).await; 
+            }), USER_USER_PAT).await;
             assert_eq!(resp.status(), 400);
         }
 
@@ -266,7 +266,7 @@ async fn test_patch_project_team_member() {
                 "permissions": ProjectPermissions::EDIT_MEMBER.bits(), // reduces permissions
                 "role": "membe2r",
                 "ordering": 5
-        }), FRIEND_USER_PAT).await; 
+        }), FRIEND_USER_PAT).await;
         assert_eq!(resp.status(), 204);
 
         // Check results
@@ -275,7 +275,7 @@ async fn test_patch_project_team_member() {
         assert_eq!(member.payouts_split, Decimal::from_f64_retain(51.0));
         assert_eq!(member.permissions.unwrap(), ProjectPermissions::EDIT_MEMBER);
         assert_eq!(member.role, "membe2r");
-        assert_eq!(member.ordering, 5); 
+        assert_eq!(member.ordering, 5);
     }).await;
 }
 
