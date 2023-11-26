@@ -1,4 +1,4 @@
-use crate::{util::env::parse_strings_from_var, models::v2::projects::LegacySideType};
+use crate::{models::v2::projects::LegacySideType, util::env::parse_strings_from_var};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 

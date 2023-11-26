@@ -62,20 +62,23 @@ pub async fn project_search(
         // Search can now *optionally* have a third inner array: So Vec(AND)<Vec(OR)<Vec(AND)< _ >>>
         // For every inner facet, we will check if it can be deserialized into a Vec<&str>, and do so.
         // If not, we will assume it is a single facet and wrap it in a Vec.
-        let facets: Vec<Vec<Vec<String>>> = facets
-            .into_iter()
-            .map(|facets| 
-                facets.into_iter()
-                    .map(|facet| 
-                        if facet.is_array() {
-                            serde_json::from_value::<Vec<String>>(facet).unwrap_or_default()
-                        } else {
-                            vec![serde_json::from_value::<String>(facet.clone()).unwrap_or_default()]
-                        }
-                    )
-                    .collect_vec()
-            )
-            .collect_vec();
+        let facets: Vec<Vec<Vec<String>>> =
+            facets
+                .into_iter()
+                .map(|facets| {
+                    facets
+                        .into_iter()
+                        .map(|facet| {
+                            if facet.is_array() {
+                                serde_json::from_value::<Vec<String>>(facet).unwrap_or_default()
+                            } else {
+                                vec![serde_json::from_value::<String>(facet.clone())
+                                    .unwrap_or_default()]
+                            }
+                        })
+                        .collect_vec()
+                })
+                .collect_vec();
 
         // We will now convert side_types to their new boolean format
         let facets = v2_reroute::convert_side_type_facets_v3(facets);
@@ -90,21 +93,22 @@ pub async fn project_search(
                             facets
                                 .into_iter()
                                 .map(|facet| {
-                                let val = match facet.split(':').nth(1) {
-                                    Some(val) => val,
-                                    None => return facet.to_string(),
-                                };
+                                    let val = match facet.split(':').nth(1) {
+                                        Some(val) => val,
+                                        None => return facet.to_string(),
+                                    };
 
-                                if facet.starts_with("versions:") {
-                                    format!("game_versions:{}", val)
-                                } else if facet.starts_with("project_type:") {
-                                    format!("project_types:{}", val)
-                                } else {
-                                    facet.to_string()
-                                }
-                            })
+                                    if facet.starts_with("versions:") {
+                                        format!("game_versions:{}", val)
+                                    } else if facet.starts_with("project_type:") {
+                                        format!("project_types:{}", val)
+                                    } else {
+                                        facet.to_string()
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                        })
                         .collect::<Vec<_>>()
-                    }).collect::<Vec<_>>()
                 })
                 .collect(),
         )
@@ -344,8 +348,8 @@ pub async fn project_edit(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let v2_new_project = new_project.into_inner();
-    let client_side = v2_new_project.client_side.clone();
-    let server_side = v2_new_project.server_side.clone();
+    let client_side = v2_new_project.client_side;
+    let server_side = v2_new_project.server_side;
     let new_slug = v2_new_project.slug.clone();
 
     // TODO: Some kind of handling here to ensure project type is fine.
@@ -401,11 +405,12 @@ pub async fn project_edit(
         for version in versions {
             let version = Version::from(version);
             let mut fields = version.fields;
-            let (current_client_side, current_server_side) = v2_reroute::convert_side_types_v2(&fields);
+            let (current_client_side, current_server_side) =
+                v2_reroute::convert_side_types_v2(&fields);
             let client_side = client_side.unwrap_or(current_client_side);
             let server_side = server_side.unwrap_or(current_server_side);
             fields.extend(v2_reroute::convert_side_types_v3(client_side, server_side));
-            
+
             response = v3::versions::version_edit_helper(
                 req.clone(),
                 (version.id,),

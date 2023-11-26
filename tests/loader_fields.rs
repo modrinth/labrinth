@@ -345,14 +345,15 @@ async fn get_loader_fields_variants() {
                 "1.20.1"
             ]
         );
-    }).await
+    })
+    .await
 }
 
 #[actix_rt::test]
 async fn get_available_loader_fields() {
     // Get available loader fields for a given loader
     // (ie: which fields are relevant for 'fabric', etc)
-    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
         let loaders = api.get_loaders_deserialized().await;
 
@@ -372,7 +373,6 @@ async fn get_available_loader_fields() {
                 "client_and_server",
                 "client_only",
                 "server_only",
-
                 "test_fabric_optional" // exists for testing
             ]
             .iter()
@@ -396,7 +396,6 @@ async fn get_available_loader_fields() {
                 "client_and_server",
                 "client_only",
                 "server_only",
-
                 // mrpack has all the general fields as well as this
                 "mrpack_loaders"
             ]
@@ -404,8 +403,6 @@ async fn get_available_loader_fields() {
             .map(|s| s.to_string())
             .collect()
         );
-        
     })
     .await;
-
 }

@@ -1,6 +1,9 @@
 use crate::common::{
     api_common::ApiProject,
-    api_v2::{ApiV2, request_data::{get_public_project_creation_data_json, get_public_version_creation_data}},
+    api_v2::{
+        request_data::{get_public_project_creation_data_json, get_public_version_creation_data},
+        ApiV2,
+    },
     database::{ENEMY_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, MOD_USER_PAT, USER_USER_PAT},
     dummy_data::{TestFile, DUMMY_CATEGORIES},
     environment::{with_test_environment, TestEnvironment},
@@ -10,7 +13,7 @@ use actix_web::test;
 use itertools::Itertools;
 use labrinth::{
     database::models::project_item::PROJECTS_SLUGS_NAMESPACE,
-    models::{teams::ProjectPermissions, projects::ProjectId, ids::base62_impl::parse_base62},
+    models::{ids::base62_impl::parse_base62, projects::ProjectId, teams::ProjectPermissions},
     util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData},
 };
 use serde_json::json;
@@ -63,7 +66,8 @@ async fn test_add_remove_project() {
         let api = &test_env.api;
 
         // Generate test project data.
-        let mut json_data = get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod));
+        let mut json_data =
+            get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod));
 
         // Basic json
         let json_segment = MultipartSegment {
@@ -232,9 +236,16 @@ async fn permissions_upload_version() {
         let req_gen = |ctx: &PermissionsTestContext| {
             let project_id = ctx.project_id.unwrap();
             let project_id = ProjectId(parse_base62(project_id).unwrap());
-            let multipart = get_public_version_creation_data(project_id, "1.0.0",
-            TestFile::BasicMod, None, None);
-            test::TestRequest::post().uri("/v2/version").set_multipart(multipart.segment_data)
+            let multipart = get_public_version_creation_data(
+                project_id,
+                "1.0.0",
+                TestFile::BasicMod,
+                None,
+                None,
+            );
+            test::TestRequest::post()
+                .uri("/v2/version")
+                .set_multipart(multipart.segment_data)
         };
         PermissionsTest::new(&test_env)
             .simple_project_permissions_test(upload_version, req_gen)
@@ -474,7 +485,7 @@ pub async fn test_patch_project() {
         assert_eq!(project.issues_url, Some("https://github.com".to_string()));
         assert_eq!(project.discord_url, Some("https://discord.gg".to_string()));
         assert_eq!(project.wiki_url, Some("https://wiki.com".to_string()));
-        // Note: the original V2 value of this was "optional", 
+        // Note: the original V2 value of this was "optional",
         // but Required/Optional is no longer a carried combination in v3, as the changes made were lossy.
         // Now, the test Required/Unsupported combination is tested instead.
         // Setting Required/Optional in v2 will not work, this is known and accepteed.

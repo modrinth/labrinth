@@ -2,12 +2,12 @@ use actix_http::StatusCode;
 use actix_web::test;
 use bytes::Bytes;
 use chrono::{Duration, Utc};
-use common::api_v3::ApiV3;
 use common::api_v3::request_data::get_public_version_creation_data;
+use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
 
-use common::environment::{with_test_environment_all, with_test_environment, TestEnvironment};
+use common::environment::{with_test_environment, with_test_environment_all, TestEnvironment};
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
@@ -106,10 +106,11 @@ async fn test_get_project() {
 #[actix_rt::test]
 async fn test_add_remove_project() {
     // Test setup and dummy data
-    with_test_environment(None, |test_env: TestEnvironment<ApiV3> | async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
-        let mut json_data = get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod));
+        let mut json_data =
+            get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod));
 
         // Basic json
         let json_segment = MultipartSegment {
@@ -713,7 +714,7 @@ async fn permissions_edit_details() {
 
 #[actix_rt::test]
 async fn permissions_upload_version() {
-    with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
         let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
@@ -724,9 +725,16 @@ async fn permissions_upload_version() {
         let req_gen = |ctx: &PermissionsTestContext| {
             let project_id = ctx.project_id.unwrap();
             let project_id = ProjectId(parse_base62(project_id).unwrap());
-            let multipart = get_public_version_creation_data(project_id, "1.0.0",
-            TestFile::BasicMod, None, None);
-            test::TestRequest::post().uri("/v3/version").set_multipart(multipart.segment_data)
+            let multipart = get_public_version_creation_data(
+                project_id,
+                "1.0.0",
+                TestFile::BasicMod,
+                None,
+                None,
+            );
+            test::TestRequest::post()
+                .uri("/v3/version")
+                .set_multipart(multipart.segment_data)
         };
         PermissionsTest::new(&test_env)
             .simple_project_permissions_test(upload_version, req_gen)

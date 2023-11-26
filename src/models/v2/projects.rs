@@ -93,9 +93,13 @@ impl LegacyProject {
                 .unwrap_or(Vec::new());
 
             // Extract side types from remaining fields (singleplayer, client_only, etc)
-            let fields = versions_item.version_fields.iter().map(|f| (f.field_name.clone(), f.value.clone().serialize_internal())).collect::<HashMap<_, _>>();
+            let fields = versions_item
+                .version_fields
+                .iter()
+                .map(|f| (f.field_name.clone(), f.value.clone().serialize_internal()))
+                .collect::<HashMap<_, _>>();
             (client_side, server_side) = v2_reroute::convert_side_types_v2(&fields);
-    
+
             // - if loader is mrpack, this is a modpack
             // the loaders are whatever the corresponding loader fields are
             if versions_item.loaders == vec!["mrpack".to_string()] {

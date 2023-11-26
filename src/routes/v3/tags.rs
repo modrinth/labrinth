@@ -92,12 +92,15 @@ pub async fn loader_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let loaders = Loader::list(&**pool, &redis)
-        .await?;
+    let loaders = Loader::list(&**pool, &redis).await?;
 
-    let loader_fields = LoaderField::get_fields_per_loader(&loaders.iter().map(|x| x.id).collect_vec(), &**pool, &redis)
-        .await?;
-    
+    let loader_fields = LoaderField::get_fields_per_loader(
+        &loaders.iter().map(|x| x.id).collect_vec(),
+        &**pool,
+        &redis,
+    )
+    .await?;
+
     let mut results = loaders
         .into_iter()
         .map(|x| LoaderData {
@@ -105,7 +108,10 @@ pub async fn loader_list(
             name: x.loader,
             supported_project_types: x.supported_project_types,
             supported_games: x.supported_games,
-            supported_fields: loader_fields.get(&x.id).map(|x| x.iter().map(|x| x.field.clone()).collect_vec()).unwrap_or_default()
+            supported_fields: loader_fields
+                .get(&x.id)
+                .map(|x| x.iter().map(|x| x.field.clone()).collect_vec())
+                .unwrap_or_default(),
             metadata: x.metadata,
         })
         .collect::<Vec<_>>();

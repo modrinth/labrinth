@@ -196,10 +196,12 @@ pub async fn project_type_list(
 pub async fn side_type_list() -> Result<HttpResponse, ApiError> {
     // Original side types are no longer reflected in the database.
     // Therefore, we hardcode and return all the fields that are supported by our v2 conversion logic.
-    let side_types = [LegacySideType::Required, LegacySideType::Optional, LegacySideType::Unsupported, LegacySideType::Unknown];
-    let side_types = side_types
-        .iter()
-        .map(|s| s.to_string())
-        .collect_vec();
+    let side_types = [
+        LegacySideType::Required,
+        LegacySideType::Optional,
+        LegacySideType::Unsupported,
+        LegacySideType::Unknown,
+    ];
+    let side_types = side_types.iter().map(|s| s.to_string()).collect_vec();
     Ok(HttpResponse::Ok().json(side_types))
 }

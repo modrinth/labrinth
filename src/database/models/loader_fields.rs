@@ -326,7 +326,6 @@ impl LoaderField {
         let result = found_loader_fields
             .into_values()
             .flatten()
-            .into_iter()
             .unique_by(|x| x.id)
             .collect();
         Ok(result)
