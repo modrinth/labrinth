@@ -79,7 +79,7 @@ INNER JOIN loader_field_enum_values lfev ON m.client_side = lfev.original_id
 WHERE client_side IS NOT NULL AND lfev.enum_id = 1;
 
 INSERT INTO version_fields (version_id, field_id, enum_value) 
-SELECT v.id, 1, m.server_side 
+SELECT v.id, 2, m.server_side   -- Note: bug fix/edited 2023-11-27
 FROM versions v
 INNER JOIN mods m ON v.mod_id = m.id
 INNER JOIN loader_field_enum_values lfev ON m.client_side = lfev.original_id
@@ -92,7 +92,7 @@ DROP TABLE side_types;
 -- Convert game_versions
 INSERT INTO loader_field_enums (id, enum_name, hidable) VALUES (2, 'game_versions', true);
 INSERT INTO loader_field_enum_values (original_id, enum_id, value, created, metadata)
-SELECT id, 2, version, created, json_build_object('type', type, 'major', major) FROM game_versions;
+SELECT id, 3, version, created, json_build_object('type', type, 'major', major) FROM game_versions; -- Note: bug fix/edited 2023-11-27
 
 INSERT INTO loader_fields (field, field_type, enum_type, optional, min_val) VALUES('game_versions', 'array_enum', 2, false, 0);
 
