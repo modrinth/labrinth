@@ -1,6 +1,5 @@
 use super::ids::Base62Id;
-use crate::auth::flows::AuthProvider;
-use crate::bitflags_serde_impl;
+use crate::{bitflags_serde_impl, auth::AuthProvider};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

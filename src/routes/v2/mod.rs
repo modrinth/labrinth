@@ -22,9 +22,9 @@ pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
             .wrap(default_cors())
             .configure(admin::config)
             // Todo: separate these- they need to also follow v2-v3 conversion
-            .configure(crate::auth::session::config)
-            .configure(crate::auth::flows::config)
-            .configure(crate::auth::pats::config)
+            .configure(super::internal::session::config)
+            .configure(super::internal::flows::config)
+            .configure(super::internal::pats::config)
             .configure(moderation::config)
             .configure(notifications::config)
             .configure(project_creation::config)

@@ -1,7 +1,6 @@
 use crate::auth::email::send_email;
-use crate::auth::session::issue_session;
 use crate::auth::validate::get_user_record_from_bearer_token;
-use crate::auth::{get_user_from_headers, AuthenticationError};
+use crate::auth::{get_user_from_headers, AuthenticationError, AuthProvider};
 use crate::database::models::flow_item::Flow;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -13,6 +12,7 @@ use crate::queue::payouts::{AccountUser, PayoutsQueue};
 use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
 use crate::routes::ApiError;
+use crate::routes::internal::session::issue_session;
 use crate::util::captcha::check_turnstile_captcha;
 use crate::util::env::parse_strings_from_var;
 use crate::util::ext::{get_image_content_type, get_image_ext};
@@ -55,18 +55,6 @@ pub fn config(cfg: &mut ServiceConfig) {
             .service(subscribe_newsletter)
             .service(link_trolley),
     );
-}
-
-#[derive(Serialize, Deserialize, Default, Eq, PartialEq, Clone, Copy, Debug)]
-#[serde(rename_all = "lowercase")]
-pub enum AuthProvider {
-    #[default]
-    GitHub,
-    Discord,
-    Microsoft,
-    GitLab,
-    Google,
-    Steam,
 }
 
 #[derive(Debug)]
@@ -1006,7 +994,7 @@ pub async fn auth_callback(
     client: Data<PgPool>,
     file_host: Data<Arc<dyn FileHost + Send + Sync>>,
     redis: Data<RedisPool>,
-) -> Result<HttpResponse, super::templates::ErrorPage> {
+) -> Result<HttpResponse, crate::auth::templates::ErrorPage> {
     let state_string = query
         .get("state")
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?
@@ -1108,7 +1096,7 @@ pub async fn auth_callback(
 
                             let _ = ws_conn.close(None).await;
 
-                            return Ok(super::templates::Success {
+                            return Ok(crate::auth::templates::Success {
                                 icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
                                 name: &user.username,
                             }.render());
@@ -1167,7 +1155,7 @@ pub async fn auth_callback(
                         .await.map_err(|_| AuthenticationError::SocketError)?;
                     let _ = ws_conn.close(None).await;
 
-                    return Ok(super::templates::Success {
+                    return Ok(crate::auth::templates::Success {
                         icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
                         name: &user.username,
                     }.render());
@@ -2209,7 +2197,7 @@ fn send_email_verify(
     email: String,
     flow: String,
     opener: &str,
-) -> Result<(), super::email::MailError> {
+) -> Result<(), crate::auth::email::MailError> {
     send_email(
         email,
         "Verify your email",
