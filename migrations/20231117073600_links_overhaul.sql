@@ -32,35 +32,35 @@ CREATE TABLE organization_links (
 );
 
 INSERT INTO mods_links (joining_mod_id, joining_platform_id, url)
-SELECT m.id, lp.id, md.url
+SELECT DISTINCT m.id, lp.id, md.url
 FROM mods m
-LEFT JOIN mods_donations md ON m.id = md.joining_mod_id
-LEFT JOIN donation_platforms dp ON dp.id = md.joining_platform_id
-LEFT JOIN link_platforms lp ON lp.donation_platform_id = dp.id; 
+INNER JOIN mods_donations md ON m.id = md.joining_mod_id
+INNER JOIN donation_platforms dp ON dp.id = md.joining_platform_id
+INNER JOIN link_platforms lp ON lp.donation_platform_id = dp.id; 
 
 INSERT INTO mods_links (joining_mod_id, joining_platform_id, url) 
-SELECT m.id, lp.id, issues_url 
+SELECT DISTINCT m.id, lp.id, issues_url 
 FROM mods m
 CROSS JOIN link_platforms lp 
 WHERE issues_url IS NOT NULL
 AND lp.name = 'issues';
 
 INSERT INTO mods_links (joining_mod_id, joining_platform_id, url)
-SELECT m.id, lp.id, wiki_url
+SELECT DISTINCT m.id, lp.id, wiki_url
 FROM mods m
 CROSS JOIN link_platforms lp
 WHERE wiki_url IS NOT NULL
 AND lp.name = 'wiki';
 
 INSERT INTO mods_links (joining_mod_id, joining_platform_id, url)
-SELECT m.id, lp.id, discord_url
+SELECT DISTINCT m.id, lp.id, discord_url
 FROM mods m
 CROSS JOIN link_platforms lp
 WHERE discord_url IS NOT NULL
 AND lp.name = 'discord';
 
 INSERT INTO mods_links (joining_mod_id, joining_platform_id, url)
-SELECT m.id, lp.id, source_url
+SELECT DISTINCT m.id, lp.id, source_url
 FROM mods m
 CROSS JOIN link_platforms lp
 WHERE source_url IS NOT NULL
