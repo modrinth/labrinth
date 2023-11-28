@@ -63,11 +63,10 @@ pub async fn project_search(
         // Search can now *optionally* have a third inner array: So Vec(AND)<Vec(OR)<Vec(AND)< _ >>>
         // For every inner facet, we will check if it can be deserialized into a Vec<&str>, and do so.
         // If not, we will assume it is a single facet and wrap it in a Vec.
-        let facets: Vec<Vec<Vec<String>>> =
-            facets
-                .into_iter()
-                .map(|facets| {
-                    facets
+        let facets: Vec<Vec<Vec<String>>> = facets
+            .into_iter()
+            .map(|facets| {
+                facets
                         .into_iter()
                         .map(|facet| {
                             if facet.is_array() {
@@ -78,8 +77,8 @@ pub async fn project_search(
                             }
                         })
                         .collect_vec()
-                })
-                .collect_vec();
+            })
+            .collect_vec();
 
         // We will now convert side_types to their new boolean format
         let facets = v2_reroute::convert_side_type_facets_v3(facets);
