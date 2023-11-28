@@ -994,11 +994,24 @@ pub async fn edit_project_categories(
     Ok(())
 }
 
+
+#[derive(Serialize, Deserialize)]
+pub struct ReturnSearchResults {
+    pub hits: Vec<Project>,
+    pub offset: usize,
+    pub limit: usize,
+    pub total_hits: usize,
+}
+
+
 pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
     let results = search_for_project(&info, &config).await?;
+
+    let results = results.into_iter().map(Project::from).collect::<Vec<_>>();
+
     Ok(HttpResponse::Ok().json(results))
 }
 

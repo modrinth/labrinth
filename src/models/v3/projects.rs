@@ -6,6 +6,7 @@ use super::users::UserId;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::models::threads::ThreadId;
+use crate::search::ResultSearchProject;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
@@ -200,6 +201,93 @@ impl From<QueryProject> for Project {
     }
 }
 
+impl From<ResultSearchProject> for Project {
+    fn from(m: ResultSearchProject) -> Self {
+        Self {
+            id: m.id.into(),
+            slug: m.slug,
+            project_types: data.project_types,
+            games: data.games,
+            team: m.team_id.into(),
+            organization: m.organization_id.map(|i| i.into()),
+            title: m.title,
+            description: m.description,
+            body: m.body,
+            body_url: None,
+            published: m.published,
+            updated: m.updated,
+            approved: m.approved,
+            queued: m.queued,
+            status: m.status,
+            requested_status: m.requested_status,
+            moderator_message: if let Some(message) = m.moderation_message {
+                Some(ModeratorMessage {
+                    message,
+                    body: m.moderation_message_body,
+                })
+            } else {
+                None
+            },
+            license: License {
+                id: m.license.clone(),
+                name: match spdx::Expression::parse(&m.license) {
+                    Ok(spdx_expr) => {
+                        let mut vec: Vec<&str> = Vec::new();
+                        for node in spdx_expr.iter() {
+                            if let spdx::expression::ExprNode::Req(req) = node {
+                                if let Some(id) = req.req.license.id() {
+                                    vec.push(id.full_name);
+                                }
+                            }
+                        }
+                        // spdx crate returns AND/OR operations in postfix order
+                        // and it would be a lot more effort to make it actually in order
+                        // so let's just ignore that and make them comma-separated
+                        vec.join(", ")
+                    }
+                    Err(_) => "".to_string(),
+                },
+                url: m.license_url,
+            },
+            downloads: m.downloads as u32,
+            followers: m.follows as u32,
+            categories: data.categories,
+            additional_categories: data.additional_categories,
+            loaders: m.loaders,
+            versions: data.versions.into_iter().map(|v| v.into()).collect(),
+            icon_url: m.icon_url,
+            issues_url: m.issues_url,
+            source_url: m.source_url,
+            wiki_url: m.wiki_url,
+            discord_url: m.discord_url,
+            donation_urls: Some(
+                data.donation_urls
+                    .into_iter()
+                    .map(|d| DonationLink {
+                        id: d.platform_short,
+                        platform: d.platform_name,
+                        url: d.url,
+                    })
+                    .collect(),
+            ),
+            gallery: data
+                .gallery_items
+                .into_iter()
+                .map(|x| GalleryItem {
+                    url: x.image_url,
+                    featured: x.featured,
+                    title: x.title,
+                    description: x.description,
+                    created: x.created,
+                    ordering: x.ordering,
+                })
+                .collect(),
+            color: m.color,
+            thread_id: data.thread_id.into(),
+            monetization_status: m.monetization_status,
+        }
+}
+}
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GalleryItem {
     pub url: String,

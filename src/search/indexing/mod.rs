@@ -1,6 +1,7 @@
 /// This module is used for the indexing from any source.
 pub mod local_import;
 
+use crate::database::redis::RedisPool;
 use crate::search::{SearchConfig, UploadSearchProject};
 use local_import::index_local;
 use meilisearch_sdk::client::Client;
@@ -30,11 +31,11 @@ pub enum IndexingError {
 // assumes a max average size of 1KiB per project to avoid this cap.
 const MEILISEARCH_CHUNK_SIZE: usize = 10000;
 
-pub async fn index_projects(pool: PgPool, config: &SearchConfig) -> Result<(), IndexingError> {
+pub async fn index_projects(pool: PgPool, redis : RedisPool, config: &SearchConfig) -> Result<(), IndexingError> {
     let mut docs_to_add: Vec<UploadSearchProject> = vec![];
     let mut additional_fields: Vec<String> = vec![];
 
-    let (mut uploads, mut loader_fields) = index_local(pool.clone()).await?;
+    let (mut uploads, mut loader_fields) = index_local(pool.clone(), &redis).await?;
     docs_to_add.append(&mut uploads);
     additional_fields.append(&mut loader_fields);
 
