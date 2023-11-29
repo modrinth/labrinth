@@ -31,7 +31,11 @@ pub enum IndexingError {
 // assumes a max average size of 1KiB per project to avoid this cap.
 const MEILISEARCH_CHUNK_SIZE: usize = 10000;
 
-pub async fn index_projects(pool: PgPool, redis : RedisPool, config: &SearchConfig) -> Result<(), IndexingError> {
+pub async fn index_projects(
+    pool: PgPool,
+    redis: RedisPool,
+    config: &SearchConfig,
+) -> Result<(), IndexingError> {
     let mut docs_to_add: Vec<UploadSearchProject> = vec![];
     let mut additional_fields: Vec<String> = vec![];
 
@@ -200,7 +204,6 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "gallery",
     "featured_gallery",
     "color",
-
     // Note: loader fields are not here, but are addedd on as they are needed (so they can be dynamically added depending on which exist).
 
     // Non-searchable fields for filling out the Project model.
@@ -221,7 +224,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "organization_id",
     "donation_links",
     "gallery_items",
-    "loaders" // search uses loaders as categories- this is purely for the Project model.
+    "loaders", // search uses loaders as categories- this is purely for the Project model.
 ];
 
 const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["title", "description", "author", "slug"];

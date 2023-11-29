@@ -207,21 +207,34 @@ impl Project {
     pub fn from_search(m: ResultSearchProject) -> Option<Self> {
         let project_id = ProjectId(parse_base62(&m.project_id).ok()?);
         let team_id = TeamId(parse_base62(&m.team_id).ok()?);
-        let organization_id = m.organization_id.and_then(|id| Some(OrganizationId(parse_base62(&id).ok()?)));
+        let organization_id = m
+            .organization_id
+            .and_then(|id| Some(OrganizationId(parse_base62(&id).ok()?)));
         let thread_id = ThreadId(parse_base62(&m.thread_id).ok()?);
-        let versions = m.versions.iter().filter_map(|id| Some(VersionId(parse_base62(id).ok()?))).collect();
+        let versions = m
+            .versions
+            .iter()
+            .filter_map(|id| Some(VersionId(parse_base62(id).ok()?)))
+            .collect();
 
         let approved = DateTime::parse_from_rfc3339(&m.date_created).ok()?;
         let published = DateTime::parse_from_rfc3339(&m.date_published).ok()?.into();
-        let approved = if approved == published { None } else { Some(approved.into()) };
+        let approved = if approved == published {
+            None
+        } else {
+            Some(approved.into())
+        };
 
         let updated = DateTime::parse_from_rfc3339(&m.date_modified).ok()?.into();
-        let queued = m.date_queued.and_then(|dq| DateTime::parse_from_rfc3339(&dq).ok()).map(|d| d.into()); 
-
-        let approved = approved;
+        let queued = m
+            .date_queued
+            .and_then(|dq| DateTime::parse_from_rfc3339(&dq).ok())
+            .map(|d| d.into());
 
         let status = ProjectStatus::from_string(&m.status);
-        let requested_status = m.requested_status.map(|mrs| ProjectStatus::from_string(&mrs));
+        let requested_status = m
+            .requested_status
+            .map(|mrs| ProjectStatus::from_string(&mrs));
 
         let license_url = m.license_url;
         let icon_url = m.icon_url;
@@ -254,23 +267,35 @@ impl Project {
 
         let games = m.games;
 
-        let monetization_status = m.monetization_status.as_deref().map(MonetizationStatus::from_string).unwrap_or(MonetizationStatus::Monetized);
+        let monetization_status = m
+            .monetization_status
+            .as_deref()
+            .map(MonetizationStatus::from_string)
+            .unwrap_or(MonetizationStatus::Monetized);
 
-        let donation_urls = Some(m.donation_links.into_iter().map(|d|
-            DonationLink {
-                id: d.platform_short,
-                platform: d.platform_name,
-                url: d.url,
-        }).collect());
+        let donation_urls = Some(
+            m.donation_links
+                .into_iter()
+                .map(|d| DonationLink {
+                    id: d.platform_short,
+                    platform: d.platform_name,
+                    url: d.url,
+                })
+                .collect(),
+        );
 
-        let gallery = m.gallery_items.into_iter().map(|x| GalleryItem {
-            url: x.image_url,
-            featured: x.featured,
-            title: x.title,
-            description: x.description,
-            created: x.created,
-            ordering: x.ordering,
-        }).collect();
+        let gallery = m
+            .gallery_items
+            .into_iter()
+            .map(|x| GalleryItem {
+                url: x.image_url,
+                featured: x.featured,
+                title: x.title,
+                description: x.description,
+                created: x.created,
+                ordering: x.ordering,
+            })
+            .collect();
 
         Some(Self {
             id: project_id,
@@ -282,7 +307,7 @@ impl Project {
             title: m.title,
             description: m.description,
             body: "".to_string(), // Body is potentially huge, do not store in search
-            body_url: None, // Deprecated
+            body_url: None,       // Deprecated
             published,
             updated,
             approved,
@@ -325,10 +350,10 @@ impl Project {
             donation_urls,
             gallery,
             color: m.color,
-            thread_id: thread_id.into(),
+            thread_id,
             monetization_status,
         })
-}
+    }
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GalleryItem {

@@ -994,7 +994,6 @@ pub async fn edit_project_categories(
     Ok(())
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub struct ReturnSearchResults {
     pub hits: Vec<Project>,
@@ -1013,7 +1012,7 @@ pub async fn project_search(
         hits: results
             .hits
             .into_iter()
-            .filter_map(|x| Project::from_search(x))
+            .filter_map(Project::from_search)
             .collect::<Vec<_>>(),
         offset: results.offset,
         limit: results.limit,

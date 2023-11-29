@@ -6,19 +6,19 @@ use futures::TryStreamExt;
 use log::info;
 
 use super::IndexingError;
-use crate::database::models::{ProjectId, VersionId, project_item, version_item};
+use crate::database::models::{project_item, version_item, ProjectId, VersionId};
 use crate::database::redis::RedisPool;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
 pub async fn index_local(
     pool: PgPool,
-    mut redis: &RedisPool,
+    redis: &RedisPool,
 ) -> Result<(Vec<UploadSearchProject>, Vec<String>), IndexingError> {
     info!("Indexing local projects!");
     let loader_field_keys: Arc<DashSet<String>> = Arc::new(DashSet::new());
 
-    let all_visible_ids : HashMap<VersionId, (ProjectId, String)> = sqlx::query!(
+    let all_visible_ids: HashMap<VersionId, (ProjectId, String)> = sqlx::query!(
         "
         SELECT v.id id, m.id mod_id, u.username owner_username
         
@@ -30,28 +30,47 @@ pub async fn index_local(
         GROUP BY v.id, m.id, u.id
         ORDER BY m.id DESC;
         ",
-        &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_hidden()).map(|x| x.to_string()).collect::<Vec<String>>(),
-        &*crate::models::projects::ProjectStatus::iterator().filter(|x| x.is_searchable()).map(|x| x.to_string()).collect::<Vec<String>>(),
+        &*crate::models::projects::VersionStatus::iterator()
+            .filter(|x| x.is_hidden())
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
+        &*crate::models::projects::ProjectStatus::iterator()
+            .filter(|x| x.is_searchable())
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
         crate::models::teams::OWNER_ROLE,
-    ).fetch_many(&pool)
-            .try_filter_map(|e| {
-                async move {
-                    Ok(e.right().map(|m| {
-                        let project_id: ProjectId = ProjectId(m.mod_id).into();
-                        let version_id: VersionId = VersionId(m.id).into();
-                        (version_id, (project_id, m.owner_username))
-                    }))
-                }
-            })
-            .try_collect::<HashMap<_,_>>()
-            .await?;
+    )
+    .fetch_many(&pool)
+    .try_filter_map(|e| async move {
+        Ok(e.right().map(|m| {
+            let project_id: ProjectId = ProjectId(m.mod_id);
+            let version_id: VersionId = VersionId(m.id);
+            (version_id, (project_id, m.owner_username))
+        }))
+    })
+    .try_collect::<HashMap<_, _>>()
+    .await?;
 
+    let project_ids = all_visible_ids
+        .values()
+        .map(|(project_id, _)| project_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let projects: HashMap<_, _> =
+        project_item::Project::get_many_ids(&project_ids, &pool, redis)
+            .await?
+            .into_iter()
+            .map(|p| (p.inner.id, p))
+            .collect();
 
-    let project_ids = all_visible_ids.values().map(|(project_id, _)| project_id).cloned().collect::<Vec<_>>();
-    let projects : HashMap<_,_> = project_item::Project::get_many_ids (&project_ids,&pool, &mut redis).await?.into_iter().map(|p| (p.inner.id, p) ).collect();
-
-    let version_ids = all_visible_ids.iter().map(|(version_id, _)| version_id).cloned().collect::<Vec<_>>();
-    let versions : HashMap<_,_> = version_item::Version::get_many(&version_ids,&pool, &mut redis).await?.into_iter().map(|v| (v.inner.id, v) ).collect();
+    let version_ids = all_visible_ids.keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    let versions: HashMap<_, _> = version_item::Version::get_many(&version_ids, &pool, redis)
+        .await?
+        .into_iter()
+        .map(|v| (v.inner.id, v))
+        .collect();
 
     let mut uploads = Vec::new();
     // TODO: could possible clony less here?
@@ -68,14 +87,19 @@ pub async fn index_local(
             Some(v) => v,
             None => continue,
         };
-        
-        let version_id : crate::models::projects::VersionId = v.inner.id.into();
-        let project_id : crate::models::projects::ProjectId = m.inner.id.into();
-        let team_id : crate::models::teams::TeamId = m.inner.team_id.into();
-        let organization_id : Option<crate::models::organizations::OrganizationId> = m.inner.organization_id.map(|x| x.into());
-        let thread_id : crate::models::threads::ThreadId = m.thread_id.into();
 
-        let all_version_ids = m.versions.iter().map(|v| (*v).into()).collect::<Vec<crate::models::projects::VersionId>>();
+        let version_id: crate::models::projects::VersionId = v.inner.id.into();
+        let project_id: crate::models::projects::ProjectId = m.inner.id.into();
+        let team_id: crate::models::teams::TeamId = m.inner.team_id.into();
+        let organization_id: Option<crate::models::organizations::OrganizationId> =
+            m.inner.organization_id.map(|x| x.into());
+        let thread_id: crate::models::threads::ThreadId = m.thread_id.into();
+
+        let all_version_ids = m
+            .versions
+            .iter()
+            .map(|v| (*v).into())
+            .collect::<Vec<crate::models::projects::VersionId>>();
 
         let mut additional_categories = m.additional_categories.clone();
         let mut categories = m.categories.clone();
@@ -87,9 +111,10 @@ pub async fn index_local(
         categories.append(&mut additional_categories);
 
         let version_fields = v.version_fields.clone();
-        let loader_fields : HashMap<String, Vec<String>> = version_fields.into_iter().map(|vf| {
-            (vf.field_name, vf.value.as_strings())
-        }).collect();
+        let loader_fields: HashMap<String, Vec<String>> = version_fields
+            .into_iter()
+            .map(|vf| (vf.field_name, vf.value.as_strings()))
+            .collect();
         for v in loader_fields.keys().cloned() {
             loader_field_keys.insert(v);
         }
@@ -105,13 +130,15 @@ pub async fn index_local(
         };
 
         // For loaders, get ALL loaders across ALL versions
-        let mut loaders = all_version_ids.iter().fold(vec![],|mut loaders, version_id| {
-            let version = versions.get(&(*version_id).into());
-            if let Some(version) = version{
-                loaders.extend(version.loaders.clone());
-            }
-            loaders
-        });
+        let mut loaders = all_version_ids
+            .iter()
+            .fold(vec![], |mut loaders, version_id| {
+                let version = versions.get(&(*version_id).into());
+                if let Some(version) = version {
+                    loaders.extend(version.loaders.clone());
+                }
+                loaders
+            });
         loaders.sort();
         loaders.dedup();
 
@@ -121,11 +148,24 @@ pub async fn index_local(
         // These were previously considered the loader, and in v2, the loader is a category for searching.
         // So to avoid breakage or awkward conversions, we just consider those loader_fields to be categories.
         // The loaders are kept in loader_fields as well, so that no information is lost on retrieval.
-        let mrpack_loaders = loader_fields.get("mrpack_loaders").cloned().unwrap_or_default();
+        let mrpack_loaders = loader_fields
+            .get("mrpack_loaders")
+            .cloned()
+            .unwrap_or_default();
         categories.extend(mrpack_loaders);
 
-        let gallery = m.gallery_items.iter().filter(|gi| !gi.featured).map(|gi| gi.image_url.clone()).collect::<Vec<_>>();
-        let featured_gallery = m.gallery_items.iter().filter(|gi| gi.featured).map(|gi| gi.image_url.clone()).collect::<Vec<_>>();
+        let gallery = m
+            .gallery_items
+            .iter()
+            .filter(|gi| !gi.featured)
+            .map(|gi| gi.image_url.clone())
+            .collect::<Vec<_>>();
+        let featured_gallery = m
+            .gallery_items
+            .iter()
+            .filter(|gi| gi.featured)
+            .map(|gi| gi.image_url.clone())
+            .collect::<Vec<_>>();
         let featured_gallery = featured_gallery.first().cloned();
 
         let usp = UploadSearchProject {
@@ -149,7 +189,7 @@ pub async fn index_local(
             featured_gallery,
             display_categories,
             open_source,
-            color: m.inner.color.map(|x| x as u32),
+            color: m.inner.color,
             loader_fields,
 
             issues_url: m.inner.issues_url.clone(),
@@ -164,8 +204,8 @@ pub async fn index_local(
             versions: all_version_ids.iter().map(|x| x.to_string()).collect(),
             date_published: m.inner.published,
             date_queued: m.inner.queued,
-            status: m.inner.status.clone(),
-            requested_status: m.inner.requested_status.clone(),
+            status: m.inner.status,
+            requested_status: m.inner.requested_status,
             games: m.games.clone(),
             donation_links: m.donation_urls.clone(),
             gallery_items: m.gallery_items.clone(),

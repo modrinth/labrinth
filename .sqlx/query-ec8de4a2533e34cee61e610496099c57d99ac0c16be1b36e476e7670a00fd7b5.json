@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT v.id id, m.id mod_id, u.username owner_username\n        \n        FROM versions v\n        INNER JOIN mods m ON v.mod_id = m.id AND m.status = ANY($2)\n        INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE\n        INNER JOIN users u ON tm.user_id = u.id\n        WHERE v.status != ANY($1)\n        GROUP BY v.id, m.id, u.id\n        ORDER BY m.id DESC;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "mod_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "owner_username",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ec8de4a2533e34cee61e610496099c57d99ac0c16be1b36e476e7670a00fd7b5"
+}
