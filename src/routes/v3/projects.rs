@@ -1003,14 +1003,22 @@ pub struct ReturnSearchResults {
     pub total_hits: usize,
 }
 
-
 pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
     let results = search_for_project(&info, &config).await?;
 
-    let results = results.into_iter().map(Project::from).collect::<Vec<_>>();
+    let results = ReturnSearchResults {
+        hits: results
+            .hits
+            .into_iter()
+            .filter_map(|x| Project::from_search(x))
+            .collect::<Vec<_>>(),
+        offset: results.offset,
+        limit: results.limit,
+        total_hits: results.total_hits,
+    };
 
     Ok(HttpResponse::Ok().json(results))
 }

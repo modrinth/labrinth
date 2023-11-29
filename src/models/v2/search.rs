@@ -97,7 +97,7 @@ impl LegacyResultSearchProject {
             display_categories,
             downloads: result_search_project.downloads,
             follows: result_search_project.follows,
-            icon_url: result_search_project.icon_url,
+            icon_url: result_search_project.icon_url.unwrap_or_default(),
             license: result_search_project.license,
             date_created: result_search_project.date_created,
             date_modified: result_search_project.date_modified,

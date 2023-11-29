@@ -1,5 +1,6 @@
+use crate::database::models::project_item::{DonationUrl, GalleryItem};
 use crate::models::error::ApiError;
-use crate::models::projects::SearchRequest;
+use crate::models::projects::{SearchRequest, ProjectStatus, MonetizationStatus};
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use chrono::{DateTime, Utc};
@@ -83,7 +84,7 @@ pub struct UploadSearchProject {
     pub display_categories: Vec<String>,
     pub follows: i32,
     pub downloads: i32,
-    pub icon_url: String,
+    pub icon_url: Option<String>,
     pub license: String,
     pub gallery: Vec<String>,
     pub featured_gallery: Option<String>,
@@ -97,6 +98,26 @@ pub struct UploadSearchProject {
     pub modified_timestamp: i64,
     pub open_source: bool,
     pub color: Option<u32>,
+
+    // Hidden fields to get the Project model out of the search results.
+    pub issues_url: Option<String>,
+    pub source_url: Option<String>,
+    pub wiki_url: Option<String>,
+    pub discord_url: Option<String>,
+    pub license_url: Option<String>,
+    pub monetization_status: Option<MonetizationStatus>,
+    pub team_id : String,
+    pub thread_id : String,
+    pub versions: Vec<String>,
+    pub date_published: DateTime<Utc>,
+    pub date_queued: Option<DateTime<Utc>>,
+    pub status: ProjectStatus,
+    pub requested_status: Option<ProjectStatus>,
+    pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
+    pub donation_links: Vec<DonationUrl>,
+    pub gallery_items : Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
+    pub games : Vec<String>, // Todo: in future, could be a searchable field.
+    pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
 
     #[serde(flatten)]
     pub loader_fields: HashMap<String, Vec<String>>,
@@ -123,7 +144,7 @@ pub struct ResultSearchProject {
     pub display_categories: Vec<String>,
     pub downloads: i32,
     pub follows: i32,
-    pub icon_url: String,
+    pub icon_url: Option<String>,
     /// RFC 3339 formatted creation date of the project
     pub date_created: String,
     /// RFC 3339 formatted modification date of the project
@@ -132,6 +153,26 @@ pub struct ResultSearchProject {
     pub gallery: Vec<String>,
     pub featured_gallery: Option<String>,
     pub color: Option<u32>,
+
+    // Hidden fields to get the Project model out of the search results.
+    pub issues_url: Option<String>,
+    pub source_url: Option<String>,
+    pub wiki_url: Option<String>,
+    pub discord_url: Option<String>,
+    pub license_url: Option<String>,
+    pub monetization_status: Option<String>,
+    pub team_id : String,
+    pub thread_id : String,
+    pub versions: Vec<String>,
+    pub date_published: String,
+    pub date_queued: Option<String>,
+    pub status: String,
+    pub requested_status: Option<String>,
+    pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
+    pub donation_links: Vec<DonationUrl>,
+    pub games : Vec<String>, // Todo: in future, could be a searchable field.
+    pub gallery_items : Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
+    pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
 
     #[serde(flatten)]
     pub loader_fields: HashMap<String, Vec<String>>,

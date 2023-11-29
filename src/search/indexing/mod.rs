@@ -200,6 +200,28 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "gallery",
     "featured_gallery",
     "color",
+
+    // Note: loader fields are not here, but are addedd on as they are needed (so they can be dynamically added depending on which exist).
+
+    // Non-searchable fields for filling out the Project model.
+    "issues_url",
+    "source_url",
+    "wiki_url",
+    "discord_url",
+    "license_url",
+    "monetization_status",
+    "team_id",
+    "thread_id",
+    "versions",
+    "date_published",
+    "date_queued",
+    "status",
+    "requested_status",
+    "games",
+    "organization_id",
+    "donation_links",
+    "gallery_items",
+    "loaders" // search uses loaders as categories- this is purely for the Project model.
 ];
 
 const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["title", "description", "author", "slug"];

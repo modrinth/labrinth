@@ -6,15 +6,14 @@ use futures::TryStreamExt;
 use log::info;
 
 use super::IndexingError;
-use crate::database::models::loader_fields::VersionField;
-use crate::database::models::{ProjectId, VersionId, project_item, version_item, self};
+use crate::database::models::{ProjectId, VersionId, project_item, version_item};
 use crate::database::redis::RedisPool;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
 pub async fn index_local(
     pool: PgPool,
-    redis: &RedisPool,
+    mut redis: &RedisPool,
 ) -> Result<(Vec<UploadSearchProject>, Vec<String>), IndexingError> {
     info!("Indexing local projects!");
     let loader_field_keys: Arc<DashSet<String>> = Arc::new(DashSet::new());
@@ -55,6 +54,7 @@ pub async fn index_local(
     let versions : HashMap<_,_> = version_item::Version::get_many(&version_ids,&pool, &mut redis).await?.into_iter().map(|v| (v.inner.id, v) ).collect();
 
     let mut uploads = Vec::new();
+    // TODO: could possible clony less here?
     for (version_id, (project_id, owner_username)) in all_visible_ids {
         let m = projects.get(&project_id);
         let v = versions.get(&version_id);
@@ -71,16 +71,22 @@ pub async fn index_local(
         
         let version_id : crate::models::projects::VersionId = v.inner.id.into();
         let project_id : crate::models::projects::ProjectId = m.inner.id.into();
+        let team_id : crate::models::teams::TeamId = m.inner.team_id.into();
+        let organization_id : Option<crate::models::organizations::OrganizationId> = m.inner.organization_id.map(|x| x.into());
+        let thread_id : crate::models::threads::ThreadId = m.thread_id.into();
 
-        let mut additional_categories = m.additional_categories;
-        let mut categories = m.categories;
+        let all_version_ids = m.versions.iter().map(|v| (*v).into()).collect::<Vec<crate::models::projects::VersionId>>();
 
-        categories.append(&mut m.inner.loaders);
+        let mut additional_categories = m.additional_categories.clone();
+        let mut categories = m.categories.clone();
+
+        // Uses version loaders, not project loaders.
+        categories.append(&mut v.loaders.clone());
 
         let display_categories = categories.clone();
         categories.append(&mut additional_categories);
 
-        let version_fields = v.version_fields;
+        let version_fields = v.version_fields.clone();
         let loader_fields : HashMap<String, Vec<String>> = version_fields.into_iter().map(|vf| {
             (vf.field_name, vf.value.as_strings())
         }).collect();
@@ -90,13 +96,24 @@ pub async fn index_local(
 
         let license = match m.inner.license.split(' ').next() {
             Some(license) => license.to_string(),
-            None => m.inner.license,
+            None => m.inner.license.clone(),
         };
 
         let open_source = match spdx::license_id(&license) {
             Some(id) => id.is_osi_approved(),
             _ => false,
         };
+
+        // For loaders, get ALL loaders across ALL versions
+        let mut loaders = all_version_ids.iter().fold(vec![],|mut loaders, version_id| {
+            let version = versions.get(&(*version_id).into());
+            if let Some(version) = version{
+                loaders.extend(version.loaders.clone());
+            }
+            loaders
+        });
+        loaders.sort();
+        loaders.dedup();
 
         // SPECIAL BEHAVIOUR
         // Todo: revisit.
@@ -107,30 +124,52 @@ pub async fn index_local(
         let mrpack_loaders = loader_fields.get("mrpack_loaders").cloned().unwrap_or_default();
         categories.extend(mrpack_loaders);
 
+        let gallery = m.gallery_items.iter().filter(|gi| !gi.featured).map(|gi| gi.image_url.clone()).collect::<Vec<_>>();
+        let featured_gallery = m.gallery_items.iter().filter(|gi| gi.featured).map(|gi| gi.image_url.clone()).collect::<Vec<_>>();
+        let featured_gallery = featured_gallery.first().cloned();
 
         let usp = UploadSearchProject {
             version_id: version_id.to_string(),
             project_id: project_id.to_string(),
-            title: m.inner.title,
-            description: m.inner.description,
+            title: m.inner.title.clone(),
+            description: m.inner.description.clone(),
             categories,
             follows: m.inner.follows,
             downloads: m.inner.downloads,
-            icon_url: m.inner.icon_url.unwrap_or_default(),
+            icon_url: m.inner.icon_url.clone(),
             author: owner_username,
             date_created: m.inner.approved.unwrap_or(m.inner.published),
             created_timestamp: m.inner.approved.unwrap_or(m.inner.published).timestamp(),
             date_modified: m.inner.updated,
             modified_timestamp: m.inner.updated.timestamp(),
             license,
-            slug: m.inner.slug,
-            project_types: m.project_types.unwrap_or_default(),
-            gallery: m.inner.gallery.unwrap_or_default(),
+            slug: m.inner.slug.clone(),
+            project_types: m.project_types.clone(),
+            gallery,
+            featured_gallery,
             display_categories,
             open_source,
             color: m.inner.color.map(|x| x as u32),
-            featured_gallery: m.inner.featured_gallery.unwrap_or_default().first().cloned(),
-            loader_fields
+            loader_fields,
+
+            issues_url: m.inner.issues_url.clone(),
+            source_url: m.inner.source_url.clone(),
+            wiki_url: m.inner.wiki_url.clone(),
+            discord_url: m.inner.discord_url.clone(),
+            license_url: m.inner.license_url.clone(),
+            monetization_status: Some(m.inner.monetization_status),
+            team_id: team_id.to_string(),
+            organization_id: organization_id.map(|x| x.to_string()),
+            thread_id: thread_id.to_string(),
+            versions: all_version_ids.iter().map(|x| x.to_string()).collect(),
+            date_published: m.inner.published,
+            date_queued: m.inner.queued,
+            status: m.inner.status.clone(),
+            requested_status: m.inner.requested_status.clone(),
+            games: m.games.clone(),
+            donation_links: m.donation_urls.clone(),
+            gallery_items: m.gallery_items.clone(),
+            loaders,
         };
 
         uploads.push(usp);

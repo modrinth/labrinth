@@ -8,7 +8,7 @@ use actix_web::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use labrinth::{search::SearchResults, util::actix::AppendsMultipart};
+use labrinth::{util::actix::AppendsMultipart, routes::v3::projects::ReturnSearchResults};
 use rust_decimal::Decimal;
 use serde_json::json;
 
@@ -187,7 +187,7 @@ impl ApiV3 {
         query: Option<&str>,
         facets: Option<serde_json::Value>,
         pat: &str,
-    ) -> SearchResults {
+    ) -> ReturnSearchResults {
         let query_field = if let Some(query) = query {
             format!("&query={}", urlencoding::encode(query))
         } else {

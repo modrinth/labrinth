@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use super::ids::base62_impl::parse_base62;
 use super::ids::{Base62Id, OrganizationId};
 use super::teams::TeamId;
 use super::users::UserId;
@@ -201,33 +202,94 @@ impl From<QueryProject> for Project {
     }
 }
 
-impl From<ResultSearchProject> for Project {
-    fn from(m: ResultSearchProject) -> Self {
-        Self {
-            id: m.id.into(),
+impl Project {
+    // Matches the from QueryProject, but with a ResultSearchProject
+    pub fn from_search(m: ResultSearchProject) -> Option<Self> {
+        let project_id = ProjectId(parse_base62(&m.project_id).ok()?);
+        let team_id = TeamId(parse_base62(&m.team_id).ok()?);
+        let organization_id = m.organization_id.and_then(|id| Some(OrganizationId(parse_base62(&id).ok()?)));
+        let thread_id = ThreadId(parse_base62(&m.thread_id).ok()?);
+        let versions = m.versions.iter().filter_map(|id| Some(VersionId(parse_base62(id).ok()?))).collect();
+
+        let approved = DateTime::parse_from_rfc3339(&m.date_created).ok()?;
+        let published = DateTime::parse_from_rfc3339(&m.date_published).ok()?.into();
+        let approved = if approved == published { None } else { Some(approved.into()) };
+
+        let updated = DateTime::parse_from_rfc3339(&m.date_modified).ok()?.into();
+        let queued = m.date_queued.and_then(|dq| DateTime::parse_from_rfc3339(&dq).ok()).map(|d| d.into()); 
+
+        let approved = approved;
+
+        let status = ProjectStatus::from_string(&m.status);
+        let requested_status = m.requested_status.map(|mrs| ProjectStatus::from_string(&mrs));
+
+        let license_url = m.license_url;
+        let icon_url = m.icon_url;
+        let issues_url = m.issues_url;
+        let source_url = m.source_url;
+        let wiki_url = m.wiki_url;
+        let discord_url = m.discord_url;
+
+        // Loaders
+        let mut loaders = m.loaders;
+        // If the project has a mrpack loader,  keep only 'loaders' that are not in the mrpack_loaders
+        if let Some(mrpack_loaders) = m.loader_fields.get("mrpack_loaders") {
+            loaders.retain(|l| !mrpack_loaders.contains(l));
+        }
+
+        // Categories
+        let mut categories = m.display_categories.clone();
+        categories.retain(|c| !loaders.contains(c));
+        if let Some(mrpack_loaders) = m.loader_fields.get("mrpack_loaders") {
+            categories.retain(|l| !mrpack_loaders.contains(l));
+        }
+
+        // Additional categories
+        let mut additional_categories = m.categories.clone();
+        additional_categories.retain(|c| !categories.contains(c));
+        additional_categories.retain(|c| !loaders.contains(c));
+        if let Some(mrpack_loaders) = m.loader_fields.get("mrpack_loaders") {
+            additional_categories.retain(|l| !mrpack_loaders.contains(l));
+        }
+
+        let games = m.games;
+
+        let monetization_status = m.monetization_status.as_deref().map(MonetizationStatus::from_string).unwrap_or(MonetizationStatus::Monetized);
+
+        let donation_urls = Some(m.donation_links.into_iter().map(|d|
+            DonationLink {
+                id: d.platform_short,
+                platform: d.platform_name,
+                url: d.url,
+        }).collect());
+
+        let gallery = m.gallery_items.into_iter().map(|x| GalleryItem {
+            url: x.image_url,
+            featured: x.featured,
+            title: x.title,
+            description: x.description,
+            created: x.created,
+            ordering: x.ordering,
+        }).collect();
+
+        Some(Self {
+            id: project_id,
             slug: m.slug,
-            project_types: data.project_types,
-            games: data.games,
-            team: m.team_id.into(),
-            organization: m.organization_id.map(|i| i.into()),
+            project_types: m.project_types,
+            games,
+            team: team_id,
+            organization: organization_id,
             title: m.title,
             description: m.description,
-            body: m.body,
-            body_url: None,
-            published: m.published,
-            updated: m.updated,
-            approved: m.approved,
-            queued: m.queued,
-            status: m.status,
-            requested_status: m.requested_status,
-            moderator_message: if let Some(message) = m.moderation_message {
-                Some(ModeratorMessage {
-                    message,
-                    body: m.moderation_message_body,
-                })
-            } else {
-                None
-            },
+            body: "".to_string(), // Body is potentially huge, do not store in search
+            body_url: None, // Deprecated
+            published,
+            updated,
+            approved,
+            queued,
+            status,
+            requested_status,
+            moderator_message: None, // Deprecated
             license: License {
                 id: m.license.clone(),
                 name: match spdx::Expression::parse(&m.license) {
@@ -247,45 +309,25 @@ impl From<ResultSearchProject> for Project {
                     }
                     Err(_) => "".to_string(),
                 },
-                url: m.license_url,
+                url: license_url,
             },
             downloads: m.downloads as u32,
             followers: m.follows as u32,
-            categories: data.categories,
-            additional_categories: data.additional_categories,
-            loaders: m.loaders,
-            versions: data.versions.into_iter().map(|v| v.into()).collect(),
-            icon_url: m.icon_url,
-            issues_url: m.issues_url,
-            source_url: m.source_url,
-            wiki_url: m.wiki_url,
-            discord_url: m.discord_url,
-            donation_urls: Some(
-                data.donation_urls
-                    .into_iter()
-                    .map(|d| DonationLink {
-                        id: d.platform_short,
-                        platform: d.platform_name,
-                        url: d.url,
-                    })
-                    .collect(),
-            ),
-            gallery: data
-                .gallery_items
-                .into_iter()
-                .map(|x| GalleryItem {
-                    url: x.image_url,
-                    featured: x.featured,
-                    title: x.title,
-                    description: x.description,
-                    created: x.created,
-                    ordering: x.ordering,
-                })
-                .collect(),
+            categories,
+            additional_categories,
+            loaders,
+            versions,
+            icon_url,
+            issues_url,
+            source_url,
+            wiki_url,
+            discord_url,
+            donation_urls,
+            gallery,
             color: m.color,
-            thread_id: data.thread_id.into(),
-            monetization_status: m.monetization_status,
-        }
+            thread_id: thread_id.into(),
+            monetization_status,
+        })
 }
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]

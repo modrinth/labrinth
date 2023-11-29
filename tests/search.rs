@@ -1,3 +1,4 @@
+use actix_web::test;
 use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::TestFile;
@@ -6,7 +7,6 @@ use common::dummy_data::DUMMY_CATEGORIES;
 use common::environment::with_test_environment;
 use common::environment::TestEnvironment;
 use futures::stream::StreamExt;
-use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,10 +20,8 @@ mod common;
 // TODO: Revisit this with the new modify_json in the version maker
 // That change here should be able to simplify it vastly
 
-#[actix_rt::test]
-async fn search_projects() {
+async fn setup_search_projects(test_env: &TestEnvironment<ApiV3>) -> Arc<HashMap<u64, u64>> {
     // Test setup and dummy data
-    with_test_environment(Some(10), |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
         let test_name = test_env.db.database_name.clone();
 
@@ -217,6 +215,23 @@ async fn search_projects() {
         )
         .await;
 
+    // Forcibly reset the search index
+    let resp = api.reset_search_index().await;
+    assert_eq!(resp.status(), 204);
+        
+    id_conversion
+}
+
+#[actix_rt::test]
+async fn search_projects() {
+    // Test setup and dummy data
+    with_test_environment(Some(10), |test_env: TestEnvironment<ApiV3>| async move {
+
+        let id_conversion = setup_search_projects(&test_env).await;
+
+        let api = &test_env.api;
+        let test_name = test_env.db.database_name.clone();
+
         // Pairs of:
         // 1. vec of search facets
         // 2. expected project ids to be returned by this search
@@ -277,10 +292,6 @@ async fn search_projects() {
         // - modified_timestamp             (not varied)
         // TODO: multiple different project types test
 
-        // Forcibly reset the search index
-        let resp = api.reset_search_index().await;
-        assert_eq!(resp.status(), 204);
-
         // Test searches
         let stream = futures::stream::iter(pairs);
         stream
@@ -294,7 +305,7 @@ async fn search_projects() {
                     let mut found_project_ids: Vec<u64> = projects
                         .hits
                         .into_iter()
-                        .map(|p| id_conversion[&parse_base62(&p.project_id).unwrap()])
+                        .map(|p| id_conversion[&p.id.0])
                         .collect();
                     expected_project_ids.sort();
                     found_project_ids.sort();
@@ -304,4 +315,31 @@ async fn search_projects() {
             .await;
     })
     .await;
+}
+
+#[actix_rt::test]
+async fn align_projects() {
+    // Test setup and dummy data
+    with_test_environment(Some(10), |test_env: TestEnvironment<ApiV3>| async move {
+        setup_search_projects(&test_env).await;
+
+        let api = &test_env.api;
+        let test_name = test_env.db.database_name.clone();
+
+        let projects = api
+            .search_deserialized(Some(&test_name), Some(json!([["categories:fabric"]])), USER_USER_PAT)
+            .await;
+
+        for project in projects.hits {
+            let project_model = api.get_project(&project.id.to_string(), USER_USER_PAT).await;
+            let mut project_model : serde_json::Value = test::read_body_json(project_model).await;
+
+            let searched_project_serialized = serde_json::to_value(project).unwrap();
+
+            // Body is huge- don't store it in search, so it's OK if they differ here
+            // (Search should return "")
+            project_model["body"] = "".into();
+            assert_eq!(project_model, searched_project_serialized);
+        }
+    }).await
 }
