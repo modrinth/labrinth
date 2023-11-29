@@ -6,17 +6,17 @@ use crate::models;
 use crate::models::projects::{
     Link, MonetizationStatus, Project, ProjectStatus, SearchRequest, Version,
 };
-use crate::models::v2::projects::{DonationLink, {LegacyProject}, LegacySideType};
+use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType};
 use crate::models::v2::search::LegacySearchResults;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::ProjectIds;
 use crate::routes::{v2_reroute, v3, ApiError};
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::sync::Arc;
 use validator::Validate;
 

@@ -2,7 +2,6 @@ use actix_http::StatusCode;
 use actix_web::test;
 use bytes::Bytes;
 use chrono::{Duration, Utc};
-use common::api_v3::ApiV3;
 use common::api_v3::request_data::get_public_version_creation_data;
 use common::api_v3::ApiV3;
 use common::database::*;
