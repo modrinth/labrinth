@@ -103,8 +103,8 @@ pub async fn project_search(
                                     } else if facet.starts_with("project_type:") {
                                         format!("project_types:{}", val)
                                     } else if facet.starts_with("title:") {
-                                format!("name:{}", val)
-                            } else {
+                                        format!("name:{}", val)
+                                    } else {
                                         facet.to_string()
                                     }
                                 })

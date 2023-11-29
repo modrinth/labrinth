@@ -1,12 +1,12 @@
 use actix_web::test::{self, TestRequest};
 use bytes::Bytes;
 use chrono::{Duration, Utc};
-use common::api_v3::ApiV3;
-use common::dummy_data::TestFile;
 use common::api_v3::request_data::{
     get_public_project_creation_data, get_public_version_creation_data,
 };
-use common::environment::{with_test_environment,with_test_environment_all, TestEnvironment};
+use common::api_v3::ApiV3;
+use common::dummy_data::TestFile;
+use common::environment::{with_test_environment, with_test_environment_all, TestEnvironment};
 use common::{database::*, scopes::ScopeTest};
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::pats::Scopes;

@@ -5,8 +5,7 @@ use actix_web::{
 use async_trait::async_trait;
 use labrinth::routes::v3::tags::{GameData, LoaderData};
 use labrinth::{
-    database::models::loader_fields::LoaderFieldEnumValue,
-    routes::v3::tags::CategoryData,
+    database::models::loader_fields::LoaderFieldEnumValue, routes::v3::tags::CategoryData,
 };
 
 use crate::common::{
