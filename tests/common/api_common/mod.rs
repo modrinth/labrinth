@@ -12,7 +12,6 @@ use labrinth::{
         projects::{ProjectId, VersionType},
         teams::{OrganizationPermissions, ProjectPermissions},
     },
-    search::SearchResults,
     LabrinthConfig,
 };
 
@@ -79,12 +78,6 @@ pub trait ApiProject {
         icon: Option<CommonImageData>,
         pat: &str,
     ) -> ServiceResponse;
-    async fn search_deserialized_common(
-        &self,
-        query: Option<&str>,
-        facets: Option<serde_json::Value>,
-        pat: &str,
-    ) -> SearchResults;
 }
 
 #[async_trait(?Send)]

@@ -13,6 +13,7 @@ const GAMES_LIST_NAMESPACE: &str = "games";
 const LOADER_ID: &str = "loader_id";
 const LOADERS_LIST_NAMESPACE: &str = "loaders";
 const LOADER_FIELDS_NAMESPACE: &str = "loader_fields";
+const LOADER_FIELDS_NAMESPACE_ALL: &str = "loader_fields_all";
 const LOADER_FIELD_ENUMS_ID_NAMESPACE: &str = "loader_field_enums";
 const LOADER_FIELD_ENUM_VALUES_NAMESPACE: &str = "loader_field_enum_values";
 
@@ -85,6 +86,7 @@ pub struct Loader {
     pub icon: String,
     pub supported_project_types: Vec<String>,
     pub supported_games: Vec<String>, // slugs
+    pub metadata: serde_json::Value,
 }
 
 impl Loader {
@@ -136,7 +138,7 @@ impl Loader {
 
         let result = sqlx::query!(
             "
-            SELECT l.id id, l.loader loader, l.icon icon,
+            SELECT l.id id, l.loader loader, l.icon icon, l.metadata metadata,
             ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
             ARRAY_AGG(DISTINCT g.slug) filter (where g.slug is not null) games
             FROM loaders l            
@@ -161,7 +163,9 @@ impl Loader {
                     .collect(),
                 supported_games: x
                     .games
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                metadata: x.metadata
+
             }))
         })
         .try_collect::<Vec<_>>()
@@ -319,6 +323,23 @@ impl LoaderField {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
+        let found_loader_fields = Self::get_fields_per_loader(loader_ids, exec, redis).await?;
+        let result = found_loader_fields
+            .into_values()
+            .flatten()
+            .unique_by(|x| x.id)
+            .collect();
+        Ok(result)
+    }
+
+    pub async fn get_fields_per_loader<'a, E>(
+        loader_ids: &[LoaderId],
+        exec: E,
+        redis: &RedisPool,
+    ) -> Result<HashMap<LoaderId, Vec<LoaderField>>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
         type RedisLoaderFieldTuple = (LoaderId, Vec<LoaderField>);
 
         let mut redis = redis.connect().await?;
@@ -332,11 +353,11 @@ impl LoaderField {
             .filter_map(|x: String| serde_json::from_str::<RedisLoaderFieldTuple>(&x).ok())
             .collect();
 
-        let mut found_loader_fields = vec![];
+        let mut found_loader_fields = HashMap::new();
         if !cached_fields.is_empty() {
             for (loader_id, fields) in cached_fields {
                 if loader_ids.contains(&loader_id) {
-                    found_loader_fields.extend(fields);
+                    found_loader_fields.insert(loader_id, fields);
                     loader_ids.retain(|x| x != &loader_id);
                 }
             }
@@ -384,17 +405,62 @@ impl LoaderField {
                 redis
                     .set_serialized_to_json(LOADER_FIELDS_NAMESPACE, k.0, (k, &v), None)
                     .await?;
-                found_loader_fields.extend(v);
+                found_loader_fields.insert(k, v);
             }
         }
-        let result = found_loader_fields
-            .into_iter()
-            .unique_by(|x| x.id)
-            .collect();
+        Ok(found_loader_fields)
+    }
+
+    // Gets all fields for a given loader(s)
+    // This is for tags, which need all fields for all loaders
+    // We want to return them even in testing situations where we dont have loaders or loader_fields_loaders set up
+    pub async fn get_fields_all<'a, E>(
+        exec: E,
+        redis: &RedisPool,
+    ) -> Result<Vec<LoaderField>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let mut redis = redis.connect().await?;
+
+        let cached_fields: Option<Vec<LoaderField>> = redis
+            .get(LOADER_FIELDS_NAMESPACE_ALL, "")
+            .await?
+            .and_then(|x| serde_json::from_str::<Vec<LoaderField>>(&x).ok());
+
+        if let Some(cached_fields) = cached_fields {
+            return Ok(cached_fields);
+        }
+
+        let result = sqlx::query!(
+            "
+            SELECT DISTINCT lf.id, lf.field, lf.field_type, lf.optional, lf.min_val, lf.max_val, lf.enum_type
+            FROM loader_fields lf
+            ",
+        )
+        .fetch_many(exec)
+        .try_filter_map(|e| async {
+            Ok(e.right().and_then(|r| {
+                Some(LoaderField {
+                    id: LoaderFieldId(r.id),
+                    field_type: LoaderFieldType::build(&r.field_type, r.enum_type)?,
+                    field: r.field,
+                    optional: r.optional,
+                    min_val: r.min_val,
+                    max_val: r.max_val,
+                })
+            }))
+        })
+        .try_collect::<Vec<LoaderField>>()
+        .await?;
+
+        redis
+            .set_serialized_to_json(LOADER_FIELDS_NAMESPACE_ALL, "", &result, None)
+            .await?;
+
         Ok(result)
     }
 }
-
 impl LoaderFieldEnum {
     pub async fn get<'a, E>(
         enum_name: &str, // Note: NOT loader field name

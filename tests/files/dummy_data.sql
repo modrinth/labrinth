@@ -25,6 +25,9 @@ INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) V
 INSERT INTO loaders (id, loader) VALUES (6, 'forge');
 INSERT INTO loaders_project_types (joining_loader_id, joining_project_type_id) VALUES (6,1);
 
+INSERT INTO loaders (id, loader, metadata) VALUES (7, 'bukkit', '{"platform":false}'::jsonb);
+INSERT INTO loaders (id, loader, metadata) VALUES (8, 'waterfall', '{"platform":true}'::jsonb);
+
 -- Adds dummies to mrpack_loaders
 INSERT INTO loader_field_enum_values (enum_id, value) SELECT id, 'fabric' FROM loader_field_enums WHERE enum_name = 'mrpack_loaders';
 INSERT INTO loader_field_enum_values (enum_id, value) SELECT id, 'forge' FROM loader_field_enums WHERE enum_name = 'mrpack_loaders';
@@ -65,7 +68,7 @@ INSERT INTO loader_field_enum_values(enum_id, value, metadata, ordering)
 VALUES (2, 'Ordering_Positive100', '{"type":"release","major":false}', 100);
 
 INSERT INTO loader_fields_loaders(loader_id, loader_field_id) 
-SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf WHERE lf.field = 'game_versions' OR lf.field = 'client_side' OR lf.field = 'server_side';
+SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf WHERE lf.field IN ('game_versions','singleplayer', 'client_and_server', 'client_only', 'server_only');
 
 INSERT INTO categories (id, category, project_type) VALUES
     (51, 'combat', 1),
