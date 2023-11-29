@@ -4,11 +4,10 @@ use bytes::Bytes;
 use chrono::{Duration, Utc};
 use common::api_v3::ApiV3;
 use common::api_v3::request_data::get_public_version_creation_data;
-use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
 
-use common::environment::{with_test_environment, {with_test_environment, with_test_environment_all, TestEnvironment}, TestEnvironment};
+use common::environment::{with_test_environment, with_test_environment_all, TestEnvironment};
 use common::permissions::{PermissionsTest, PermissionsTestContext};
 use futures::StreamExt;
 use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUGS_NAMESPACE};
@@ -21,9 +20,6 @@ use serde_json::json;
 use crate::common::api_common::request_data::ProjectCreationRequestData;
 use crate::common::api_common::{ApiProject, ApiVersion};
 use crate::common::dummy_data::TestFile;
-use crate::common::api_v3::request_data::get_public_project_creation_data_json;
-use crate::common::dummy_data::TestFile;
-
 mod common;
 
 #[actix_rt::test]

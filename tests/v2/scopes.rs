@@ -1,4 +1,3 @@
-use crate::common::api_common::ApiProject;
 use crate::common::api_v2::request_data::get_public_project_creation_data;
 use crate::common::api_v2::request_data::get_public_version_creation_data;
 use crate::common::api_v2::ApiV2;
@@ -17,7 +16,6 @@ use labrinth::util::actix::AppendsMultipart;
 pub async fn project_version_create_scopes() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         // Create project
-        let api = &test_env.api;
         let create_project = Scopes::PROJECT_CREATE;
 
         let req_gen = || {

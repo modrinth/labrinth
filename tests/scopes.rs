@@ -1,16 +1,12 @@
 use actix_web::test::{self, TestRequest};
 use bytes::Bytes;
 use chrono::{Duration, Utc};
-
-use common::api_common::ApiProject;
 use common::api_v3::ApiV3;
 use common::dummy_data::TestFile;
 use common::api_v3::request_data::{
     get_public_project_creation_data, get_public_version_creation_data,
 };
-use common::api_v3::ApiV3;
-use common::dummy_data::TestFile;
-use common::environment::{with_test_environment, {with_test_environment, with_test_environment_all, TestEnvironment}, TestEnvironment};
+use common::environment::{with_test_environment,with_test_environment_all, TestEnvironment};
 use common::{database::*, scopes::ScopeTest};
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::pats::Scopes;
@@ -213,7 +209,7 @@ pub async fn notifications_scopes() {
 pub async fn project_version_create_scopes_v3() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         // TODO: If possible, find a way to use generic api functions with the Permissions/Scopes test, then this can be recombined with the V2 version of this test
-        let api = &test_env.api;
+        // let api = &test_env.api;
 
         // Create project
         let create_project = Scopes::PROJECT_CREATE;

@@ -44,15 +44,6 @@ pub fn flatten_404_error(res: ApiError) -> Result<HttpResponse, ApiError> {
     }
 }
 
-// This only removes the body of 404 responses
-// This should not be used on the fallback no-route-found handler
-pub fn flatten_404_error(res: ApiError) -> Result<HttpResponse, ApiError> {
-    match res {
-        ApiError::NotFound => Ok(HttpResponse::NotFound().body("")),
-        _ => Err(res),
-    }
-}
-
 pub async fn alter_actix_multipart<T, U, Fut>(
     mut multipart: Multipart,
     mut headers: HeaderMap,
