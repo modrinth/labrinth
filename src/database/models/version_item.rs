@@ -528,6 +528,48 @@ impl Version {
         if !version_ids_parsed.is_empty() {
             let db_versions: Vec<QueryVersion> = sqlx::query!(
                 "
+                WITH version_fields_cte AS (
+                    SELECT version_id, field_id, int_value, enum_value, string_value
+                    FROM version_fields WHERE version_id = ANY($1) 
+                ),
+				version_fields_json AS (
+					SELECT DISTINCT version_id,
+                    JSONB_AGG( 
+                        DISTINCT jsonb_build_object('field_id', field_id, 'int_value', int_value, 'enum_value', enum_value, 'string_value', string_value)
+                    ) version_fields_json
+                    FROM version_fields_cte
+                    GROUP BY version_id
+				),
+				loader_fields_cte AS (
+					SELECT DISTINCT vf.version_id, lf.*, l.loader
+					FROM loader_fields lf
+                    INNER JOIN version_fields_cte vf ON lf.id = vf.field_id
+					LEFT JOIN loaders_versions lv ON vf.version_id = lv.version_id
+					LEFT JOIN loaders l ON lv.loader_id = l.id
+                    GROUP BY vf.version_id, lf.enum_type, lf.id, l.loader
+				),
+                loader_fields_json AS (
+                    SELECT DISTINCT version_id,
+                        JSONB_AGG(
+                        DISTINCT jsonb_build_object(
+                            'lf_id', id, 'loader_name', loader, 'field', field, 'field_type', field_type, 'enum_type', enum_type, 'min_val', min_val, 'max_val', max_val, 'optional', optional
+                        )
+                    ) filter (where lf.id is not null) loader_fields_json
+                    FROM loader_fields_cte lf
+                    GROUP BY version_id
+                ),
+                loader_field_enum_values_json AS (
+                    SELECT DISTINCT version_id,
+                        JSONB_AGG(
+                        DISTINCT jsonb_build_object(
+                            'id', lfev.id, 'enum_id', lfev.enum_id, 'value', lfev.value, 'ordering', lfev.ordering, 'created', lfev.created, 'metadata', lfev.metadata
+                        ) 
+                    ) filter (where lfev.id is not null) loader_field_enum_values_json
+                    FROM loader_field_enum_values lfev
+                    INNER JOIN loader_fields_cte lf on lf.enum_type = lfev.enum_id
+                    GROUP BY version_id
+                )
+
                 SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
                 v.changelog changelog, v.date_published date_published, v.downloads downloads,
                 v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, v.ordering ordering,
@@ -537,38 +579,9 @@ impl Version {
                 JSONB_AGG(DISTINCT jsonb_build_object('id', f.id, 'url', f.url, 'filename', f.filename, 'primary', f.is_primary, 'size', f.size, 'file_type', f.file_type))  filter (where f.id is not null) files,
                 JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'), 'file_id', h.file_id)) filter (where h.hash is not null) hashes,
                 JSONB_AGG(DISTINCT jsonb_build_object('project_id', d.mod_dependency_id, 'version_id', d.dependency_id, 'dependency_type', d.dependency_type,'file_name', dependency_file_name)) filter (where d.dependency_type is not null) dependencies,
-                
-                JSONB_AGG(
-                    DISTINCT jsonb_build_object(
-                    'field_id', vf.field_id,
-                    'int_value', vf.int_value,
-                    'enum_value', vf.enum_value,
-                    'string_value', vf.string_value
-                    )
-                ) filter (where vf.field_id is not null) version_fields,
-                JSONB_AGG(
-                    DISTINCT jsonb_build_object(
-                        'lf_id', lf.id,
-                        'loader_name', l.loader,
-                        'field', lf.field,
-                        'field_type', lf.field_type,
-                        'enum_type', lf.enum_type,
-                        'min_val', lf.min_val,
-                        'max_val', lf.max_val,
-                        'optional', lf.optional
-                    )
-                ) filter (where lf.id is not null) loader_fields,
-                JSONB_AGG(
-                    DISTINCT jsonb_build_object(
-                        'id', lfev.id,
-                        'enum_id', lfev.enum_id,
-                        'value', lfev.value,
-                        'ordering', lfev.ordering,
-                        'created', lfev.created,
-                        'metadata', lfev.metadata
-                    )  
-                ) filter (where lfev.id is not null) loader_field_enum_values
-                                    
+                vf.version_fields_json version_fields,
+                lf.loader_fields_json loader_fields,
+                lfev.loader_field_enum_values_json loader_field_enum_values
                 FROM versions v
                 LEFT OUTER JOIN loaders_versions lv on v.id = lv.version_id
                 LEFT OUTER JOIN loaders l on lv.loader_id = l.id
@@ -579,13 +592,11 @@ impl Version {
                 LEFT OUTER JOIN files f on v.id = f.version_id
                 LEFT OUTER JOIN hashes h on f.id = h.file_id
                 LEFT OUTER JOIN dependencies d on v.id = d.dependent_id
-                LEFT OUTER JOIN version_fields vf on v.id = vf.version_id
-                LEFT OUTER JOIN loader_fields lf on vf.field_id = lf.id
-                LEFT OUTER JOIN loader_field_enums lfe on lf.enum_type = lfe.id
-                LEFT OUTER JOIN loader_field_enum_values lfev on lfe.id = lfev.enum_id
-
+                LEFT OUTER JOIN version_fields_json vf ON v.id = vf.version_id
+                LEFT OUTER JOIN loader_fields_json lf ON v.id = lf.version_id
+                LEFT OUTER JOIN loader_field_enum_values_json lfev ON v.id = lfev.version_id
                 WHERE v.id = ANY($1)
-                GROUP BY v.id
+                GROUP BY v.id, vf.version_fields_json, lf.loader_fields_json, lfev.loader_field_enum_values_json
                 ORDER BY v.ordering ASC NULLS LAST, v.date_published ASC;
                 ",
                 &version_ids_parsed
