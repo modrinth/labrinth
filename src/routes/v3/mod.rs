@@ -9,6 +9,7 @@ pub mod images;
 pub mod moderation;
 pub mod notifications;
 pub mod organizations;
+pub mod payouts;
 pub mod project_creation;
 pub mod projects;
 pub mod reports;
@@ -42,6 +43,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(threads::config)
             .configure(users::config)
             .configure(version_file::config)
+            .configure(payouts::config)
             .configure(versions::config),
     );
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::ids::{Base62Id, OrganizationId};
 use super::teams::TeamId;
@@ -109,10 +109,49 @@ pub struct Project {
 
     /// The monetization status of this project
     pub monetization_status: MonetizationStatus,
+
+    /// Aggregated loader-fields across its myriad of versions
+    #[serde(flatten)]
+    pub fields: HashMap<String, Vec<serde_json::Value>>,
+}
+
+fn remove_duplicates(values: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    let mut seen = HashSet::new();
+    values
+        .into_iter()
+        .filter(|value| {
+            // Convert the JSON value to a string for comparison
+            let as_string = value.to_string();
+            // Check if the string is already in the set
+            seen.insert(as_string)
+        })
+        .collect()
 }
 
 impl From<QueryProject> for Project {
     fn from(data: QueryProject) -> Self {
+        let mut fields: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+        for vf in data.aggregate_version_fields {
+            // We use a string directly, so we can remove duplicates
+            let serialized = if let Some(inner_array) = vf.value.serialize_internal().as_array() {
+                inner_array.clone()
+            } else {
+                vec![vf.value.serialize_internal()]
+            };
+
+            // Create array if doesnt exist, otherwise push, or if json is an array, extend
+            if let Some(arr) = fields.get_mut(&vf.field_name) {
+                arr.extend(serialized);
+            } else {
+                fields.insert(vf.field_name, serialized);
+            }
+        }
+
+        // Remove duplicates by converting to string and back
+        for (_, v) in fields.iter_mut() {
+            *v = remove_duplicates(v.clone());
+        }
+
         let m = data.inner;
         Self {
             id: m.id.into(),
@@ -196,6 +235,7 @@ impl From<QueryProject> for Project {
             color: m.color,
             thread_id: data.thread_id.into(),
             monetization_status: m.monetization_status,
+            fields,
         }
     }
 }
@@ -214,42 +254,6 @@ pub struct GalleryItem {
 pub struct ModeratorMessage {
     pub message: String,
     pub body: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum SideType {
-    Required,
-    Optional,
-    Unsupported,
-    Unknown,
-}
-
-impl std::fmt::Display for SideType {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "{}", self.as_str())
-    }
-}
-
-impl SideType {
-    // These are constant, so this can remove unneccessary allocations (`to_string`)
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SideType::Required => "required",
-            SideType::Optional => "optional",
-            SideType::Unsupported => "unsupported",
-            SideType::Unknown => "unknown",
-        }
-    }
-
-    pub fn from_string(string: &str) -> SideType {
-        match string {
-            "required" => SideType::Required,
-            "optional" => SideType::Optional,
-            "unsupported" => SideType::Unsupported,
-            _ => SideType::Unknown,
-        }
-    }
 }
 
 pub const DEFAULT_LICENSE_ID: &str = "LicenseRef-All-Rights-Reserved";
@@ -676,7 +680,7 @@ pub struct VersionFile {
 
 /// A dendency which describes what versions are required, break support, or are optional to the
 /// version's functionality
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Dependency {
     /// The specific version id that the dependency uses
     pub version_id: Option<VersionId>,
@@ -713,7 +717,7 @@ impl VersionType {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DependencyType {
     Required,
