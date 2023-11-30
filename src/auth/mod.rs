@@ -107,4 +107,5 @@ pub enum AuthProvider {
     GitLab,
     Google,
     Steam,
+    PayPal,
 }
