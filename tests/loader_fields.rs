@@ -30,15 +30,13 @@ async fn creating_loader_fields() {
             .as_ref()
             .unwrap()
             .project_alpha
-            .project_id_parsed
-            .clone();
+            .project_id_parsed;
         let beta_project_id_parsed = test_env
             .dummy
             .as_ref()
             .unwrap()
             .project_beta
-            .project_id_parsed
-            .clone();
+            .project_id_parsed;
         let alpha_version_id = &test_env
             .dummy
             .as_ref()
