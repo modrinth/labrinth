@@ -7,7 +7,6 @@ use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::models::threads::ThreadId;
 use chrono::{DateTime, Utc};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -116,10 +115,10 @@ pub struct Project {
     pub fields: HashMap<String, Vec<serde_json::Value>>,
 }
 
-
 fn remove_duplicates(values: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
     let mut seen = HashSet::new();
-    values.into_iter()
+    values
+        .into_iter()
         .filter(|value| {
             // Convert the JSON value to a string for comparison
             let as_string = value.to_string();
@@ -128,7 +127,6 @@ fn remove_duplicates(values: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
         })
         .collect()
 }
-
 
 impl From<QueryProject> for Project {
     fn from(data: QueryProject) -> Self {
@@ -150,7 +148,7 @@ impl From<QueryProject> for Project {
         }
 
         // Remove duplicates by converting to string and back
-        for (k, v) in fields.iter_mut() {
+        for (_, v) in fields.iter_mut() {
             *v = remove_duplicates(v.clone());
         }
 
@@ -237,7 +235,7 @@ impl From<QueryProject> for Project {
             color: m.color,
             thread_id: data.thread_id.into(),
             monetization_status: m.monetization_status,
-            fields
+            fields,
         }
     }
 }
@@ -682,7 +680,7 @@ pub struct VersionFile {
 
 /// A dendency which describes what versions are required, break support, or are optional to the
 /// version's functionality
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Dependency {
     /// The specific version id that the dependency uses
     pub version_id: Option<VersionId>,
@@ -719,7 +717,7 @@ impl VersionType {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DependencyType {
     Required,

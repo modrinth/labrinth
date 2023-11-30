@@ -844,7 +844,7 @@ async fn project_create_inner(
             color: project_builder.color,
             thread_id: thread_id.into(),
             monetization_status: MonetizationStatus::Monetized,
-            fields: HashMap::new() // Fields instantiate to empty
+            fields: HashMap::new(), // Fields instantiate to empty
         };
 
         Ok(HttpResponse::Ok().json(response))

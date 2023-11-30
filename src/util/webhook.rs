@@ -231,7 +231,7 @@ pub async fn send_discord_webhook(
             project.loader_fields,
             project.version_fields,
             project.loader_field_enum_values,
-            true 
+            true,
         );
         let versions = version_fields
             .into_iter()

@@ -259,7 +259,6 @@ impl std::hash::Hash for LoaderFieldEnumValue {
     }
 }
 
-
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct VersionField {
     pub version_id: VersionId,
@@ -812,9 +811,9 @@ impl VersionField {
         version_fields: Option<serde_json::Value>,
         loader_field_enum_values: Option<serde_json::Value>,
         allow_many: bool, // If true, will allow multiple values for a single singleton field, returning them as separate VersionFields
-        // allow_many = true, multiple Bools => two VersionFields of Bool
-        // allow_many = false, multiple Bools => error
-        // multiple Arraybools => 1 VersionField of ArrayBool
+                          // allow_many = true, multiple Bools => two VersionFields of Bool
+                          // allow_many = false, multiple Bools => error
+                          // multiple Arraybools => 1 VersionField of ArrayBool
     ) -> Vec<VersionField> {
         #[derive(Deserialize, Debug)]
         struct JsonLoaderField {
@@ -901,15 +900,17 @@ impl VersionField {
                     })
                     .collect::<Vec<_>>();
                 if allow_many {
-                    let mut version_fields: Vec<VersionField> = VersionField::build_many(loader_field, version_id, values).unwrap_or_default();
-                    version_fields.into_iter().unique().collect_vec()
+                    VersionField::build_many(loader_field, version_id, values)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .unique()
+                        .collect_vec()
                 } else {
                     match VersionField::build(loader_field, version_id, values) {
                         Ok(vf) => vec![vf],
                         Err(_) => vec![],
                     }
                 }
-                
             })
             .collect()
     }
@@ -934,14 +935,16 @@ impl VersionField {
         query_version_fields: Vec<QueryVersionField>,
     ) -> Result<Vec<VersionField>, DatabaseError> {
         let values = VersionFieldValue::build_many(&loader_field.field_type, query_version_fields)?;
-        Ok(values.into_iter().map(|value | VersionField {
-            version_id,
-            field_id: loader_field.id,
-            field_name: loader_field.field.clone(),
-            value,
-        }).collect())
+        Ok(values
+            .into_iter()
+            .map(|value| VersionField {
+                version_id,
+                field_id: loader_field.id,
+                field_name: loader_field.field.clone(),
+                value,
+            })
+            .collect())
     }
-
 }
 
 impl VersionFieldValue {
@@ -1021,7 +1024,7 @@ impl VersionFieldValue {
             }),
         })
     }
-    
+
     // This will ensure that if multiple QueryVersionFields are provided, they can be combined into a single VersionFieldValue
     // of the appropriate type (ie: false, false, true -> ArrayBoolean([false, false, true])) (and not just Boolean)
     pub fn build(
@@ -1029,7 +1032,10 @@ impl VersionFieldValue {
         qvfs: Vec<QueryVersionField>,
     ) -> Result<VersionFieldValue, DatabaseError> {
         match field_type {
-            LoaderFieldType::Integer | LoaderFieldType::Text | LoaderFieldType::Boolean | LoaderFieldType::Enum(_) => {
+            LoaderFieldType::Integer
+            | LoaderFieldType::Text
+            | LoaderFieldType::Boolean
+            | LoaderFieldType::Enum(_) => {
                 let mut fields = Self::build_many(field_type, qvfs)?;
                 if fields.len() > 1 {
                     return Err(DatabaseError::SchemaError(format!(
@@ -1044,7 +1050,10 @@ impl VersionFieldValue {
                     ))
                 })
             }
-            LoaderFieldType::ArrayInteger | LoaderFieldType::ArrayText | LoaderFieldType::ArrayBoolean | LoaderFieldType::ArrayEnum(_) => {
+            LoaderFieldType::ArrayInteger
+            | LoaderFieldType::ArrayText
+            | LoaderFieldType::ArrayBoolean
+            | LoaderFieldType::ArrayEnum(_) => {
                 let fields = Self::build_many(field_type, qvfs)?;
                 Ok(fields.into_iter().next().ok_or_else(|| {
                     DatabaseError::SchemaError(format!(
@@ -1054,7 +1063,6 @@ impl VersionFieldValue {
                 })?)
             }
         }
-        
     }
 
     // Build from internal query data
@@ -1067,18 +1075,6 @@ impl VersionFieldValue {
         qvfs: Vec<QueryVersionField>,
     ) -> Result<Vec<VersionFieldValue>, DatabaseError> {
         let field_name = field_type.to_str();
-        let get_first = |qvfs: Vec<QueryVersionField>| -> Result<QueryVersionField, DatabaseError> {
-            if qvfs.len() > 1 {
-                return Err(DatabaseError::SchemaError(format!(
-                    "Multiple fields for field {}",
-                    field_name
-                )));
-            }
-            qvfs.into_iter().next().ok_or_else(|| {
-                DatabaseError::SchemaError(format!("No version fields for field {}", field_name))
-            })
-        };
-
         let did_not_exist_error = |field_name: &str, desired_field: &str| {
             DatabaseError::SchemaError(format!(
                 "Field name {} for field {} in does not exist",
@@ -1087,32 +1083,44 @@ impl VersionFieldValue {
         };
 
         Ok(match field_type {
-            LoaderFieldType::Integer => qvfs.into_iter()
-            .map(|qvf| Ok(VersionFieldValue::Integer(
-                    qvf.int_value
-                        .ok_or(did_not_exist_error(field_name, "int_value"))?
-                ))
-            ).collect::<Result<Vec<VersionFieldValue>,DatabaseError>>()?,
-            LoaderFieldType::Text => qvfs.into_iter()
-            .map(|qvf| Ok::<VersionFieldValue,DatabaseError>(VersionFieldValue::Text(
-                    qvf.string_value
-                        .ok_or(did_not_exist_error(field_name, "string_value"))?
-                ))
-            ).collect::<Result<Vec<VersionFieldValue>,DatabaseError>>()?,
-            LoaderFieldType::Boolean => qvfs.into_iter()
-            .map(|qvf| Ok::<VersionFieldValue,DatabaseError>(VersionFieldValue::Boolean(
-                    qvf.int_value
-                        .ok_or(did_not_exist_error(field_name, "int_value"))?
-                        != 0
-                ))
-            ).collect::<Result<Vec<VersionFieldValue>,DatabaseError>>()?,
-            LoaderFieldType::Enum(id) => qvfs.into_iter()
-            .map(|qvf| Ok::<VersionFieldValue,DatabaseError>(VersionFieldValue::Enum(
-                    *id,
-                    qvf.enum_value
-                        .ok_or(did_not_exist_error(field_name, "enum_value"))?
-                ))
-            ).collect::<Result<Vec<VersionFieldValue>,DatabaseError>>()?,
+            LoaderFieldType::Integer => qvfs
+                .into_iter()
+                .map(|qvf| {
+                    Ok(VersionFieldValue::Integer(
+                        qvf.int_value
+                            .ok_or(did_not_exist_error(field_name, "int_value"))?,
+                    ))
+                })
+                .collect::<Result<Vec<VersionFieldValue>, DatabaseError>>()?,
+            LoaderFieldType::Text => qvfs
+                .into_iter()
+                .map(|qvf| {
+                    Ok::<VersionFieldValue, DatabaseError>(VersionFieldValue::Text(
+                        qvf.string_value
+                            .ok_or(did_not_exist_error(field_name, "string_value"))?,
+                    ))
+                })
+                .collect::<Result<Vec<VersionFieldValue>, DatabaseError>>()?,
+            LoaderFieldType::Boolean => qvfs
+                .into_iter()
+                .map(|qvf| {
+                    Ok::<VersionFieldValue, DatabaseError>(VersionFieldValue::Boolean(
+                        qvf.int_value
+                            .ok_or(did_not_exist_error(field_name, "int_value"))?
+                            != 0,
+                    ))
+                })
+                .collect::<Result<Vec<VersionFieldValue>, DatabaseError>>()?,
+            LoaderFieldType::Enum(id) => qvfs
+                .into_iter()
+                .map(|qvf| {
+                    Ok::<VersionFieldValue, DatabaseError>(VersionFieldValue::Enum(
+                        *id,
+                        qvf.enum_value
+                            .ok_or(did_not_exist_error(field_name, "enum_value"))?,
+                    ))
+                })
+                .collect::<Result<Vec<VersionFieldValue>, DatabaseError>>()?,
             LoaderFieldType::ArrayInteger => vec![VersionFieldValue::ArrayInteger(
                 qvfs.into_iter()
                     .map(|qvf| {

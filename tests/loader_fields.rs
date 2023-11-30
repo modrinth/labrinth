@@ -25,12 +25,18 @@ async fn creating_loader_fields() {
             .project_alpha
             .project_id
             .clone();
-        let alpha_project_id_parsed = 
-            test_env
+        let alpha_project_id_parsed = test_env
             .dummy
             .as_ref()
             .unwrap()
             .project_alpha
+            .project_id_parsed
+            .clone();
+        let beta_project_id_parsed = test_env
+            .dummy
+            .as_ref()
+            .unwrap()
+            .project_beta
             .project_id_parsed
             .clone();
         let alpha_version_id = &test_env
@@ -320,27 +326,44 @@ async fn creating_loader_fields() {
 
         // Now that we've created a version, we need to make sure that the Project's loader fields are updated (aggregate)
         // First, add a new version
-        let v = api
-            .add_public_version_deserialized(
-                alpha_project_id_parsed,
-                "1.0.1",
-                TestFile::build_random_jar(),
-                None,
-                Some(
-                    serde_json::from_value(json!([{
-                        "op": "add",
-                        "path": "/game_versions",
-                        "value": ["1.20.5"]
-                    }, {
-                        "op": "add",
-                        "path": "/singleplayer",
-                        "value": false
-                    }]))
-                    .unwrap(),
-                ),
-                USER_USER_PAT,
-            )
-            .await;
+        api.add_public_version_deserialized(
+            alpha_project_id_parsed,
+            "1.0.1",
+            TestFile::build_random_jar(),
+            None,
+            Some(
+                serde_json::from_value(json!([{
+                    "op": "add",
+                    "path": "/game_versions",
+                    "value": ["1.20.5"]
+                }, {
+                    "op": "add",
+                    "path": "/singleplayer",
+                    "value": false
+                }]))
+                .unwrap(),
+            ),
+            USER_USER_PAT,
+        )
+        .await;
+
+        // Also, add one to the beta project
+        api.add_public_version_deserialized(
+            beta_project_id_parsed,
+            "1.0.1",
+            TestFile::build_random_jar(),
+            None,
+            Some(
+                serde_json::from_value(json!([{
+                    "op": "add",
+                    "path": "/game_versions",
+                    "value": ["1.20.4"]
+                }]))
+                .unwrap(),
+            ),
+            USER_USER_PAT,
+        )
+        .await;
 
         let project = api
             .get_project_deserialized(&alpha_project_id.to_string(), USER_USER_PAT)
@@ -349,8 +372,10 @@ async fn creating_loader_fields() {
             project.fields.get("game_versions").unwrap(),
             &[json!("1.20.1"), json!("1.20.2"), json!("1.20.5")]
         );
-        assert_eq!(project.fields.get("singleplayer").unwrap(), &[json!(false), json!(true)]);
-
+        assert_eq!(
+            project.fields.get("singleplayer").unwrap(),
+            &[json!(false), json!(true)]
+        );
     })
     .await
 }
