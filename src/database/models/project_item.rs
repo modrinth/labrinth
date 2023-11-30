@@ -637,10 +637,10 @@ impl Project {
                         DISTINCT jsonb_build_object(
                             'platform_id', ml.joining_platform_id, 'platform_name', lp.name,'url', ml.url, 'donation', lp.donation
                         )
-                    ) filter (where ml.joining_platform_id is not null) link_json
+                    ) filter (where ml.joining_platform_id is not null) links_json
                     FROM mods_links ml
-                    INNER JOIN mods m ON md.joining_mod_id = m.id AND m.id = ANY($1) OR m.slug = ANY($2)
-                    INNER JOIN link_platforms lp ON ml.joining_platform_id = dl.id
+                    INNER JOIN mods m ON ml.joining_mod_id = m.id AND m.id = ANY($1) OR m.slug = ANY($2)
+                    INNER JOIN link_platforms lp ON ml.joining_platform_id = lp.id
                     GROUP BY mod_id
                 )
                 
@@ -678,7 +678,7 @@ impl Project {
                 LEFT OUTER JOIN loader_fields_json lf ON m.id = lf.mod_id
                 LEFT OUTER JOIN loader_field_enum_values_json lfev ON m.id = lfev.mod_id
                 WHERE m.id = ANY($1) OR m.slug = ANY($2)
-                GROUP BY t.id, m.id, version_fields_json, loader_fields_json, loader_field_enum_values_json, versions_json, mods_gallery_json, donations_json;
+                GROUP BY t.id, m.id, version_fields_json, loader_fields_json, loader_field_enum_values_json, versions_json, mods_gallery_json, links_json;
                 ",
                 &project_ids_parsed,
                 &remaining_strings.into_iter().map(|x| x.to_string().to_lowercase()).collect::<Vec<_>>(),
