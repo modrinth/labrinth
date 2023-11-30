@@ -3,8 +3,8 @@ pub mod flows;
 pub mod pats;
 pub mod session;
 
-pub use super::ApiError;
 use super::v3::oauth_clients;
+pub use super::ApiError;
 use crate::util::cors::default_cors;
 
 pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
@@ -16,7 +16,6 @@ pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
             .configure(oauth_clients::config)
             .configure(session::config)
             .configure(flows::config)
-            .configure(pats::config)
-
+            .configure(pats::config),
     );
 }

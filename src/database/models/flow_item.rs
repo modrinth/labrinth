@@ -1,6 +1,6 @@
 use super::ids::*;
-use crate::auth::AuthProvider;
 use crate::auth::oauth::uris::OAuthRedirectUris;
+use crate::auth::AuthProvider;
 use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;

@@ -1,3 +1,4 @@
+use super::AuthProvider;
 use crate::auth::AuthenticationError;
 use crate::database::models::user_item;
 use crate::database::redis::RedisPool;
@@ -8,7 +9,6 @@ use crate::routes::internal::session::get_session_metadata;
 use actix_web::HttpRequest;
 use chrono::Utc;
 use reqwest::header::{HeaderValue, AUTHORIZATION};
-use super::AuthProvider;
 
 pub async fn get_user_from_headers<'a, E>(
     req: &HttpRequest,

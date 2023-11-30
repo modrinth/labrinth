@@ -1,6 +1,6 @@
 use crate::auth::email::send_email;
 use crate::auth::validate::get_user_record_from_bearer_token;
-use crate::auth::{get_user_from_headers, AuthenticationError, AuthProvider};
+use crate::auth::{get_user_from_headers, AuthProvider, AuthenticationError};
 use crate::database::models::flow_item::Flow;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -10,8 +10,8 @@ use crate::models::pats::Scopes;
 use crate::models::users::{Badges, Role};
 use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
-use crate::routes::ApiError;
 use crate::routes::internal::session::issue_session;
+use crate::routes::ApiError;
 use crate::util::captcha::check_turnstile_captcha;
 use crate::util::env::parse_strings_from_var;
 use crate::util::ext::{get_image_content_type, get_image_ext};
