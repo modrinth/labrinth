@@ -43,6 +43,7 @@ pub async fn index_local(
                 SELECT DISTINCT version_id,
                     JSONB_AGG(
                     DISTINCT jsonb_build_object(
+                        'version_id', lf.version_id,
                         'lf_id', id, 'loader_name', loader, 'field', field, 'field_type', field_type, 'enum_type', enum_type, 'min_val', min_val, 'max_val', max_val, 'optional', optional
                     )
                 ) filter (where lf.id is not null) loader_fields_json
@@ -111,7 +112,7 @@ pub async fn index_local(
                     let display_categories = categories.clone();
                     categories.append(&mut additional_categories);
 
-                    let version_fields = VersionField::from_query_json(m.id, m.loader_fields, m.version_fields, m.loader_field_enum_values);
+                    let version_fields = VersionField::from_query_json(m.loader_fields, m.version_fields, m.loader_field_enum_values, false);
 
                     let loader_fields : HashMap<String, Vec<String>> = version_fields.into_iter().map(|vf| {
                         (vf.field_name, vf.value.as_strings())

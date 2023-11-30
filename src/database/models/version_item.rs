@@ -552,6 +552,7 @@ impl Version {
                     SELECT DISTINCT version_id,
                         JSONB_AGG(
                         DISTINCT jsonb_build_object(
+                            'version_id', lf.version_id,
                             'lf_id', id, 'loader_name', loader, 'field', field, 'field_type', field_type, 'enum_type', enum_type, 'min_val', min_val, 'max_val', max_val, 'optional', optional
                         )
                     ) filter (where lf.id is not null) loader_fields_json
@@ -687,7 +688,7 @@ impl Version {
 
                                 files
                             },
-                            version_fields: VersionField::from_query_json(v.id, v.loader_fields, v.version_fields, v.loader_field_enum_values),
+                            version_fields: VersionField::from_query_json(v.loader_fields, v.version_fields, v.loader_field_enum_values, false),
                             loaders: v.loaders.unwrap_or_default(),
                             project_types: v.project_types.unwrap_or_default(),
                             games: v.games.unwrap_or_default(),
