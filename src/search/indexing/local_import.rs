@@ -56,16 +56,13 @@ pub async fn index_local(
         .map(|(project_id, _)| project_id)
         .cloned()
         .collect::<Vec<_>>();
-    let projects: HashMap<_, _> =
-        project_item::Project::get_many_ids(&project_ids, &pool, redis)
-            .await?
-            .into_iter()
-            .map(|p| (p.inner.id, p))
-            .collect();
+    let projects: HashMap<_, _> = project_item::Project::get_many_ids(&project_ids, &pool, redis)
+        .await?
+        .into_iter()
+        .map(|p| (p.inner.id, p))
+        .collect();
 
-    let version_ids = all_visible_ids.keys()
-        .cloned()
-        .collect::<Vec<_>>();
+    let version_ids = all_visible_ids.keys().cloned().collect::<Vec<_>>();
     let versions: HashMap<_, _> = version_item::Version::get_many(&version_ids, &pool, redis)
         .await?
         .into_iter()

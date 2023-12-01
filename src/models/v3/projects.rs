@@ -392,6 +392,11 @@ impl Project {
             color: m.color,
             thread_id,
             monetization_status,
+            fields: m
+                .loader_fields
+                .into_iter()
+                .map(|(k, v)| (k, v.into_iter().map(|x| x.into()).collect()))
+                .collect(),
         })
     }
 }
