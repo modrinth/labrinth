@@ -640,7 +640,7 @@ impl Project {
                     SELECT DISTINCT mod_id,
                         JSONB_AGG(
                         DISTINCT jsonb_build_object(
-                            'image_url', mg.image_url, 'featured', mg.featured, 'title', mg.title, 'description', mg.description, 'created', mg.created, 'ordering', mg.ordering
+                            'image_url', mg.image_url, 'featured', mg.featured, 'name', mg.name, 'description', mg.description, 'created', mg.created, 'ordering', mg.ordering
                         )
                     ) filter (where image_url is not null) mods_gallery_json
                     FROM mods_gallery mg
