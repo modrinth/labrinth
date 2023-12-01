@@ -152,9 +152,6 @@ pub async fn index_local(
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        println!("mrpack_loaders: {:?}", mrpack_loaders);
-        println!("loaders: {:?}", loaders);
-        println!("fields: {:?}", loader_fields);
         categories.extend(mrpack_loaders);
 
         let gallery = m

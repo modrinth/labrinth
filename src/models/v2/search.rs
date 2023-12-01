@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::search::ResultSearchProject;
+use crate::{routes::v2_reroute, search::ResultSearchProject};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LegacySearchResults {
@@ -95,24 +95,30 @@ impl LegacyResultSearchProject {
             project_type
         };
 
-        let client_side = result_search_project
-            .loader_fields
-            .get("client_side")
-            .cloned()
-            .unwrap_or_default()
-            .first()
-            .and_then(|s| s.as_str())
-            .map(String::from)
-            .unwrap_or("unknown".to_string());
-        let server_side = result_search_project
-            .loader_fields
-            .get("server_side")
-            .cloned()
-            .unwrap_or_default()
-            .first()
-            .and_then(|s| s.as_str())
-            .map(String::from)
-            .unwrap_or("unknown".to_string());
+        let loader_fields = result_search_project.loader_fields.clone();
+        let get_one_bool_loader_field = |key: &str| {
+            loader_fields
+                .get(key)
+                .cloned()
+                .unwrap_or_default()
+                .first()
+                .and_then(|s| s.as_bool())
+        };
+
+        let singleplayer = get_one_bool_loader_field("singleplayer");
+        let client_only = get_one_bool_loader_field("client_only").unwrap_or(false);
+        let server_only = get_one_bool_loader_field("server_only").unwrap_or(false);
+        let client_and_server = get_one_bool_loader_field("client_and_server");
+
+        let (client_side, server_side) = v2_reroute::convert_side_types_v2_bools(
+            singleplayer,
+            client_only,
+            server_only,
+            client_and_server,
+        );
+        let client_side = client_side.to_string();
+        let server_side = server_side.to_string();
+
         let versions = result_search_project
             .loader_fields
             .get("game_versions")
