@@ -127,7 +127,6 @@ fn remove_duplicates(values: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
 
 // This is a helper function to convert a list of VersionFields into a HashMap of field name to vecs of values
 // This allows for removal of duplicates
-// TODO: Rethink this a little bit.
 pub fn from_duplicate_version_fields(
     version_fields: Vec<VersionField>,
 ) -> HashMap<String, Vec<serde_json::Value>> {

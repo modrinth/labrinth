@@ -204,7 +204,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "gallery",
     "featured_gallery",
     "color",
-    // Note: loader fields are not here, but are addedd on as they are needed (so they can be dynamically added depending on which exist).
+    // Note: loader fields are not here, but are added on as they are needed (so they can be dynamically added depending on which exist).
 
     // Non-searchable fields for filling out the Project model.
     "license_url",
