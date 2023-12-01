@@ -24,13 +24,6 @@ CREATE TABLE mods_links (
     url VARCHAR(255) NOT NULL
 );
 
-CREATE TABLE organization_links (
-    id SERIAL PRIMARY KEY,
-    joining_organization_id BIGINT NOT NULL REFERENCES organizations (id),
-    joining_platform_id INTEGER NOT NULL REFERENCES link_platforms (id),
-    url VARCHAR(255) NOT NULL
-);
-
 INSERT INTO mods_links (joining_mod_id, joining_platform_id, url)
 SELECT DISTINCT m.id, lp.id, md.url
 FROM mods m
