@@ -1019,11 +1019,13 @@ pub async fn pat_scopes() {
         // Pat create
         let pat_create = Scopes::PAT_CREATE;
         let req_gen = || {
-            test::TestRequest::post().uri("/v3/pat").set_json(json!({
-                "scopes": 1,
-                "name": "test_pat_scopes Name",
-                "expires": Utc::now() + Duration::days(1),
-            }))
+            test::TestRequest::post()
+                .uri("/_internal/pat")
+                .set_json(json!({
+                    "scopes": 1,
+                    "name": "test_pat_scopes Name",
+                    "expires": Utc::now() + Duration::days(1),
+                }))
         };
         let (_, success) = ScopeTest::new(&test_env)
             .test(req_gen, pat_create)
@@ -1035,7 +1037,7 @@ pub async fn pat_scopes() {
         let pat_write = Scopes::PAT_WRITE;
         let req_gen = || {
             test::TestRequest::patch()
-                .uri(&format!("/v3/pat/{pat_id}"))
+                .uri(&format!("/_internal/pat/{pat_id}"))
                 .set_json(json!({}))
         };
         ScopeTest::new(&test_env)
@@ -1045,7 +1047,7 @@ pub async fn pat_scopes() {
 
         // Pat read
         let pat_read = Scopes::PAT_READ;
-        let req_gen = || test::TestRequest::get().uri("/v3/pat");
+        let req_gen = || test::TestRequest::get().uri("/_internal/pat");
         ScopeTest::new(&test_env)
             .test(req_gen, pat_read)
             .await
@@ -1053,7 +1055,7 @@ pub async fn pat_scopes() {
 
         // Pat delete
         let pat_delete = Scopes::PAT_DELETE;
-        let req_gen = || test::TestRequest::delete().uri(&format!("/v3/pat/{pat_id}"));
+        let req_gen = || test::TestRequest::delete().uri(&format!("/_internal/pat/{pat_id}"));
         ScopeTest::new(&test_env)
             .test(req_gen, pat_delete)
             .await

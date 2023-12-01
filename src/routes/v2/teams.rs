@@ -51,30 +51,6 @@ pub async fn team_members_get_project(
     }
 }
 
-#[get("{id}/members")]
-pub async fn team_members_get_organization(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::teams::team_members_get_organization(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
-    // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Vec<TeamMember>>(response).await {
-        Ok(members) => {
-            let members = members
-                .into_iter()
-                .map(LegacyTeamMember::from)
-                .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(members))
-        }
-        Err(response) => Ok(response),
-    }
-}
-
 // Returns all members of a team, but not necessarily those of a project-team's organization (unlike team_members_get_project)
 #[get("{id}/members")]
 pub async fn team_members_get(

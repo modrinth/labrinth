@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use std::collections::HashMap;
 
 use super::super::ids::OrganizationId;
@@ -10,11 +12,14 @@ use crate::models::ids::{ProjectId, VersionId};
 use crate::models::projects::{
     Dependency, DonationLink, License, Loader, ModeratorMessage, MonetizationStatus, Project,
     ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
+    Dependency, GalleryItem, License, Link, Loader, ModeratorMessage, MonetizationStatus, Project,
+    ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
 };
 use crate::models::threads::ThreadId;
 use crate::routes::v2_reroute;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 /// A project returned from the API
 #[derive(Serialize, Deserialize, Clone)]
@@ -79,12 +84,26 @@ impl LegacyProject {
         let mut game_versions = Vec::new();
 
         // V2 versions only have one project type- v3 versions can rarely have multiple.
-        // We'll just use the first one.
-        let mut project_type = data
-            .project_types
+        // We'll prioritize 'modpack' first, then 'mod', and if neither are found, use the first one.
+        // If there are no project types, default to 'project'
+        let mut project_types = data.project_types;
+        if project_types.contains(&"modpack".to_string()) {
+            project_types = vec!["modpack".to_string()];
+        } else if project_types.contains(&"mod".to_string()) {
+            project_types = vec!["mod".to_string()];
+        }
+        let project_type = project_types
             .first()
             .cloned()
-            .unwrap_or("unknown".to_string());
+            .unwrap_or("project".to_string()); // Default to 'project' if none are found
+
+        let mut project_type = if project_type == "datapack" || project_type == "plugin" {
+            // These are not supported in V2, so we'll just use 'mod' instead
+            "mod".to_string()
+        } else {
+            project_type
+        };
+
         let mut loaders = data.loaders;
 
         if let Some(versions_item) = versions_item {
@@ -118,6 +137,18 @@ impl LegacyProject {
             }
         }
 
+        let issues_url = data.link_urls.get("issues").map(|l| l.url.clone());
+        let source_url = data.link_urls.get("source").map(|l| l.url.clone());
+        let wiki_url = data.link_urls.get("wiki").map(|l| l.url.clone());
+        let discord_url = data.link_urls.get("discord").map(|l| l.url.clone());
+
+        let donation_urls = data
+            .link_urls
+            .iter()
+            .filter(|(_, l)| l.donation)
+            .map(|(_, l)| DonationLink::try_from(l.clone()).ok())
+            .collect::<Option<Vec<_>>>();
+
         Self {
             id: data.id,
             slug: data.slug,
@@ -143,11 +174,11 @@ impl LegacyProject {
             loaders,
             versions: data.versions,
             icon_url: data.icon_url,
-            issues_url: data.issues_url,
-            source_url: data.source_url,
-            wiki_url: data.wiki_url,
-            discord_url: data.discord_url,
-            donation_urls: data.donation_urls,
+            issues_url,
+            source_url,
+            wiki_url,
+            discord_url,
+            donation_urls,
             gallery: data
                 .gallery
                 .into_iter()
@@ -328,4 +359,37 @@ impl LegacyGalleryItem {
             ordering: data.ordering,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Validate, Clone, Eq, PartialEq)]
+pub struct DonationLink {
+    pub id: String,
+    pub platform: String,
+    #[validate(
+        custom(function = "crate::util::validate::validate_url"),
+        length(max = 2048)
+    )]
+    pub url: String,
+}
+
+impl TryFrom<Link> for DonationLink {
+    type Error = String;
+    fn try_from(link: Link) -> Result<Self, String> {
+        if !link.donation {
+            return Err("Not a donation".to_string());
+        }
+        Ok(Self {
+            platform: capitalize_first(&link.platform),
+            url: link.url,
+            id: link.platform,
+        })
+    }
+}
+
+fn capitalize_first(input: &str) -> String {
+    let mut result = input.to_owned();
+    if let Some(first_char) = result.get_mut(0..1) {
+        first_char.make_ascii_uppercase();
+    }
+    result
 }

@@ -22,9 +22,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("user")
             .service(user_get)
-            .service(orgs_list)
             .service(projects_list)
-            .service(collections_list)
             .service(user_delete)
             .service(user_edit)
             .service(user_icon_edit)
@@ -92,32 +90,6 @@ pub async fn projects_list(
         }
         Err(response) => Ok(response),
     }
-}
-
-#[get("{user_id}/collections")]
-pub async fn collections_list(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    v3::users::collections_list(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
-}
-
-#[get("{user_id}/organizations")]
-pub async fn orgs_list(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    v3::users::orgs_list(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
 }
 
 lazy_static! {
