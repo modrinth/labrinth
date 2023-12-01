@@ -122,7 +122,7 @@ pub struct UploadSearchProject {
     pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
 
     #[serde(flatten)]
-    pub loader_fields: HashMap<String, Vec<String>>,
+    pub loader_fields: HashMap<String, Vec<serde_json::Value>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -177,7 +177,7 @@ pub struct ResultSearchProject {
     pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
 
     #[serde(flatten)]
-    pub loader_fields: HashMap<String, Vec<String>>,
+    pub loader_fields: HashMap<String, Vec<serde_json::Value>>,
 }
 
 pub fn get_sort_index(index: &str) -> Result<(&str, [&str; 1]), SearchError> {

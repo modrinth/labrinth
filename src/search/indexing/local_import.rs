@@ -8,6 +8,7 @@ use log::info;
 use super::IndexingError;
 use crate::database::models::{project_item, version_item, ProjectId, VersionId};
 use crate::database::redis::RedisPool;
+use crate::models;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
@@ -70,7 +71,7 @@ pub async fn index_local(
         .collect();
 
     let mut uploads = Vec::new();
-    // TODO: could possible clony less here?
+    // TODO: could possibly clone less here?
     for (version_id, (project_id, owner_username)) in all_visible_ids {
         let m = projects.get(&project_id);
         let v = versions.get(&version_id);
@@ -108,10 +109,7 @@ pub async fn index_local(
         categories.append(&mut additional_categories);
 
         let version_fields = v.version_fields.clone();
-        let loader_fields: HashMap<String, Vec<String>> = version_fields
-            .into_iter()
-            .map(|vf| (vf.field_name, vf.value.as_strings()))
-            .collect();
+        let loader_fields = models::projects::from_duplicate_version_fields(version_fields);
         for v in loader_fields.keys().cloned() {
             loader_field_keys.insert(v);
         }
@@ -148,7 +146,15 @@ pub async fn index_local(
         let mrpack_loaders = loader_fields
             .get("mrpack_loaders")
             .cloned()
+            .map(|x| {
+                x.into_iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
+        println!("mrpack_loaders: {:?}", mrpack_loaders);
+        println!("loaders: {:?}", loaders);
+        println!("fields: {:?}", loader_fields);
         categories.extend(mrpack_loaders);
 
         let gallery = m

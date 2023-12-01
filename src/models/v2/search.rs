@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::search::ResultSearchProject;
@@ -44,7 +45,12 @@ impl LegacyResultSearchProject {
         if categories.contains(&"mrpack".to_string()) {
             if let Some(mrpack_loaders) = result_search_project.loader_fields.get("mrpack_loaders")
             {
-                categories.extend(mrpack_loaders.clone());
+                categories.extend(
+                    mrpack_loaders
+                        .iter()
+                        .filter_map(|c| c.as_str())
+                        .map(String::from),
+                );
                 categories.retain(|c| c != "mrpack");
             }
         }
@@ -52,7 +58,12 @@ impl LegacyResultSearchProject {
         if display_categories.contains(&"mrpack".to_string()) {
             if let Some(mrpack_loaders) = result_search_project.loader_fields.get("mrpack_loaders")
             {
-                display_categories.extend(mrpack_loaders.clone());
+                categories.extend(
+                    mrpack_loaders
+                        .iter()
+                        .filter_map(|c| c.as_str())
+                        .map(String::from),
+                );
                 display_categories.retain(|c| c != "mrpack");
             }
         }
@@ -84,25 +95,38 @@ impl LegacyResultSearchProject {
             project_type
         };
 
+        let client_side = result_search_project
+            .loader_fields
+            .get("client_side")
+            .cloned()
+            .unwrap_or_default()
+            .first()
+            .and_then(|s| s.as_str())
+            .map(String::from)
+            .unwrap_or("unknown".to_string());
+        let server_side = result_search_project
+            .loader_fields
+            .get("server_side")
+            .cloned()
+            .unwrap_or_default()
+            .first()
+            .and_then(|s| s.as_str())
+            .map(String::from)
+            .unwrap_or("unknown".to_string());
+        let versions = result_search_project
+            .loader_fields
+            .get("game_versions")
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|s| s.as_str().map(String::from))
+            .collect_vec();
+
         Self {
             project_type,
-            client_side: result_search_project
-                .loader_fields
-                .get("client_side")
-                .cloned()
-                .unwrap_or_default()
-                .join(","),
-            server_side: result_search_project
-                .loader_fields
-                .get("server_side")
-                .cloned()
-                .unwrap_or_default()
-                .join(","),
-            versions: result_search_project
-                .loader_fields
-                .get("game_versions")
-                .cloned()
-                .unwrap_or_default(),
+            client_side,
+            server_side,
+            versions,
             latest_version: result_search_project.version_id,
             categories,
 

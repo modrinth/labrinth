@@ -4,11 +4,13 @@ use super::ids::base62_impl::parse_base62;
 use super::ids::{Base62Id, OrganizationId};
 use super::teams::TeamId;
 use super::users::UserId;
+use crate::database::models::loader_fields::VersionField;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::models::threads::ThreadId;
 use crate::search::ResultSearchProject;
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -130,30 +132,39 @@ fn remove_duplicates(values: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
         .collect()
 }
 
+// This is a helper function to convert a list of VersionFields into a HashMap of field name to vecs of values
+// This allows for removal of duplicates
+// TODO: Rethink this a little bit.
+pub fn from_duplicate_version_fields(
+    version_fields: Vec<VersionField>,
+) -> HashMap<String, Vec<serde_json::Value>> {
+    let mut fields: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    for vf in version_fields {
+        // We use a string directly, so we can remove duplicates
+        let serialized = if let Some(inner_array) = vf.value.serialize_internal().as_array() {
+            inner_array.clone()
+        } else {
+            vec![vf.value.serialize_internal()]
+        };
+
+        // Create array if doesnt exist, otherwise push, or if json is an array, extend
+        if let Some(arr) = fields.get_mut(&vf.field_name) {
+            arr.extend(serialized);
+        } else {
+            fields.insert(vf.field_name, serialized);
+        }
+    }
+
+    // Remove duplicates by converting to string and back
+    for (_, v) in fields.iter_mut() {
+        *v = remove_duplicates(v.clone());
+    }
+    fields
+}
+
 impl From<QueryProject> for Project {
     fn from(data: QueryProject) -> Self {
-        let mut fields: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
-        for vf in data.aggregate_version_fields {
-            // We use a string directly, so we can remove duplicates
-            let serialized = if let Some(inner_array) = vf.value.serialize_internal().as_array() {
-                inner_array.clone()
-            } else {
-                vec![vf.value.serialize_internal()]
-            };
-
-            // Create array if doesnt exist, otherwise push, or if json is an array, extend
-            if let Some(arr) = fields.get_mut(&vf.field_name) {
-                arr.extend(serialized);
-            } else {
-                fields.insert(vf.field_name, serialized);
-            }
-        }
-
-        // Remove duplicates by converting to string and back
-        for (_, v) in fields.iter_mut() {
-            *v = remove_duplicates(v.clone());
-        }
-
+        let fields = from_duplicate_version_fields(data.aggregate_version_fields);
         let m = data.inner;
         Self {
             id: m.id.into(),
@@ -285,15 +296,20 @@ impl Project {
 
         // Loaders
         let mut loaders = m.loaders;
+        let mrpack_loaders_strings = m.loader_fields.get("mrpack_loaders").cloned().map(|v| {
+            v.into_iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect_vec()
+        });
         // If the project has a mrpack loader,  keep only 'loaders' that are not in the mrpack_loaders
-        if let Some(mrpack_loaders) = m.loader_fields.get("mrpack_loaders") {
+        if let Some(ref mrpack_loaders) = mrpack_loaders_strings {
             loaders.retain(|l| !mrpack_loaders.contains(l));
         }
 
         // Categories
         let mut categories = m.display_categories.clone();
         categories.retain(|c| !loaders.contains(c));
-        if let Some(mrpack_loaders) = m.loader_fields.get("mrpack_loaders") {
+        if let Some(ref mrpack_loaders) = mrpack_loaders_strings {
             categories.retain(|l| !mrpack_loaders.contains(l));
         }
 
@@ -301,7 +317,7 @@ impl Project {
         let mut additional_categories = m.categories.clone();
         additional_categories.retain(|c| !categories.contains(c));
         additional_categories.retain(|c| !loaders.contains(c));
-        if let Some(mrpack_loaders) = m.loader_fields.get("mrpack_loaders") {
+        if let Some(ref mrpack_loaders) = mrpack_loaders_strings {
             additional_categories.retain(|l| !mrpack_loaders.contains(l));
         }
 
@@ -395,7 +411,7 @@ impl Project {
             fields: m
                 .loader_fields
                 .into_iter()
-                .map(|(k, v)| (k, v.into_iter().map(|x| x.into()).collect()))
+                .map(|(k, v)| (k, v.into_iter().collect()))
                 .collect(),
         })
     }
