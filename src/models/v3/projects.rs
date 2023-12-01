@@ -273,10 +273,6 @@ impl Project {
 
         let license_url = m.license_url;
         let icon_url = m.icon_url;
-        let issues_url = m.issues_url;
-        let source_url = m.source_url;
-        let wiki_url = m.wiki_url;
-        let discord_url = m.discord_url;
 
         // Loaders
         let mut loaders = m.loaders;
@@ -313,16 +309,11 @@ impl Project {
             .map(MonetizationStatus::from_string)
             .unwrap_or(MonetizationStatus::Monetized);
 
-        let donation_urls = Some(
-            m.donation_links
-                .into_iter()
-                .map(|d| DonationLink {
-                    id: d.platform_short,
-                    platform: d.platform_name,
-                    url: d.url,
-                })
-                .collect(),
-        );
+        let link_urls = m
+            .links
+            .into_iter()
+            .map(|d| (d.platform_name.clone(), Link::from(d)))
+            .collect();
 
         let gallery = m
             .gallery_items
@@ -383,11 +374,7 @@ impl Project {
             loaders,
             versions,
             icon_url,
-            issues_url,
-            source_url,
-            wiki_url,
-            discord_url,
-            donation_urls,
+            link_urls,
             gallery,
             color: m.color,
             thread_id,

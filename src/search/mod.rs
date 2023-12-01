@@ -1,4 +1,4 @@
-use crate::database::models::project_item::{DonationUrl, GalleryItem};
+use crate::database::models::project_item::{GalleryItem, LinkUrl};
 use crate::models::error::ApiError;
 use crate::models::projects::{MonetizationStatus, ProjectStatus, SearchRequest};
 use actix_web::http::StatusCode;
@@ -102,10 +102,6 @@ pub struct UploadSearchProject {
     pub color: Option<u32>,
 
     // Hidden fields to get the Project model out of the search results.
-    pub issues_url: Option<String>,
-    pub source_url: Option<String>,
-    pub wiki_url: Option<String>,
-    pub discord_url: Option<String>,
     pub license_url: Option<String>,
     pub monetization_status: Option<MonetizationStatus>,
     pub team_id: String,
@@ -116,7 +112,7 @@ pub struct UploadSearchProject {
     pub status: ProjectStatus,
     pub requested_status: Option<ProjectStatus>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
-    pub donation_links: Vec<DonationUrl>,
+    pub links: Vec<LinkUrl>,
     pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
     pub games: Vec<String>,              // Todo: in future, could be a searchable field.
     pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
@@ -157,10 +153,6 @@ pub struct ResultSearchProject {
     pub color: Option<u32>,
 
     // Hidden fields to get the Project model out of the search results.
-    pub issues_url: Option<String>,
-    pub source_url: Option<String>,
-    pub wiki_url: Option<String>,
-    pub discord_url: Option<String>,
     pub license_url: Option<String>,
     pub monetization_status: Option<String>,
     pub team_id: String,
@@ -171,7 +163,7 @@ pub struct ResultSearchProject {
     pub status: String,
     pub requested_status: Option<String>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
-    pub donation_links: Vec<DonationUrl>,
+    pub links: Vec<LinkUrl>,
     pub games: Vec<String>, // Todo: in future, could be a searchable field.
     pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
     pub organization_id: Option<String>, // Todo: in future, could be a searchable field.

@@ -207,10 +207,6 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     // Note: loader fields are not here, but are addedd on as they are needed (so they can be dynamically added depending on which exist).
 
     // Non-searchable fields for filling out the Project model.
-    "issues_url",
-    "source_url",
-    "wiki_url",
-    "discord_url",
     "license_url",
     "monetization_status",
     "team_id",
@@ -222,7 +218,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "requested_status",
     "games",
     "organization_id",
-    "donation_links",
+    "links",
     "gallery_items",
     "loaders", // search uses loaders as categories- this is purely for the Project model.
 ];

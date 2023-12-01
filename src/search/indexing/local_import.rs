@@ -191,11 +191,6 @@ pub async fn index_local(
             open_source,
             color: m.inner.color,
             loader_fields,
-
-            issues_url: m.inner.issues_url.clone(),
-            source_url: m.inner.source_url.clone(),
-            wiki_url: m.inner.wiki_url.clone(),
-            discord_url: m.inner.discord_url.clone(),
             license_url: m.inner.license_url.clone(),
             monetization_status: Some(m.inner.monetization_status),
             team_id: team_id.to_string(),
@@ -207,7 +202,7 @@ pub async fn index_local(
             status: m.inner.status,
             requested_status: m.inner.requested_status,
             games: m.games.clone(),
-            donation_links: m.donation_urls.clone(),
+            links: m.urls.clone(),
             gallery_items: m.gallery_items.clone(),
             loaders,
         };
