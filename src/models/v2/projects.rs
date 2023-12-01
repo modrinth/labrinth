@@ -87,10 +87,18 @@ impl LegacyProject {
         } else if project_types.contains(&"mod".to_string()) {
             project_types = vec!["mod".to_string()];
         }
-        let mut project_type = project_types
+        let project_type = project_types
             .first()
             .cloned()
             .unwrap_or("project".to_string()); // Default to 'project' if none are found
+
+        let mut project_type = if project_type == "datapack" || project_type == "plugin" {
+            // These are not supported in V2, so we'll just use 'mod' instead
+            "mod".to_string()
+        } else {
+            project_type
+        };
+
         let mut loaders = data.loaders;
 
         if let Some(versions_item) = versions_item {
