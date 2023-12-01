@@ -468,7 +468,6 @@ pub async fn project_edit(
         session_queue.clone(),
     )
     .await
-    .or_else(v2_reroute::flatten_404_error)
     .or_else(v2_reroute::flatten_404_error)?;
 
     // If client and server side were set, we will call

@@ -415,7 +415,6 @@ pub async fn test_patch_project() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 204);
 
         // Old slug no longer works
@@ -428,7 +427,7 @@ pub async fn test_patch_project() {
         assert_eq!(project.slug.unwrap(), "newslug");
         assert_eq!(project.categories, vec![DUMMY_CATEGORIES[0]]);
         assert_eq!(project.license.id, "MIT");
- 
+
         let link_urls = project.link_urls;
         assert_eq!(link_urls.len(), 4);
         assert_eq!(link_urls["patreon"].platform, "patreon");
@@ -457,44 +456,10 @@ pub async fn test_patch_project() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 204);
         let project = api.get_project_deserialized("newslug", USER_USER_PAT).await;
         assert_eq!(project.link_urls.len(), 3);
         assert!(!project.link_urls.contains_key("issues"));
-    })
-    .await;
-}
-
-#[actix_rt::test]
-pub async fn test_patch_v3() {
-    // Hits V3-specific patchable fields
-    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
-        let api = &test_env.api;
-
-        let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
-
-        // Sucessful request to patch many fields.
-        let resp = api
-            .edit_project(
-                alpha_project_slug,
-                json!({
-                    "name": "New successful title",
-                    "summary": "New successful summary",
-                    "description": "New successful description",
-                }),
-                USER_USER_PAT,
-            )
-            .await;
-        assert_eq!(resp.status(), 204);
-
-        let project = api
-            .get_project_deserialized(alpha_project_slug, USER_USER_PAT)
-            .await;
-
-        assert_eq!(project.name, "New successful title");
-        assert_eq!(project.summary, "New successful summary");
-        assert_eq!(project.description, "New successful description");
     })
     .await;
 }
@@ -625,57 +590,6 @@ pub async fn test_bulk_edit_links() {
 }
 
 #[actix_rt::test]
-pub async fn test_bulk_edit_links() {
-    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
-        let api = &test_env.api;
-        let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
-
-        // Sets links for issue, source, wiki, and patreon for all projects
-        // The first loop, sets issue, the second, clears it for all projects.
-        for issues in [Some("https://www.issues.com"), None] {
-            let resp = api
-                .edit_project_bulk(
-                    &[alpha_project_id, beta_project_id],
-                    json!({
-                        "link_urls": {
-                            "issues": issues,
-                            "wiki": "https://wiki.com",
-                            "patreon": "https://patreon.com",
-                        },
-                    }),
-                    ADMIN_USER_PAT,
-                )
-                .await;
-            assert_eq!(resp.status(), StatusCode::NO_CONTENT);
-
-            let alpha_body = api
-                .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
-                .await;
-            if let Some(issues) = issues {
-                assert_eq!(alpha_body.link_urls.len(), 3);
-                assert_eq!(alpha_body.link_urls["issues"].url, issues);
-            } else {
-                assert_eq!(alpha_body.link_urls.len(), 2);
-                assert!(!alpha_body.link_urls.contains_key("issues"));
-            }
-            assert_eq!(alpha_body.link_urls["wiki"].url, "https://wiki.com");
-            assert_eq!(alpha_body.link_urls["patreon"].url, "https://patreon.com");
-
-            let beta_body = api
-                .get_project_deserialized(beta_project_id, ADMIN_USER_PAT)
-                .await;
-            assert_eq!(beta_body.categories, alpha_body.categories);
-            assert_eq!(
-                beta_body.additional_categories,
-                alpha_body.additional_categories,
-            );
-        }
-    })
-    .await;
-}
-
-#[actix_rt::test] 
 async fn permissions_patch_project_v3() {
     with_test_environment(Some(8), |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;

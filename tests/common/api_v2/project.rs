@@ -127,15 +127,12 @@ impl ApiProject for ApiV2 {
         creation_data: ProjectCreationRequestData,
         pat: &str,
     ) -> ServiceResponse {
-        println!("Creating v2 project");
         let req = TestRequest::post()
             .uri("/v2/project")
             .append_header(("Authorization", pat))
             .set_multipart(creation_data.segment_data)
             .to_request();
-        let r = self.call(req).await;
-        println!("Response: {:?}", r.response().body());
-        r
+        self.call(req).await
     }
 
     async fn remove_project(&self, project_slug_or_id: &str, pat: &str) -> ServiceResponse {

@@ -664,55 +664,57 @@ pub async fn project_edit(
                 .await?;
             }
             if let Some(links) = &new_project.link_urls {
-                if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
-                    return Err(ApiError::CustomAuthentication(
-                        "You do not have the permissions to edit the links of this project!"
-                            .to_string(),
-                    ));
-                }
+                if !links.is_empty() {
+                    if !perms.contains(ProjectPermissions::EDIT_DETAILS) {
+                        return Err(ApiError::CustomAuthentication(
+                            "You do not have the permissions to edit the links of this project!"
+                                .to_string(),
+                        ));
+                    }
 
-                let ids_to_delete = links
-                    .iter()
-                    .map(|(name, _)| name.clone())
-                    .collect::<Vec<String>>();
-                // Deletes all links from hashmap- either will be deleted or be replaced
-                sqlx::query!(
-                    "
-                    DELETE FROM mods_links
-                    WHERE joining_mod_id = $1 AND joining_platform_id IN (
-                        SELECT id FROM link_platforms WHERE name = ANY($2)
+                    let ids_to_delete = links
+                        .iter()
+                        .map(|(name, _)| name.clone())
+                        .collect::<Vec<String>>();
+                    // Deletes all links from hashmap- either will be deleted or be replaced
+                    sqlx::query!(
+                        "
+                        DELETE FROM mods_links
+                        WHERE joining_mod_id = $1 AND joining_platform_id IN (
+                            SELECT id FROM link_platforms WHERE name = ANY($2)
+                        )
+                        ",
+                        id as db_ids::ProjectId,
+                        &ids_to_delete
                     )
-                    ",
-                    id as db_ids::ProjectId,
-                    &ids_to_delete
-                )
-                .execute(&mut *transaction)
-                .await?;
+                    .execute(&mut *transaction)
+                    .await?;
 
-                for (platform, url) in links {
-                    if let Some(url) = url {
-                        let platform_id = db_models::categories::LinkPlatform::get_id(
-                            platform,
-                            &mut *transaction,
-                        )
-                        .await?
-                        .ok_or_else(|| {
-                            ApiError::InvalidInput(format!(
-                                "Platform {} does not exist.",
-                                platform.clone()
-                            ))
-                        })?;
-                        sqlx::query!(
-                            "
-                            INSERT INTO mods_links (joining_mod_id, joining_platform_id, url)
-                            VALUES ($1, $2, $3)
-                            ",
-                            id as db_ids::ProjectId,
-                            platform_id as db_ids::LinkPlatformId,
-                            url
-                        )
-                        .execute(&mut *transaction)
-                        .await?;
+                    for (platform, url) in links {
+                        if let Some(url) = url {
+                            let platform_id = db_models::categories::LinkPlatform::get_id(
+                                platform,
+                                &mut *transaction,
+                            )
+                            .await?
+                            .ok_or_else(|| {
+                                ApiError::InvalidInput(format!(
+                                    "Platform {} does not exist.",
+                                    platform.clone()
+                                ))
+                            })?;
+                            sqlx::query!(
+                                "
+                                INSERT INTO mods_links (joining_mod_id, joining_platform_id, url)
+                                VALUES ($1, $2, $3)
+                                ",
+                                id as db_ids::ProjectId,
+                                platform_id as db_ids::LinkPlatformId,
+                                url
+                            )
+                            .execute(&mut *transaction)
+                            .await?;
+                        }
                     }
                 }
             }

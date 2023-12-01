@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use labrinth::models::{
-    notifications::{NotificationBody, NotificationId},
+    notifications::NotificationId,
     organizations::OrganizationId,
     projects::{
         Dependency, GalleryItem, License, ModeratorMessage, MonetizationStatus, ProjectId,
@@ -116,8 +116,7 @@ pub struct CommonNotification {
     pub user_id: UserId,
     pub read: bool,
     pub created: DateTime<Utc>,
-    pub body: NotificationBody,
-
+    // Body is absent as one of the variants differs
     pub text: String,
     pub link: String,
     pub actions: Vec<CommonNotificationAction>,

@@ -179,8 +179,7 @@ pub async fn donation_platform_list(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let response = v3::tags::link_platform_list(pool, redis)
-        .await?;
+    let response = v3::tags::link_platform_list(pool, redis).await?;
 
     // Convert to V2 format
     Ok(
@@ -195,7 +194,7 @@ pub async fn donation_platform_list(
             Err(response) => response,
         },
     )
-        .or_else(v2_reroute::flatten_404_error)
+    .or_else(v2_reroute::flatten_404_error)
 }
 
 #[get("report_type")]

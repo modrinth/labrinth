@@ -10,9 +10,7 @@ use crate::database::models::{version_item, DatabaseError};
 use crate::database::redis::RedisPool;
 use crate::models::ids::{ProjectId, VersionId};
 use crate::models::projects::{
-    Dependency, DonationLink, License, Loader, ModeratorMessage, MonetizationStatus, Project,
-    ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
-    Dependency, GalleryItem, License, Link, Loader, ModeratorMessage, MonetizationStatus, Project,
+    Dependency, License, Link, Loader, ModeratorMessage, MonetizationStatus, Project,
     ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
 };
 use crate::models::threads::ThreadId;
