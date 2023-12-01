@@ -37,6 +37,16 @@ impl ApiV2 {
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
+
+    pub async fn get_user_notifications_deserialized(
+        &self,
+        user_id: &str,
+        pat: &str,
+    ) -> Vec<LegacyNotification> {
+        let resp = self.get_user_notifications(user_id, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
 }
 
 #[async_trait(?Send)]

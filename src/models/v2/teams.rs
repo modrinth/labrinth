@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{
     ids::TeamId,
-    teams::{OrganizationPermissions, ProjectPermissions, TeamMember},
+    teams::{ProjectPermissions, TeamMember},
     users::User,
 };
 
@@ -15,7 +15,6 @@ pub struct LegacyTeamMember {
     pub team_id: TeamId,
     pub user: User,
     pub permissions: Option<ProjectPermissions>,
-    pub organization_permissions: Option<OrganizationPermissions>, // TODO: technically not a v2 field, should it be kept?
     pub accepted: bool,
 
     #[serde(with = "rust_decimal::serde::float_option")]
@@ -34,7 +33,6 @@ impl LegacyTeamMember {
             team_id: team_member.team_id,
             user: team_member.user,
             permissions: team_member.permissions,
-            organization_permissions: team_member.organization_permissions,
             accepted: team_member.accepted,
             payouts_split: team_member.payouts_split,
             ordering: team_member.ordering,

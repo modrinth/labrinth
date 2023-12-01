@@ -6,7 +6,7 @@ use labrinth::models::{
         Dependency, DonationLink, GalleryItem, License, ModeratorMessage, MonetizationStatus,
         ProjectId, ProjectStatus, VersionFile, VersionId, VersionStatus, VersionType,
     },
-    teams::{OrganizationPermissions, ProjectPermissions, TeamId},
+    teams::{ProjectPermissions, TeamId},
     threads::ThreadId,
     users::{User, UserId},
 };
@@ -108,9 +108,7 @@ pub struct CommonTeamMember {
     pub user: User,
     pub role: String,
 
-    // TODO: Should these be removed from the Common?
     pub permissions: Option<ProjectPermissions>,
-    pub organization_permissions: Option<OrganizationPermissions>,
 
     pub accepted: bool,
     pub payouts_split: Option<Decimal>,
@@ -125,9 +123,6 @@ pub struct CommonNotification {
     pub created: DateTime<Utc>,
     pub body: NotificationBody,
 
-    // DEPRECATED: use body field instead
-    #[serde(rename = "type")]
-    pub type_: Option<String>,
     pub text: String,
     pub link: String,
     pub actions: Vec<CommonNotificationAction>,
