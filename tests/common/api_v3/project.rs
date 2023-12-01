@@ -219,6 +219,12 @@ impl ApiProject for ApiV3 {
 }
 
 impl ApiV3 {
+    pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {
+        let resp = self.get_project(id_or_slug, pat).await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
     pub async fn search_deserialized(
         &self,
         query: Option<&str>,
