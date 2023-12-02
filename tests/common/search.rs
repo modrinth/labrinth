@@ -83,7 +83,7 @@ pub async fn setup_search_projects(test_env: &TestEnvironment<ApiV3>) -> Arc<Has
     let modify_json = serde_json::from_value(json!([
         { "op": "add", "path": "/categories", "value": DUMMY_CATEGORIES[0..2] },
         { "op": "add", "path": "/initial_versions/0/server_only", "value": true },
-        { "op": "add", "path": "/title", "value": "Mysterious Project" },
+        { "op": "add", "path": "/name", "value": "Mysterious Project" },
     ]))
     .unwrap();
     project_creation_futures.push(create_async_future(
@@ -99,7 +99,7 @@ pub async fn setup_search_projects(test_env: &TestEnvironment<ApiV3>) -> Arc<Has
         { "op": "add", "path": "/categories", "value": DUMMY_CATEGORIES[0..3] },
         { "op": "add", "path": "/initial_versions/0/server_only", "value": true },
         { "op": "add", "path": "/initial_versions/0/game_versions", "value": ["1.20.4"] },
-        { "op": "add", "path": "/title", "value": "Mysterious Project" },
+        { "op": "add", "path": "/name", "value": "Mysterious Project" },
         { "op": "add", "path": "/license_id", "value": "LicenseRef-All-Rights-Reserved" },
     ]))
     .unwrap();

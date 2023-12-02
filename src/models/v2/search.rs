@@ -140,7 +140,7 @@ impl LegacyResultSearchProject {
             slug: result_search_project.slug,
             author: result_search_project.author,
             title: result_search_project.name,
-            description: result_search_project.description,
+            description: result_search_project.summary,
             display_categories,
             downloads: result_search_project.downloads,
             follows: result_search_project.follows,

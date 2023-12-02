@@ -171,7 +171,7 @@ pub async fn index_local(
             version_id: version_id.to_string(),
             project_id: project_id.to_string(),
             name: m.inner.name.clone(),
-            description: m.inner.description.clone(),
+            summary: m.inner.summary.clone(),
             categories,
             follows: m.inner.follows,
             downloads: m.inner.downloads,

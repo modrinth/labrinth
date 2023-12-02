@@ -1119,9 +1119,9 @@ async fn align_search_projects() {
                 .await;
             let mut project_model: Project = test::read_body_json(project_model).await;
 
-            // Body is huge- don't store it in search, so it's OK if they differ here
+            // Body/description is huge- don't store it in search, so it's OK if they differ here
             // (Search should return "")
-            project_model.body = "".into();
+            project_model.description = "".into();
 
             // Aggregate project loader fields will not match exactly,
             // because the search will only return the matching version, whereas the project returns the aggregate.

@@ -317,7 +317,7 @@ impl Project {
             .map(|x| GalleryItem {
                 url: x.image_url,
                 featured: x.featured,
-                title: x.title,
+                name: x.name,
                 description: x.description,
                 created: x.created,
                 ordering: x.ordering,
@@ -329,12 +329,11 @@ impl Project {
             slug: m.slug,
             project_types: m.project_types,
             games,
-            team: team_id,
+            team_id,
             organization: organization_id,
-            title: m.title,
-            description: m.description,
-            body: "".to_string(), // Body is potentially huge, do not store in search
-            body_url: None,       // Deprecated
+            name: m.name,
+            summary: m.summary,
+            description: "".to_string(), // Body is potentially huge, do not store in search
             published,
             updated,
             approved,

@@ -191,7 +191,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "slug",
     "author",
     "name",
-    "description",
+    "summary",
     "categories",
     "display_categories",
     "downloads",
@@ -223,7 +223,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "loaders", // search uses loaders as categories- this is purely for the Project model.
 ];
 
-const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["name", "description", "author", "slug"];
+const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["name", "summary", "author", "slug"];
 
 const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "categories",
