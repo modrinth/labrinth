@@ -25,7 +25,7 @@ pub async fn index_local(
         
         FROM versions v
         INNER JOIN mods m ON v.mod_id = m.id AND m.status = ANY($2)
-        INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.role = $3 AND tm.accepted = TRUE
+        INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.is_owner = TRUE AND tm.accepted = TRUE
         INNER JOIN users u ON tm.user_id = u.id
         WHERE v.status != ANY($1)
         GROUP BY v.id, m.id, u.id
@@ -39,7 +39,6 @@ pub async fn index_local(
             .filter(|x| x.is_searchable())
             .map(|x| x.to_string())
             .collect::<Vec<String>>(),
-        crate::models::teams::OWNER_ROLE,
     )
     .fetch_many(&pool)
     .try_filter_map(|e| async move {
@@ -171,7 +170,7 @@ pub async fn index_local(
         let usp = UploadSearchProject {
             version_id: version_id.to_string(),
             project_id: project_id.to_string(),
-            title: m.inner.title.clone(),
+            name: m.inner.name.clone(),
             description: m.inner.description.clone(),
             categories,
             follows: m.inner.follows,

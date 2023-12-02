@@ -46,7 +46,7 @@ async fn search_projects() {
             (json!([["server_only:true"]]), vec![0, 2, 3, 6, 7]),
             (json!([["open_source:true"]]), vec![0, 1, 2, 4, 5, 6, 7]),
             (json!([["license:MIT"]]), vec![1, 2, 4]),
-            (json!([[r#"title:'Mysterious Project'"#]]), vec![2, 3]),
+            (json!([[r#"name:'Mysterious Project'"#]]), vec![2, 3]),
             (json!([["author:user"]]), vec![0, 1, 2, 4, 5, 7]),
             (json!([["game_versions:1.20.5"]]), vec![4, 5]),
             // bug fix
