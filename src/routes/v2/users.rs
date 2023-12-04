@@ -869,9 +869,8 @@ pub async fn user_payouts_request(
                             )
                             .execute(&mut *transaction)
                             .await?;
-                            User::clear_caches(&[(id, None)], &redis).await?;
-
                             transaction.commit().await?;
+                            User::clear_caches(&[(id, None)], &redis).await?;
 
                             Ok(HttpResponse::NoContent().body(""))
                         } else {
