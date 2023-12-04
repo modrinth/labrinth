@@ -222,14 +222,12 @@ pub async fn delete_file(
         }
 
         let version = database::models::Version::get(row.version_id, &**pool, &redis).await?;
-        if let Some(version) = version {
+        if let Some(version) = version.as_ref() {
             if version.files.len() < 2 {
                 return Err(ApiError::InvalidInput(
                     "Versions must have at least one file uploaded to them".to_string(),
                 ));
             }
-
-            database::models::Version::clear_cache(&version, &redis).await?;
         }
 
         let mut transaction = pool.begin().await?;
@@ -255,7 +253,9 @@ pub async fn delete_file(
         .await?;
 
         transaction.commit().await?;
-
+        if let Some(version) = version.as_ref() {
+            database::models::Version::clear_cache(&version, &redis).await?;
+        }
         Ok(HttpResponse::NoContent().body(""))
     } else {
         Ok(HttpResponse::NotFound().body(""))

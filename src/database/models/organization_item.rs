@@ -290,8 +290,6 @@ impl Organization {
                     super::project_item::Project::remove(project_id, transaction, redis).await?;
             }
 
-            Organization::clear_cache(id, Some(organization.title), redis).await?;
-
             sqlx::query!(
                 "
                 DELETE FROM organizations
@@ -301,8 +299,6 @@ impl Organization {
             )
             .execute(&mut *transaction)
             .await?;
-
-            TeamMember::clear_cache(organization.team_id, redis).await?;
 
             sqlx::query!(
                 "

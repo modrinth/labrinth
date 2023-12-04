@@ -274,8 +274,6 @@ impl Version {
             return Ok(None);
         };
 
-        Version::clear_cache(&result, redis).await?;
-
         sqlx::query!(
             "
             DELETE FROM reports

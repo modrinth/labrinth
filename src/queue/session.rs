@@ -97,8 +97,6 @@ impl AuthQueue {
                 Session::remove(id, &mut transaction).await?;
             }
 
-            Session::clear_cache(clear_cache_sessions, redis).await?;
-
             let mut clear_cache_pats = Vec::new();
 
             for id in pat_queue {
@@ -117,9 +115,9 @@ impl AuthQueue {
                 .await?;
             }
 
-            PersonalAccessToken::clear_cache(clear_cache_pats, redis).await?;
-
             transaction.commit().await?;
+            Session::clear_cache(clear_cache_sessions, redis).await?;
+            PersonalAccessToken::clear_cache(clear_cache_pats, redis).await?;
         }
 
         Ok(())

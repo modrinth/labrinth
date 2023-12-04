@@ -446,8 +446,8 @@ pub async fn user_edit(
                 }
             }
 
-            User::clear_caches(&[(id, Some(actual_user.username))], &redis).await?;
             transaction.commit().await?;
+            User::clear_caches(&[(id, Some(actual_user.username))], &redis).await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
             Err(ApiError::CustomAuthentication(
@@ -572,10 +572,10 @@ pub async fn user_delete(
     )
     .await?
     .1;
-    let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
+    let user_opt = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
-    if let Some(id) = id_option.map(|x| x.id) {
-        if !user.role.is_admin() && user.id != id.into() {
+    if let Some(actual_user) = user_opt {
+        if !user.role.is_admin() && user.id != actual_user.id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You do not have permission to delete this user!".to_string(),
             ));
@@ -584,7 +584,7 @@ pub async fn user_delete(
         let mut transaction = pool.begin().await?;
 
         let result = User::remove(
-            id,
+            actual_user.id,
             removal_type.removal_type == "full",
             &mut transaction,
             &redis,
@@ -592,6 +592,7 @@ pub async fn user_delete(
         .await?;
 
         transaction.commit().await?;
+        User::clear_caches(&[(actual_user.id, Some(actual_user.username))], &redis).await?;
 
         if result.is_some() {
             Ok(HttpResponse::NoContent().body(""))
@@ -869,9 +870,8 @@ pub async fn user_payouts_request(
                             )
                             .execute(&mut *transaction)
                             .await?;
-                            User::clear_caches(&[(id, None)], &redis).await?;
-
                             transaction.commit().await?;
+                            User::clear_caches(&[(id, None)], &redis).await?;
 
                             Ok(HttpResponse::NoContent().body(""))
                         } else {

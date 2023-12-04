@@ -1051,8 +1051,8 @@ pub async fn auth_callback(
                     )?;
                 }
 
-                crate::database::models::User::clear_caches(&[(id, None)], &redis).await?;
                 transaction.commit().await?;
+                crate::database::models::User::clear_caches(&[(id, None)], &redis).await?;
 
                 if let Some(url) = url {
                     Ok(HttpResponse::TemporaryRedirect()
@@ -1249,8 +1249,8 @@ pub async fn delete_auth_provider(
         )?;
     }
 
-    crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
     transaction.commit().await?;
+    crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -1717,8 +1717,8 @@ pub async fn finish_2fa_flow(
             )?;
         }
 
-        crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
         transaction.commit().await?;
+        crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
 
         Ok(HttpResponse::Ok().json(serde_json::json!({
             "backup_codes": codes,
@@ -1805,8 +1805,8 @@ pub async fn remove_2fa(
         )?;
     }
 
-    crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
     transaction.commit().await?;
+    crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -1991,8 +1991,8 @@ pub async fn change_password(
         )?;
     }
 
-    crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
     transaction.commit().await?;
+    crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -2063,8 +2063,8 @@ pub async fn set_email(
         "We need to verify your email address.",
     )?;
 
-    crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
     transaction.commit().await?;
+    crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -2153,8 +2153,8 @@ pub async fn verify_email(
         .await?;
 
         Flow::remove(&email.flow, &redis).await?;
-        crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
         transaction.commit().await?;
+        crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
 
         Ok(HttpResponse::NoContent().finish())
     } else {

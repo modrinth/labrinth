@@ -399,6 +399,7 @@ pub async fn process_payout(
         }
     }
 
+    transaction.commit().await?;
     if !clear_cache_users.is_empty() {
         crate::database::models::User::clear_caches(
             &clear_cache_users
@@ -409,8 +410,6 @@ pub async fn process_payout(
         )
         .await?;
     }
-
-    transaction.commit().await?;
 
     Ok(())
 }

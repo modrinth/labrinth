@@ -401,8 +401,6 @@ impl User {
         let user = Self::get_id(id, &mut *transaction, redis).await?;
 
         if let Some(delete_user) = user {
-            User::clear_caches(&[(id, Some(delete_user.username))], redis).await?;
-
             let deleted_user: UserId = crate::models::users::DELETED_USER.into();
 
             if full {

@@ -410,6 +410,7 @@ pub async fn organizations_edit(
                 .await?;
             }
 
+            transaction.commit().await?;
             database::models::Organization::clear_cache(
                 organization_item.id,
                 Some(organization_item.title),
@@ -417,7 +418,6 @@ pub async fn organizations_edit(
             )
             .await?;
 
-            transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
             Err(ApiError::CustomAuthentication(
@@ -482,9 +482,9 @@ pub async fn organization_delete(
         database::models::Organization::remove(organization.id, &mut transaction, &redis).await?;
 
     transaction.commit().await?;
-
     database::models::Organization::clear_cache(organization.id, Some(organization.title), &redis)
         .await?;
+    TeamMember::clear_cache(organization.team_id, &redis).await?;
 
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
@@ -825,14 +825,13 @@ pub async fn organization_icon_edit(
         .execute(&mut *transaction)
         .await?;
 
+        transaction.commit().await?;
         database::models::Organization::clear_cache(
             organization_item.id,
             Some(organization_item.title),
             &redis,
         )
         .await?;
-
-        transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
@@ -911,14 +910,13 @@ pub async fn delete_organization_icon(
     .execute(&mut *transaction)
     .await?;
 
+    transaction.commit().await?;
     database::models::Organization::clear_cache(
         organization_item.id,
         Some(organization_item.title),
         &redis,
     )
     .await?;
-
-    transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
