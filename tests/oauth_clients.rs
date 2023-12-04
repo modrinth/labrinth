@@ -167,7 +167,7 @@ async fn delete_oauth_client_after_issuing_access_tokens_revokes_tokens() {
 
         env.api.delete_oauth_client(&client_id, USER_USER_PAT).await;
 
-        env.assert_read_notifications_status(USER_USER_ID, &access_token, StatusCode::UNAUTHORIZED)
+        env.assert_read_notifications_status(USER_USER_ID, Some(&access_token), StatusCode::UNAUTHORIZED)
             .await;
     })
     .await;
