@@ -570,9 +570,10 @@ pub async fn project_write_scopes() {
         // Icons and gallery images
         let req_gen = || {
             test::TestRequest::patch()
-                .uri(&format!("/v3/project/{beta_project_id}/icon?ext={ext}"
-            , ext = test_icon.extension()
-            ))
+                .uri(&format!(
+                    "/v3/project/{beta_project_id}/icon?ext={ext}",
+                    ext = test_icon.extension()
+                ))
                 .set_payload(test_icon.bytes())
         };
         ScopeTest::new(&test_env)
@@ -590,7 +591,8 @@ pub async fn project_write_scopes() {
         let req_gen = || {
             test::TestRequest::post()
                 .uri(&format!(
-                    "/v3/project/{beta_project_id}/gallery?ext={ext}&featured=true", ext = test_icon.extension()
+                    "/v3/project/{beta_project_id}/gallery?ext={ext}&featured=true",
+                    ext = test_icon.extension()
                 ))
                 .set_payload(test_icon.bytes())
         };
@@ -798,7 +800,7 @@ pub async fn version_write_scopes() {
             name: basic_zip.filename(),
             filename: Some(basic_zip.filename()),
             content_type: basic_zip.content_type(),
-            data: MultipartSegmentData::Binary(basic_zip.bytes())
+            data: MultipartSegmentData::Binary(basic_zip.bytes()),
         };
 
         // Upload version file
@@ -1148,7 +1150,8 @@ pub async fn collections_scopes() {
 
         let req_gen = || {
             test::TestRequest::patch()
-                .uri(&format!("/v3/collection/{collection_id}/icon?ext={ext}",
+                .uri(&format!(
+                    "/v3/collection/{collection_id}/icon?ext={ext}",
                     ext = small_icon.extension()
                 ))
                 .set_payload(Bytes::from(small_icon.bytes()))
@@ -1215,8 +1218,10 @@ pub async fn organization_scopes() {
 
         let req_gen = || {
             test::TestRequest::patch()
-                .uri(&format!("/v3/organization/{organization_id}/icon?ext={ext}",
-                    ext = icon.extension()))
+                .uri(&format!(
+                    "/v3/organization/{organization_id}/icon?ext={ext}",
+                    ext = icon.extension()
+                ))
                 .set_payload(Bytes::from(icon.bytes()))
         };
         ScopeTest::new(&test_env)

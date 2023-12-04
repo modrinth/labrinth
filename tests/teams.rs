@@ -1,4 +1,7 @@
-use crate::common::{api_common::{ApiTeams, AppendsOptionalPat}, database::*};
+use crate::common::{
+    api_common::{ApiTeams, AppendsOptionalPat},
+    database::*,
+};
 use actix_web::test;
 use common::{
     api_v3::ApiV3,

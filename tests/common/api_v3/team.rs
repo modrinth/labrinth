@@ -28,7 +28,11 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
-    pub async fn get_team_members_deserialized(&self, team_id: &str, pat: Option<&str>) -> Vec<TeamMember> {
+    pub async fn get_team_members_deserialized(
+        &self,
+        team_id: &str,
+        pat: Option<&str>,
+    ) -> Vec<TeamMember> {
         let resp = self.get_team_members(team_id, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
@@ -81,7 +85,11 @@ impl ApiTeams for ApiV3 {
         serde_json::from_value(value).unwrap()
     }
 
-    async fn get_organization_members(&self, id_or_title: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn get_organization_members(
+        &self,
+        id_or_title: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::get()
             .uri(&format!("/v3/organization/{id_or_title}/members"))
             .append_pat(pat)
@@ -111,7 +119,12 @@ impl ApiTeams for ApiV3 {
         self.call(req).await
     }
 
-    async fn remove_from_team(&self, team_id: &str, user_id: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn remove_from_team(
+        &self,
+        team_id: &str,
+        user_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v3/team/{team_id}/members/{user_id}"))
             .append_pat(pat)
@@ -172,7 +185,11 @@ impl ApiTeams for ApiV3 {
         serde_json::from_value(value).unwrap()
     }
 
-    async fn mark_notification_read(&self, notification_id: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn mark_notification_read(
+        &self,
+        notification_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::patch()
             .uri(&format!("/v3/notification/{notification_id}"))
             .append_pat(pat)
@@ -199,7 +216,11 @@ impl ApiTeams for ApiV3 {
         self.call(req).await
     }
 
-    async fn delete_notification(&self, notification_id: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn delete_notification(
+        &self,
+        notification_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v3/notification/{notification_id}"))
             .append_pat(pat)

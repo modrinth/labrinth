@@ -18,7 +18,7 @@ use serde_json::json;
 use crate::common::{
     api_common::{
         models::{CommonProject, CommonVersion},
-        request_data::{ProjectCreationRequestData, ImageData},
+        request_data::{ImageData, ProjectCreationRequestData},
         Api, ApiProject, AppendsOptionalPat,
     },
     asserts::assert_status,
@@ -100,8 +100,8 @@ impl ApiProject for ApiV3 {
             .uri(&format!("/v3/project/{project_slug_or_id}"))
             .append_pat(pat)
             .to_request();
-        let resp = self.call(req).await;
-        resp
+
+        self.call(req).await
     }
 
     async fn get_project(&self, id_or_slug: &str, pat: Option<&str>) -> ServiceResponse {
@@ -112,7 +112,11 @@ impl ApiProject for ApiV3 {
         self.call(req).await
     }
 
-    async fn get_project_deserialized_common(&self, id_or_slug: &str, pat: Option<&str>) -> CommonProject {
+    async fn get_project_deserialized_common(
+        &self,
+        id_or_slug: &str,
+        pat: Option<&str>,
+    ) -> CommonProject {
         let resp = self.get_project(id_or_slug, pat).await;
         assert_eq!(resp.status(), 200);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
@@ -122,7 +126,11 @@ impl ApiProject for ApiV3 {
         serde_json::from_value(value).unwrap()
     }
 
-    async fn get_user_projects(&self, user_id_or_username: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn get_user_projects(
+        &self,
+        user_id_or_username: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::get()
             .uri(&format!("/v3/user/{}/projects", user_id_or_username))
             .append_pat(pat)
@@ -218,20 +226,21 @@ impl ApiProject for ApiV3 {
         date: DateTime<Utc>,
         pat: Option<&str>,
     ) -> ServiceResponse {
-        let req =  test::TestRequest::post()
-        .uri(&format!("/v3/version/{id_or_slug}/schedule")) 
-        .set_json(json!(
-            {
-                "requested_status": requested_status,
-                "time": date,
-            }
-        ))
-        .append_pat(pat)
+        let req = test::TestRequest::post()
+            .uri(&format!("/v3/version/{id_or_slug}/schedule"))
+            .set_json(json!(
+                {
+                    "requested_status": requested_status,
+                    "time": date,
+                }
+            ))
+            .append_pat(pat)
             .to_request();
 
         self.call(req).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn add_gallery_item(
         &self,
         id_or_slug: &str,
@@ -277,9 +286,13 @@ impl ApiProject for ApiV3 {
             "/v3/project/{id_or_slug}/gallery?url={image_url}",
             image_url = urlencoding::encode(image_url)
         );
-        
+
         for (key, value) in patch {
-            url.push_str(&format!("&{key}={value}", key = key, value = urlencoding::encode(&value)));
+            url.push_str(&format!(
+                "&{key}={value}",
+                key = key,
+                value = urlencoding::encode(&value)
+            ));
         }
 
         let req = test::TestRequest::patch()
@@ -287,12 +300,12 @@ impl ApiProject for ApiV3 {
             .append_pat(pat)
             .to_request();
 
-            let t = self.call(req).await;
-            println!("Status: {}", t.status());
-            println!("respone Body: {:?}", t.response().body());
-            t
-        }
-    
+        let t = self.call(req).await;
+        println!("Status: {}", t.status());
+        println!("respone Body: {:?}", t.response().body());
+        t
+    }
+
     async fn remove_gallery_item(
         &self,
         id_or_slug: &str,
@@ -309,7 +322,6 @@ impl ApiProject for ApiV3 {
 
         self.call(req).await
     }
-
 }
 
 impl ApiV3 {

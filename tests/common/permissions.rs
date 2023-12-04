@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use actix_http::StatusCode;
-use actix_web::{test, dev::ServiceResponse};
+use actix_web::{dev::ServiceResponse, test};
 use futures::Future;
 use itertools::Itertools;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
@@ -60,15 +60,14 @@ pub struct PermissionsTest<'a, A: Api> {
     success_json_check: Option<JsonCheck>,
 }
 #[derive(Clone, Debug)]
-pub struct PermissionsTestContext{
-    pub test_pat : Option<String>,
+pub struct PermissionsTestContext {
+    pub test_pat: Option<String>,
     pub user_id: String,
     pub project_id: Option<String>,
     pub team_id: Option<String>,
     pub organization_id: Option<String>,
     pub organization_team_id: Option<String>,
 }
-
 
 impl<'a, A: Api> PermissionsTest<'a, A> {
     pub fn new(test_env: &'a TestEnvironment<A>) -> Self {
@@ -119,7 +118,12 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
     // Set the user ID to use
     // (eg: a moderator, or friend)
     // remove_user: Whether or not the user ID should be removed from the project/organization team after the test
-    pub fn with_user(mut self, user_id: &'a str, user_pat: Option<&'a str>, remove_user: bool) -> Self {
+    pub fn with_user(
+        mut self,
+        user_id: &'a str,
+        user_pat: Option<&'a str>,
+        remove_user: bool,
+    ) -> Self {
         self.user_id = user_id;
         self.user_pat = user_pat;
         self.remove_user = remove_user;
@@ -159,7 +163,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
         T: Fn(PermissionsTestContext) -> Fut,
         Fut: Future<Output = ServiceResponse>, // Ensure Fut is Send and 'static
     {
-            let test_env = self.test_env;
+        let test_env = self.test_env;
         let failure_project_permissions = self
             .failure_project_permissions
             .unwrap_or(ProjectPermissions::all() ^ success_permissions);
@@ -196,7 +200,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             project_id: Some(project_id.clone()),
             team_id: Some(team_id.clone()),
             ..test_context.clone()
-        }).await;
+        })
+        .await;
         if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
@@ -243,7 +248,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             project_id: Some(project_id.clone()),
             team_id: Some(team_id.clone()),
             ..test_context.clone()
-        }).await;
+        })
+        .await;
         if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
@@ -276,7 +282,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             project_id: Some(project_id.clone()),
             team_id: Some(team_id.clone()),
             ..test_context.clone()
-        }).await;
+        })
+        .await;
         if !resp.status().is_success() {
             return Err(format!(
                 "Success permissions test failed. Expected success, got {}",
@@ -304,7 +311,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
     ) -> Result<(), String>
     where
         T: Fn(PermissionsTestContext) -> Fut,
-        Fut : Future<Output = ServiceResponse>
+        Fut: Future<Output = ServiceResponse>,
     {
         let test_env = self.test_env;
         let failure_organization_permissions = self
@@ -345,7 +352,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             organization_id: Some(organization_id.clone()),
             team_id: Some(team_id.clone()),
             ..test_context.clone()
-        }).await;
+        })
+        .await;
         if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
@@ -373,7 +381,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             organization_id: Some(organization_id.clone()),
             team_id: Some(team_id.clone()),
             ..test_context.clone()
-        }).await;
+        })
+        .await;
         if !resp.status().is_success() {
             return Err(format!(
                 "Success permissions test failed. Expected success, got {}",
@@ -396,7 +405,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
     ) -> Result<(), String>
     where
         T: Fn(PermissionsTestContext) -> Fut,
-        Fut : Future<Output = ServiceResponse>
+        Fut: Future<Output = ServiceResponse>,
     {
         let test_env = self.test_env;
         let failure_project_permissions = self
@@ -422,7 +431,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 project_id: Some(project_id.clone()),
                 team_id: Some(team_id.clone()),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
                 return Err(format!(
                     "Test 1 failed. Expected failure codes {} got {}",
@@ -461,7 +471,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 project_id: Some(project_id.clone()),
                 team_id: Some(team_id.clone()),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
                 return Err(format!(
                     "Test 2 failed. Expected failure codes {} got {}",
@@ -509,7 +520,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 project_id: Some(project_id.clone()),
                 team_id: Some(team_id.clone()),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
                 return Err(format!(
                     "Test 3 failed. Expected failure codes {} got {}",
@@ -557,7 +569,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 project_id: Some(project_id.clone()),
                 team_id: Some(team_id.clone()),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !resp.status().is_success() {
                 return Err(format!(
                     "Test 4 failed. Expected success, got {}",
@@ -605,7 +618,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 project_id: Some(project_id.clone()),
                 team_id: Some(team_id.clone()),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
                 return Err(format!(
                     "Test 5 failed. Expected failure codes {} got {}",
@@ -657,7 +671,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 project_id: Some(project_id.clone()),
                 team_id: Some(team_id.clone()),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !resp.status().is_success() {
                 return Err(format!(
                     "Test 6 failed. Expected success, got {}",
@@ -715,7 +730,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 project_id: Some(project_id.clone()),
                 team_id: Some(team_id.clone()),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
                 return Err(format!(
                     "Test 7 failed. Expected failure codes {} got {}",
@@ -777,7 +793,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 project_id: Some(project_id.clone()),
                 team_id: Some(team_id.clone()),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
 
             if !resp.status().is_success() {
                 return Err(format!(
@@ -816,7 +833,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
     ) -> Result<(), String>
     where
         T: Fn(PermissionsTestContext) -> Fut,
-        Fut : Future<Output = ServiceResponse>
+        Fut: Future<Output = ServiceResponse>,
     {
         let test_env = self.test_env;
         let failure_organization_permissions = self
@@ -842,7 +859,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 organization_id: Some(organization_id.clone()),
                 organization_team_id: Some(organization_team_id),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
                 return Err(format!(
                     "Test 1 failed. Expected failure codes {} got {}",
@@ -890,7 +908,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 organization_id: Some(organization_id.clone()),
                 organization_team_id: Some(organization_team_id),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
                 return Err(format!(
                     "Test 2 failed. Expected failure codes {} got {}",
@@ -938,7 +957,8 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 organization_id: Some(organization_id.clone()),
                 organization_team_id: Some(organization_team_id),
                 ..test_context.clone()
-            }).await;
+            })
+            .await;
             if !resp.status().is_success() {
                 return Err(format!(
                     "Test 3 failed. Expected success, got {}",

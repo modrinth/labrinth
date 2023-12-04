@@ -8,7 +8,7 @@ use crate::models::projects::{Dependency, FileType, Version, VersionStatus, Vers
 use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v2_reroute, v3};
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse, post};
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -275,8 +275,8 @@ pub async fn version_delete(
 
 #[derive(Deserialize)]
 pub struct SchedulingData {
-    pub time : DateTime<Utc>,
-    pub requested_status : VersionStatus,
+    pub time: DateTime<Utc>,
+    pub requested_status: VersionStatus,
 }
 
 #[post("{id}/schedule")]

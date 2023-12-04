@@ -11,7 +11,7 @@ use crate::common::{api_v2::ApiV2, api_v3::ApiV3, dummy_data::TestFile};
 
 use super::{
     models::{CommonProject, CommonVersion},
-    request_data::{ProjectCreationRequestData, ImageData},
+    request_data::{ImageData, ProjectCreationRequestData},
     Api, ApiProject, ApiTags, ApiTeams, ApiVersion,
 };
 

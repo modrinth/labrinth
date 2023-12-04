@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use super::{request_data::{get_public_version_creation_data, self}, ApiV2};
+use super::{
+    request_data::{self, get_public_version_creation_data},
+    ApiV2,
+};
 use crate::common::{
     api_common::{models::CommonVersion, Api, ApiVersion, AppendsOptionalPat},
     asserts::assert_status,
@@ -456,9 +459,12 @@ impl ApiVersion for ApiV2 {
         file: &TestFile,
         pat: Option<&str>,
     ) -> ServiceResponse {
-        let m = request_data::get_public_creation_data_multipart(&json!({
-            "file_parts": [file.filename()]
-        }), Some(&file));
+        let m = request_data::get_public_creation_data_multipart(
+            &json!({
+                "file_parts": [file.filename()]
+            }),
+            Some(file),
+        );
         let request = test::TestRequest::post()
             .uri(&format!("/v2/version/{version_id}/file"))
             .append_pat(pat)
@@ -466,28 +472,20 @@ impl ApiVersion for ApiV2 {
             .to_request();
         self.call(request).await
     }
-    
-    async fn remove_version(
-        &self,
-        version_id: &str,
-        pat: Option<&str>,
-    ) -> ServiceResponse {
-            let request = test::TestRequest::delete()
-                .uri(&format!("/v2/version/{version_id}"))
-                .append_pat(pat)
-                .to_request();
-            self.call(request).await
+
+    async fn remove_version(&self, version_id: &str, pat: Option<&str>) -> ServiceResponse {
+        let request = test::TestRequest::delete()
+            .uri(&format!("/v2/version/{version_id}"))
+            .append_pat(pat)
+            .to_request();
+        self.call(request).await
     }
 
-    async fn remove_version_file(
-        &self,
-        hash: &str,
-        pat: Option<&str>,
-    ) -> ServiceResponse {
-            let request = test::TestRequest::delete()
-                .uri(&format!("/v2/version_file/{hash}"))
-                .append_pat(pat)
-                .to_request();
-            self.call(request).await
+    async fn remove_version_file(&self, hash: &str, pat: Option<&str>) -> ServiceResponse {
+        let request = test::TestRequest::delete()
+            .uri(&format!("/v2/version_file/{hash}"))
+            .append_pat(pat)
+            .to_request();
+        self.call(request).await
     }
 }

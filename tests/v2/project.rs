@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use crate::common::{
     api_common::{ApiProject, ApiVersion, AppendsOptionalPat},
-    api_v2::{
-        request_data::get_public_project_creation_data_json,
-        ApiV2
-    },
+    api_v2::{request_data::get_public_project_creation_data_json, ApiV2},
     database::{
         generate_random_name, ADMIN_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT,
     },
@@ -243,10 +240,16 @@ async fn permissions_upload_version() {
         let req_gen = |ctx: PermissionsTestContext| async move {
             let project_id = ctx.project_id.unwrap();
             let project_id = ProjectId(parse_base62(&project_id).unwrap());
-            api.add_public_version(project_id, "1.0.0", TestFile::BasicMod, None, None, ctx.test_pat.as_deref())
+            api.add_public_version(
+                project_id,
+                "1.0.0",
+                TestFile::BasicMod,
+                None,
+                None,
+                ctx.test_pat.as_deref(),
+            )
             .await
         };
-
 
         PermissionsTest::new(&test_env)
             .simple_project_permissions_test(upload_version, req_gen)
@@ -259,8 +262,10 @@ async fn permissions_upload_version() {
         let req_gen = |ctx: PermissionsTestContext| {
             let file_ref = file_ref.clone();
             async move {
-            api.upload_file_to_version(alpha_version_id, &file_ref, ctx.test_pat.as_deref()).await
-        }};
+                api.upload_file_to_version(alpha_version_id, &file_ref, ctx.test_pat.as_deref())
+                    .await
+            }
+        };
         PermissionsTest::new(&test_env)
             .with_existing_project(alpha_project_id, alpha_team_id)
             .with_user(FRIEND_USER_ID, FRIEND_USER_PAT, true)
@@ -268,16 +273,20 @@ async fn permissions_upload_version() {
             .await
             .unwrap();
 
-        
         // Patch version
         // Uses alpha project, as it has an existing version
         let req_gen = |ctx: PermissionsTestContext| async move {
-            api.edit_version(alpha_version_id, json!({
-                "name": "Basic Mod",
-            }), ctx.test_pat.as_deref()).await
+            api.edit_version(
+                alpha_version_id,
+                json!({
+                    "name": "Basic Mod",
+                }),
+                ctx.test_pat.as_deref(),
+            )
+            .await
         };
 
-                PermissionsTest::new(&test_env)
+        PermissionsTest::new(&test_env)
             .with_existing_project(alpha_project_id, alpha_team_id)
             .with_user(FRIEND_USER_ID, FRIEND_USER_PAT, true)
             .simple_project_permissions_test(upload_version, req_gen)
@@ -288,7 +297,8 @@ async fn permissions_upload_version() {
         // Uses alpha project, as it has an existing version
         let delete_version = ProjectPermissions::DELETE_VERSION;
         let req_gen = |ctx: PermissionsTestContext| async move {
-            api.remove_version_file(alpha_file_hash, ctx.test_pat.as_deref()).await
+            api.remove_version_file(alpha_file_hash, ctx.test_pat.as_deref())
+                .await
         };
 
         PermissionsTest::new(&test_env)
@@ -301,7 +311,8 @@ async fn permissions_upload_version() {
         // Delete version
         // Uses alpha project, as it has an existing version
         let req_gen = |ctx: PermissionsTestContext| async move {
-            api.remove_version(alpha_version_id, ctx.test_pat.as_deref()).await
+            api.remove_version(alpha_version_id, ctx.test_pat.as_deref())
+                .await
         };
         PermissionsTest::new(&test_env)
             .with_existing_project(alpha_project_id, alpha_team_id)
@@ -353,7 +364,7 @@ pub async fn test_patch_v2() {
 async fn permissions_patch_project_v2() {
     with_test_environment(Some(8), |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
-        
+
         // TODO: This only includes v2 ones (as it should. See v3)
         // For each permission covered by EDIT_DETAILS, ensure the permission is required
         let edit_details = ProjectPermissions::EDIT_DETAILS;
@@ -378,13 +389,18 @@ async fn permissions_patch_project_v2() {
                 let test_env = test_env.clone();
                 async move {
                     let req_gen = |ctx: PermissionsTestContext| async {
-                        api.edit_project(&ctx.project_id.unwrap(), json!({
-                            key: if key == "slug" {
-                                json!(generate_random_name("randomslug"))
-                            } else {
-                                value.clone()
-                            },
-                        }), ctx.test_pat.as_deref()).await
+                        api.edit_project(
+                            &ctx.project_id.unwrap(),
+                            json!({
+                                key: if key == "slug" {
+                                    json!(generate_random_name("randomslug"))
+                                } else {
+                                    value.clone()
+                                },
+                            }),
+                            ctx.test_pat.as_deref(),
+                        )
+                        .await
                     };
                     PermissionsTest::new(&test_env)
                         .simple_project_permissions_test(edit_details, req_gen)
@@ -400,10 +416,14 @@ async fn permissions_patch_project_v2() {
         // Cannot bulk edit body
         let edit_body = ProjectPermissions::EDIT_BODY;
         let req_gen = |ctx: PermissionsTestContext| async move {
-            api.edit_project(&ctx.project_id.unwrap(), json!({
-                "body": "new body!", // new body
-            }), ctx.test_pat.as_deref()).await
-
+            api.edit_project(
+                &ctx.project_id.unwrap(),
+                json!({
+                    "body": "new body!", // new body
+                }),
+                ctx.test_pat.as_deref(),
+            )
+            .await
         };
         PermissionsTest::new(&test_env)
             .simple_project_permissions_test(edit_body, req_gen)

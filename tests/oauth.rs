@@ -183,13 +183,25 @@ async fn authorize_with_broader_scopes_can_complete_flow() {
             StatusCode::UNAUTHORIZED,
         )
         .await;
-        env.assert_read_user_projects_status(USER_USER_ID, Some(&first_access_token), StatusCode::OK)
-            .await;
+        env.assert_read_user_projects_status(
+            USER_USER_ID,
+            Some(&first_access_token),
+            StatusCode::OK,
+        )
+        .await;
 
-        env.assert_read_notifications_status(USER_USER_ID, Some(&second_access_token), StatusCode::OK)
-            .await;
-        env.assert_read_user_projects_status(USER_USER_ID, Some(&second_access_token), StatusCode::OK)
-            .await;
+        env.assert_read_notifications_status(
+            USER_USER_ID,
+            Some(&second_access_token),
+            StatusCode::OK,
+        )
+        .await;
+        env.assert_read_user_projects_status(
+            USER_USER_ID,
+            Some(&second_access_token),
+            StatusCode::OK,
+        )
+        .await;
     })
     .await;
 }
@@ -287,8 +299,12 @@ async fn revoke_authorization_after_issuing_token_revokes_token() {
             .await;
         assert_status(&resp, StatusCode::OK);
 
-        env.assert_read_notifications_status(USER_USER_ID, Some(&access_token), StatusCode::UNAUTHORIZED)
-            .await;
+        env.assert_read_notifications_status(
+            USER_USER_ID,
+            Some(&access_token),
+            StatusCode::UNAUTHORIZED,
+        )
+        .await;
     })
     .await;
 }

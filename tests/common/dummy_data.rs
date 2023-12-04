@@ -16,7 +16,11 @@ use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 use crate::common::{api_common::Api, database::USER_USER_PAT};
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
-use super::{api_common::{ApiProject, AppendsOptionalPat, request_data::ImageData}, api_v3::ApiV3, database::TemporaryDatabase};
+use super::{
+    api_common::{request_data::ImageData, ApiProject, AppendsOptionalPat},
+    api_v3::ApiV3,
+    database::TemporaryDatabase,
+};
 
 use super::{asserts::assert_status, database::USER_USER_ID, get_json_val_str};
 
@@ -530,9 +534,9 @@ impl TestFile {
             TestFile::BasicZip => Some("application/zip"),
 
             TestFile::BasicModpackRandom { .. } => Some("application/x-modrinth-modpack+zip"),
-        }.map(|s| s.to_string())
+        }
+        .map(|s| s.to_string())
     }
-    
 }
 
 impl DummyImage {
@@ -564,4 +568,3 @@ impl DummyImage {
         }
     }
 }
-

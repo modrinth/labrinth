@@ -93,7 +93,11 @@ impl ApiTeams for ApiV2 {
         test::read_body_json(resp).await
     }
 
-    async fn get_organization_members(&self, id_or_title: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn get_organization_members(
+        &self,
+        id_or_title: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::get()
             .uri(&format!("/v2/organization/{id_or_title}/members"))
             .append_pat(pat)
@@ -122,7 +126,12 @@ impl ApiTeams for ApiV2 {
         self.call(req).await
     }
 
-    async fn remove_from_team(&self, team_id: &str, user_id: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn remove_from_team(
+        &self,
+        team_id: &str,
+        user_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v2/team/{team_id}/members/{user_id}"))
             .append_pat(pat)
@@ -183,7 +192,11 @@ impl ApiTeams for ApiV2 {
         serde_json::from_value(value).unwrap()
     }
 
-    async fn mark_notification_read(&self, notification_id: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn mark_notification_read(
+        &self,
+        notification_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::patch()
             .uri(&format!("/v2/notification/{notification_id}"))
             .append_pat(pat)
@@ -211,7 +224,11 @@ impl ApiTeams for ApiV2 {
         self.call(req).await
     }
 
-    async fn delete_notification(&self, notification_id: &str, pat: Option<&str>) -> ServiceResponse {
+    async fn delete_notification(
+        &self,
+        notification_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v2/notification/{notification_id}"))
             .append_pat(pat)

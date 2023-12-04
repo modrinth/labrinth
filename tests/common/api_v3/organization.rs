@@ -46,7 +46,11 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
-    pub async fn get_organization_projects(&self, id_or_title: &str, pat: Option<&str>) -> ServiceResponse {
+    pub async fn get_organization_projects(
+        &self,
+        id_or_title: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::get()
             .uri(&format!("/v3/organization/{id_or_title}/projects"))
             .append_pat(pat)
@@ -108,7 +112,11 @@ impl ApiV3 {
         }
     }
 
-    pub async fn delete_organization(&self, id_or_title: &str, pat: Option<&str>) -> ServiceResponse {
+    pub async fn delete_organization(
+        &self,
+        id_or_title: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = test::TestRequest::delete()
             .uri(&format!("/v3/organization/{id_or_title}"))
             .append_pat(pat)

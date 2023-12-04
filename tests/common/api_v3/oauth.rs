@@ -10,7 +10,10 @@ use labrinth::auth::oauth::{
 };
 use reqwest::header::{AUTHORIZATION, LOCATION};
 
-use crate::common::{api_common::{Api, AppendsOptionalPat}, asserts::assert_status};
+use crate::common::{
+    api_common::{Api, AppendsOptionalPat},
+    asserts::assert_status,
+};
 
 use super::ApiV3;
 
@@ -45,10 +48,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let uri = generate_authorize_uri(client_id, scope, redirect_uri, state);
-        let req = TestRequest::get()
-            .uri(&uri)
-            .append_pat(pat)
-            .to_request();
+        let req = TestRequest::get().uri(&uri).append_pat(pat).to_request();
         self.call(req).await
     }
 

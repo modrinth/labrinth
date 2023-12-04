@@ -12,7 +12,10 @@ use labrinth::{
 };
 use serde_json::json;
 
-use crate::common::{api_common::{Api, AppendsOptionalPat}, asserts::assert_status};
+use crate::common::{
+    api_common::{Api, AppendsOptionalPat},
+    asserts::assert_status,
+};
 
 use super::ApiV3;
 
@@ -38,7 +41,11 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_user_oauth_clients(&self, user_id: &str, pat: Option<&str>) -> Vec<OAuthClient> {
+    pub async fn get_user_oauth_clients(
+        &self,
+        user_id: &str,
+        pat: Option<&str>,
+    ) -> Vec<OAuthClient> {
         let req = TestRequest::get()
             .uri(&format!("/v3/user/{}/oauth_apps", user_id))
             .append_pat(pat)
@@ -85,7 +92,11 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn revoke_oauth_authorization(&self, client_id: &str, pat: Option<&str>) -> ServiceResponse {
+    pub async fn revoke_oauth_authorization(
+        &self,
+        client_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
         let req = TestRequest::delete()
             .uri(&format!(
                 "/_internal/oauth/authorizations?client_id={}",
@@ -96,7 +107,10 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_user_oauth_authorizations(&self, pat: Option<&str>) -> Vec<OAuthClientAuthorization> {
+    pub async fn get_user_oauth_authorizations(
+        &self,
+        pat: Option<&str>,
+    ) -> Vec<OAuthClientAuthorization> {
         let req = TestRequest::get()
             .uri("/_internal/oauth/authorizations")
             .append_pat(pat)

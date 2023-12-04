@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use self::models::{
-    CommonCategoryData, CommonLoaderData, CommonNotification, CommonProject,
-    CommonTeamMember, CommonVersion,
+    CommonCategoryData, CommonLoaderData, CommonNotification, CommonProject, CommonTeamMember,
+    CommonVersion,
 };
-use self::request_data::{ProjectCreationRequestData, ImageData};
+use self::request_data::{ImageData, ProjectCreationRequestData};
 use actix_web::dev::ServiceResponse;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -54,8 +54,16 @@ pub trait ApiProject {
 
     async fn remove_project(&self, id_or_slug: &str, pat: Option<&str>) -> ServiceResponse;
     async fn get_project(&self, id_or_slug: &str, pat: Option<&str>) -> ServiceResponse;
-    async fn get_project_deserialized_common(&self, id_or_slug: &str, pat: Option<&str>) -> CommonProject;
-    async fn get_user_projects(&self, user_id_or_username: &str, pat: Option<&str>) -> ServiceResponse;
+    async fn get_project_deserialized_common(
+        &self,
+        id_or_slug: &str,
+        pat: Option<&str>,
+    ) -> CommonProject;
+    async fn get_user_projects(
+        &self,
+        user_id_or_username: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse;
     async fn get_user_projects_deserialized_common(
         &self,
         user_id_or_username: &str,
@@ -86,6 +94,7 @@ pub trait ApiProject {
         date: DateTime<Utc>,
         pat: Option<&str>,
     ) -> ServiceResponse;
+    #[allow(clippy::too_many_arguments)]
     async fn add_gallery_item(
         &self,
         id_or_slug: &str,
@@ -133,14 +142,23 @@ pub trait ApiTeams {
         id_or_slug: &str,
         pat: Option<&str>,
     ) -> Vec<CommonTeamMember>;
-    async fn get_organization_members(&self, id_or_title: &str, pat: Option<&str>) -> ServiceResponse;
+    async fn get_organization_members(
+        &self,
+        id_or_title: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse;
     async fn get_organization_members_deserialized_common(
         &self,
         id_or_title: &str,
         pat: Option<&str>,
     ) -> Vec<CommonTeamMember>;
     async fn join_team(&self, team_id: &str, pat: Option<&str>) -> ServiceResponse;
-    async fn remove_from_team(&self, team_id: &str, user_id: &str, pat: Option<&str>) -> ServiceResponse;
+    async fn remove_from_team(
+        &self,
+        team_id: &str,
+        user_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse;
     async fn edit_team_member(
         &self,
         team_id: &str,
@@ -160,7 +178,11 @@ pub trait ApiTeams {
         user_id: &str,
         pat: Option<&str>,
     ) -> Vec<CommonNotification>;
-    async fn mark_notification_read(&self, notification_id: &str, pat: Option<&str>) -> ServiceResponse;
+    async fn mark_notification_read(
+        &self,
+        notification_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse;
     async fn add_user_to_team(
         &self,
         team_id: &str,
@@ -169,7 +191,11 @@ pub trait ApiTeams {
         organization_permissions: Option<OrganizationPermissions>,
         pat: Option<&str>,
     ) -> ServiceResponse;
-    async fn delete_notification(&self, notification_id: &str, pat: Option<&str>) -> ServiceResponse;
+    async fn delete_notification(
+        &self,
+        notification_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse;
 }
 
 #[async_trait(?Send)]
@@ -193,7 +219,11 @@ pub trait ApiVersion {
         pat: Option<&str>,
     ) -> CommonVersion;
     async fn get_version(&self, id_or_slug: &str, pat: Option<&str>) -> ServiceResponse;
-    async fn get_version_deserialized_common(&self, id_or_slug: &str, pat: Option<&str>) -> CommonVersion;
+    async fn get_version_deserialized_common(
+        &self,
+        id_or_slug: &str,
+        pat: Option<&str>,
+    ) -> CommonVersion;
     async fn get_versions(&self, ids_or_slugs: Vec<String>, pat: Option<&str>) -> ServiceResponse;
     async fn get_versions_deserialized_common(
         &self,
@@ -303,13 +333,8 @@ pub trait ApiVersion {
         pat: Option<&str>,
     ) -> ServiceResponse;
     async fn remove_version(&self, id_or_slug: &str, pat: Option<&str>) -> ServiceResponse;
-    async fn remove_version_file(
-        &self,
-        hash: &str,
-        pat: Option<&str>,
-    ) -> ServiceResponse;
+    async fn remove_version_file(&self, hash: &str, pat: Option<&str>) -> ServiceResponse;
 }
-
 
 pub trait AppendsOptionalPat {
     fn append_pat(self, pat: Option<&str>) -> Self;

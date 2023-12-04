@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use super::{request_data::{get_public_version_creation_data, self}, ApiV3};
+use super::{
+    request_data::{self, get_public_version_creation_data},
+    ApiV3,
+};
 use crate::common::{
     api_common::{models::CommonVersion, Api, ApiVersion, AppendsOptionalPat},
     asserts::assert_status,
@@ -481,11 +484,17 @@ impl ApiVersion for ApiV3 {
         file: &TestFile,
         pat: Option<&str>,
     ) -> ServiceResponse {
-        let m = request_data::get_public_creation_data_multipart(&json!({
-            "file_parts": [file.filename()]
-        }), Some(&file));
+        let m = request_data::get_public_creation_data_multipart(
+            &json!({
+                "file_parts": [file.filename()]
+            }),
+            Some(file),
+        );
         let request = test::TestRequest::post()
-            .uri(&format!("/v3/version/{version_id}/file", version_id = version_id))
+            .uri(&format!(
+                "/v3/version/{version_id}/file",
+                version_id = version_id
+            ))
             .append_pat(pat)
             .set_multipart(m)
             .to_request();
@@ -494,22 +503,20 @@ impl ApiVersion for ApiV3 {
 
     async fn remove_version(&self, version_id: &str, pat: Option<&str>) -> ServiceResponse {
         let request = test::TestRequest::delete()
-            .uri(&format!("/v3/version/{version_id}", version_id = version_id))
+            .uri(&format!(
+                "/v3/version/{version_id}",
+                version_id = version_id
+            ))
             .append_pat(pat)
             .to_request();
         self.call(request).await
     }
 
-    async fn remove_version_file(
-        &self,
-        hash: &str,
-        pat: Option<&str>,
-    ) -> ServiceResponse {
-            let request = test::TestRequest::delete()
-                .uri(&format!("/v3/version_file/{hash}"))
-                .append_pat(pat)
-                .to_request();
-            self.call(request).await
+    async fn remove_version_file(&self, hash: &str, pat: Option<&str>) -> ServiceResponse {
+        let request = test::TestRequest::delete()
+            .uri(&format!("/v3/version_file/{hash}"))
+            .append_pat(pat)
+            .to_request();
+        self.call(request).await
     }
-
 }

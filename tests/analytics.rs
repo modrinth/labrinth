@@ -173,7 +173,15 @@ pub async fn permissions_analytics_revenue() {
         let req_gen = |ctx: PermissionsTestContext| async move {
             let project_id = ctx.project_id.unwrap();
             let ids_or_slugs = vec![project_id.as_str()];
-            api.get_analytics_revenue(ids_or_slugs, false, None, None, Some(5), ctx.test_pat.as_deref()).await
+            api.get_analytics_revenue(
+                ids_or_slugs,
+                false,
+                None,
+                None,
+                Some(5),
+                ctx.test_pat.as_deref(),
+            )
+            .await
         };
 
         PermissionsTest::new(&test_env)
@@ -199,9 +207,18 @@ pub async fn permissions_analytics_revenue() {
         let req_gen = |ctx: PermissionsTestContext| {
             let alpha_version_id = alpha_version_id.clone();
             async move {
-            let ids_or_slugs = vec![alpha_version_id.as_str()];
-            api.get_analytics_revenue(ids_or_slugs, true, None, None, Some(5), ctx.test_pat.as_deref()).await
-        }};
+                let ids_or_slugs = vec![alpha_version_id.as_str()];
+                api.get_analytics_revenue(
+                    ids_or_slugs,
+                    true,
+                    None,
+                    None,
+                    Some(5),
+                    ctx.test_pat.as_deref(),
+                )
+                .await
+            }
+        };
 
         PermissionsTest::new(&test_env)
             .with_failure_codes(vec![200, 401])
