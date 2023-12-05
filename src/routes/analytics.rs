@@ -107,7 +107,6 @@ pub async fn page_view_ingest(
     .unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped());
 
     let mut view = PageView {
-        id: Uuid::new_v4(),
         recorded: get_current_tenths_of_ms(),
         domain: domain.to_string(),
         site_path: url.path().to_string(),
@@ -203,7 +202,6 @@ pub async fn playtime_ingest(
 
         if let Some(version) = versions.iter().find(|x| id == x.inner.id.into()) {
             analytics_queue.add_playtime(Playtime {
-                id: Default::default(),
                 recorded: get_current_tenths_of_ms(),
                 seconds: playtime.seconds as u64,
                 user_id: user.id.0,
