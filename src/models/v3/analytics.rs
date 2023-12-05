@@ -1,6 +1,6 @@
 use clickhouse::Row;
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash};
+use std::hash::Hash;
 use std::net::Ipv6Addr;
 
 #[derive(Row, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]

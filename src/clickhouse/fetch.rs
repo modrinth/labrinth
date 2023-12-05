@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
-    models::ids::ProjectId,
-    routes::ApiError,
-};
+use crate::{models::ids::ProjectId, routes::ApiError};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -58,7 +55,7 @@ pub async fn fetch_playtimes(
             GROUP BY
                 time,
                 project_id
-            "
+            ",
         )
         .bind(resolution_minute)
         .bind(start_date.timestamp())
@@ -77,7 +74,7 @@ pub async fn fetch_views(
     client: Arc<clickhouse::Client>,
 ) -> Result<Vec<ReturnViews>, ApiError> {
     let query = client
-        .query(&format!(
+        .query(
             "
             SELECT  
                 toUnixTimestamp(toStartOfInterval(recorded, toIntervalMinute(?))) AS time,
@@ -88,8 +85,8 @@ pub async fn fetch_views(
                   AND project_id IN ?
             GROUP BY
             time, project_id
-            "
-        ))
+            ",
+        )
         .bind(resolution_minutes)
         .bind(start_date.timestamp())
         .bind(end_date.timestamp())
@@ -107,7 +104,7 @@ pub async fn fetch_downloads(
     client: Arc<clickhouse::Client>,
 ) -> Result<Vec<ReturnDownloads>, ApiError> {
     let query = client
-        .query(&format!(
+        .query(
             "
             SELECT  
                 toUnixTimestamp(toStartOfInterval(recorded, toIntervalMinute(?))) AS time,
@@ -117,8 +114,8 @@ pub async fn fetch_downloads(
             WHERE recorded BETWEEN ? AND ?
                   AND project_id IN ?
             GROUP BY time, project_id
-            "
-        ))
+            ",
+        )
         .bind(resolution_minutes)
         .bind(start_date.timestamp())
         .bind(end_date.timestamp())
@@ -134,7 +131,7 @@ pub async fn fetch_countries(
     end_date: DateTime<Utc>,
     client: Arc<clickhouse::Client>,
 ) -> Result<Vec<ReturnCountry>, ApiError> {
-    let query = client.query(&format!(
+    let query = client.query(
             "
             WITH view_grouping AS (
             SELECT
@@ -168,7 +165,7 @@ pub async fn fetch_countries(
             LEFT JOIN download_grouping AS d ON (v.country = d.country) AND (v.project_id = d.project_id)
             WHERE project_id IN ?
             "
-        ))
+        )
         .bind(start_date.timestamp())
         .bind(end_date.timestamp())
         .bind(start_date.timestamp())

@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use url::Url;
-use uuid::Uuid;
 
 pub const FILTERED_HEADERS: &[&str] = &[
     "authorization",

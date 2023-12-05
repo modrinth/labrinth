@@ -6,10 +6,7 @@ use crate::{
     auth::get_user_from_headers,
     database::models::user_item,
     models::{
-        ids::{
-            base62_impl::to_base62,
-            ProjectId, VersionId,
-        },
+        ids::{base62_impl::to_base62, ProjectId, VersionId},
         pats::Scopes,
     },
     queue::session::AuthQueue,
@@ -101,8 +98,7 @@ pub async fn playtimes_get(
     // Convert String list to list of ProjectIds or VersionIds
     // - Filter out unauthorized projects/versions
     // - If no project_ids or version_ids are provided, we default to all projects the user has access to
-    let project_ids =
-        filter_allowed_ids(project_ids, user, &pool, &redis).await?;
+    let project_ids = filter_allowed_ids(project_ids, user, &pool, &redis).await?;
 
     // Get the views
     let playtimes = crate::clickhouse::fetch_playtimes(
@@ -168,8 +164,7 @@ pub async fn views_get(
     // Convert String list to list of ProjectIds or VersionIds
     // - Filter out unauthorized projects/versions
     // - If no project_ids or version_ids are provided, we default to all projects the user has access to
-    let project_ids =
-        filter_allowed_ids(project_ids, user, &pool, &redis).await?;
+    let project_ids = filter_allowed_ids(project_ids, user, &pool, &redis).await?;
 
     // Get the views
     let views = crate::clickhouse::fetch_views(
@@ -235,8 +230,7 @@ pub async fn downloads_get(
     // Convert String list to list of ProjectIds or VersionIds
     // - Filter out unauthorized projects/versions
     // - If no project_ids or version_ids are provided, we default to all projects the user has access to
-    let project_ids =
-        filter_allowed_ids(project_ids, user_option, &pool, &redis).await?;
+    let project_ids = filter_allowed_ids(project_ids, user_option, &pool, &redis).await?;
 
     // Get the downloads
     let downloads = crate::clickhouse::fetch_downloads(
@@ -397,8 +391,7 @@ pub async fn countries_downloads_get(
     // Convert String list to list of ProjectIds or VersionIds
     // - Filter out unauthorized projects/versions
     // - If no project_ids or version_ids are provided, we default to all projects the user has access to
-    let project_ids =
-        filter_allowed_ids(project_ids, user, &pool, &redis).await?;
+    let project_ids = filter_allowed_ids(project_ids, user, &pool, &redis).await?;
 
     // Get the countries
     let countries = crate::clickhouse::fetch_countries(
@@ -465,8 +458,7 @@ pub async fn countries_views_get(
     // Convert String list to list of ProjectIds or VersionIds
     // - Filter out unauthorized projects/versions
     // - If no project_ids or version_ids are provided, we default to all projects the user has access to
-    let project_ids =
-        filter_allowed_ids(project_ids, user, &pool, &redis).await?;
+    let project_ids = filter_allowed_ids(project_ids, user, &pool, &redis).await?;
 
     // Get the countries
     let countries = crate::clickhouse::fetch_countries(
