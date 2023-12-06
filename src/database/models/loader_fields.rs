@@ -817,8 +817,6 @@ impl VersionField {
     ) -> Vec<VersionField> {
         #[derive(Deserialize, Debug)]
         struct JsonLoaderField {
-            version_id: i64,
-
             lf_id: i32,
             field: String,
             field_type: String,
@@ -830,6 +828,8 @@ impl VersionField {
 
         #[derive(Deserialize, Debug)]
         struct JsonVersionField {
+            version_id: i64,
+
             field_id: i32,
             int_value: Option<i32>,
             enum_value: Option<i32>,
@@ -871,7 +871,6 @@ impl VersionField {
                     min_val: q.min_val,
                     max_val: q.max_val,
                 };
-                let version_id = VersionId(q.version_id);
                 let values = query_version_field_combined
                     .iter()
                     .filter_map(|qvf| {
@@ -881,7 +880,7 @@ impl VersionField {
                                 .find(|x| Some(x.id) == qvf.enum_value);
 
                             Some(QueryVersionField {
-                                version_id,
+                                version_id: VersionId(qvf.version_id),
                                 field_id: LoaderFieldId(qvf.field_id),
                                 int_value: qvf.int_value,
                                 enum_value: lfev.map(|lfev| LoaderFieldEnumValue {
@@ -900,13 +899,13 @@ impl VersionField {
                     })
                     .collect::<Vec<_>>();
                 if allow_many {
-                    VersionField::build_many(loader_field, version_id, values)
+                    VersionField::build_many(loader_field, values)
                         .unwrap_or_default()
                         .into_iter()
                         .unique()
                         .collect_vec()
                 } else {
-                    match VersionField::build(loader_field, version_id, values) {
+                    match VersionField::build(loader_field, values) {
                         Ok(vf) => vec![vf],
                         Err(_) => vec![],
                     }
@@ -917,10 +916,9 @@ impl VersionField {
 
     pub fn build(
         loader_field: LoaderField,
-        version_id: VersionId,
         query_version_fields: Vec<QueryVersionField>,
     ) -> Result<VersionField, DatabaseError> {
-        let value = VersionFieldValue::build(&loader_field.field_type, query_version_fields)?;
+        let (version_id, value) = VersionFieldValue::build(&loader_field.field_type, query_version_fields)?;
         Ok(VersionField {
             version_id,
             field_id: loader_field.id,
@@ -931,13 +929,12 @@ impl VersionField {
 
     pub fn build_many(
         loader_field: LoaderField,
-        version_id: VersionId,
         query_version_fields: Vec<QueryVersionField>,
     ) -> Result<Vec<VersionField>, DatabaseError> {
         let values = VersionFieldValue::build_many(&loader_field.field_type, query_version_fields)?;
         Ok(values
             .into_iter()
-            .map(|value| VersionField {
+            .map(|(version_id, value)| VersionField {
                 version_id,
                 field_id: loader_field.id,
                 field_name: loader_field.field.clone(),
@@ -1030,7 +1027,7 @@ impl VersionFieldValue {
     pub fn build(
         field_type: &LoaderFieldType,
         qvfs: Vec<QueryVersionField>,
-    ) -> Result<VersionFieldValue, DatabaseError> {
+    ) -> Result<(VersionId, VersionFieldValue), DatabaseError> {
         match field_type {
             LoaderFieldType::Integer
             | LoaderFieldType::Text
@@ -1073,7 +1070,7 @@ impl VersionFieldValue {
     pub fn build_many(
         field_type: &LoaderFieldType,
         qvfs: Vec<QueryVersionField>,
-    ) -> Result<Vec<VersionFieldValue>, DatabaseError> {
+    ) -> Result<Vec<(VersionId, VersionFieldValue)>, DatabaseError> {
         let field_name = field_type.to_str();
         let did_not_exist_error = |field_name: &str, desired_field: &str| {
             DatabaseError::SchemaError(format!(
@@ -1082,7 +1079,37 @@ impl VersionFieldValue {
             ))
         };
 
-        Ok(match field_type {
+        // Check errors- version_id must all be the same
+        let version_id = qvfs
+            .iter()
+            .map(|qvf| qvf.version_id)
+            .unique()
+            .collect::<Vec<_>>();
+        let schema_error = || {
+            DatabaseError::SchemaError(format!(
+                "Multiple version ids for field {}",
+                field_name
+            ))
+        };
+        if version_id.len() > 1 {
+            return Err(schema_error());
+        }
+        let version_id = version_id.into_iter().next().ok_or_else(schema_error)?;
+
+
+        let field_id = qvfs
+            .iter()
+            .map(|qvf| qvf.field_id)
+            .unique()
+            .collect::<Vec<_>>();
+        if field_id.len() > 1 {
+            return Err(DatabaseError::SchemaError(format!(
+                "Multiple field ids for field {}",
+                field_name
+            )));
+        }
+
+        let value = match field_type {
             LoaderFieldType::Integer => qvfs
                 .into_iter()
                 .map(|qvf| {
@@ -1157,7 +1184,9 @@ impl VersionFieldValue {
                     })
                     .collect::<Result<_, _>>()?,
             )],
-        })
+        };
+
+        Ok (value.into_iter().map(|v| (version_id, v)).collect())
     }
 
     // Serialize to internal value, such as for converting to user-facing JSON

@@ -564,20 +564,19 @@ impl Project {
                     ) version_fields_json
                     FROM version_fields_cte
                     GROUP BY mod_id
-				),
-				loader_fields_cte AS (
-					SELECT DISTINCT vf.mod_id, vf.version_id, lf.*, l.loader
-					FROM loader_fields lf
+                ),
+                loader_fields_cte AS (
+                    SELECT DISTINCT vf.mod_id, lf.*, l.loader
+                    FROM loader_fields lf
                     INNER JOIN version_fields_cte vf ON lf.id = vf.field_id
-					LEFT JOIN loaders_versions lv ON vf.version_id = lv.version_id
-					LEFT JOIN loaders l ON lv.loader_id = l.id
+                    LEFT JOIN loaders_versions lv ON vf.version_id = lv.version_id
+                    LEFT JOIN loaders l ON lv.loader_id = l.id
                     GROUP BY vf.mod_id, vf.version_id, lf.enum_type, lf.id, l.loader
-				),
+                ),
                 loader_fields_json AS (
                     SELECT DISTINCT mod_id,
                         JSONB_AGG(
                         DISTINCT jsonb_build_object(
-                            'version_id', lf.version_id,
                             'lf_id', id, 'loader_name', loader, 'field', field, 'field_type', field_type, 'enum_type', enum_type, 'min_val', min_val, 'max_val', max_val, 'optional', optional
                         )
                     ) filter (where lf.id is not null) loader_fields_json
