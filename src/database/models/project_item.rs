@@ -341,6 +341,8 @@ impl Project {
             .execute(&mut **transaction)
             .await?;
 
+            models::Thread::remove_full(project.thread_id, transaction).await?;
+
             sqlx::query!(
                 "
                 DELETE FROM reports
@@ -394,8 +396,6 @@ impl Project {
             )
             .execute(&mut **transaction)
             .await?;
-
-            models::Thread::remove_full(project.thread_id, transaction).await?;
 
             sqlx::query!(
                 "

@@ -171,6 +171,7 @@ pub struct DonationPlatformQueryData {
     // The difference between name and short is removed in v3.
     // Now, the 'id' becomes the name, and the 'name' is removed (the frontend uses the id as the name)
     // pub short: String,
+    pub short: String,
     pub name: String,
 }
 
@@ -187,7 +188,26 @@ pub async fn donation_platform_list(
             Ok(platforms) => {
                 let platforms = platforms
                     .into_iter()
-                    .map(|p| DonationPlatformQueryData { name: p.name })
+                    .filter_map(|p| {
+                        if p.donation {
+                            Some(DonationPlatformQueryData {
+                                // Short vs name is no longer a recognized difference in v3.
+                                // We capitalize to recreate the old behavior, with some special handling.
+                                // This may result in different behaviour for platforms added after the v3 migration.
+                                name: match p.name.as_str() {
+                                    "bmac" => "Buy Me A Coffee".to_string(),
+                                    "github" => "GitHub Sponsors".to_string(),
+                                    "ko-fi" => "Ko-fi".to_string(),
+                                    "paypal" => "PayPal".to_string(),
+                                    // Otherwise, capitalize it
+                                    _ => p.name.to_ascii_uppercase(),
+                                },
+                                short: p.name,
+                            })
+                        } else {
+                            None
+                        }
+                    })
                     .collect::<Vec<_>>();
                 HttpResponse::Ok().json(platforms)
             }

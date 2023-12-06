@@ -104,7 +104,7 @@ pub async fn version_create(
                 // If no version exists, defaults to all false.
                 // TODO: write test for this to ensure predictible unchanging behaviour
                 // This is inherently lossy, but not much can be done about it, as side types are no longer associated with projects,
-                // so the 'missing' ones can't be easily accessed.
+                // so the 'missing' ones can't be easily accessed, and versions do need to have these fields explicitly set.
                 let side_type_loader_field_names = [
                     "singleplayer",
                     "client_and_server",
