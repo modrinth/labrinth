@@ -14,8 +14,8 @@ use sqlx::postgres::PgPool;
 
 pub async fn get_all_ids(
     pool: PgPool,
-) -> Result<HashMap<VersionId, (ProjectId, String)>, IndexingError> {
-    let all_visible_ids: HashMap<VersionId, (ProjectId, String)> = sqlx::query!(
+) -> Result<Vec<(VersionId, ProjectId, String)>, IndexingError> {
+    let all_visible_ids: Vec<(VersionId, ProjectId, String)> = sqlx::query!(
         "
         SELECT v.id id, m.id mod_id, u.username owner_username
         
@@ -41,10 +41,10 @@ pub async fn get_all_ids(
         Ok(e.right().map(|m| {
             let project_id: ProjectId = ProjectId(m.mod_id);
             let version_id: VersionId = VersionId(m.id);
-            (version_id, (project_id, m.owner_username))
+            (version_id, project_id, m.owner_username)
         }))
     })
-    .try_collect::<HashMap<_, _>>()
+    .try_collect::<Vec<_>>()
     .await?;
 
     Ok(all_visible_ids)
@@ -63,16 +63,16 @@ pub async fn index_local(
         .map(|(project_id, _)| project_id)
         .cloned()
         .collect::<Vec<_>>();
-    let projects: HashMap<_, _> = project_item::Project::get_many_ids(&project_ids, &*pool, redis)
+    let projects: HashMap<_, _> = project_item::Project::get_many_ids(&project_ids, pool, redis)
         .await?
         .into_iter()
         .map(|p| (p.inner.id, p))
         .collect();
 
-        info!("Fetched local projects!");
+    info!("Fetched local projects!");
 
-        let version_ids = visible_ids.keys().cloned().collect::<Vec<_>>();
-    let versions: HashMap<_, _> = version_item::Version::get_many(&version_ids, &*pool, redis)
+    let version_ids = visible_ids.keys().cloned().collect::<Vec<_>>();
+    let versions: HashMap<_, _> = version_item::Version::get_many(&version_ids, pool, redis)
         .await?
         .into_iter()
         .map(|v| (v.inner.id, v))

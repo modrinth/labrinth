@@ -918,7 +918,8 @@ impl VersionField {
         loader_field: LoaderField,
         query_version_fields: Vec<QueryVersionField>,
     ) -> Result<VersionField, DatabaseError> {
-        let (version_id, value) = VersionFieldValue::build(&loader_field.field_type, query_version_fields)?;
+        let (version_id, value) =
+            VersionFieldValue::build(&loader_field.field_type, query_version_fields)?;
         Ok(VersionField {
             version_id,
             field_id: loader_field.id,
@@ -1085,17 +1086,12 @@ impl VersionFieldValue {
             .map(|qvf| qvf.version_id)
             .unique()
             .collect::<Vec<_>>();
-        let schema_error = || {
-            DatabaseError::SchemaError(format!(
-                "Multiple version ids for field {}",
-                field_name
-            ))
-        };
+        let schema_error =
+            || DatabaseError::SchemaError(format!("Multiple version ids for field {}", field_name));
         if version_id.len() > 1 {
             return Err(schema_error());
         }
         let version_id = version_id.into_iter().next().ok_or_else(schema_error)?;
-
 
         let field_id = qvfs
             .iter()
@@ -1186,7 +1182,7 @@ impl VersionFieldValue {
             )],
         };
 
-        Ok (value.into_iter().map(|v| (version_id, v)).collect())
+        Ok(value.into_iter().map(|v| (version_id, v)).collect())
     }
 
     // Serialize to internal value, such as for converting to user-facing JSON
