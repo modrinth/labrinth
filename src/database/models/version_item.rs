@@ -533,7 +533,7 @@ impl Version {
 				temp_version_fields_json AS (
 					SELECT DISTINCT version_id,
                     JSONB_AGG( 
-                        DISTINCT jsonb_build_object('field_id', field_id, 'int_value', int_value, 'enum_value', enum_value, 'string_value', string_value)
+                        DISTINCT jsonb_build_object('version_id', version_id, 'field_id', field_id, 'int_value', int_value, 'enum_value', enum_value, 'string_value', string_value)
                     ) version_fields_json
                     FROM temp_version_fields
                     GROUP BY version_id
