@@ -32,22 +32,15 @@ async fn test_get_project() {
         let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
         let beta_project_id = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
         let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
-        let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
+
+        let api = &test_env.api;
 
         // Perform request on dummy data
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/project/{alpha_project_id}"))
-            .append_header(("Authorization", USER_USER_PAT))
-            .to_request();
-        let resp = test_env.call(req).await;
-        let status = resp.status();
-        let body: serde_json::Value = test::read_body_json(resp).await;
-
-        assert_eq!(status, 200);
-        assert_eq!(body["id"], json!(alpha_project_id));
-        assert_eq!(body["slug"], json!(alpha_project_slug));
-        let versions = body["versions"].as_array().unwrap();
-        assert_eq!(versions[0], json!(alpha_version_id));
+        let proj = api
+            .get_project_deserialized_common(alpha_project_slug, USER_USER_PAT)
+            .await;
+        assert_eq!(proj.id.to_string(), alpha_project_id.to_string());
+        assert_eq!(proj.slug.unwrap(), alpha_project_slug.to_string());
 
         // Confirm that the request was cached
         let mut redis_pool = test_env.db.redis_pool.connect().await.unwrap();
@@ -189,8 +182,20 @@ async fn test_add_remove_project() {
         let project = api
             .get_project_deserialized_common("demo", USER_USER_PAT)
             .await;
-        assert!(project.versions.len() == 1);
-        let uploaded_version_id = project.versions[0];
+        let versions = api
+            .get_project_versions_deserialized(
+                &project.id.to_string(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert!(versions.len() == 1);
+        let uploaded_version_id = versions[0].id;
 
         // Checks files to ensure they were uploaded and correctly identify the file
         let hash = sha1::Sha1::from(include_bytes!("../tests/files/basic-mod.jar"))

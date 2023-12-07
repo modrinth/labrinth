@@ -210,11 +210,13 @@ async fn get_example_version_fields(
         None => return Ok(None),
     };
 
-    let vid = match project_item::Project::get_id(project_id.into(), &**pool, redis)
-        .await?
-        .and_then(|p| p.versions.first().cloned())
-    {
-        Some(vid) => vid,
+    let example_versions =
+        match project_item::Project::get_versions(project_id.into(), &**pool, redis).await? {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+    let vid = match example_versions.first() {
+        Some(v) => *v,
         None => return Ok(None),
     };
 

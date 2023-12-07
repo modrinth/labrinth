@@ -93,7 +93,7 @@ pub async fn index_local(
         let thread_id: crate::models::threads::ThreadId = m.thread_id.into();
 
         let all_version_ids = m
-            .versions
+            .public_versions
             .iter()
             .map(|v| (*v).into())
             .collect::<Vec<crate::models::projects::VersionId>>();

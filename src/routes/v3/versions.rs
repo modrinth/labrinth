@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use super::ApiError;
 use crate::auth::{
-    filter_authorized_versions, get_user_from_headers, is_authorized, is_authorized_version,
+    filter_authorized_projects, filter_authorized_versions, get_user_from_headers, is_authorized,
+    is_authorized_version,
 };
 use crate::database;
 use crate::database::models::loader_fields::{
@@ -13,10 +14,10 @@ use crate::database::models::{image_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::base62_impl::parse_base62;
-use crate::models::ids::VersionId;
+use crate::models::ids::{ProjectId, VersionId};
 use crate::models::images::ImageContext;
 use crate::models::pats::Scopes;
-use crate::models::projects::{skip_nulls, Loader};
+use crate::models::projects::{skip_nulls, Loader, Version};
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
@@ -68,7 +69,6 @@ pub async fn version_project_get_helper(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let result = database::models::Project::get(&id.0, &**pool, &redis).await?;
-
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -81,21 +81,24 @@ pub async fn version_project_get_helper(
     .ok();
 
     if let Some(project) = result {
-        if !is_authorized(&project.inner, &user_option, &pool).await? {
-            return Err(ApiError::NotFound);
-        }
-
         let versions =
-            database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
+            database::models::Project::get_versions(project.inner.id, &**pool, &redis).await?;
+        if let Some(versions) = versions {
+            if !is_authorized(&project.inner, &user_option, &pool).await? {
+                return Err(ApiError::NotFound);
+            }
 
-        let id_opt = parse_base62(&id.1).ok();
-        let version = versions
-            .into_iter()
-            .find(|x| Some(x.inner.id.0 as u64) == id_opt || x.inner.version_number == id.1);
+            let versions = database::models::Version::get_many(&versions, &**pool, &redis).await?;
 
-        if let Some(version) = version {
-            if is_authorized_version(&version.inner, &user_option, &pool).await? {
-                return Ok(HttpResponse::Ok().json(models::projects::Version::from(version)));
+            let id_opt = parse_base62(&id.1).ok();
+            let version = versions
+                .into_iter()
+                .find(|x| Some(x.inner.id.0 as u64) == id_opt || x.inner.version_number == id.1);
+
+            if let Some(version) = version {
+                if is_authorized_version(&version.inner, &user_option, &pool).await? {
+                    return Ok(HttpResponse::Ok().json(models::projects::Version::from(version)));
+                }
             }
         }
     }
@@ -682,7 +685,7 @@ pub async fn version_edit_helper(
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct VersionListFilters {
     pub loaders: Option<String>,
     pub featured: Option<bool>,
@@ -698,7 +701,7 @@ pub struct VersionListFilters {
     pub loader_fields: Option<String>,
 }
 
-pub async fn version_list(
+pub async fn project_version_list(
     req: HttpRequest,
     info: web::Path<(String,)>,
     web::Query(filters): web::Query<VersionListFilters>,
@@ -706,9 +709,60 @@ pub async fn version_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let string = info.into_inner().0;
+    let project_id = info.into_inner().0;
+    let project_ids = serde_json::to_string(&[project_id])?;
+    let version_list = version_list_inner(
+        req,
+        web::Query(VersionListFiltersWithProjects {
+            ids: project_ids,
+            filters,
+        }),
+        pool,
+        redis,
+        session_queue,
+    )
+    .await?;
+    Ok(HttpResponse::Ok().json(version_list))
+}
 
-    let result = database::models::Project::get(&string, &**pool, &redis).await?;
+#[derive(Deserialize)]
+pub struct VersionListFiltersWithProjects {
+    pub ids: String,
+
+    #[serde(flatten)]
+    pub filters: VersionListFilters,
+}
+
+pub async fn projects_version_list(
+    req: HttpRequest,
+    web::Query(filters): web::Query<VersionListFiltersWithProjects>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let version_list =
+        version_list_inner(req, web::Query(filters), pool, redis, session_queue).await?;
+    let proj_version_hashmap = version_list
+        .into_iter()
+        .fold(HashMap::new(), |mut acc: HashMap<_, Vec<_>>, version| {
+            acc.entry(version.project_id)
+                .or_default()
+                .push(version);
+            acc
+        });
+    Ok(HttpResponse::Ok().json(proj_version_hashmap))
+}
+
+pub async fn version_list_inner(
+    req: HttpRequest,
+    web::Query(filters): web::Query<VersionListFiltersWithProjects>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<Vec<Version>, ApiError> {
+    let project_ids: Vec<String> = serde_json::from_str(&filters.ids)?;
+    let filters = filters.filters;
+    let projects = database::models::Project::get_many(&project_ids, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
         &req,
@@ -721,11 +775,23 @@ pub async fn version_list(
     .map(|x| x.1)
     .ok();
 
-    if let Some(project) = result {
-        if !is_authorized(&project.inner, &user_option, &pool).await? {
-            return Err(ApiError::NotFound);
-        }
+    let allowed_projects = filter_authorized_projects(projects.clone(), &user_option, &pool)
+        .await?
+        .into_iter()
+        .map(|x| x.id)
+        .collect::<Vec<ProjectId>>();
+    let projects = projects
+        .into_iter()
+        .filter_map(|x| {
+            if allowed_projects.contains(&x.inner.id.into()) {
+                Some(x.inner.id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
+    if !projects.is_empty() {
         let loader_field_filters = filters.loader_fields.as_ref().map(|x| {
             serde_json::from_str::<HashMap<String, Vec<serde_json::Value>>>(x).unwrap_or_default()
         });
@@ -733,7 +799,12 @@ pub async fn version_list(
             .loaders
             .as_ref()
             .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
-        let mut versions = database::models::Version::get_many(&project.versions, &**pool, &redis)
+        let version_ids = database::models::Project::get_versions_many(&projects, &**pool, &redis)
+            .await?
+            .into_iter()
+            .flat_map(|(_, v)| v)
+            .collect::<Vec<database::models::VersionId>>();
+        let mut versions = database::models::Version::get_many(&version_ids, &**pool, &redis)
             .await?
             .into_iter()
             .skip(filters.offset.unwrap_or(0))
@@ -820,7 +891,7 @@ pub async fn version_list(
 
         let response = filter_authorized_versions(response, &user_option, &pool).await?;
 
-        Ok(HttpResponse::Ok().json(response))
+        Ok(response)
     } else {
         Err(ApiError::NotFound)
     }

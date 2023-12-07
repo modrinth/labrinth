@@ -34,10 +34,13 @@ use serde_json::json;
 use sqlx::PgPool;
 use validator::Validate;
 
+use super::versions::projects_version_list;
+
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("search", web::get().to(project_search));
     cfg.route("projects", web::get().to(projects_get));
     cfg.route("projects", web::patch().to(projects_edit));
+    cfg.route("projects/versions", web::patch().to(projects_version_list));
     cfg.route("projects_random", web::get().to(random_projects_get));
 
     cfg.service(
@@ -60,7 +63,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                         "members",
                         web::get().to(super::teams::team_members_get_project),
                     )
-                    .route("version", web::get().to(super::versions::version_list))
+                    .route(
+                        "version",
+                        web::get().to(super::versions::project_version_list),
+                    )
                     .route(
                         "version/{slug}",
                         web::get().to(super::versions::version_project_get),
@@ -332,8 +338,12 @@ pub async fn project_edit(
                     ));
                 }
 
+                let versions =
+                    database::models::Project::get_versions(project_item.inner.id, &**pool, &redis)
+                        .await?
+                        .unwrap_or_default();
                 if status == &ProjectStatus::Processing {
-                    if project_item.versions.is_empty() {
+                    if versions.is_empty() {
                         return Err(ApiError::InvalidInput(String::from(
                             "Project submitted for review with no initial versions",
                         )));
@@ -2278,3 +2288,88 @@ pub async fn project_unfollow(
         ))
     }
 }
+
+// pub async fn project_get_versions(
+//     req: HttpRequest,
+//     info: web::Path<(String,)>,
+//     pool: web::Data<PgPool>,
+//     redis: web::Data<RedisPool>,
+//     session_queue: web::Data<AuthQueue>,
+// ) -> Result<HttpResponse, ApiError> {
+//     project_get_versions_inner(req, info.into_inner().0, pool, redis, session_queue).await
+// }
+// pub async fn project_get_versions_inner(
+//     req: HttpRequest,
+//     info: String,
+//     pool: web::Data<PgPool>,
+//     redis: web::Data<RedisPool>,
+//     session_queue: web::Data<AuthQueue>,
+// ) -> Result<HttpResponse, ApiError> {
+//     let user_option = get_user_from_headers(
+//         &req,
+//         &**pool,
+//         &redis,
+//         &session_queue,
+//         Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
+//     )
+//     .await.ok().map(|x| x.1);
+
+//     let project = db_models::Project::get(&info, &**pool, &redis).await?.ok_or_else(|| {ApiError::NotFound})?;
+
+//     if !is_authorized(&project.inner, &user_option, &pool).await? {
+//         return Err(ApiError::NotFound);
+//     }
+
+//     let project_versions = db_models::Project::get_versions(project.inner.id, &**pool, &redis).await?.ok_or_else(|| {ApiError::NotFound})?;
+
+//     let versions_data = filter_authorized_versions(
+//         database::models::Version::get_many(&project_versions, &**pool, &redis).await?,
+//         &user_option,
+//         &pool,
+//     )
+//     .await?;
+
+//     Ok(HttpResponse::Ok().json(versions_data))
+// }
+
+// pub async fn projects_get_versions(
+//     req: HttpRequest,
+//     web::Query(ids): web::Query<ProjectIds>,
+//     pool: web::Data<PgPool>,
+//     redis: web::Data<RedisPool>,
+//     session_queue: web::Data<AuthQueue>,
+// ) -> Result<HttpResponse, ApiError> {
+//     let user_option = get_user_from_headers(
+//         &req,
+//         &**pool,
+//         &redis,
+//         &session_queue,
+//         Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
+//     )
+//     .await.ok().map(|x| x.1);
+
+//     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
+//     let projects_data = db_models::Project::get_many(&ids, &**pool, &redis).await?;
+//     let projects_data = filter_authorized_projects(
+//         projects_data,
+//         &user_option,
+//         &pool,
+//     ).await?;
+//     let allowed_project_ids = projects_data.iter().map(|x| x.id.into()).collect::<Vec<_>>();
+
+//     let project_versions = db_models::Project::get_versions_many(&allowed_project_ids, &**pool, &redis).await?;
+//     let all_version_ids = project_versions.into_iter().map(|x| x.1).flatten().collect::<Vec<_>>();
+//     let versions_data = database::models::Version::get_many(&all_version_ids, &**pool, &redis).await?;
+
+//     let versions_data = filter_authorized_versions(
+//         versions_data,
+//         &user_option,
+//         &pool,
+//     )
+//     .await?.into_iter().fold(HashMap::new(), |mut acc, version | {
+//         acc.entry(version.project_id).or_insert_with(Vec::new).push(version);
+//         acc
+//     });
+
+//     Ok(HttpResponse::Ok().json(versions_data))
+// }

@@ -88,6 +88,34 @@ impl ApiV3 {
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn get_project_versions_deserialized(
+        &self,
+        slug: &str,
+        game_versions: Option<Vec<String>>,
+        loaders: Option<Vec<String>>,
+        featured: Option<bool>,
+        version_type: Option<VersionType>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        pat: &str,
+    ) -> Vec<Version> {
+        let resp = self
+            .get_project_versions(
+                slug,
+                game_versions,
+                loaders,
+                featured,
+                version_type,
+                limit,
+                offset,
+                pat,
+            )
+            .await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
 }
 
 #[async_trait(?Send)]

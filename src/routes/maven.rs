@@ -166,7 +166,11 @@ async fn find_version(
         .ok()
         .map(|x| x as i64);
 
-    let all_versions = database::models::Version::get_many(&project.versions, pool, redis).await?;
+    // Maven routes check for authorized versions, so we can get all versions here rather than just public ones
+    let versions = database::models::Project::get_versions(project.inner.id, pool, redis)
+        .await?
+        .unwrap_or_default();
+    let all_versions = database::models::Version::get_many(&versions, pool, redis).await?;
 
     let exact_matches = all_versions
         .iter()

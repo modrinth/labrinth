@@ -150,7 +150,11 @@ pub async fn get_update_from_hash(
         if let Some(project) =
             database::models::Project::get_id(file.project_id, &**pool, &redis).await?
         {
-            let versions = database::models::Version::get_many(&project.versions, &**pool, &redis)
+            let versions =
+                database::models::Project::get_versions(project.inner.id, &**pool, &redis)
+                    .await?
+                    .unwrap_or_default();
+            let versions = database::models::Version::get_many(&versions, &**pool, &redis)
                 .await?
                 .into_iter()
                 .filter(|x| {
@@ -346,15 +350,15 @@ pub async fn update_files(
         &redis,
     )
     .await?;
-    let all_versions = database::models::Version::get_many(
-        &projects
-            .iter()
-            .flat_map(|x| x.versions.clone())
-            .collect::<Vec<_>>(),
-        &**pool,
-        &redis,
-    )
-    .await?;
+    let project_ids = projects.iter().map(|x| x.inner.id).collect::<Vec<_>>();
+    let all_version_ids =
+        database::models::Project::get_versions_many(&project_ids, &**pool, &redis)
+            .await?
+            .into_iter()
+            .flat_map(|x| x.1)
+            .collect::<Vec<_>>();
+    let all_versions =
+        database::models::Version::get_many(&all_version_ids, &**pool, &redis).await?;
 
     let mut response = HashMap::new();
 
@@ -467,15 +471,15 @@ pub async fn update_individual_files(
         &redis,
     )
     .await?;
-    let all_versions = database::models::Version::get_many(
-        &projects
-            .iter()
-            .flat_map(|x| x.versions.clone())
-            .collect::<Vec<_>>(),
-        &**pool,
-        &redis,
-    )
-    .await?;
+    let project_ids = projects.iter().map(|x| x.inner.id).collect::<Vec<_>>();
+    let all_version_ids =
+        database::models::Project::get_versions_many(&project_ids, &**pool, &redis)
+            .await?
+            .into_iter()
+            .flat_map(|x| x.1)
+            .collect::<Vec<_>>();
+    let all_versions =
+        database::models::Version::get_many(&all_version_ids, &**pool, &redis).await?;
 
     let mut response = HashMap::new();
 

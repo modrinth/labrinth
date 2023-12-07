@@ -45,7 +45,6 @@ pub struct CommonProject {
     pub categories: Vec<String>,
     pub additional_categories: Vec<String>,
     pub loaders: Vec<String>,
-    pub versions: Vec<VersionId>,
     pub icon_url: Option<String>,
     pub gallery: Vec<GalleryItem>,
     pub color: Option<u32>,

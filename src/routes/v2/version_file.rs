@@ -198,11 +198,11 @@ pub async fn get_projects_from_hashes(
         hashes: file_data.hashes,
     };
     let response = v3::version_file::get_projects_from_hashes(
-        req,
+        req.clone(),
         pool.clone(),
         redis.clone(),
         web::Json(file_data),
-        session_queue,
+        session_queue.clone(),
     )
     .await
     .or_else(v2_reroute::flatten_404_error)?;
@@ -217,9 +217,14 @@ pub async fn get_projects_from_hashes(
                     (hash.clone(), project_id)
                 })
                 .collect::<HashMap<_, _>>();
-            let legacy_projects =
-                LegacyProject::from_many(projects_hashes.into_values().collect(), &**pool, &redis)
-                    .await?;
+            let legacy_projects = LegacyProject::from_many(
+                req,
+                pool,
+                redis,
+                session_queue,
+                projects_hashes.into_values().collect(),
+            )
+            .await?;
             let legacy_projects_hashes = hash_to_project_id
                 .into_iter()
                 .filter_map(|(hash, project_id)| {

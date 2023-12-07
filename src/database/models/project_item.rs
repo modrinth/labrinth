@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 pub const PROJECTS_NAMESPACE: &str = "projects";
 pub const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
 const PROJECTS_DEPENDENCIES_NAMESPACE: &str = "projects_dependencies";
+const PROJECT_VERSIONS_NAMESPACE: &str = "project_versions";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LinkUrl {
@@ -309,6 +310,10 @@ impl Project {
         let project = Self::get_id(id, &mut **transaction, redis).await?;
 
         if let Some(project) = project {
+            let version_ids = Self::get_versions(id, &mut **transaction, redis)
+                .await?
+                .unwrap_or_default();
+
             Project::clear_cache(id, project.inner.slug, Some(true), redis).await?;
 
             sqlx::query!(
@@ -371,7 +376,7 @@ impl Project {
             .execute(&mut **transaction)
             .await?;
 
-            for version in project.versions {
+            for version in version_ids {
                 super::Version::remove_full(version, redis, transaction).await?;
             }
 
@@ -723,7 +728,7 @@ impl Project {
                         additional_categories: m.additional_categories.unwrap_or_default(),
                         project_types: m.project_types.unwrap_or_default(),
                         games: m.games.unwrap_or_default(),
-                        versions: {
+                        public_versions: {
                                 #[derive(Deserialize)]
                                 struct Version {
                                     pub id: VersionId,
@@ -834,6 +839,102 @@ impl Project {
         Ok(dependencies)
     }
 
+    pub async fn get_versions<'a, E>(
+        id: ProjectId,
+        exec: E,
+        redis: &RedisPool,
+    ) -> Result<Option<Vec<VersionId>>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let versions = Self::get_versions_many(&[id], exec, redis)
+            .await?
+            .into_iter()
+            .next()
+            .map(|(_, versions)| versions);
+
+        Ok(versions)
+    }
+
+    pub async fn get_versions_many<'a, E>(
+        ids: &[ProjectId],
+        exec: E,
+        redis: &RedisPool,
+    ) -> Result<Vec<(ProjectId, Vec<VersionId>)>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
+        let mut redis = redis.connect().await?;
+
+        let mut found_versions = Vec::new();
+        let mut remaining_ids = ids.to_vec();
+
+        if !remaining_ids.is_empty() {
+            let projects_versions = redis
+                .multi_get::<String>(
+                    PROJECT_VERSIONS_NAMESPACE,
+                    remaining_ids.iter().map(|x| x.0),
+                )
+                .await?;
+            for project_versions in projects_versions {
+                if let Some((project_id, version_ids)) = project_versions
+                    .and_then(|x| serde_json::from_str::<(ProjectId, Vec<VersionId>)>(&x).ok())
+                {
+                    remaining_ids.retain(|x| project_id != *x);
+                    found_versions.push((project_id, version_ids));
+                    continue;
+                }
+            }
+        }
+
+        if !remaining_ids.is_empty() {
+            let project_ids_parsed: Vec<i64> =
+                remaining_ids.iter().map(|x| x.0).collect::<Vec<_>>();
+
+            let versions: Vec<(ProjectId, Vec<VersionId>)> = sqlx::query!(
+                "
+                SELECT m.id as mod_id, v.id as version_id
+                FROM mods m
+                INNER JOIN versions v ON m.id = v.mod_id
+                WHERE m.id = ANY($1) 
+                ORDER BY m.id, v.id;
+                ",
+                &project_ids_parsed
+            )
+            .fetch_many(exec)
+            .try_filter_map(|e| async {
+                Ok(e.right()
+                    .map(|x| (ProjectId(x.mod_id), VersionId(x.version_id))))
+            })
+            .try_collect::<Vec<(ProjectId, VersionId)>>()
+            .await?
+            .into_iter()
+            .group_by(|(project_id, _)| *project_id)
+            .into_iter()
+            .map(|(project_id, group)| {
+                (
+                    project_id,
+                    group.map(|(_, version_id)| version_id).collect_vec(),
+                )
+            })
+            .collect();
+
+            for (project_id, versions) in &versions {
+                redis
+                    .set_serialized_to_json(
+                        PROJECT_VERSIONS_NAMESPACE,
+                        project_id.0,
+                        (project_id, versions),
+                        None,
+                    )
+                    .await?;
+            }
+            found_versions.extend(versions);
+        }
+
+        Ok(found_versions)
+    }
+
     pub async fn clear_cache(
         id: ProjectId,
         slug: Option<String>,
@@ -854,6 +955,7 @@ impl Project {
                         None
                     },
                 ),
+                (PROJECT_VERSIONS_NAMESPACE, Some(id.0.to_string())),
             ])
             .await?;
         Ok(())
@@ -865,7 +967,7 @@ pub struct QueryProject {
     pub inner: Project,
     pub categories: Vec<String>,
     pub additional_categories: Vec<String>,
-    pub versions: Vec<VersionId>,
+    pub public_versions: Vec<VersionId>,
     pub project_types: Vec<String>,
     pub games: Vec<String>,
     pub urls: Vec<LinkUrl>,
