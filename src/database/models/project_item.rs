@@ -151,13 +151,11 @@ pub struct ProjectBuilder {
     pub license_url: Option<String>,
     pub categories: Vec<CategoryId>,
     pub additional_categories: Vec<CategoryId>,
-    pub initial_versions: Vec<super::version_item::VersionBuilder>,
     pub status: ProjectStatus,
     pub requested_status: Option<ProjectStatus>,
     pub license: String,
     pub slug: Option<String>,
     pub link_urls: Vec<LinkUrl>,
-    pub gallery_items: Vec<GalleryItem>,
     pub color: Option<u32>,
     pub monetization_status: MonetizationStatus,
 }
@@ -201,20 +199,12 @@ impl ProjectBuilder {
 
         let ProjectBuilder {
             link_urls,
-            gallery_items,
             categories,
             additional_categories,
             ..
         } = self;
 
-        for mut version in self.initial_versions {
-            version.project_id = self.project_id;
-            version.insert(&mut *transaction).await?;
-        }
-
         LinkUrl::insert_many_projects(link_urls, self.project_id, &mut *transaction).await?;
-
-        GalleryItem::insert_many(gallery_items, self.project_id, &mut *transaction).await?;
 
         let project_id = self.project_id;
         let mod_categories = categories
