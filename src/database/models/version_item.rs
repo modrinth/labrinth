@@ -558,19 +558,17 @@ impl Version {
                 ),
                 temp_loader_field_enum_values_json AS
                 (
-                    SELECT version_id, loader_field_enum_values_json
-                    FROM temp_loader_fields lf
+                    SELECT version_id, 
+					JSONB_AGG(
+						DISTINCT jsonb_build_object(
+							'id', lfev.id, 'enum_id', lfev.enum_id, 'value', lfev.value, 'ordering', lfev.ordering, 'created', lfev.created, 'metadata', lfev.metadata
+						) 
+					) filter (where lfev.id is not null) loader_field_enum_values_json
+                    FROM 
+					(SELECT DISTINCT version_id, enum_type FROM temp_loader_fields lf) lf
                     INNER JOIN 
-                    (
-                        SELECT lfev.enum_id,
-                        JSONB_AGG(
-                            DISTINCT jsonb_build_object(
-                                'id', lfev.id, 'enum_id', lfev.enum_id, 'value', lfev.value, 'ordering', lfev.ordering, 'created', lfev.created, 'metadata', lfev.metadata
-                            ) 
-                        ) filter (where lfev.id is not null) loader_field_enum_values_json
-                        FROM loader_field_enum_values lfev
-                        GROUP BY lfev.enum_id
-                    ) lfev ON lf.enum_type = lfev.enum_id
+					loader_field_enum_values lfev ON lf.enum_type = lfev.enum_id
+					GROUP BY version_id
                 ),
 
                 temp_files AS (
