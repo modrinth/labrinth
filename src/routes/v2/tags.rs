@@ -4,6 +4,7 @@ use super::ApiError;
 use crate::database::models::loader_fields::LoaderFieldEnumValue;
 use crate::database::redis::RedisPool;
 use crate::models::v2::projects::LegacySideType;
+use crate::routes::v2_reroute::capitalize_first;
 use crate::routes::v3::tags::{
     LinkPlatformQueryData, LoaderData as LoaderDataV3, LoaderFieldsEnumQuery,
 };
@@ -166,7 +167,7 @@ pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, 
         .or_else(v2_reroute::flatten_404_error)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
 pub struct DonationPlatformQueryData {
     // The difference between name and short is removed in v3.
     // Now, the 'id' becomes the name, and the 'name' is removed (the frontend uses the id as the name)
@@ -200,7 +201,7 @@ pub async fn donation_platform_list(
                                     "ko-fi" => "Ko-fi".to_string(),
                                     "paypal" => "PayPal".to_string(),
                                     // Otherwise, capitalize it
-                                    _ => p.name.to_ascii_uppercase(),
+                                    _ => capitalize_first(&p.name)
                                 },
                                 short: p.name,
                             })

@@ -76,6 +76,8 @@ delegate_api_variant!(
         [edit_project, ServiceResponse, id_or_slug: &str, patch: serde_json::Value, pat: &str],
         [edit_project_bulk, ServiceResponse, ids_or_slugs: &[&str], patch: serde_json::Value, pat: &str],
         [edit_project_icon, ServiceResponse, id_or_slug: &str, icon: Option<CommonImageData>, pat: &str],
+        [create_report, ServiceResponse, report_type: &str, id: &str, item_type: crate::common::api_common::models::CommonItemType, body: &str, pat: &str],
+        [get_report, ServiceResponse, id: &str, pat: &str],
     }
 );
 

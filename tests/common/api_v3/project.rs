@@ -17,7 +17,7 @@ use serde_json::json;
 
 use crate::common::{
     api_common::{
-        models::{CommonImageData, CommonProject, CommonVersion},
+        models::{CommonImageData, CommonProject, CommonVersion, CommonItemType},
         request_data::ProjectCreationRequestData,
         Api, ApiProject,
     },
@@ -101,6 +101,7 @@ impl ApiProject for ApiV3 {
             .append_header(("Authorization", pat))
             .to_request();
         let resp = self.call(req).await;
+        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 204);
         resp
     }
@@ -211,7 +212,46 @@ impl ApiProject for ApiV3 {
             self.call(req).await
         }
     }
+
+    async fn create_report(
+        &self,
+        report_type: &str,
+        id: &str,
+        item_type: CommonItemType,
+        body: &str,
+        pat: &str,
+    ) -> ServiceResponse {
+        let req = test::TestRequest::post()
+            .uri(&format!(
+                "/v3/report"
+            ))
+            .append_header(("Authorization", pat))
+            .set_json(json!(
+                {
+                    "report_type": report_type,
+                    "item_id": id,
+                    "item_type": item_type.as_str(),
+                    "body": body,
+                }
+            ))
+            .to_request();
+
+        self.call(req).await
+    }
+
+    async fn get_report(&self, id: &str, pat: &str) -> ServiceResponse {
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/v3/report/{id}",
+                id = id
+            ))
+            .append_header(("Authorization", pat))
+            .to_request();
+
+        self.call(req).await
+    }
 }
+
 
 impl ApiV3 {
     pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {

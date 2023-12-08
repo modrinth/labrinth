@@ -217,7 +217,6 @@ pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct LinkPlatformQueryData {
     pub name: String,
-    #[serde(skip_serializing)]
     pub donation: bool,
 }
 
