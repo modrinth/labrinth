@@ -17,7 +17,7 @@ use serde_json::json;
 
 use crate::common::{
     api_common::{
-        models::{CommonImageData, CommonProject, CommonVersion, CommonItemType},
+        models::{CommonImageData, CommonItemType, CommonProject, CommonVersion},
         request_data::ProjectCreationRequestData,
         Api, ApiProject,
     },
@@ -222,9 +222,7 @@ impl ApiProject for ApiV3 {
         pat: &str,
     ) -> ServiceResponse {
         let req = test::TestRequest::post()
-            .uri(&format!(
-                "/v3/report"
-            ))
+            .uri("/v3/report")
             .append_header(("Authorization", pat))
             .set_json(json!(
                 {
@@ -241,17 +239,13 @@ impl ApiProject for ApiV3 {
 
     async fn get_report(&self, id: &str, pat: &str) -> ServiceResponse {
         let req = test::TestRequest::get()
-            .uri(&format!(
-                "/v3/report/{id}",
-                id = id
-            ))
+            .uri(&format!("/v3/report/{id}", id = id))
             .append_header(("Authorization", pat))
             .to_request();
 
         self.call(req).await
     }
 }
-
 
 impl ApiV3 {
     pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: &str) -> Project {

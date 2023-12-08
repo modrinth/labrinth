@@ -383,4 +383,3 @@ impl TryFrom<Link> for DonationLink {
         })
     }
 }
-

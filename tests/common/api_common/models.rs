@@ -127,7 +127,6 @@ pub struct CommonNotificationAction {
     pub action_route: (String, String),
 }
 
-
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub enum CommonItemType {

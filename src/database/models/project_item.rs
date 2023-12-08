@@ -341,7 +341,6 @@ impl Project {
             .execute(&mut **transaction)
             .await?;
 
-        
             // Notably joins with report id and not thread.mod_id directly, as
             // this is set to null for threads that are reports.
             let report_threads = sqlx::query!(
@@ -352,10 +351,11 @@ impl Project {
                 WHERE r.mod_id = $1 AND report_id IS NOT NULL 
                 ",
                 id as ProjectId,
-            ).fetch_many(&mut **transaction)
-                .try_filter_map(|e| async { Ok(e.right().map(|x| ThreadId(x.id))) })
-                .try_collect::<Vec<_>>()
-                .await?;
+            )
+            .fetch_many(&mut **transaction)
+            .try_filter_map(|e| async { Ok(e.right().map(|x| ThreadId(x.id))) })
+            .try_collect::<Vec<_>>()
+            .await?;
 
             for thread_id in report_threads {
                 models::Thread::remove_full(thread_id, transaction).await?;

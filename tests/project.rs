@@ -611,7 +611,7 @@ async fn delete_project_with_report() {
             )
             .await;
         assert_eq!(resp.status(), StatusCode::OK);
-        let value = test::read_body_json::<serde_json::Value,_>(resp).await;
+        let value = test::read_body_json::<serde_json::Value, _>(resp).await;
         let alpha_report_id = value["id"].as_str().unwrap();
 
         // Confirm existence
@@ -634,9 +634,8 @@ async fn delete_project_with_report() {
             )
             .await;
         assert_eq!(resp.status(), StatusCode::OK);
-        let value = test::read_body_json::<serde_json::Value,_>(resp).await;
+        let value = test::read_body_json::<serde_json::Value, _>(resp).await;
         let beta_report_id = value["id"].as_str().unwrap();
-        
 
         // Delete the project
         let resp = api.remove_project(alpha_project_id, USER_USER_PAT).await;

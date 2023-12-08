@@ -64,7 +64,6 @@ async fn get_tags() {
     .await;
 }
 
-
 #[actix_rt::test]
 async fn get_donation_platforms() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {

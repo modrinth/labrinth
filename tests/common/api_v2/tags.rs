@@ -3,7 +3,9 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use async_trait::async_trait;
-use labrinth::routes::v2::tags::{CategoryData, GameVersionQueryData, LoaderData, DonationPlatformQueryData};
+use labrinth::routes::v2::tags::{
+    CategoryData, DonationPlatformQueryData, GameVersionQueryData, LoaderData,
+};
 
 use crate::common::{
     api_common::{

@@ -201,7 +201,7 @@ pub async fn donation_platform_list(
                                     "ko-fi" => "Ko-fi".to_string(),
                                     "paypal" => "PayPal".to_string(),
                                     // Otherwise, capitalize it
-                                    _ => capitalize_first(&p.name)
+                                    _ => capitalize_first(&p.name),
                                 },
                                 short: p.name,
                             })

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use self::models::{
-    CommonCategoryData, CommonImageData, CommonLoaderData, CommonNotification, CommonProject,
-    CommonTeamMember, CommonVersion, CommonItemType,
+    CommonCategoryData, CommonImageData, CommonItemType, CommonLoaderData, CommonNotification,
+    CommonProject, CommonTeamMember, CommonVersion,
 };
 use self::request_data::ProjectCreationRequestData;
 use actix_web::dev::ServiceResponse;
