@@ -1,5 +1,6 @@
-
-use super::loader_fields::{VersionField, QueryVersionField, QueryLoaderField, QueryLoaderFieldEnumValue};
+use super::loader_fields::{
+    QueryLoaderField, QueryLoaderFieldEnumValue, QueryVersionField, VersionField,
+};
 use super::{ids::*, User};
 use crate::database::models;
 use crate::database::models::DatabaseError;
@@ -7,7 +8,7 @@ use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
-use dashmap::{DashSet, DashMap};
+use dashmap::{DashMap, DashSet};
 use futures::TryStreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -547,7 +548,10 @@ impl Project {
                 .flat_map(|x| parse_base62(&x.to_string()).ok())
                 .map(|x| x as i64)
                 .collect();
-            let slugs = remaining_strings.into_iter().map(|x| x.to_string().to_lowercase()).collect::<Vec<_>>();
+            let slugs = remaining_strings
+                .into_iter()
+                .map(|x| x.to_string().to_lowercase())
+                .collect::<Vec<_>>();
 
             let all_version_ids = DashSet::new();
             let versions: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>> = sqlx::query!(
@@ -559,20 +563,22 @@ impl Project {
                 ",
                 &project_ids_parsed,
                 &slugs,
-                &*crate::models::projects::VersionStatus::iterator().filter(|x| x.is_listed()).map(|x| x.to_string()).collect::<Vec<String>>()
-            ).fetch(&mut *exec)
-
-            .try_fold(DashMap::new(), |acc, m| {
-                    let version_id = VersionId(m.id);
-                    let date_published = m.date_published;
-                    all_version_ids.insert(version_id);
-                    acc.entry(ProjectId(m.mod_id))
-                    .or_insert_with(Vec::new)
+                &*crate::models::projects::VersionStatus::iterator()
+                    .filter(|x| x.is_listed())
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+            )
+            .fetch(&mut *exec)
+            .try_fold(DashMap::new(), |acc : DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>>, m| {
+                let version_id = VersionId(m.id);
+                let date_published = m.date_published;
+                all_version_ids.insert(version_id);
+                acc.entry(ProjectId(m.mod_id))
+                    .or_default()
                     .push((version_id, date_published));
-                    async move { Ok(acc) }
-                }
-            ).await?;
-
+                async move { Ok(acc) }
+            })
+            .await?;
 
             let loader_field_ids = DashSet::new();
             let loader_field_enum_value_ids = DashSet::new();
@@ -584,65 +590,73 @@ impl Project {
                 WHERE v.id = ANY($1)
                 ",
                 &all_version_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-            ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc, m| {
-                    let qvf = QueryVersionField {
-                        version_id: VersionId(m.version_id),
-                        field_id: LoaderFieldId(m.field_id),
-                        int_value: m.int_value,
-                        enum_value: m.enum_value.map(LoaderFieldEnumValueId),
-                        string_value: m.string_value,
-                    };
+            )
+            .fetch(&mut *exec)
+            .try_fold(DashMap::new(), |acc : DashMap<ProjectId, Vec<QueryVersionField>>, m| {
+                let qvf = QueryVersionField {
+                    version_id: VersionId(m.version_id),
+                    field_id: LoaderFieldId(m.field_id),
+                    int_value: m.int_value,
+                    enum_value: m.enum_value.map(LoaderFieldEnumValueId),
+                    string_value: m.string_value,
+                };
 
-                    loader_field_ids.insert(LoaderFieldId(m.field_id));
-                    if let Some(enum_value) = m.enum_value {
-                        loader_field_enum_value_ids.insert(LoaderFieldEnumValueId(enum_value));
-                    }
-
-                    acc.entry(ProjectId(m.mod_id))
-                    .or_insert_with(Vec::new)
-                    .push(qvf);
-                    async move { Ok(acc) }
+                loader_field_ids.insert(LoaderFieldId(m.field_id));
+                if let Some(enum_value) = m.enum_value {
+                    loader_field_enum_value_ids.insert(LoaderFieldEnumValueId(enum_value));
                 }
-            ).await?;
-        
-            let loader_fields : Vec<QueryLoaderField> = sqlx::query!(
+
+                acc.entry(ProjectId(m.mod_id))
+                    .or_default()
+                    .push(qvf);
+                async move { Ok(acc) }
+            })
+            .await?;
+
+            let loader_fields: Vec<QueryLoaderField> = sqlx::query!(
                 "
                 SELECT DISTINCT id, field, field_type, enum_type, min_val, max_val, optional
                 FROM loader_fields lf
                 WHERE id = ANY($1)  
                 ",
                 &loader_field_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-            ).fetch(&mut *exec)
-            .map_ok(|m| {
-                QueryLoaderField {
-                    id: LoaderFieldId(m.id),
-                    field: m.field,
-                    field_type: m.field_type,
-                    enum_type: m.enum_type.map(LoaderFieldEnumId),
-                    min_val: m.min_val,
-                    max_val: m.max_val,
-                    optional: m.optional,
-                }}).try_collect().await?;
+            )
+            .fetch(&mut *exec)
+            .map_ok(|m| QueryLoaderField {
+                id: LoaderFieldId(m.id),
+                field: m.field,
+                field_type: m.field_type,
+                enum_type: m.enum_type.map(LoaderFieldEnumId),
+                min_val: m.min_val,
+                max_val: m.max_val,
+                optional: m.optional,
+            })
+            .try_collect()
+            .await?;
 
-            let loader_field_enum_values : Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
+            let loader_field_enum_values: Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
                 "
                 SELECT DISTINCT id, enum_id, value, ordering, created, metadata
                 FROM loader_field_enum_values lfev
                 WHERE id = ANY($1)  
                 ORDER BY enum_id, ordering, created DESC
                 ",
-                &loader_field_enum_value_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-            ).fetch(&mut *exec)
-            .map_ok(|m| {
-                QueryLoaderFieldEnumValue {
-                    id: LoaderFieldEnumValueId(m.id),
-                    enum_id: LoaderFieldEnumId(m.enum_id),
-                    value: m.value,
-                    ordering: m.ordering,
-                    created: m.created,
-                    metadata: m.metadata,
-                }}).try_collect().await?;
+                &loader_field_enum_value_ids
+                    .iter()
+                    .map(|x| x.0)
+                    .collect::<Vec<_>>()
+            )
+            .fetch(&mut *exec)
+            .map_ok(|m| QueryLoaderFieldEnumValue {
+                id: LoaderFieldEnumValueId(m.id),
+                enum_id: LoaderFieldEnumId(m.enum_id),
+                value: m.value,
+                ordering: m.ordering,
+                created: m.created,
+                metadata: m.metadata,
+            })
+            .try_collect()
+            .await?;
 
             let mods_gallery: DashMap<ProjectId, Vec<GalleryItem>> = sqlx::query!(
                 "
@@ -654,9 +668,9 @@ impl Project {
                 &project_ids_parsed,
                 &slugs
             ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc, m| {
+            .try_fold(DashMap::new(), |acc : DashMap<ProjectId, Vec<GalleryItem>>, m| {
                     acc.entry(ProjectId(m.mod_id))
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(GalleryItem {
                         image_url: m.image_url,
                         featured: m.featured.unwrap_or(false),
@@ -680,9 +694,9 @@ impl Project {
                 &project_ids_parsed,
                 &slugs
             ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc, m| {
+            .try_fold(DashMap::new(), |acc : DashMap<ProjectId, Vec<LinkUrl>>, m| {
                     acc.entry(ProjectId(m.mod_id))
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(LinkUrl {
                         platform_id: LinkPlatformId(m.platform_id),
                         platform_name: m.platform_name,
@@ -691,9 +705,10 @@ impl Project {
                     });
                     async move { Ok(acc) }
                 }
-            ).await?;           
+            ).await?;
 
-            let loaders_ptypes_games: DashMap<ProjectId, (Vec<String>, Vec<String>, Vec<String>)> = sqlx::query!(
+            type StringTriple = (Vec<String>, Vec<String>, Vec<String>);
+            let loaders_ptypes_games: DashMap<ProjectId, StringTriple> = sqlx::query!(
                 "
                 SELECT DISTINCT mod_id,
                     ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,

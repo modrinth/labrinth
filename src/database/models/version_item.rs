@@ -1,11 +1,13 @@
 use super::ids::*;
 use super::loader_fields::VersionField;
 use super::DatabaseError;
-use crate::database::models::loader_fields::{QueryVersionField, QueryLoaderField, QueryLoaderFieldEnumValue};
+use crate::database::models::loader_fields::{
+    QueryLoaderField, QueryLoaderFieldEnumValue, QueryVersionField,
+};
 use crate::database::redis::RedisPool;
 use crate::models::projects::{FileType, VersionStatus};
 use chrono::{DateTime, Utc};
-use dashmap::{DashSet, DashMap};
+use dashmap::{DashMap, DashSet};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -527,7 +529,6 @@ impl Version {
         }
 
         if !version_ids_parsed.is_empty() {
-
             let loader_field_ids = DashSet::new();
             let loader_field_enum_value_ids = DashSet::new();
             let version_fields: DashMap<VersionId, Vec<QueryVersionField>> = sqlx::query!(
@@ -538,70 +539,76 @@ impl Version {
                 WHERE v.id = ANY($1)
                 ",
                 &version_ids_parsed
-            ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc, m| {
-                    let qvf = QueryVersionField {
-                        version_id: VersionId(m.version_id),
-                        field_id: LoaderFieldId(m.field_id),
-                        int_value: m.int_value,
-                        enum_value: m.enum_value.map(LoaderFieldEnumValueId),
-                        string_value: m.string_value,
-                    };
+            )
+            .fetch(&mut *exec)
+            .try_fold(DashMap::new(), |acc : DashMap<VersionId, Vec<QueryVersionField>>, m| {
+                let qvf = QueryVersionField {
+                    version_id: VersionId(m.version_id),
+                    field_id: LoaderFieldId(m.field_id),
+                    int_value: m.int_value,
+                    enum_value: m.enum_value.map(LoaderFieldEnumValueId),
+                    string_value: m.string_value,
+                };
 
-                    loader_field_ids.insert(LoaderFieldId(m.field_id));
-                    if let Some(enum_value) = m.enum_value {
-                        loader_field_enum_value_ids.insert(LoaderFieldEnumValueId(enum_value));
-                    }
-
-                    acc.entry(VersionId(m.version_id))
-                    .or_insert_with(Vec::new)
-                    .push(qvf);
-                    async move { Ok(acc) }
+                loader_field_ids.insert(LoaderFieldId(m.field_id));
+                if let Some(enum_value) = m.enum_value {
+                    loader_field_enum_value_ids.insert(LoaderFieldEnumValueId(enum_value));
                 }
-            ).await?;
-        
 
+                acc.entry(VersionId(m.version_id))
+                    .or_default()
+                    .push(qvf);
+                async move { Ok(acc) }
+            })
+            .await?;
 
-            let loader_fields : Vec<QueryLoaderField> = sqlx::query!(
+            let loader_fields: Vec<QueryLoaderField> = sqlx::query!(
                 "
                 SELECT DISTINCT id, field, field_type, enum_type, min_val, max_val, optional
                 FROM loader_fields lf
                 WHERE id = ANY($1)  
                 ",
                 &loader_field_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-            ).fetch(&mut *exec)
-            .map_ok(|m| {
-                QueryLoaderField {
-                    id: LoaderFieldId(m.id),
-                    field: m.field,
-                    field_type: m.field_type,
-                    enum_type: m.enum_type.map(LoaderFieldEnumId),
-                    min_val: m.min_val,
-                    max_val: m.max_val,
-                    optional: m.optional,
-                }}).try_collect().await?;
+            )
+            .fetch(&mut *exec)
+            .map_ok(|m| QueryLoaderField {
+                id: LoaderFieldId(m.id),
+                field: m.field,
+                field_type: m.field_type,
+                enum_type: m.enum_type.map(LoaderFieldEnumId),
+                min_val: m.min_val,
+                max_val: m.max_val,
+                optional: m.optional,
+            })
+            .try_collect()
+            .await?;
 
-            let loader_field_enum_values : Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
+            let loader_field_enum_values: Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
                 "
                 SELECT DISTINCT id, enum_id, value, ordering, created, metadata
                 FROM loader_field_enum_values lfev
                 WHERE id = ANY($1)  
                 ORDER BY enum_id, ordering, created ASC
                 ",
-                &loader_field_enum_value_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-            ).fetch(&mut *exec)
-            .map_ok(|m| {
-                QueryLoaderFieldEnumValue {
-                    id: LoaderFieldEnumValueId(m.id),
-                    enum_id: LoaderFieldEnumId(m.enum_id),
-                    value: m.value,
-                    ordering: m.ordering,
-                    created: m.created,
-                    metadata: m.metadata,
-                }}).try_collect().await?;
+                &loader_field_enum_value_ids
+                    .iter()
+                    .map(|x| x.0)
+                    .collect::<Vec<_>>()
+            )
+            .fetch(&mut *exec)
+            .map_ok(|m| QueryLoaderFieldEnumValue {
+                id: LoaderFieldEnumValueId(m.id),
+                enum_id: LoaderFieldEnumId(m.enum_id),
+                value: m.value,
+                ordering: m.ordering,
+                created: m.created,
+                metadata: m.metadata,
+            })
+            .try_collect()
+            .await?;
 
-
-            let loaders_ptypes_games: DashMap<VersionId, (Vec<String>, Vec<String>, Vec<String>)> = sqlx::query!(
+            type StringTriple = (Vec<String>, Vec<String>, Vec<String>);
+            let loaders_ptypes_games: DashMap<VersionId, StringTriple> = sqlx::query!(
                 "
                 SELECT DISTINCT version_id,
                     ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
@@ -657,7 +664,7 @@ impl Version {
                 ",
                 &version_ids_parsed
             ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc, m| {
+            .try_fold(DashMap::new(), |acc : DashMap<VersionId, Vec<File>>, m| {
                     let file = File {
                         id: FileId(m.id),
                         url: m.url,
@@ -671,21 +678,22 @@ impl Version {
                     reverse_file_map.insert(FileId(m.id), VersionId(m.version_id));
 
                     acc.entry(VersionId(m.version_id))
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(file);
                     async move { Ok(acc) }
                 }
             ).await?;
 
-            let hashes : DashMap<VersionId, Vec<Hash>> = sqlx::query!(
+            let hashes: DashMap<VersionId, Vec<Hash>> = sqlx::query!(
                 "
                 SELECT DISTINCT file_id, algorithm, encode(hash, 'escape') hash
                 FROM hashes
                 WHERE file_id = ANY($1)
                 ",
                 &file_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-            ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc, m| {
+            )
+            .fetch(&mut *exec)
+            .try_fold(DashMap::new(), |acc : DashMap<VersionId, Vec<Hash>>, m| {
                 if let Some(found_hash) = m.hash {
                     let hash = Hash {
                         file_id: FileId(m.file_id),
@@ -693,15 +701,13 @@ impl Version {
                         hash: found_hash,
                     };
 
-                    let version_id = reverse_file_map.get(&FileId(m.file_id)).unwrap().clone();
+                    let version_id = *reverse_file_map.get(&FileId(m.file_id)).unwrap();
 
-                    acc.entry(version_id)
-                    .or_insert_with(Vec::new)
-                    .push(hash);
+                    acc.entry(version_id).or_default().push(hash);
                 }
                 async move { Ok(acc) }
-            }
-            ).await?;
+            })
+            .await?;
 
             let dependencies : DashMap<VersionId, Vec<QueryDependency>> = sqlx::query!(
                 "
@@ -711,16 +717,16 @@ impl Version {
                 ",
                 &version_ids_parsed
             ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc, m| {
+            .try_fold(DashMap::new(), |acc : DashMap<_,Vec<QueryDependency>>, m| {
                     let dependency = QueryDependency {
-                        project_id: m.dependency_project_id.map(|x| ProjectId(x)),
-                        version_id: m.dependency_version_id.map(|x| VersionId(x)),
+                        project_id: m.dependency_project_id.map(ProjectId),
+                        version_id: m.dependency_version_id.map(VersionId),
                         file_name: m.file_name,
                         dependency_type: m.dependency_type,
                     };
 
                     acc.entry(VersionId(m.version_id))
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(dependency);
                     async move { Ok(acc) }
                 }
@@ -747,7 +753,7 @@ impl Version {
                         let hashes = hashes.remove(&version_id).map(|x|x.1).unwrap_or_default();
                         let version_fields = version_fields.remove(&version_id).map(|x|x.1).unwrap_or_default();
                         let dependencies = dependencies.remove(&version_id).map(|x|x.1).unwrap_or_default();
-                        
+
                         QueryVersion {
                             inner: Version {
                                 id: VersionId(v.id),

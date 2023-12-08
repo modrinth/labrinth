@@ -187,9 +187,16 @@ pub async fn send_discord_webhook(
 
         // TODO: Modified to keep "Versions" as a field as it may be hardcoded. Ideally, this pushes all loader fields to the embed for v3
         // TODO: This might need some work to manually test
-        let version_fields = crate::database::models::project_item::Project::get_id(crate::database::models::ids::ProjectId(project.id), pool, redis)
-            .await.ok().flatten().map(|project| project.aggregate_version_fields).unwrap_or_default();
-    
+        let version_fields = crate::database::models::project_item::Project::get_id(
+            crate::database::models::ids::ProjectId(project.id),
+            pool,
+            redis,
+        )
+        .await
+        .ok()
+        .flatten()
+        .map(|project| project.aggregate_version_fields)
+        .unwrap_or_default();
 
         let versions = version_fields
             .into_iter()
