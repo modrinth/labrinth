@@ -210,7 +210,7 @@ impl LegacyProject {
         redis: &RedisPool,
     ) -> Result<Vec<Self>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
         let version_ids: Vec<_> = data
             .iter()
