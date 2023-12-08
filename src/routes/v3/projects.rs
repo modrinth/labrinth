@@ -830,6 +830,8 @@ pub async fn project_edit(
             };
 
             img::delete_unused_images(context, checkable_strings, &mut transaction, &redis).await?;
+
+            transaction.commit().await?;
             db_models::Project::clear_cache(
                 project_item.inner.id,
                 project_item.inner.slug,
@@ -838,7 +840,6 @@ pub async fn project_edit(
             )
             .await?;
 
-            transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
             Err(ApiError::CustomAuthentication(
@@ -1506,6 +1507,7 @@ pub async fn project_icon_edit(
         .execute(&mut *transaction)
         .await?;
 
+        transaction.commit().await?;
         db_models::Project::clear_cache(
             project_item.inner.id,
             project_item.inner.slug,
@@ -1513,8 +1515,6 @@ pub async fn project_icon_edit(
             &redis,
         )
         .await?;
-
-        transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
@@ -1601,10 +1601,9 @@ pub async fn delete_project_icon(
     .execute(&mut *transaction)
     .await?;
 
+    transaction.commit().await?;
     db_models::Project::clear_cache(project_item.inner.id, project_item.inner.slug, None, &redis)
         .await?;
-
-    transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -1741,6 +1740,7 @@ pub async fn add_gallery_item(
         }];
         GalleryItem::insert_many(gallery_item, project_item.inner.id, &mut transaction).await?;
 
+        transaction.commit().await?;
         db_models::Project::clear_cache(
             project_item.inner.id,
             project_item.inner.slug,
@@ -1748,8 +1748,6 @@ pub async fn add_gallery_item(
             &redis,
         )
         .await?;
-
-        transaction.commit().await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
@@ -1926,10 +1924,10 @@ pub async fn edit_gallery_item(
         .await?;
     }
 
+    transaction.commit().await?;
+
     db_models::Project::clear_cache(project_item.inner.id, project_item.inner.slug, None, &redis)
         .await?;
-
-    transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -2032,10 +2030,10 @@ pub async fn delete_gallery_item(
     .execute(&mut *transaction)
     .await?;
 
+    transaction.commit().await?;
+
     db_models::Project::clear_cache(project_item.inner.id, project_item.inner.slug, None, &redis)
         .await?;
-
-    transaction.commit().await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }

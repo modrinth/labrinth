@@ -330,9 +330,9 @@ pub async fn collection_edit(
             .await?;
         }
 
+        transaction.commit().await?;
         database::models::Collection::clear_cache(collection_item.id, &redis).await?;
 
-        transaction.commit().await?;
         Ok(HttpResponse::NoContent().body(""))
     } else {
         Err(ApiError::NotFound)
@@ -417,9 +417,8 @@ pub async fn collection_icon_edit(
         .execute(&mut *transaction)
         .await?;
 
-        database::models::Collection::clear_cache(collection_item.id, &redis).await?;
-
         transaction.commit().await?;
+        database::models::Collection::clear_cache(collection_item.id, &redis).await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
@@ -481,9 +480,8 @@ pub async fn delete_collection_icon(
     .execute(&mut *transaction)
     .await?;
 
-    database::models::Collection::clear_cache(collection_item.id, &redis).await?;
-
     transaction.commit().await?;
+    database::models::Collection::clear_cache(collection_item.id, &redis).await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -519,9 +517,9 @@ pub async fn collection_delete(
 
     let result =
         database::models::Collection::remove(collection.id, &mut transaction, &redis).await?;
-    database::models::Collection::clear_cache(collection.id, &redis).await?;
 
     transaction.commit().await?;
+    database::models::Collection::clear_cache(collection.id, &redis).await?;
 
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
