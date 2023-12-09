@@ -533,10 +533,9 @@ impl Version {
             let loader_field_enum_value_ids = DashSet::new();
             let version_fields: DashMap<VersionId, Vec<QueryVersionField>> = sqlx::query!(
                 "
-                SELECT DISTINCT version_id, field_id, int_value, enum_value, string_value
-                FROM versions v
-                INNER JOIN version_fields vf ON v.id = vf.version_id
-                WHERE v.id = ANY($1)
+                SELECT version_id, field_id, int_value, enum_value, string_value
+                FROM version_fields
+                WHERE version_id = ANY($1)
                 ",
                 &version_ids_parsed
             )

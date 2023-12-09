@@ -37,7 +37,7 @@ pub enum IndexingError {
 // assumes a max average size of 1KiB per project to avoid this cap.
 const MEILISEARCH_CHUNK_SIZE: usize = 10000;
 
-const FETCH_PROJECT_SIZE: usize = 500;
+const FETCH_PROJECT_SIZE: usize = 5000;
 pub async fn index_projects(
     pool: PgPool,
     redis: RedisPool,
