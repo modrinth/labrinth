@@ -35,7 +35,7 @@ pub enum IndexingError {
 // The chunk size for adding projects to the indexing database. If the request size
 // is too large (>10MiB) then the request fails with an error.  This chunk size
 // assumes a max average size of 1KiB per project to avoid this cap.
-const MEILISEARCH_CHUNK_SIZE: usize = 10;
+const MEILISEARCH_CHUNK_SIZE: usize = 100;
 
 const FETCH_PROJECT_SIZE: usize = 5000;
 pub async fn index_projects(
@@ -75,13 +75,17 @@ pub async fn index_projects(
             })
             .collect::<HashMap<_, _>>();
         let (mut uploads, mut loader_fields) = index_local(&pool, &redis, id_chunk).await?;
-        docs_to_add.append(&mut uploads);
-        additional_fields.append(&mut loader_fields);
-    }
+        // docs_to_add.append(&mut uploads);
+        // additional_fields.append(&mut loader_fields);
 
-    info!("Got all ids, indexing...");
-    // Write Indices
-    add_projects(docs_to_add, additional_fields, config).await?;
+
+        info!("Adding chunk to index...");
+        // Write Indices
+        add_projects(uploads, loader_fields, config).await?;
+
+        // docs_to_add.clear();
+        // additional_fields.clear();
+    }
 
     info!("Done adding projects.");
     Ok(())
