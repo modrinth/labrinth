@@ -702,8 +702,6 @@ impl Version {
 
                     if let Some(version_id) = reverse_file_map.get(&FileId(m.file_id)) {
                         acc.entry(*version_id).or_default().push(hash);
-                    } else {
-                        println!("Failure looking for version file id {}", m.file_id);
                     }
                 }
                 async move { Ok(acc) }

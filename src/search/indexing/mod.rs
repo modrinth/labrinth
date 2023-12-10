@@ -34,8 +34,8 @@ pub enum IndexingError {
 
 // The chunk size for adding projects to the indexing database. If the request size
 // is too large (>10MiB) then the request fails with an error.  This chunk size
-// assumes a max average size of 1KiB per project to avoid this cap.
-const MEILISEARCH_CHUNK_SIZE: usize = 100;
+// assumes a max average size of 2KiB per project to avoid this cap.
+const MEILISEARCH_CHUNK_SIZE: usize = 5000; // Should be less than FETCH_PROJECT_SIZE
 
 const FETCH_PROJECT_SIZE: usize = 5000;
 pub async fn index_projects(
@@ -43,9 +43,6 @@ pub async fn index_projects(
     redis: RedisPool,
     config: &SearchConfig,
 ) -> Result<(), IndexingError> {
-    let mut docs_to_add: Vec<UploadSearchProject> = vec![];
-    let mut additional_fields: Vec<String> = vec![];
-
     let all_ids = get_all_ids(pool.clone()).await?;
     let all_ids_len = all_ids.len();
     info!("Got all ids, indexing {} projects", all_ids_len);
@@ -74,9 +71,8 @@ pub async fn index_projects(
                 (version_id, (project_id, owner_username.to_lowercase()))
             })
             .collect::<HashMap<_, _>>();
-        let (mut uploads, mut loader_fields) = index_local(&pool, &redis, id_chunk).await?;
+        let (uploads, loader_fields) = index_local(&pool, &redis, id_chunk).await?;
 
-        info!("Adding that chunk to index...");
         // Write Indices
         add_projects(uploads, loader_fields, config).await?;
     }
@@ -90,13 +86,11 @@ async fn create_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, IndexingError> {
-    info!("Creating index {}", name);
     client
         .delete_index(name)
         .await?
         .wait_for_completion(client, None, None)
         .await?;
-    info!("Deleted index {}", name);
     match client.get_index(name).await {
         Ok(index) => {
             index
@@ -104,7 +98,6 @@ async fn create_index(
                 .await?
                 .wait_for_completion(client, None, None)
                 .await?;
-            info!("C1reated index {}", name);
             Ok(index)
         }
         Err(meilisearch_sdk::errors::Error::Meilisearch(
@@ -132,7 +125,6 @@ async fn create_index(
                 .wait_for_completion(client, None, None)
                 .await?;
 
-            info!("C2reated index {}", name);
             Ok(index)
         }
         Err(e) => {
@@ -148,19 +140,9 @@ async fn add_to_index(
     mods: &[UploadSearchProject],
 ) -> Result<(), IndexingError> {
     for chunk in mods.chunks(MEILISEARCH_CHUNK_SIZE) {
-        println!("Adding chunk of size {}", chunk.len());
-        let r = index
-            .add_documents(chunk.clone(), Some("version_id"))
-            .await;
-            if r.is_err() {
-                log::warn!("1Error while adding documents: {:?}", chunk.into_iter().map(|x| x.project_id.to_string()).collect_vec());
-            }
-        let r = r?.wait_for_completion(client, None, None)
-            .await;
-        if r.is_err() {
-            log::warn!("2Error while adding documents: {:?}", chunk.into_iter().map(|x| x.project_id.to_string()).collect_vec());
-        }
-        r?;
+        index
+            .add_documents(chunk, Some("version_id"))
+            .await?.wait_for_completion(client, None, None).await?;
     }
     Ok(())
 }
