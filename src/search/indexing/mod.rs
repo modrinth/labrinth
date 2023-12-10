@@ -34,8 +34,8 @@ pub enum IndexingError {
 
 // The chunk size for adding projects to the indexing database. If the request size
 // is too large (>10MiB) then the request fails with an error.  This chunk size
-// assumes a max average size of 2KiB per project to avoid this cap.
-const MEILISEARCH_CHUNK_SIZE: usize = 5000; // Should be less than FETCH_PROJECT_SIZE
+// assumes a max average size of 10KiB per project to avoid this cap.
+const MEILISEARCH_CHUNK_SIZE: usize = 1000; // Should be less than FETCH_PROJECT_SIZE
 
 const FETCH_PROJECT_SIZE: usize = 5000;
 pub async fn index_projects(
