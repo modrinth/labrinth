@@ -142,7 +142,9 @@ async fn add_to_index(
     for chunk in mods.chunks(MEILISEARCH_CHUNK_SIZE) {
         index
             .add_documents(chunk, Some("version_id"))
-            .await?.wait_for_completion(client, None, None).await?;
+            .await?
+            .wait_for_completion(client, None, None)
+            .await?;
     }
     Ok(())
 }
