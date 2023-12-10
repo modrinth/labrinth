@@ -75,16 +75,10 @@ pub async fn index_projects(
             })
             .collect::<HashMap<_, _>>();
         let (mut uploads, mut loader_fields) = index_local(&pool, &redis, id_chunk).await?;
-        // docs_to_add.append(&mut uploads);
-        // additional_fields.append(&mut loader_fields);
 
-
-        info!("Adding chunk to index...");
+        info!("Adding that chunk to index...");
         // Write Indices
         add_projects(uploads, loader_fields, config).await?;
-
-        // docs_to_add.clear();
-        // additional_fields.clear();
     }
 
     info!("Done adding projects.");
