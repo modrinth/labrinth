@@ -50,8 +50,8 @@ pub async fn index_projects(
     let all_ids_len = all_ids.len();
     info!("Got all ids, indexing {} projects", all_ids_len);
 
-    let mut docs_to_add = vec![];
-    let mut additional_fields = vec![];
+    // let mut docs_to_add = vec![];
+    // let mut additional_fields = vec![];
 
     let mut so_far = 0;
 
@@ -61,6 +61,25 @@ pub async fn index_projects(
         .into_iter()
         .map(|x| x.collect::<Vec<_>>())
         .collect();
+
+    // Create indices
+    let indices = {
+        let client = config.make_client();
+
+        let projects_index = create_index(&client, "projects", None).await?;
+        let projects_filtered_index = create_index(&client,         "projects_filtered",
+            Some(&[
+                "sort",
+                "words",
+                "typo",
+                "proximity",
+                "attribute",
+                "exactness",
+            ]),
+        ).await?;
+
+        vec![projects_index, projects_filtered_index] 
+    };
 
     for id_chunk in as_chunks {
         info!(
@@ -81,11 +100,11 @@ pub async fn index_projects(
         let (uploads, loader_fields) = index_local(&pool, &redis, id_chunk).await?;
 
         info!("Got chunk, adding to docs_to_add");
-        docs_to_add.extend(uploads);
-        additional_fields.extend(loader_fields);
+        // docs_to_add.extend(uploads);
+        // additional_fields.extend(loader_fields);
+        add_projects(&indices, uploads, loader_fields, config).await?;
     }
 
-    add_projects(docs_to_add, additional_fields, config).await?;
 
     info!("Done adding projects.");
     Ok(())
@@ -153,7 +172,7 @@ async fn create_index(
 
 async fn add_to_index(
     client: &Client,
-    index: Index,
+    index: &Index,
     mods: &[UploadSearchProject],
 ) -> Result<(), IndexingError> {
     for chunk in mods.chunks(MEILISEARCH_CHUNK_SIZE) {
@@ -171,18 +190,12 @@ async fn add_to_index(
     Ok(())
 }
 
-async fn create_and_add_to_index(
+async fn update_and_add_to_index(
     client: &Client,
+    index : &Index,
     projects: &[UploadSearchProject],
     additional_fields: &[String],
-    name: &'static str,
-    custom_rules: Option<&'static [&'static str]>,
 ) -> Result<(), IndexingError> {
-    info!("Creating and adding to index.");
-
-    let index = create_index(client, name, custom_rules).await?;
-    info!("Done creating.");
-
     let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
     let mut new_displayed_attributes = index.get_displayed_attributes().await?;
 
@@ -203,31 +216,17 @@ async fn create_and_add_to_index(
 }
 
 pub async fn add_projects(
+    indices: &[Index],
     projects: Vec<UploadSearchProject>,
     additional_fields: Vec<String>,
     config: &SearchConfig,
 ) -> Result<(), IndexingError> {
-    info!("adding projects p1.");
     let client = config.make_client();
+    for index in indices {
+        info!("adding projects part1 or 2.");
+        update_and_add_to_index(&client, index, &projects, &additional_fields).await?;
+    }
 
-    create_and_add_to_index(&client, &projects, &additional_fields, "projects", None).await?;
-
-    info!("adding projects p2.");
-    create_and_add_to_index(
-        &client,
-        &projects,
-        &additional_fields,
-        "projects_filtered",
-        Some(&[
-            "sort",
-            "words",
-            "typo",
-            "proximity",
-            "attribute",
-            "exactness",
-        ]),
-    )
-    .await?;
 
     Ok(())
 }
