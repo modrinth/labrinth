@@ -1123,9 +1123,6 @@ async fn align_search_projects() {
             // (Search should return "")
             project_model.description = "".into();
 
-            // Same with gallery items
-            project_model.gallery = vec![];
-
             // Aggregate project loader fields will not match exactly,
             // because the search will only return the matching version, whereas the project returns the aggregate.
             // So, we remove them from both.

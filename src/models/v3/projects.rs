@@ -311,6 +311,19 @@ impl Project {
             .map(|d| (d.platform_name.clone(), Link::from(d)))
             .collect();
 
+        let gallery = m
+            .gallery_items
+            .into_iter()
+            .map(|x| GalleryItem {
+                url: x.image_url,
+                featured: x.featured,
+                name: x.name,
+                description: x.description,
+                created: x.created,
+                ordering: x.ordering,
+            })
+            .collect();
+
         Some(Self {
             id: project_id,
             slug: m.slug,
@@ -357,7 +370,7 @@ impl Project {
             versions,
             icon_url,
             link_urls,
-            gallery: vec![], // Gallery is not stored in search
+            gallery,
             color: m.color,
             thread_id,
             monetization_status,
