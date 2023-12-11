@@ -86,11 +86,11 @@ async fn create_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, IndexingError> {
-    client
-        .delete_index(name)
-        .await?
-        .wait_for_completion(client, None, None)
-        .await?;
+    // client
+    //     .delete_index(name)
+    //     .await?
+    //     .wait_for_completion(client, None, None)
+    //     .await?;
     match client.get_index(name).await {
         Ok(index) => {
             index
@@ -140,11 +140,13 @@ async fn add_to_index(
     mods: &[UploadSearchProject],
 ) -> Result<(), IndexingError> {
     for chunk in mods.chunks(MEILISEARCH_CHUNK_SIZE) {
+        info!("Adding chunk starting with version id {}", chunk[0].version_id);
         index
             .add_documents(chunk, Some("version_id"))
             .await?
             .wait_for_completion(client, None, None)
             .await?;
+        info!("Added chunk of {} projects to index", chunk.len());
     }
     Ok(())
 }
@@ -158,7 +160,7 @@ async fn create_and_add_to_index(
 ) -> Result<(), IndexingError> {
     let index = create_index(client, name, custom_rules).await?;
 
-    let mut new_filterable_attributes = index.get_filterable_attributes().await?;
+    let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
     let mut new_displayed_attributes = index.get_displayed_attributes().await?;
 
     new_filterable_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
