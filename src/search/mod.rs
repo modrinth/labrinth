@@ -1,4 +1,4 @@
-use crate::database::models::project_item::{GalleryItem, LinkUrl};
+use crate::database::models::project_item::LinkUrl;
 use crate::models::error::ApiError;
 use crate::models::projects::{MonetizationStatus, ProjectStatus, SearchRequest};
 use actix_web::http::StatusCode;
@@ -113,8 +113,7 @@ pub struct UploadSearchProject {
     pub requested_status: Option<ProjectStatus>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
     pub links: Vec<LinkUrl>,
-    pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
-    pub games: Vec<String>,              // Todo: in future, could be a searchable field.
+    pub games: Vec<String>, // Todo: in future, could be a searchable field.
     pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
 
     #[serde(flatten)]
@@ -165,7 +164,6 @@ pub struct ResultSearchProject {
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
     pub links: Vec<LinkUrl>,
     pub games: Vec<String>, // Todo: in future, could be a searchable field.
-    pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
     pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
 
     #[serde(flatten)]
@@ -237,7 +235,7 @@ pub async fn search_for_project(
                                 if facet.is_array() {
                                     serde_json::from_value::<Vec<String>>(facet).unwrap_or_default()
                                 } else {
-                                    vec![serde_json::from_value::<String>(facet.clone())
+                                    vec![serde_json::from_value::<String>(facet)
                                         .unwrap_or_default()]
                                 }
                             })

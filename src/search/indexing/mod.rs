@@ -34,10 +34,13 @@ pub enum IndexingError {
 
 // The chunk size for adding projects to the indexing database. If the request size
 // is too large (>10MiB) then the request fails with an error.  This chunk size
-// assumes a max average size of 10KiB per project to avoid this cap.
-const MEILISEARCH_CHUNK_SIZE: usize = 1000; // Should be less than FETCH_PROJECT_SIZE
+// assumes a max average size of 4KiB per project to avoid this cap.
+const MEILISEARCH_CHUNK_SIZE: usize = 2500; // Should be less than FETCH_PROJECT_SIZE
 
 const FETCH_PROJECT_SIZE: usize = 5000;
+
+const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub async fn index_projects(
     pool: PgPool,
     redis: RedisPool,
@@ -47,7 +50,8 @@ pub async fn index_projects(
     let all_ids_len = all_ids.len();
     info!("Got all ids, indexing {} projects", all_ids_len);
 
-    let client = config.make_client();
+    let mut docs_to_add = vec![];
+    let mut additional_fields = vec![];
 
     let mut so_far = 0;
 
@@ -76,9 +80,12 @@ pub async fn index_projects(
             .collect::<HashMap<_, _>>();
         let (uploads, loader_fields) = index_local(&pool, &redis, id_chunk).await?;
 
-        // Write Indices
-        add_projects(&client, uploads, loader_fields).await?;
+        info!("Got chunk, adding to docs_to_add");
+        docs_to_add.extend(uploads);
+        additional_fields.extend(loader_fields);
     }
+
+    add_projects(docs_to_add, additional_fields, config).await?;
 
     info!("Done adding projects.");
     Ok(())
@@ -89,17 +96,20 @@ async fn create_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, IndexingError> {
-    // client
-    //     .delete_index(name)
-    //     .await?
-    //     .wait_for_completion(client, None, None)
-    //     .await?;
+    info!("Creating index.");
+
+    client
+        .delete_index(name)
+        .await?
+        .wait_for_completion(client, None, None)
+        .await?;
     match client.get_index(name).await {
         Ok(index) => {
+            info!("Creating index2.");
             index
                 .set_settings(&default_settings())
                 .await?
-                .wait_for_completion(client, None, None)
+                .wait_for_completion(client, None, Some(TIMEOUT))
                 .await?;
             Ok(index)
         }
@@ -109,9 +119,13 @@ async fn create_index(
                 ..
             },
         )) => {
+            info!("Creating3 index.");
+
             // Only create index and set settings if the index doesn't already exist
             let task = client.create_index(name, Some("version_id")).await?;
-            let task = task.wait_for_completion(client, None, None).await?;
+            let task = task
+                .wait_for_completion(client, None, Some(TIMEOUT))
+                .await?;
             let index = task
                 .try_make_index(client)
                 .map_err(|_| IndexingError::Task)?;
@@ -125,7 +139,7 @@ async fn create_index(
             index
                 .set_settings(&settings)
                 .await?
-                .wait_for_completion(client, None, None)
+                .wait_for_completion(client, None, Some(TIMEOUT))
                 .await?;
 
             Ok(index)
@@ -143,11 +157,14 @@ async fn add_to_index(
     mods: &[UploadSearchProject],
 ) -> Result<(), IndexingError> {
     for chunk in mods.chunks(MEILISEARCH_CHUNK_SIZE) {
-        info!("Adding chunk starting with version id {}", chunk[0].version_id);
+        info!(
+            "Adding chunk starting with version id {}",
+            chunk[0].version_id
+        );
         index
             .add_documents(chunk, Some("version_id"))
             .await?
-            .wait_for_completion(client, None, None)
+            .wait_for_completion(client, None, Some(std::time::Duration::from_secs(3600)))
             .await?;
         info!("Added chunk of {} projects to index", chunk.len());
     }
@@ -161,13 +178,17 @@ async fn create_and_add_to_index(
     name: &'static str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<(), IndexingError> {
+    info!("Creating and adding to index.");
+
     let index = create_index(client, name, custom_rules).await?;
+    info!("Done creating.");
 
     let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
     let mut new_displayed_attributes = index.get_displayed_attributes().await?;
 
     new_filterable_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
     new_displayed_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
+    info!("add attributes.");
     index
         .set_filterable_attributes(new_filterable_attributes)
         .await?;
@@ -175,18 +196,23 @@ async fn create_and_add_to_index(
         .set_displayed_attributes(new_displayed_attributes)
         .await?;
 
+    info!("Adding to index.");
+
     add_to_index(client, index, projects).await?;
     Ok(())
 }
 
 pub async fn add_projects(
-    client: &Client,
     projects: Vec<UploadSearchProject>,
     additional_fields: Vec<String>,
+    config: &SearchConfig,
 ) -> Result<(), IndexingError> {
+    info!("adding projects p1.");
+    let client = config.make_client();
 
     create_and_add_to_index(&client, &projects, &additional_fields, "projects", None).await?;
 
+    info!("adding projects p2.");
     create_and_add_to_index(
         &client,
         &projects,

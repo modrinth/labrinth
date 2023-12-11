@@ -213,7 +213,6 @@ pub async fn index_local(
             requested_status: m.inner.requested_status,
             games: m.games.clone(),
             links: m.urls.clone(),
-            gallery_items: m.gallery_items.clone(),
             loaders,
         };
 
