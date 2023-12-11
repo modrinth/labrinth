@@ -46,6 +46,9 @@ pub async fn index_projects(
     let all_ids = get_all_ids(pool.clone()).await?;
     let all_ids_len = all_ids.len();
     info!("Got all ids, indexing {} projects", all_ids_len);
+
+    let client = config.make_client();
+
     let mut so_far = 0;
 
     let as_chunks: Vec<_> = all_ids
@@ -74,7 +77,7 @@ pub async fn index_projects(
         let (uploads, loader_fields) = index_local(&pool, &redis, id_chunk).await?;
 
         // Write Indices
-        add_projects(uploads, loader_fields, config).await?;
+        add_projects(&client, uploads, loader_fields).await?;
     }
 
     info!("Done adding projects.");
@@ -177,11 +180,10 @@ async fn create_and_add_to_index(
 }
 
 pub async fn add_projects(
+    client: &Client,
     projects: Vec<UploadSearchProject>,
     additional_fields: Vec<String>,
-    config: &SearchConfig,
 ) -> Result<(), IndexingError> {
-    let client = config.make_client();
 
     create_and_add_to_index(&client, &projects, &additional_fields, "projects", None).await?;
 
