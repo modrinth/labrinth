@@ -208,8 +208,8 @@ pub async fn filter_authorized_versions(
 
     let authorized_projects = filter_authorized_projects(
         Project::get_many_ids(&project_ids, &***pool, &redis).await?,
-        &user_option,
-        &pool,
+        user_option,
+        pool,
     )
     .await?;
 
@@ -223,10 +223,10 @@ pub async fn filter_authorized_versions(
                 .unwrap_or(false)
         {
             return_versions.push(version.into());
-        } else if user_option.is_some() {
-            if authorized_project_ids.contains(&version.inner.project_id) {
-                return_versions.push(version.into());
-            }
+        } else if user_option.is_some()
+            && authorized_project_ids.contains(&version.inner.project_id)
+        {
+            return_versions.push(version.into());
         }
     }
 
