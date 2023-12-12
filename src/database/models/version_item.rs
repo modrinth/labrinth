@@ -701,9 +701,9 @@ impl Version {
                         hash: found_hash,
                     };
 
-                    let version_id = *reverse_file_map.get(&FileId(m.file_id)).unwrap();
-
-                    acc.entry(version_id).or_default().push(hash);
+                    if let Some(version_id) = reverse_file_map.get(&FileId(m.file_id)) {
+                        acc.entry(*version_id).or_default().push(hash);
+                    }
                 }
                 async move { Ok(acc) }
             })

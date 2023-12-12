@@ -570,7 +570,7 @@ impl Project {
                 .collect();
             let slugs = remaining_strings
                 .into_iter()
-                .map(|x| x.to_string().to_lowercase())
+                .map(|x| x.to_lowercase())
                 .collect::<Vec<_>>();
 
             let all_version_ids = DashSet::new();
