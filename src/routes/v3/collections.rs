@@ -46,7 +46,7 @@ pub struct CollectionCreateData {
     pub name: String,
     #[validate(length(min = 3, max = 255))]
     /// A short description of the collection.
-    pub description: String,
+    pub description: Option<String>,
     #[validate(length(max = 32))]
     #[serde(default = "Vec::new")]
     /// A list of initial projects to use with the created collection
@@ -198,7 +198,12 @@ pub struct EditCollection {
     )]
     pub name: Option<String>,
     #[validate(length(min = 3, max = 256))]
-    pub description: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub description: Option<Option<String>>,
     pub status: Option<CollectionStatus>,
     #[validate(length(max = 64))]
     pub new_projects: Option<Vec<String>>,
@@ -260,7 +265,7 @@ pub async fn collection_edit(
                 SET description = $1
                 WHERE (id = $2)
                 ",
-                description,
+                description.as_ref(),
                 id as database::models::ids::CollectionId,
             )
             .execute(&mut *transaction)
