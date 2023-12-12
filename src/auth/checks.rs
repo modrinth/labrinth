@@ -1,3 +1,4 @@
+use crate::database;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::database::models::Collection;
