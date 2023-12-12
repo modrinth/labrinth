@@ -1,4 +1,3 @@
-use crate::database;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::database::models::Collection;
@@ -176,16 +175,16 @@ pub async fn is_authorized_version(
     Ok(authorized)
 }
 
-impl ValidateAuthorized for crate::database::models::OAuthClient {
+impl ValidateAuthorized for models::OAuthClient {
     fn validate_authorized(&self, user_option: Option<&User>) -> Result<(), ApiError> {
         if let Some(user) = user_option {
-            if user.role.is_mod() || user.id == self.created_by.into() {
-                return Ok(());
+            return if user.role.is_mod() || user.id == self.created_by.into() {
+                Ok(())
             } else {
-                return Err(crate::routes::ApiError::CustomAuthentication(
+                Err(ApiError::CustomAuthentication(
                     "You don't have sufficient permissions to interact with this OAuth application"
                         .to_string(),
-                ));
+                ))
             }
         }
 
@@ -221,10 +220,7 @@ pub async fn filter_authorized_versions(
                 .as_ref()
                 .map(|x| x.role.is_mod())
                 .unwrap_or(false)
-        {
-            return_versions.push(version.into());
-        } else if user_option.is_some()
-            && authorized_project_ids.contains(&version.inner.project_id)
+            || (user_option.is_some() && authorized_project_ids.contains(&version.inner.project_id))
         {
             return_versions.push(version.into());
         }
