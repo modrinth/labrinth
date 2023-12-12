@@ -63,7 +63,7 @@ impl ApiV2 {
     pub async fn get_donation_platforms(&self) -> ServiceResponse {
         let req = TestRequest::get()
             .uri("/v2/tag/donation_platform")
-            .append_header(("Authorization", ADMIN_USER_PAT))
+            .append_pat(ADMIN_USER_PAT)
             .to_request();
         self.call(req).await
     }
