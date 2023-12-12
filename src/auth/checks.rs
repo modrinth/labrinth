@@ -2,6 +2,7 @@ use crate::database;
 use crate::database::models::project_item::QueryProject;
 use crate::database::models::version_item::QueryVersion;
 use crate::database::models::Collection;
+use crate::database::redis::RedisPool;
 use crate::database::{models, Project, Version};
 use crate::models::users::User;
 use crate::routes::ApiError;
@@ -196,12 +197,28 @@ pub async fn filter_authorized_versions(
     versions: Vec<QueryVersion>,
     user_option: &Option<User>,
     pool: &web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
 ) -> Result<Vec<crate::models::projects::Version>, ApiError> {
     let mut return_versions = Vec::new();
     let mut check_versions = Vec::new();
 
+    let project_ids = versions
+        .iter()
+        .map(|x| x.inner.project_id)
+        .collect::<Vec<_>>();
+
+    let authorized_projects = filter_authorized_projects(
+        Project::get_many_ids(&project_ids, &***pool, &redis).await?,
+        &user_option,
+        &pool,
+    )
+    .await?;
+
+    let authorized_project_ids: Vec<_> = authorized_projects.iter().map(|x| x.id.into()).collect();
+
     for version in versions {
-        if !version.inner.status.is_hidden()
+        if (!version.inner.status.is_hidden()
+            && authorized_project_ids.contains(&version.inner.project_id))
             || user_option
                 .as_ref()
                 .map(|x| x.role.is_mod())
