@@ -37,7 +37,7 @@ pub enum IndexingError {
 // is too large (>10MiB) then the request fails with an error.  This chunk size
 // assumes a max average size of 4KiB per project to avoid this cap.
 const MEILISEARCH_CHUNK_SIZE: usize = 2500; // Should be less than FETCH_PROJECT_SIZE
-const FETCH_PROJECT_SIZE: usize = 25000;
+const FETCH_PROJECT_SIZE: usize = 5000;
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
