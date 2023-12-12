@@ -1,6 +1,7 @@
 /// This module is used for the indexing from any source.
 pub mod local_import;
 
+use itertools::Itertools;
 use std::collections::HashMap;
 
 use crate::database::redis::RedisPool;
@@ -36,6 +37,7 @@ pub enum IndexingError {
 // is too large (>10MiB) then the request fails with an error.  This chunk size
 // assumes a max average size of 4KiB per project to avoid this cap.
 const MEILISEARCH_CHUNK_SIZE: usize = 2500; // Should be less than FETCH_PROJECT_SIZE
+const FETCH_PROJECT_SIZE: usize = 25000;
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -61,24 +63,41 @@ pub async fn index_projects(
 ) -> Result<(), IndexingError> {
     info!("Indexing projects.");
 
-    let all_ids = get_all_ids(pool.clone()).await?;
-
-    info!("Ids returned.");
     let indices = get_indexes(config).await?;
-    info!("Retrived Indexes.");
-    let (uploads, loader_fields) = index_local(
-        &pool,
-        &redis,
-        all_ids
+
+    let all_ids = get_all_ids(pool.clone()).await?;
+    let all_ids_len = all_ids.len();
+    info!("Got all ids, indexing {} projects", all_ids_len);
+
+    let mut so_far = 0;
+    let as_chunks: Vec<_> = all_ids
+        .into_iter()
+        .chunks(FETCH_PROJECT_SIZE)
+        .into_iter()
+        .map(|x| x.collect::<Vec<_>>())
+        .collect();
+
+    for id_chunk in as_chunks {
+        info!(
+            "Fetching chunk {}-{}/{}, size: {}",
+            so_far,
+            so_far + FETCH_PROJECT_SIZE,
+            all_ids_len,
+            id_chunk.len()
+        );
+        so_far += FETCH_PROJECT_SIZE;
+
+        let id_chunk = id_chunk
             .into_iter()
             .map(|(version_id, project_id, owner_username)| {
                 (version_id, (project_id, owner_username.to_lowercase()))
             })
-            .collect::<HashMap<_, _>>(),
-    )
-    .await?;
-    info!("Indexed local.");
-    add_projects(&indices, uploads, loader_fields, config).await?;
+            .collect::<HashMap<_, _>>();
+        let (uploads, loader_fields) = index_local(&pool, &redis, id_chunk).await?;
+
+        info!("Got chunk, adding to docs_to_add");
+        add_projects(&indices, uploads, loader_fields, config).await?;
+    }
 
     info!("Done adding projects.");
     Ok(())
