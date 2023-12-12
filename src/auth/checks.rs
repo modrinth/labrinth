@@ -200,7 +200,6 @@ pub async fn filter_authorized_versions(
     redis: web::Data<RedisPool>,
 ) -> Result<Vec<crate::models::projects::Version>, ApiError> {
     let mut return_versions = Vec::new();
-    let mut check_versions = Vec::new();
 
     let project_ids = versions
         .iter()
@@ -217,8 +216,7 @@ pub async fn filter_authorized_versions(
     let authorized_project_ids: Vec<_> = authorized_projects.iter().map(|x| x.id.into()).collect();
 
     for version in versions {
-        if (!version.inner.status.is_hidden()
-            && authorized_project_ids.contains(&version.inner.project_id))
+        if !version.inner.status.is_hidden()
             || user_option
                 .as_ref()
                 .map(|x| x.role.is_mod())
@@ -226,45 +224,9 @@ pub async fn filter_authorized_versions(
         {
             return_versions.push(version.into());
         } else if user_option.is_some() {
-            check_versions.push(version);
-        }
-    }
-
-    if !check_versions.is_empty() {
-        if let Some(user) = user_option {
-            let user_id: models::ids::UserId = user.id.into();
-
-            use futures::TryStreamExt;
-
-            sqlx::query!(
-                "
-                SELECT m.id FROM mods m
-                INNER JOIN team_members tm ON tm.team_id = m.team_id AND user_id = $2
-                WHERE m.id = ANY($1)
-                ",
-                &check_versions
-                    .iter()
-                    .map(|x| x.inner.project_id.0)
-                    .collect::<Vec<_>>(),
-                user_id as database::models::ids::UserId,
-            )
-            .fetch_many(&***pool)
-            .try_for_each(|e| {
-                if let Some(row) = e.right() {
-                    check_versions.retain(|x| {
-                        let bool = x.inner.project_id.0 == row.id;
-
-                        if bool {
-                            return_versions.push(x.clone().into());
-                        }
-
-                        !bool
-                    });
-                }
-
-                futures::future::ready(Ok(()))
-            })
-            .await?;
+            if authorized_project_ids.contains(&version.inner.project_id) {
+                return_versions.push(version.into());
+            }
         }
     }
 
