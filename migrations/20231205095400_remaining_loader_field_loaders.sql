@@ -5,4 +5,6 @@
 INSERT INTO loader_fields_loaders
 SELECT l.id, lf.id FROM loaders l CROSS JOIN loader_fields lf
 WHERE lf.field=ANY(ARRAY['game_versions','client_and_server','server_only','client_only','singleplayer'])
+AND
+l.loader NOT IN ('vanilla', 'minecraft', 'optifine', 'iris', 'canvas')
 ON CONFLICT DO NOTHING;
