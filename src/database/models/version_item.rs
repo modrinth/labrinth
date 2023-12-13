@@ -494,6 +494,12 @@ impl Version {
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
+        let version_ids = version_ids
+            .iter()
+            .unique()
+            .copied()
+            .collect::<Vec<VersionId>>();
+
         use futures::stream::TryStreamExt;
 
         if version_ids.is_empty() {
@@ -701,9 +707,9 @@ impl Version {
                         hash: found_hash,
                     };
 
-                    let version_id = *reverse_file_map.get(&FileId(m.file_id)).unwrap();
-
-                    acc.entry(version_id).or_default().push(hash);
+                    if let Some(version_id) = reverse_file_map.get(&FileId(m.file_id)) {
+                        acc.entry(*version_id).or_default().push(hash);
+                    }
                 }
                 async move { Ok(acc) }
             })
