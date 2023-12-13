@@ -495,9 +495,9 @@ impl Version {
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
         let version_ids = version_ids
-            .into_iter()
+            .iter()
             .unique()
-            .map(|x| *x)
+            .copied()
             .collect::<Vec<VersionId>>();
 
         use futures::stream::TryStreamExt;

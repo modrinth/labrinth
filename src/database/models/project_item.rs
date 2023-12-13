@@ -493,7 +493,7 @@ impl Project {
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
         let project_strings = project_strings
-            .into_iter()
+            .iter()
             .map(|x| x.to_string())
             .unique()
             .collect::<Vec<String>>();
