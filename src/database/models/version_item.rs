@@ -615,12 +615,12 @@ impl Version {
                     ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
                     ARRAY_AGG(DISTINCT g.slug) filter (where g.slug is not null) games
                 FROM versions v
-                INNER JOIN loaders_versions lv ON v.id = lv.version_id
-                INNER JOIN loaders l ON lv.loader_id = l.id
-                INNER JOIN loaders_project_types lpt ON lpt.joining_loader_id = l.id
-                INNER JOIN project_types pt ON pt.id = lpt.joining_project_type_id
-                INNER JOIN loaders_project_types_games lptg ON lptg.loader_id = l.id AND lptg.project_type_id = pt.id
-                INNER JOIN games g ON lptg.game_id = g.id
+                LEFT JOIN loaders_versions lv ON v.id = lv.version_id
+                LEFT JOIN loaders l ON lv.loader_id = l.id
+                LEFT JOIN loaders_project_types lpt ON lpt.joining_loader_id = l.id
+                LEFT JOIN project_types pt ON pt.id = lpt.joining_project_type_id
+                LEFT JOIN loaders_project_types_games lptg ON lptg.loader_id = l.id AND lptg.project_type_id = pt.id
+                LEFT JOIN games g ON lptg.game_id = g.id
                 WHERE v.id = ANY($1)
                 GROUP BY version_id
                 ",
@@ -748,6 +748,10 @@ impl Version {
                     Ok(e.right().map(|v|
                         {
                         let version_id = VersionId(v.id);
+                        if v.version_name == "MysticMons_v1.0" {
+                            println!("version_id: {}", version_id.0);
+                            println!("all {:?}",loaders_ptypes_games);    
+                        }
                         let (loaders, project_types, games) = loaders_ptypes_games.remove(&version_id).map(|x|x.1).unwrap_or_default();
                         let files = files.remove(&version_id).map(|x|x.1).unwrap_or_default();
                         let hashes = hashes.remove(&version_id).map(|x|x.1).unwrap_or_default();

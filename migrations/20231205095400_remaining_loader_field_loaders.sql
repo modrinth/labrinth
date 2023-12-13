@@ -8,3 +8,9 @@ WHERE lf.field=ANY(ARRAY['game_versions','client_and_server','server_only','clie
 AND
 l.loader NOT IN ('vanilla', 'minecraft', 'optifine', 'iris', 'canvas')
 ON CONFLICT DO NOTHING;
+
+-- All existing loader_project_types so far should have a games entry as minecraft
+INSERT INTO loaders_project_types_games
+SELECT lpt.joining_loader_id, lpt.joining_project_type_id, g.id FROM loaders_project_types lpt CROSS JOIN games g
+WHERE g.name='minecraft-java'
+ON CONFLICT DO NOTHING;
