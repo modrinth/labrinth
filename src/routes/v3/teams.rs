@@ -724,7 +724,10 @@ pub async fn transfer_ownership(
     .await?
     .1;
 
-    println!("Transferring owner from {} to {}", current_user.id.0, new_owner.user_id.0);
+    println!(
+        "Transferring owner from {} to {}",
+        current_user.id.0, new_owner.user_id.0
+    );
     println!("Trasnfering team: {}", id.0);
     // Forbid transferring ownership of a project team that is owned by an organization
     // These are owned by the organization owner, and must be removed from the organization first

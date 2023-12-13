@@ -3,7 +3,7 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use bytes::Bytes;
-use labrinth::models::{organizations::Organization, v3::projects::Project, users::UserId};
+use labrinth::models::{organizations::Organization, users::UserId, v3::projects::Project};
 use serde_json::json;
 
 use crate::common::api_common::{request_data::ImageData, Api, AppendsOptionalPat};

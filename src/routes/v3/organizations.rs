@@ -7,8 +7,8 @@ use crate::database::models::team_item::TeamMember;
 use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models::ids::UserId;
 use crate::models::ids::base62_impl::parse_base62;
+use crate::models::ids::UserId;
 use crate::models::organizations::OrganizationId;
 use crate::models::pats::Scopes;
 use crate::models::teams::{OrganizationPermissions, ProjectPermissions};
@@ -18,11 +18,11 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
 use actix_web::{web, HttpRequest, HttpResponse};
+use futures::TryStreamExt;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
-use futures::TryStreamExt;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("organizations", web::get().to(organizations_get));
@@ -529,7 +529,10 @@ pub async fn organization_delete(
         WHERE team_id = $1 AND is_owner = TRUE
         ",
         organization.team_id as database::models::ids::TeamId
-    ).fetch_one(&**pool).await?.user_id;
+    )
+    .fetch_one(&**pool)
+    .await?
+    .user_id;
     let owner_id = database::models::ids::UserId(owner_id);
 
     let mut transaction = pool.begin().await?;
@@ -543,10 +546,11 @@ pub async fn organization_delete(
         WHERE o.id = $1 AND $1 IS NOT NULL
         ",
         organization.id as database::models::ids::OrganizationId
-
-    ).fetch_many(&mut *transaction)
-        .try_filter_map(|e| async { Ok(e.right().map(|c| crate::database::models::TeamId(c.id))) })
-    .try_collect::<Vec<_>>().await?;
+    )
+    .fetch_many(&mut *transaction)
+    .try_filter_map(|e| async { Ok(e.right().map(|c| crate::database::models::TeamId(c.id))) })
+    .try_collect::<Vec<_>>()
+    .await?;
 
     // Get all project teams from the organization that do not have owner as a team_member
     let project_teams_without_owner = sqlx::query!(
@@ -557,19 +561,24 @@ pub async fn organization_delete(
             WHERE tm.team_id = t.id AND tm.user_id = $2
         )
         ",
-        &organization_project_teams.iter().map(|x| x.0 as i64).collect::<Vec<_>>(),
+        &organization_project_teams
+            .iter()
+            .map(|x| x.0 as i64)
+            .collect::<Vec<_>>(),
         owner_id.0
-        )
-        .fetch_many(&mut *transaction)
-        .try_filter_map(|e| async { Ok(e.right().map(|c| crate::database::models::TeamId(c.id))) })
-    .try_collect::<Vec<_>>().await?;
+    )
+    .fetch_many(&mut *transaction)
+    .try_filter_map(|e| async { Ok(e.right().map(|c| crate::database::models::TeamId(c.id))) })
+    .try_collect::<Vec<_>>()
+    .await?;
 
     for project_team_without_owner in project_teams_without_owner {
-        let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
+        let new_id =
+            crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
         let member = TeamMember {
             id: new_id,
             team_id: project_team_without_owner,
-            user_id: owner_id.into(),
+            user_id: owner_id,
             role: "Inherited Owner".to_string(),
             is_owner: false,
             permissions: ProjectPermissions::all(),
@@ -580,7 +589,7 @@ pub async fn organization_delete(
         };
         member.insert(&mut transaction).await?;
     }
-    
+
     // Set is_owner to false for all team_members of projects in the organization
     sqlx::query!(
         "
@@ -588,8 +597,13 @@ pub async fn organization_delete(
         SET is_owner = FALSE
         WHERE tm.team_id = ANY($1)
         ",
-        &organization_project_teams.iter().map(|x| x.0 as i64).collect::<Vec<_>>()
-    ).execute(&mut *transaction).await?;
+        &organization_project_teams
+            .iter()
+            .map(|x| x.0 as i64)
+            .collect::<Vec<_>>()
+    )
+    .execute(&mut *transaction)
+    .await?;
 
     // Now that every project has 'owner' as a team member, we can set those projects to have the owner as the owner
     sqlx::query!(
@@ -598,9 +612,14 @@ pub async fn organization_delete(
         SET is_owner = TRUE
         WHERE tm.team_id = ANY($1) AND tm.user_id = $2
         ",
-        &organization_project_teams.iter().map(|x| x.0 as i64).collect::<Vec<_>>(),
+        &organization_project_teams
+            .iter()
+            .map(|x| x.0 as i64)
+            .collect::<Vec<_>>(),
         owner_id.0
-    ).execute(&mut *transaction).await?;
+    )
+    .execute(&mut *transaction)
+    .await?;
 
     // Safely remove the organization
     let result =
@@ -745,7 +764,7 @@ pub async fn organization_projects_add(
 pub struct OrganizationProjectRemoval {
     // A new owner must be supplied for the project.
     // That user must be a member of the organization, but not necessarily a member of the project.
-    pub new_owner : UserId,
+    pub new_owner: UserId,
 }
 
 pub async fn organization_projects_remove(
@@ -805,14 +824,17 @@ pub async fn organization_projects_remove(
     )
     .unwrap_or_default();
     if permissions.contains(OrganizationPermissions::REMOVE_PROJECT) {
-
         // Now that permissions are confirmed, we confirm the veracity of the new user as an org member
         database::models::TeamMember::get_from_user_id_organization(
             organization.id,
             data.new_owner.into(),
             &**pool,
-        ).await?.ok_or_else(|| {
-            ApiError::InvalidInput("The specified user is not a member of this organization!".to_string())
+        )
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput(
+                "The specified user is not a member of this organization!".to_string(),
+            )
         })?;
 
         // Then, we get the team member of the project and that user (if it exists)
@@ -820,7 +842,8 @@ pub async fn organization_projects_remove(
             project_item.inner.id,
             data.new_owner.into(),
             &**pool,
-        ).await?;
+        )
+        .await?;
 
         let mut transaction = pool.begin().await?;
 
@@ -829,7 +852,8 @@ pub async fn organization_projects_remove(
             Some(new_owner) => new_owner,
             None => {
                 println!("Creating new team member: {}", data.new_owner.0);
-                let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
+                let new_id =
+                    crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
                 let member = TeamMember {
                     id: new_id,
                     team_id: project_item.inner.team_id,
@@ -855,7 +879,9 @@ pub async fn organization_projects_remove(
             WHERE (team_id = $1)
             ",
             project_item.inner.team_id as database::models::ids::TeamId
-        ).execute(&mut *transaction).await?;
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         println!("Setting new owner to {}", new_owner.id.0);
         // Set the new owner
@@ -866,7 +892,9 @@ pub async fn organization_projects_remove(
             WHERE (id = $1)
             ",
             new_owner.id as database::models::ids::TeamMemberId
-        ).execute(&mut *transaction).await?;
+        )
+        .execute(&mut *transaction)
+        .await?;
 
         sqlx::query!(
             "
