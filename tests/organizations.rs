@@ -305,7 +305,9 @@ async fn add_remove_organization_projects() {
 async fn add_remove_organization_project_ownership_to_user() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
+        let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
         let alpha_team_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
+        let beta_team_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.team_id;
         let zeta_team_id: &str = &test_env.dummy.as_ref().unwrap().organization_zeta.team_id;
         let zeta_organization_id: &str = &test_env
             .dummy
@@ -314,52 +316,143 @@ async fn add_remove_organization_project_ownership_to_user() {
             .organization_zeta
             .organization_id;
 
-        // Add FRIEND
+        // Add friend to alpha, beta, and zeta
+        for (team, organization) in [
+            (alpha_team_id, false),
+            (beta_team_id, false),
+            (zeta_team_id, true),
+        ] {
+            let org_permissions = if organization {
+                Some(OrganizationPermissions::all())
+            } else {
+                None
+            };
+            let resp = test_env
+                .api
+                .add_user_to_team(
+                    team,
+                    FRIEND_USER_ID,
+                    Some(ProjectPermissions::all()),
+                    org_permissions,
+                    USER_USER_PAT,
+                )
+                .await;
+            println!("{:?}", resp.response().body());
+            assert_eq!(resp.status(), 204);
+
+            // Accept invites
+            let resp = test_env.api.join_team(team, FRIEND_USER_PAT).await;
+            assert_eq!(resp.status(), 204);
+        }
+
+        // For each team, confirm there are two members, but only one owner of the project, and it is USER_USER_ID
+        for team in [alpha_team_id, beta_team_id, zeta_team_id] {
+            let members = test_env
+                .api
+                .get_team_members_deserialized(team, USER_USER_PAT)
+                .await;
+            assert_eq!(members.len(), 2);
+            let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
+            assert_eq!(user_member.len(), 1);
+            assert_eq!(user_member[0].user.id.to_string(), USER_USER_ID);
+        }
+
+        // Transfer ownership of beta project to FRIEND
         let resp = test_env
             .api
-            .add_user_to_team(zeta_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
+            .transfer_team_ownership(beta_team_id, FRIEND_USER_ID, USER_USER_PAT)
             .await;
         assert_eq!(resp.status(), 204);
 
-        // Accept invite
-        let resp = test_env.api.join_team(zeta_team_id, FRIEND_USER_PAT).await;
-        assert_eq!(resp.status(), 204);
-
-        // Confirm there is only one owner of the project, and it is USER_USER_ID
+        // Confirm there are still two users, but now FRIEND_USER_ID is the owner
         let members = test_env
             .api
-            .get_team_members_deserialized(alpha_team_id, USER_USER_PAT)
+            .get_team_members_deserialized(beta_team_id, USER_USER_PAT)
             .await;
+        assert_eq!(members.len(), 2);
         let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
         assert_eq!(user_member.len(), 1);
-        assert_eq!(user_member[0].user.id.to_string(), USER_USER_ID);
+        assert_eq!(user_member[0].user.id.to_string(), FRIEND_USER_ID);
 
-        // Confirm there is only one owner of the organization, and it is USER_USER_ID
-        let members = test_env
-            .api
-            .get_organization_members_deserialized(zeta_organization_id, USER_USER_PAT)
-            .await;
-        let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
-        assert_eq!(user_member.len(), 1);
-        assert_eq!(user_member[0].user.id.to_string(), USER_USER_ID);
+        // Add alpha, beta to zeta organization
+        for (project_id, pat) in [
+            (alpha_project_id, USER_USER_PAT),
+            (beta_project_id, FRIEND_USER_PAT),
+        ] {
+            let resp = test_env
+                .api
+                .organization_add_project(zeta_organization_id, project_id, pat)
+                .await;
+            println!("{:?}", resp.response().body());
+            assert_eq!(resp.status(), 200);
 
-        // Add alpha to zeta organization
+            // Get and confirm it has been added
+            let project = test_env.api.get_project_deserialized(project_id, pat).await;
+            assert_eq!(
+                project.organization.unwrap().to_string(),
+                zeta_organization_id
+            );
+        }
+
+        // Both alpha and beta project should have:
+        // - 1 member, FRIEND_USER_ID
+        // - No owner.
+        //      -> For alpha, user was removed as owner when it was added to the organization
+        //      -> For beta, user was removed as owner when ownership was transferred to friend
+        //              then friend was removed as owner when it was added to the organization
+        // -> In both cases, user was removed entirely as a team_member as it is now the owner of the organization
+        for team_id in [alpha_team_id, beta_team_id] {
+            println!("team_id: {:?}", team_id);
+            let members = test_env
+                .api
+                .get_team_members_deserialized(team_id, USER_USER_PAT)
+                .await;
+            println!("{:?}", serde_json::to_string(&members).unwrap());
+            assert_eq!(members.len(), 1);
+            assert_eq!(members[0].user.id.to_string(), FRIEND_USER_ID);
+            let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
+            assert_eq!(user_member.len(), 0);
+        }
+
+        // Transfer ownership of zeta organization to FRIEND
         let resp = test_env
             .api
-            .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
+            .transfer_team_ownership(zeta_team_id, FRIEND_USER_ID, USER_USER_PAT)
             .await;
-        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.status(), 204);
 
-        // Confirm there is NO owner of the project, as it is owned by the organization
-        let members = test_env
+        // Confirm there are no members of the alpha project OR the beta project
+        // - Friend was removed as a member of these projects when ownership was transferred to them
+        for team_id in [alpha_team_id, beta_team_id] {
+            println!("Team_id: {:?}", team_id);
+            let members = test_env
+                .api
+                .get_team_members_deserialized(team_id, USER_USER_PAT)
+                .await;
+            println!("{:?}", serde_json::to_string(&members).unwrap());
+            assert!(members.is_empty());
+        }
+
+        // As user, cannot add friend to alpha project, as they are the org owner
+        let resp = test_env
             .api
-            .get_team_members_deserialized(alpha_team_id, USER_USER_PAT)
+            .add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
-        let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
-        assert_eq!(user_member.len(), 0);
+        assert_eq!(resp.status(), 400);
+
+        // As friend, can add user to alpha project, as they are not the org owner
+        let resp = test_env
+            .api
+            .add_user_to_team(alpha_team_id, USER_USER_ID, None, None, FRIEND_USER_PAT)
+            .await;
+        assert_eq!(resp.status(), 204);
+
+        // At this point, friend owns the org
+        // Alpha member has user as a member, but not as an owner
+        // Neither project has an owner, as they are owned by the org
 
         // Remove project from organization with a user that is not an organization member
-        // This should fail
+        // This should fail as we cannot give a project to a user that is not a member of the organization
         let resp = test_env
             .api
             .organization_remove_project(
@@ -371,28 +464,56 @@ async fn add_remove_organization_project_ownership_to_user() {
             .await;
         assert_eq!(resp.status(), 400);
 
-        // Remove project from organization with a user that is an organization member, but not a project member
+        // Remove project from organization with a user that is an organization member, and a project member
         // This should succeed
         let resp = test_env
             .api
             .organization_remove_project(
                 zeta_organization_id,
                 alpha_project_id,
-                UserId(FRIEND_USER_ID_PARSED as u64),
+                UserId(USER_USER_ID_PARSED as u64),
                 USER_USER_PAT,
             )
             .await;
         println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 200);
 
-        // Confirm there is only one owner of the project, and it is now FRIEND_USER_ID
-        let members = test_env
+        // Remove project from organization with a user that is an organization member, but not a project member
+        // This should succeed
+        let resp = test_env
             .api
-            .get_team_members_deserialized(alpha_team_id, USER_USER_PAT)
+            .organization_remove_project(
+                zeta_organization_id,
+                beta_project_id,
+                UserId(USER_USER_ID_PARSED as u64),
+                USER_USER_PAT,
+            )
             .await;
-        let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
-        assert_eq!(user_member.len(), 1);
-        assert_eq!(user_member[0].user.id.to_string(), FRIEND_USER_ID);
+        assert_eq!(resp.status(), 200);
+
+        // For each of alpha and beta, confirm:
+        // - There is one member of each project, the owner, USER_USER_ID
+        // - They no longer have an attached organization
+        for team_id in [alpha_team_id, beta_team_id] {
+            println!("Team: {:?}", team_id);
+            let members = test_env
+                .api
+                .get_team_members_deserialized(team_id, USER_USER_PAT)
+                .await;
+            println!("{:?}", serde_json::to_string(&members).unwrap());
+            assert_eq!(members.len(), 1);
+            let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
+            assert_eq!(user_member.len(), 1);
+            assert_eq!(user_member[0].user.id.to_string(), USER_USER_ID);
+        }
+
+        for project_id in [alpha_project_id, beta_project_id] {
+            let project = test_env
+                .api
+                .get_project_deserialized(project_id, USER_USER_PAT)
+                .await;
+            assert!(project.organization.is_none());
+        }
     })
     .await;
 }

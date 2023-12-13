@@ -186,6 +186,7 @@ async fn test_get_team_project_orgs() {
         // The team members route from teams (on a project's team):
         // - the members of the project team specifically
         // - not the ones from the organization
+        // - Remember: the owner of an org will not be included in the org's team members list
         let req = test::TestRequest::get()
             .uri(&format!("/v3/team/{alpha_team_id}/members"))
             .append_pat(FRIEND_USER_PAT)
@@ -194,7 +195,7 @@ async fn test_get_team_project_orgs() {
         assert_eq!(resp.status(), 200);
         let value: serde_json::Value = test::read_body_json(resp).await;
         let members = value.as_array().unwrap();
-        assert_eq!(members.len(), 1);
+        assert_eq!(members.len(), 0);
 
         // The team members route from project should show:
         // - the members of the project team including the ones from the organization

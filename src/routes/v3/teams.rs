@@ -496,9 +496,30 @@ pub async fn add_team_member(
             ));
         }
     }
-    crate::database::models::User::get_id(new_member.user_id.into(), &**pool, &redis)
-        .await?
-        .ok_or_else(|| ApiError::InvalidInput("An invalid User ID specified".to_string()))?;
+    let new_user =
+        crate::database::models::User::get_id(new_member.user_id.into(), &**pool, &redis)
+            .await?
+            .ok_or_else(|| ApiError::InvalidInput("An invalid User ID specified".to_string()))?;
+
+    if let TeamAssociationId::Project(pid) = team_association {
+        // Get user from the organization of this team, if applicable
+
+        let organization =
+            Organization::get_associated_organization_project_id(pid, &**pool).await?;
+        let organization_team_member = if let Some(organization) = &organization {
+            TeamMember::get_from_user_id(organization.team_id, new_user.id, &**pool).await?
+        } else {
+            None
+        };
+        if organization_team_member
+            .map(|tm| tm.is_owner)
+            .unwrap_or(false)
+        {
+            return Err(ApiError::InvalidInput(
+                "You cannot add the owner of an organization to a project team owned by that organization".to_string(),
+            ));
+        }
+    }
 
     let new_id = crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
     TeamMember {
@@ -595,7 +616,9 @@ pub async fn edit_team_member(
 
     let mut transaction = pool.begin().await?;
 
-    if edit_member_db.is_owner && edit_member.permissions.is_some() {
+    if edit_member_db.is_owner
+        && (edit_member.permissions.is_some() || edit_member.organization_permissions.is_some())
+    {
         return Err(ApiError::InvalidInput(
             "The owner's permission's in a team cannot be edited".to_string(),
         ));
@@ -732,8 +755,8 @@ pub async fn transfer_ownership(
     // Forbid transferring ownership of a project team that is owned by an organization
     // These are owned by the organization owner, and must be removed from the organization first
     // There shouldnt be an ownr on these projects in these cases, but just in case.
-    let pid = Team::get_association(id.into(), &**pool).await?;
-    if let Some(TeamAssociationId::Project(pid)) = pid {
+    let team_association_id = Team::get_association(id.into(), &**pool).await?;
+    if let Some(TeamAssociationId::Project(pid)) = team_association_id {
         let result = Project::get_id(pid, &**pool, &redis).await?;
         if let Some(project_item) = result {
             if project_item.inner.organization_id.is_some() {
@@ -798,7 +821,14 @@ pub async fn transfer_ownership(
         id.into(),
         new_owner.user_id.into(),
         Some(ProjectPermissions::all()),
-        Some(OrganizationPermissions::all()),
+        if matches!(
+            team_association_id,
+            Some(TeamAssociationId::Organization(_))
+        ) {
+            Some(OrganizationPermissions::all())
+        } else {
+            None
+        },
         None,
         None,
         None,
@@ -808,7 +838,46 @@ pub async fn transfer_ownership(
     )
     .await?;
 
+    let project_teams_edited =
+        if let Some(TeamAssociationId::Organization(oid)) = team_association_id {
+            println!("Transferring ownership of an ORG");
+            // The owner of ALL projects that this organization owns, if applicable, should be removed as members of the project,
+            // if they are members of those projects.
+            // (As they are the org owners for them, and they should not have more specific permissions)
+
+            // First, get team id for every project owned by this organization
+            let team_ids = sqlx::query!(
+                "
+            SELECT m.team_id FROM organizations o
+            INNER JOIN mods m ON m.organization_id = o.id
+            WHERE o.id = $1 AND $1 IS NOT NULL
+            ",
+                oid.0 as i64
+            )
+            .fetch_all(&mut *transaction)
+            .await?;
+
+            let team_ids: Vec<crate::database::models::ids::TeamId> = team_ids
+                .into_iter()
+                .map(|x| TeamId(x.team_id as u64).into())
+                .collect();
+
+            // If the owner of the organization is a member of the project, remove them
+            for team_id in team_ids.iter() {
+                println!("Removing from team: {}", team_id.0);
+                println!("New owner: {}", new_owner.user_id.0);
+                TeamMember::delete(*team_id, new_owner.user_id.into(), &mut transaction).await?;
+            }
+
+            team_ids
+        } else {
+            vec![]
+        };
+
     TeamMember::clear_cache(id.into(), &redis).await?;
+    for team_id in project_teams_edited {
+        TeamMember::clear_cache(team_id, &redis).await?;
+    }
 
     transaction.commit().await?;
 

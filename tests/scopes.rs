@@ -1172,7 +1172,7 @@ pub async fn collections_scopes() {
 }
 
 // Organization scopes (and a couple PROJECT_WRITE scopes that are only allowed for orgs)
-#[actix_rt::test] 
+#[actix_rt::test]
 pub async fn organization_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
@@ -1293,11 +1293,13 @@ pub async fn organization_scopes() {
 
         // remove project (now that we've checked)
         let req_gen = || {
-            test::TestRequest::delete().uri(&format!(
-                "/v3/organization/{organization_id}/projects/{beta_project_id}"
-            )).set_json(json!({
-                "new_owner": USER_USER_ID
-            }))
+            test::TestRequest::delete()
+                .uri(&format!(
+                    "/v3/organization/{organization_id}/projects/{beta_project_id}"
+                ))
+                .set_json(json!({
+                    "new_owner": USER_USER_ID
+                }))
         };
         ScopeTest::new(&test_env)
             .with_failure_scopes(Scopes::all() ^ Scopes::ORGANIZATION_WRITE)
