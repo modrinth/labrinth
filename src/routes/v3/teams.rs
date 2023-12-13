@@ -36,6 +36,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 // including the team members of the project's team, but
 // also the members of the organization's team if the project is associated with an organization
 // (Unlike team_members_get_project, which only returns the members of the project's team)
+// They can be differentiated by the "organization_permissions" field being null or not
 pub async fn team_members_get_project(
     req: HttpRequest,
     info: web::Path<(String,)>,
@@ -723,8 +724,11 @@ pub async fn transfer_ownership(
     .await?
     .1;
 
+    println!("Transferring owner from {} to {}", current_user.id.0, new_owner.user_id.0);
+    println!("Trasnfering team: {}", id.0);
     // Forbid transferring ownership of a project team that is owned by an organization
     // These are owned by the organization owner, and must be removed from the organization first
+    // There shouldnt be an ownr on these projects in these cases, but just in case.
     let pid = Team::get_association(id.into(), &**pool).await?;
     if let Some(TeamAssociationId::Project(pid)) = pid {
         let result = Project::get_id(pid, &**pool, &redis).await?;
@@ -738,6 +742,7 @@ pub async fn transfer_ownership(
         }
     }
 
+    println!("here.");
     if !current_user.role.is_admin() {
         let member = TeamMember::get_from_user_id(id.into(), current_user.id.into(), &**pool)
             .await?
@@ -754,6 +759,7 @@ pub async fn transfer_ownership(
         }
     }
 
+    println!("here2.");
     let new_member = TeamMember::get_from_user_id(id.into(), new_owner.user_id.into(), &**pool)
         .await?
         .ok_or_else(|| {
@@ -766,6 +772,7 @@ pub async fn transfer_ownership(
         ));
     }
 
+    println!("here3.");
     let mut transaction = pool.begin().await?;
 
     // The following are the only places new_is_owner is modified.
@@ -783,6 +790,7 @@ pub async fn transfer_ownership(
     )
     .await?;
 
+    println!("here4.");
     TeamMember::edit_team_member(
         id.into(),
         new_owner.user_id.into(),
