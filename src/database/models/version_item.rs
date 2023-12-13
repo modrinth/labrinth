@@ -507,16 +507,17 @@ impl Version {
 
         let mut found_versions = Vec::new();
 
-        let versions = redis
-            .multi_get::<String>(
-                VERSIONS_NAMESPACE,
-                version_ids_parsed
-                    .clone()
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>(),
-            )
-            .await?;
+        // let versions = redis
+        //     .multi_get::<String>(
+        //         VERSIONS_NAMESPACE,
+        //         version_ids_parsed
+        //             .clone()
+        //             .iter()
+        //             .map(|x| x.to_string())
+        //             .collect::<Vec<_>>(),
+        //     )
+        //     .await?;
+        let versions: Vec<Option<String>> = vec![];
 
         for version in versions {
             if let Some(version) =
@@ -819,9 +820,9 @@ impl Version {
                 .await?;
 
             for version in db_versions {
-                redis
-                    .set_serialized_to_json(VERSIONS_NAMESPACE, version.inner.id.0, &version, None)
-                    .await?;
+                // redis
+                //     .set_serialized_to_json(VERSIONS_NAMESPACE, version.inner.id.0, &version, None)
+                //     .await?;
 
                 found_versions.push(version);
             }

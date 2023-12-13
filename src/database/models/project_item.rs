@@ -510,38 +510,39 @@ impl Project {
             .flat_map(|x| parse_base62(&x.to_string()).map(|x| x as i64))
             .collect::<Vec<_>>();
 
-        project_ids.append(
-            &mut redis
-                .multi_get::<i64>(
-                    PROJECTS_SLUGS_NAMESPACE,
-                    project_strings.iter().map(|x| x.to_string().to_lowercase()),
-                )
-                .await?
-                .into_iter()
-                .flatten()
-                .collect(),
-        );
-        if !project_ids.is_empty() {
-            let projects = redis
-                .multi_get::<String>(
-                    PROJECTS_NAMESPACE,
-                    project_ids.iter().map(|x| x.to_string()),
-                )
-                .await?;
-            for project in projects {
-                if let Some(project) =
-                    project.and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
-                {
-                    remaining_strings.retain(|x| {
-                        &to_base62(project.inner.id.0 as u64) != x
-                            && project.inner.slug.as_ref().map(|x| x.to_lowercase())
-                                != Some(x.to_lowercase())
-                    });
-                    found_projects.push(project);
-                    continue;
-                }
-            }
-        }
+        // project_ids.append(
+        //     &mut redis
+        //         .multi_get::<i64>(
+        //             PROJECTS_SLUGS_NAMESPACE,
+        //             project_strings.iter().map(|x| x.to_string().to_lowercase()),
+        //         )
+        //         .await?
+        //         .into_iter()
+        //         .flatten()
+        //         .collect(),
+        // );
+        
+        // if !project_ids.is_empty() {
+        //     let projects = redis
+        //         .multi_get::<String>(
+        //             PROJECTS_NAMESPACE,
+        //             project_ids.iter().map(|x| x.to_string()),
+        //         )
+        //         .await?;
+        //     for project in projects {
+        //         if let Some(project) =
+        //             project.and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
+        //         {
+        //             remaining_strings.retain(|x| {
+        //                 &to_base62(project.inner.id.0 as u64) != x
+        //                     && project.inner.slug.as_ref().map(|x| x.to_lowercase())
+        //                         != Some(x.to_lowercase())
+        //             });
+        //             found_projects.push(project);
+        //             continue;
+        //         }
+        //     }
+        // }
         if !remaining_strings.is_empty() {
             let project_ids_parsed: Vec<i64> = remaining_strings
                 .iter()
