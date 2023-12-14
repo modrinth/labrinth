@@ -501,23 +501,32 @@ pub async fn add_team_member(
             .await?
             .ok_or_else(|| ApiError::InvalidInput("An invalid User ID specified".to_string()))?;
 
+    let mut force_accepted = false;
     if let TeamAssociationId::Project(pid) = team_association {
-        // Get user from the organization of this team, if applicable
-
+        // We cannot add the owner to a project team in their own org
         let organization =
             Organization::get_associated_organization_project_id(pid, &**pool).await?;
-        let organization_team_member = if let Some(organization) = &organization {
+        let new_user_organization_team_member = if let Some(organization) = &organization {
             TeamMember::get_from_user_id(organization.team_id, new_user.id, &**pool).await?
         } else {
             None
         };
-        if organization_team_member
+        if new_user_organization_team_member
+            .as_ref()
             .map(|tm| tm.is_owner)
             .unwrap_or(false)
         {
             return Err(ApiError::InvalidInput(
                 "You cannot add the owner of an organization to a project team owned by that organization".to_string(),
             ));
+        }
+
+        // In the case of adding a user that is in an org, to a project that is owned by that same org,
+        // the user is automatically accepted into that project.
+        // That is because the user is part of the org, and project teame-membership in an org can also be used to reduce permissions
+        // (Which should not be a deniable action by that user)
+        if new_user_organization_team_member.is_some() {
+            force_accepted = true;
         }
     }
 
@@ -530,7 +539,7 @@ pub async fn add_team_member(
         is_owner: false, // Cannot just create an owner
         permissions: new_member.permissions,
         organization_permissions: new_member.organization_permissions,
-        accepted: false,
+        accepted: force_accepted,
         payouts_split: new_member.payouts_split,
         ordering: new_member.ordering,
     }
