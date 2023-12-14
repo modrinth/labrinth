@@ -243,14 +243,21 @@ pub async fn dependency_list(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // TODO: tests, probably
-    let response = v3::projects::dependency_list(req, info, pool.clone(), redis.clone(), session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+    let response =
+        v3::projects::dependency_list(req, info, pool.clone(), redis.clone(), session_queue)
+            .await
+            .or_else(v2_reroute::flatten_404_error)?;
 
-    match v2_reroute::extract_ok_json::<crate::routes::v3::projects::DependencyInfo>(response).await {
+    match v2_reroute::extract_ok_json::<crate::routes::v3::projects::DependencyInfo>(response).await
+    {
         Ok(dependency_info) => {
-            let converted_projects  = LegacyProject::from_many(dependency_info.projects, &**pool, &redis).await?;
-            let converted_versions = dependency_info.versions.into_iter().map(LegacyVersion::from).collect();
+            let converted_projects =
+                LegacyProject::from_many(dependency_info.projects, &**pool, &redis).await?;
+            let converted_versions = dependency_info
+                .versions
+                .into_iter()
+                .map(LegacyVersion::from)
+                .collect();
 
             Ok(HttpResponse::Ok().json(DependencyInfo {
                 projects: converted_projects,

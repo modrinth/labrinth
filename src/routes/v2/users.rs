@@ -64,9 +64,10 @@ pub async fn users_get(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+    let response =
+        v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis)
+            .await
+            .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<User>>(response).await {
@@ -87,7 +88,7 @@ pub async fn user_get(
     let response = v3::users::user_get(info, pool, redis)
         .await
         .or_else(v2_reroute::flatten_404_error)?;
-    
+
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<User>(response).await {
         Ok(user) => {

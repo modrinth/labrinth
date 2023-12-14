@@ -1,4 +1,4 @@
-use crate::models::ids::{ThreadId, UserId, ReportId};
+use crate::models::ids::{ReportId, ThreadId, UserId};
 use crate::models::reports::{ItemType, Report};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ pub struct LegacyReport {
     pub id: ReportId,
     pub report_type: String,
     pub item_id: String,
-    pub item_type: ItemType,
+    pub item_type: LegacyItemType,
     pub reporter: UserId,
     pub body: String,
     pub created: DateTime<Utc>,

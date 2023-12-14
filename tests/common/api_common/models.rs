@@ -1,14 +1,19 @@
 use chrono::{DateTime, Utc};
-use labrinth::models::{
-    notifications::NotificationId,
-    organizations::OrganizationId,
-    projects::{
-        Dependency, GalleryItem, License, ModeratorMessage, MonetizationStatus, ProjectId,
-        ProjectStatus, VersionFile, VersionId, VersionStatus, VersionType,
+use labrinth::{
+    auth::AuthProvider,
+    models::{
+        images::ImageId,
+        notifications::NotificationId,
+        organizations::OrganizationId,
+        projects::{
+            Dependency, GalleryItem, License, ModeratorMessage, MonetizationStatus, ProjectId,
+            ProjectStatus, VersionFile, VersionId, VersionStatus, VersionType,
+        },
+        reports::ReportId,
+        teams::{ProjectPermissions, TeamId},
+        threads::{ThreadId, ThreadMessageId},
+        users::{Badges, Role, User, UserId, UserPayoutData},
     },
-    teams::{ProjectPermissions, TeamId},
-    threads::ThreadId,
-    users::{User, UserId},
 };
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -16,6 +21,9 @@ use serde::Deserialize;
 // Fields shared by every version of the API.
 // No struct in here should have ANY field that
 // is not present in *every* version of the API.
+
+// Exceptions are fields that *should* be changing across the API, and older versions
+// should be unsupported on API version increase- for example, payouts related financial fields.
 
 // These are used for common tests- tests that can be used on both V2 AND v3 of the API and have the same results.
 
@@ -118,4 +126,98 @@ pub struct CommonNotification {
 #[derive(Deserialize)]
 pub struct CommonNotificationAction {
     pub action_route: (String, String),
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "kebab-case")]
+pub enum CommonItemType {
+    Project,
+    Version,
+    User,
+    Unknown,
+}
+
+#[derive(Deserialize)]
+pub struct CommonReport {
+    pub id: ReportId,
+    pub report_type: String,
+    pub item_id: String,
+    pub item_type: CommonItemType,
+    pub reporter: UserId,
+    pub body: String,
+    pub created: DateTime<Utc>,
+    pub closed: bool,
+    pub thread_id: ThreadId,
+}
+
+#[derive(Deserialize)]
+pub enum LegacyItemType {
+    Project,
+    Version,
+    User,
+    Unknown,
+}
+
+#[derive(Deserialize)]
+pub struct CommonThread {
+    pub id: ThreadId,
+    #[serde(rename = "type")]
+    pub type_: CommonThreadType,
+    pub project_id: Option<ProjectId>,
+    pub report_id: Option<ReportId>,
+    pub messages: Vec<CommonThreadMessage>,
+    pub members: Vec<User>,
+}
+
+#[derive(Deserialize)]
+pub struct CommonThreadMessage {
+    pub id: ThreadMessageId,
+    pub author_id: Option<UserId>,
+    pub body: CommonMessageBody,
+    pub created: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub enum CommonMessageBody {
+    Text {
+        body: String,
+        #[serde(default)]
+        private: bool,
+        replying_to: Option<ThreadMessageId>,
+        #[serde(default)]
+        associated_images: Vec<ImageId>,
+    },
+    StatusChange {
+        new_status: ProjectStatus,
+        old_status: ProjectStatus,
+    },
+    ThreadClosure,
+    ThreadReopen,
+    Deleted,
+}
+
+#[derive(Deserialize)]
+pub enum CommonThreadType {
+    Report,
+    Project,
+    DirectMessage,
+}
+
+#[derive(Deserialize)]
+pub struct CommonUser {
+    pub id: UserId,
+    pub username: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub created: DateTime<Utc>,
+    pub role: Role,
+    pub badges: Badges,
+    pub auth_providers: Option<Vec<AuthProvider>>,
+    pub email: Option<String>,
+    pub email_verified: Option<bool>,
+    pub has_password: Option<bool>,
+    pub has_totp: Option<bool>,
+    pub payout_data: Option<UserPayoutData>,
+    pub github_id: Option<u64>,
 }

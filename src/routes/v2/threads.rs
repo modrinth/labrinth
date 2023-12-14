@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::ThreadMessageId;
-use crate::models::threads::{MessageBody, ThreadId, Thread};
+use crate::models::threads::{MessageBody, Thread, ThreadId};
 use crate::models::v2::threads::LegacyThread;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v2_reroute, v3, ApiError};

@@ -4,9 +4,7 @@ use super::ApiError;
 use crate::database::models::loader_fields::LoaderFieldEnumValue;
 use crate::database::redis::RedisPool;
 use crate::models::v2::projects::LegacySideType;
-use crate::routes::v3::tags::{
-    LinkPlatformQueryData, LoaderFieldsEnumQuery,
-};
+use crate::routes::v3::tags::{LinkPlatformQueryData, LoaderFieldsEnumQuery};
 use crate::routes::{v2_reroute, v3};
 use actix_web::{get, web, HttpResponse};
 use chrono::{DateTime, Utc};

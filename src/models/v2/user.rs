@@ -1,7 +1,12 @@
-use crate::{auth::AuthProvider, models::{ids::UserId, users::{Role, Badges, UserPayoutData}}};
+use crate::{
+    auth::AuthProvider,
+    models::{
+        ids::UserId,
+        users::{Badges, Role, UserPayoutData},
+    },
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LegacyUser {
@@ -19,7 +24,7 @@ pub struct LegacyUser {
     pub email_verified: Option<bool>,
     pub has_password: Option<bool>,
     pub has_totp: Option<bool>,
-    pub payout_data: Option<UserPayoutData>, // this was changed in v3, but not ones we want to keep out of v2 
+    pub payout_data: Option<UserPayoutData>, // this was changed in v3, but not ones we want to keep out of v2
 
     // DEPRECATED. Always returns None
     pub github_id: Option<u64>,
@@ -28,7 +33,7 @@ pub struct LegacyUser {
 impl From<crate::models::v3::users::User> for LegacyUser {
     fn from(data: crate::models::v3::users::User) -> Self {
         Self {
-            id: data.id.into(),
+            id: data.id,
             username: data.username,
             name: data.name,
             email: data.email,

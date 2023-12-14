@@ -188,8 +188,8 @@ pub async fn license_list() -> HttpResponse {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct LicenseText {
-   pub title: String,
-   pub  body: String,
+    pub title: String,
+    pub body: String,
 }
 
 pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, ApiError> {

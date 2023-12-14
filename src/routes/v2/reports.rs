@@ -49,7 +49,7 @@ pub async fn report_create(
             Ok(HttpResponse::Ok().json(report))
         }
         Err(response) => Ok(response),
-    }    
+    }
 }
 
 #[derive(Deserialize)]
@@ -91,11 +91,11 @@ pub async fn reports(
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Report>>(response).await {
         Ok(reports) => {
-            let reports : Vec<_> = reports.into_iter().map(LegacyReport::from).collect();
+            let reports: Vec<_> = reports.into_iter().map(LegacyReport::from).collect();
             Ok(HttpResponse::Ok().json(reports))
         }
         Err(response) => Ok(response),
-    } 
+    }
 }
 
 #[derive(Deserialize)]
@@ -124,11 +124,11 @@ pub async fn reports_get(
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Report>>(response).await {
         Ok(report_list) => {
-            let report_list : Vec<_> = report_list.into_iter().map(LegacyReport::from).collect();
+            let report_list: Vec<_> = report_list.into_iter().map(LegacyReport::from).collect();
             Ok(HttpResponse::Ok().json(report_list))
         }
         Err(response) => Ok(response),
-    } 
+    }
 }
 
 #[get("report/{id}")]
@@ -150,7 +150,7 @@ pub async fn report_get(
             Ok(HttpResponse::Ok().json(report))
         }
         Err(response) => Ok(response),
-    } 
+    }
 }
 
 #[derive(Deserialize, Validate)]

@@ -1,4 +1,4 @@
-use crate::models::ids::{ProjectId, ReportId, ThreadMessageId, ThreadId, ImageId};
+use crate::models::ids::{ImageId, ProjectId, ReportId, ThreadId, ThreadMessageId};
 use crate::models::projects::ProjectStatus;
 use crate::models::users::{User, UserId};
 use chrono::{DateTime, Utc};
@@ -56,7 +56,9 @@ impl From<crate::models::v3::threads::ThreadType> for LegacyThreadType {
         match t {
             crate::models::v3::threads::ThreadType::Report => LegacyThreadType::Report,
             crate::models::v3::threads::ThreadType::Project => LegacyThreadType::Project,
-            crate::models::v3::threads::ThreadType::DirectMessage => LegacyThreadType::DirectMessage,
+            crate::models::v3::threads::ThreadType::DirectMessage => {
+                LegacyThreadType::DirectMessage
+            }
         }
     }
 }
@@ -82,8 +84,12 @@ impl From<crate::models::v3::threads::MessageBody> for LegacyMessageBody {
                 new_status,
                 old_status,
             },
-            crate::models::v3::threads::MessageBody::ThreadClosure => LegacyMessageBody::ThreadClosure,
-            crate::models::v3::threads::MessageBody::ThreadReopen => LegacyMessageBody::ThreadReopen,
+            crate::models::v3::threads::MessageBody::ThreadClosure => {
+                LegacyMessageBody::ThreadClosure
+            }
+            crate::models::v3::threads::MessageBody::ThreadReopen => {
+                LegacyMessageBody::ThreadReopen
+            }
             crate::models::v3::threads::MessageBody::Deleted => LegacyMessageBody::Deleted,
         }
     }
