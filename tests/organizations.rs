@@ -337,7 +337,6 @@ async fn add_remove_organization_project_ownership_to_user() {
                     USER_USER_PAT,
                 )
                 .await;
-            println!("{:?}", resp.response().body());
             assert_eq!(resp.status(), 204);
 
             // Accept invites
@@ -383,7 +382,6 @@ async fn add_remove_organization_project_ownership_to_user() {
                 .api
                 .organization_add_project(zeta_organization_id, project_id, pat)
                 .await;
-            println!("{:?}", resp.response().body());
             assert_eq!(resp.status(), 200);
 
             // Get and confirm it has been added
@@ -402,12 +400,10 @@ async fn add_remove_organization_project_ownership_to_user() {
         //              then friend was removed as owner when it was added to the organization
         // -> In both cases, user was removed entirely as a team_member as it is now the owner of the organization
         for team_id in [alpha_team_id, beta_team_id] {
-            println!("team_id: {:?}", team_id);
             let members = test_env
                 .api
                 .get_team_members_deserialized(team_id, USER_USER_PAT)
                 .await;
-            println!("{:?}", serde_json::to_string(&members).unwrap());
             assert_eq!(members.len(), 1);
             assert_eq!(members[0].user.id.to_string(), FRIEND_USER_ID);
             let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
@@ -424,12 +420,10 @@ async fn add_remove_organization_project_ownership_to_user() {
         // Confirm there are no members of the alpha project OR the beta project
         // - Friend was removed as a member of these projects when ownership was transferred to them
         for team_id in [alpha_team_id, beta_team_id] {
-            println!("Team_id: {:?}", team_id);
             let members = test_env
                 .api
                 .get_team_members_deserialized(team_id, USER_USER_PAT)
                 .await;
-            println!("{:?}", serde_json::to_string(&members).unwrap());
             assert!(members.is_empty());
         }
 
@@ -475,7 +469,6 @@ async fn add_remove_organization_project_ownership_to_user() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 200);
 
         // Remove project from organization with a user that is an organization member, but not a project member
@@ -495,12 +488,10 @@ async fn add_remove_organization_project_ownership_to_user() {
         // - There is one member of each project, the owner, USER_USER_ID
         // - They no longer have an attached organization
         for team_id in [alpha_team_id, beta_team_id] {
-            println!("Team: {:?}", team_id);
             let members = test_env
                 .api
                 .get_team_members_deserialized(team_id, USER_USER_PAT)
                 .await;
-            println!("{:?}", serde_json::to_string(&members).unwrap());
             assert_eq!(members.len(), 1);
             let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
             assert_eq!(user_member.len(), 1);
@@ -589,7 +580,6 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .get_team_members_deserialized(alpha_team_id, USER_USER_PAT)
             .await;
-        println!("members1: {:?}", serde_json::to_string(&members).unwrap());
         let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
         assert_eq!(user_member.len(), 0);
 
@@ -620,7 +610,6 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .get_team_members_deserialized(alpha_team_id, USER_USER_PAT)
             .await;
-        println!("Ended: {:?}", serde_json::to_string(&members).unwrap());
         let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
         assert_eq!(user_member.len(), 1);
         assert_eq!(user_member[0].user.id.to_string(), FRIEND_USER_ID);
@@ -630,7 +619,6 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .get_team_members_deserialized(beta_team_id, USER_USER_PAT)
             .await;
-        println!("Ended: {:?}", serde_json::to_string(&members).unwrap());
         let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
         assert_eq!(user_member.len(), 1);
         assert_eq!(user_member[0].user.id.to_string(), FRIEND_USER_ID);
@@ -644,7 +632,6 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .get_team_members_deserialized(&enemy_project.team_id.to_string(), ENEMY_USER_PAT)
             .await;
-        println!("Ended: {:?}", serde_json::to_string(&members).unwrap());
         let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
         assert_eq!(user_member.len(), 1);
         assert_eq!(

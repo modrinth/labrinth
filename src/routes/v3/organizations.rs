@@ -66,11 +66,8 @@ pub async fn organization_projects_get(
     .map(|x| x.1)
     .ok();
 
-    println!("\n\nHas user: {:?}", current_user);
-
     let possible_organization_id: Option<u64> = parse_base62(&info).ok();
 
-    println!("Parsed id: {:?}", possible_organization_id);
     let project_ids = sqlx::query!(
         "
         SELECT m.id FROM organizations o
@@ -85,14 +82,10 @@ pub async fn organization_projects_get(
     .try_collect::<Vec<crate::database::models::ProjectId>>()
     .await?;
 
-    println!("Found: {:?}", project_ids);
-
     let projects_data =
         crate::database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?;
 
-    println!("Found1: {:?}", projects_data.len());
     let projects = filter_authorized_projects(projects_data, &current_user, &pool).await?;
-    println!("Found2: {:?}", projects.len());
     Ok(HttpResponse::Ok().json(projects))
 }
 
@@ -577,7 +570,6 @@ pub async fn organization_delete(
             payouts_split: Decimal::ZERO,
             ordering: 0,
         };
-        println!("Added new team_member {:?}", serde_json::to_string(&member));
         member.insert(&mut transaction).await?;
     }
     // Safely remove the organization
@@ -718,7 +710,6 @@ pub async fn organization_projects_add(
         .await?;
         let organization_owner_user_id =
             database::models::ids::UserId(organization_owner_user_id.id);
-        println!("Adding org owner id: {}", organization_owner_user_id.0);
 
         // If the owner of the organization is a member of the project, remove them
         database::models::TeamMember::delete(
@@ -827,12 +818,6 @@ pub async fn organization_projects_remove(
 
         // Then, we get the team member of the project and that user (if it exists)
         // We use the team member get directly
-        println!("Looking for new owner from user id: {}", data.new_owner.0);
-        println!(
-            "Looking for new owner from project id: {}",
-            project_item.inner.id.0
-        );
-
         let new_owner = database::models::TeamMember::get_from_user_id_project(
             project_item.inner.id,
             data.new_owner.into(),
@@ -840,7 +825,6 @@ pub async fn organization_projects_remove(
             &**pool,
         )
         .await?;
-        println!("Did we find a new owner? {:?}", new_owner.is_some());
 
         let mut transaction = pool.begin().await?;
 
@@ -848,7 +832,6 @@ pub async fn organization_projects_remove(
         let new_owner = match new_owner {
             Some(new_owner) => new_owner,
             None => {
-                println!("Creating new team member: {}", data.new_owner.0);
                 let new_id =
                     crate::database::models::ids::generate_team_member_id(&mut transaction).await?;
                 let member = TeamMember {
@@ -867,8 +850,6 @@ pub async fn organization_projects_remove(
                 member
             }
         };
-
-        println!("Setting new owner to {}", new_owner.id.0);
 
         // Set the new owner to fit owner
         sqlx::query!(

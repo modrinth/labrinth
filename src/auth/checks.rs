@@ -104,20 +104,7 @@ pub async fn filter_authorized_projects(
             let user_id: models::ids::UserId = user.id.into();
 
             use futures::TryStreamExt;
-            println!(
-                "Checking team ids: {:?}",
-                check_projects
-                    .iter()
-                    .map(|x| x.inner.team_id.0)
-                    .collect::<Vec<_>>()
-            );
-            println!(
-                "Checking organization ids: {:?}",
-                check_projects
-                    .iter()
-                    .filter_map(|x| x.inner.organization_id.map(|x| x.0))
-                    .collect::<Vec<_>>()
-            );
+
             sqlx::query!(
                 "
                 SELECT m.id id, m.team_id team_id FROM team_members tm
