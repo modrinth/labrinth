@@ -333,6 +333,17 @@ pub async fn collection_edit(
             )
             .execute(&mut *transaction)
             .await?;
+
+            sqlx::query!(
+                "
+                UPDATE collections
+                SET updated = NOW()
+                WHERE id = $1
+                ",
+                collection_item.id as database::models::ids::CollectionId,
+            )
+            .execute(&mut *transaction)
+            .await?;
         }
 
         transaction.commit().await?;
