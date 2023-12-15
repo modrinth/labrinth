@@ -571,9 +571,11 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .await;
         assert_eq!(resp.status(), 204);
 
-        // Accept invite
+        // Try to accept invite
+        // This returns a failure, because since beta and FRIEND are in the organizations,
+        // they can be added to the project without an invite
         let resp = test_env.api.join_team(beta_team_id, FRIEND_USER_PAT).await;
-        assert_eq!(resp.status(), 204);
+        assert_eq!(resp.status(), 400);
 
         // Confirm there is NO owner of the project, as it is owned by the organization
         let members = test_env
