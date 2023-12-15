@@ -16,7 +16,7 @@ use labrinth::{
     },
 };
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // Fields shared by every version of the API.
 // No struct in here should have ANY field that
