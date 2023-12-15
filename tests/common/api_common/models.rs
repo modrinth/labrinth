@@ -16,7 +16,7 @@ use labrinth::{
     },
 };
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 // Fields shared by every version of the API.
 // No struct in here should have ANY field that
@@ -135,6 +135,17 @@ pub enum CommonItemType {
     Version,
     User,
     Unknown,
+}
+
+impl CommonItemType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CommonItemType::Project => "project",
+            CommonItemType::Version => "version",
+            CommonItemType::User => "user",
+            CommonItemType::Unknown => "unknown",
+        }
+    }
 }
 
 #[derive(Deserialize)]
