@@ -890,8 +890,9 @@ pub async fn version_list_inner(
         response.sort();
         response.dedup_by(|a, b| a.inner.id == b.inner.id);
 
+        println!("R - {:?}", serde_json::to_string(&response.iter().map(|x| x.inner.id.0).collect::<Vec<_>>()));
         let response = filter_authorized_versions(response, &user_option, &pool, redis).await?;
-
+        println!("Rafter - {:?}", serde_json::to_string(&response.iter().map(|x| x.id.0).collect::<Vec<_>>()));
         Ok(response)
     } else {
         Err(ApiError::NotFound)

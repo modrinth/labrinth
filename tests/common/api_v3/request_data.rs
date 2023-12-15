@@ -65,6 +65,7 @@ pub fn get_public_version_creation_data_json(
         "release_channel": "release",
         "loaders": [if is_modpack { "mrpack" } else { "fabric" }],
         "featured": true,
+        "status": "listed",
 
         // Loader fields
         "game_versions": ["1.20.1"],

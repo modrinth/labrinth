@@ -677,3 +677,90 @@ async fn version_ordering_when_specified_orders_specified_before_unspecified() {
     })
     .await;
 }
+
+
+#[actix_rt::test]
+async fn versions_various_visibility() {
+    with_test_environment_all(None, |env| async move {
+        let alpha_project_id_parsed = env.dummy.as_ref().unwrap().project_alpha.project_id_parsed;
+        let alpha_project_id = env.dummy.as_ref().unwrap().project_alpha.project_id.clone();
+        let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
+        
+        // Check that alpha project starts with one version
+        let versions = env
+            .api
+            .get_versions_deserialized_common(
+                vec![alpha_version_id.clone()],
+                USER_USER_PAT,
+            )
+            .await;
+        assert_common_version_ids(&versions, vec![alpha_version_id.clone()]);
+
+        // Add a new version, which should be hidden
+        let new_version_id = 
+            env.api
+                .add_public_version_deserialized_common(
+                    alpha_project_id_parsed,
+                    "1.0.0",
+                    TestFile::build_random_jar(),
+                    None,
+                    Some(serde_json::from_value(json!([
+                        { "op": "add", "path": "/status", "value": "draft"},
+                    ]))
+                    .unwrap()),
+
+                    
+                    USER_USER_PAT,
+                )
+                .await.id;
+        
+        // Add a new version that is visible
+        let new_version_id2 = 
+            env.api
+                .add_public_version_deserialized_common(
+                    alpha_project_id_parsed,
+                    "1.0.1",
+                    TestFile::build_random_jar(),
+                    None,
+                    None,
+                    USER_USER_PAT,
+                )
+                .await.id;
+        
+        // Check that alpha project has 3 when looking from USER
+        let versions = env
+            .api
+            .get_project_versions_deserialized_common(
+                &alpha_project_id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(versions.len(), 3);
+
+        // Check that alpha project has 2 when looking from ENEMY
+        let versions = env
+            .api
+            .get_project_versions_deserialized_common(
+                &alpha_project_id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                ENEMY_USER_PAT,
+            ).await;
+        println!("{:?}", versions.iter().map(|v| v.status).collect::<Vec<_>>());
+        assert_eq!(versions.len(), 2);
+
+        
+    })
+    .await;
+
+}

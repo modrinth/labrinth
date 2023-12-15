@@ -212,6 +212,7 @@ pub async fn filter_authorized_versions(
         pool,
     )
     .await?;
+    println!("Authorized projects: {:?}", authorized_projects.len());
 
     let authorized_project_ids: Vec<_> = authorized_projects.iter().map(|x| x.id.into()).collect();
 
