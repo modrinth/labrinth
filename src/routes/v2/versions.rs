@@ -8,7 +8,9 @@ use crate::models::projects::{Dependency, FileType, Version, VersionStatus, Vers
 use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v2_reroute, v3};
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use crate::search::SearchConfig;
+use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
@@ -22,6 +24,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(version_get)
             .service(version_delete)
             .service(version_edit)
+            .service(version_schedule)
             .service(super::version_creation::upload_file_to_version),
     );
 }
@@ -267,12 +270,45 @@ pub async fn version_edit(
 #[delete("{version_id}")]
 pub async fn version_delete(
     req: HttpRequest,
-    info: web::Path<(models::ids::VersionId,)>,
+    info: web::Path<(VersionId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
+    search_config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
-    v3::versions::version_delete(req, info, pool, redis, session_queue)
+    v3::versions::version_delete(req, info, pool, redis, session_queue, search_config)
         .await
         .or_else(v2_reroute::flatten_404_error)
+}
+
+#[derive(Deserialize)]
+pub struct SchedulingData {
+    pub time: DateTime<Utc>,
+    pub requested_status: VersionStatus,
+}
+
+#[post("{id}/schedule")]
+pub async fn version_schedule(
+    req: HttpRequest,
+    info: web::Path<(VersionId,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    scheduling_data: web::Json<SchedulingData>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let scheduling_data = scheduling_data.into_inner();
+    let scheduling_data = v3::versions::SchedulingData {
+        time: scheduling_data.time,
+        requested_status: scheduling_data.requested_status,
+    };
+    v3::versions::version_schedule(
+        req,
+        info,
+        pool,
+        redis,
+        web::Json(scheduling_data),
+        session_queue,
+    )
+    .await
+    .or_else(v2_reroute::flatten_404_error)
 }

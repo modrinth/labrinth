@@ -21,6 +21,8 @@ use crate::models::projects::{skip_nulls, Loader, Version};
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::search::indexing::remove_documents;
+use crate::search::SearchConfig;
 use crate::util::img;
 use crate::util::validate::validation_errors_to_string;
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -135,7 +137,7 @@ pub async fn versions_get(
     .map(|x| x.1)
     .ok();
 
-    let versions = filter_authorized_versions(versions_data, &user_option, &pool).await?;
+    let versions = filter_authorized_versions(versions_data, &user_option, &pool, redis).await?;
 
     Ok(HttpResponse::Ok().json(versions))
 }
@@ -665,6 +667,7 @@ pub async fn version_edit_helper(
 
             img::delete_unused_images(context, checkable_strings, &mut transaction, &redis).await?;
 
+            transaction.commit().await?;
             database::models::Version::clear_cache(&version_item, &redis).await?;
             database::models::Project::clear_cache(
                 version_item.inner.project_id,
@@ -673,7 +676,6 @@ pub async fn version_edit_helper(
                 &redis,
             )
             .await?;
-            transaction.commit().await?;
             Ok(HttpResponse::NoContent().body(""))
         } else {
             Err(ApiError::CustomAuthentication(
@@ -889,7 +891,7 @@ pub async fn version_list_inner(
         response.sort();
         response.dedup_by(|a, b| a.inner.id == b.inner.id);
 
-        let response = filter_authorized_versions(response, &user_option, &pool).await?;
+        let response = filter_authorized_versions(response, &user_option, &pool, redis).await?;
 
         Ok(response)
     } else {
@@ -990,8 +992,8 @@ pub async fn version_schedule(
         .execute(&mut *transaction)
         .await?;
 
-        database::models::Version::clear_cache(&version_item, &redis).await?;
         transaction.commit().await?;
+        database::models::Version::clear_cache(&version_item, &redis).await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
@@ -1005,6 +1007,7 @@ pub async fn version_delete(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
+    search_config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
         &req,
@@ -1072,11 +1075,10 @@ pub async fn version_delete(
 
     let result =
         database::models::Version::remove_full(version.inner.id, &redis, &mut transaction).await?;
-
+    transaction.commit().await?;
+    remove_documents(&[version.inner.id.into()], &search_config).await?;
     database::models::Project::clear_cache(version.inner.project_id, None, Some(true), &redis)
         .await?;
-
-    transaction.commit().await?;
 
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))

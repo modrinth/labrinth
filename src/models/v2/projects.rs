@@ -20,6 +20,7 @@ use crate::routes::{v2_reroute, v3};
 use actix_web::web::Data;
 use actix_web::{web, HttpRequest};
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
@@ -140,20 +141,23 @@ impl LegacyProject {
                 .contains(&Loader("mrpack".to_string()))
             {
                 project_type = "modpack".to_string();
-                if let Some(mrpack_loaders) = versions_item
-                    .fields
-                    .iter()
-                    .find(|f| f.0 == "mrpack_loaders")
-                {
-                    loaders = mrpack_loaders
+                if let Some(mrpack_loaders) = data.fields.iter().find(|f| f.0 == "mrpack_loaders") {
+                    let values = mrpack_loaders
                         .1
-                        .as_array()
-                        .map(|v| {
-                            v.iter()
-                                .filter_map(|l| l.as_str().map(|l| l.to_string()))
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or(Vec::new());
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>();
+
+                    // drop mrpack from loaders
+                    loaders = loaders
+                        .into_iter()
+                        .filter(|l| l != "mrpack")
+                        .collect::<Vec<_>>();
+                    // and replace with mrpack_loaders
+                    loaders.extend(values);
+                    // remove duplicate loaders
+                    loaders = loaders.into_iter().unique().collect::<Vec<_>>();
                 }
             }
         }
@@ -381,7 +385,7 @@ impl From<Version> for LegacyVersion {
         // - if loader is mrpack, this is a modpack
         // the v2 loaders are whatever the corresponding loader fields are
         let mut loaders = data.loaders.into_iter().map(|l| l.0).collect::<Vec<_>>();
-        if loaders == vec!["mrpack".to_string()] {
+        if loaders.contains(&"mrpack".to_string()) {
             if let Some((_, mrpack_loaders)) = data
                 .fields
                 .into_iter()
@@ -463,12 +467,4 @@ impl TryFrom<Link> for DonationLink {
             id: link.platform,
         })
     }
-}
-
-fn capitalize_first(input: &str) -> String {
-    let mut result = input.to_owned();
-    if let Some(first_char) = result.get_mut(0..1) {
-        first_char.make_ascii_uppercase();
-    }
-    result
 }

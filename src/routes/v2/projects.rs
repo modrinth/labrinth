@@ -68,16 +68,15 @@ pub async fn project_search(
             .into_iter()
             .map(|facets| {
                 facets
-                        .into_iter()
-                        .map(|facet| {
-                            if facet.is_array() {
-                                serde_json::from_value::<Vec<String>>(facet).unwrap_or_default()
-                            } else {
-                                vec![serde_json::from_value::<String>(facet.clone())
-                                    .unwrap_or_default()]
-                            }
-                        })
-                        .collect_vec()
+                    .into_iter()
+                    .map(|facet| {
+                        if facet.is_array() {
+                            serde_json::from_value::<Vec<String>>(facet).unwrap_or_default()
+                        } else {
+                            vec![serde_json::from_value::<String>(facet).unwrap_or_default()]
+                        }
+                    })
+                    .collect_vec()
             })
             .collect_vec();
 
@@ -212,7 +211,6 @@ pub async fn project_get(
         session_queue.clone(),
     )
     .await
-    .or_else(v2_reroute::flatten_404_error)
     .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
@@ -235,7 +233,6 @@ pub async fn project_get_check(
     v3::projects::project_get_check(info, pool, redis)
         .await
         .or_else(v2_reroute::flatten_404_error)
-        .or_else(v2_reroute::flatten_404_error)
 }
 
 #[derive(Serialize)]
@@ -255,7 +252,6 @@ pub async fn dependency_list(
     // TODO: requires V2 conversion and tests, probably
     v3::projects::dependency_list(req, info, pool, redis, session_queue)
         .await
-        .or_else(v2_reroute::flatten_404_error)
         .or_else(v2_reroute::flatten_404_error)
 }
 

@@ -3,12 +3,14 @@ use actix_web::{
     test::{self, TestRequest},
 };
 use async_trait::async_trait;
-use labrinth::routes::v2::tags::{CategoryData, GameVersionQueryData, LoaderData};
+use labrinth::routes::v2::tags::{
+    CategoryData, DonationPlatformQueryData, GameVersionQueryData, LoaderData,
+};
 
 use crate::common::{
     api_common::{
         models::{CommonCategoryData, CommonLoaderData},
-        Api, ApiTags,
+        Api, ApiTags, AppendsOptionalPat,
     },
     database::ADMIN_USER_PAT,
 };
@@ -21,7 +23,7 @@ impl ApiV2 {
     async fn get_side_types(&self) -> ServiceResponse {
         let req = TestRequest::get()
             .uri("/v2/tag/side_type")
-            .append_header(("Authorization", ADMIN_USER_PAT))
+            .append_pat(ADMIN_USER_PAT)
             .to_request();
         self.call(req).await
     }
@@ -35,7 +37,7 @@ impl ApiV2 {
     pub async fn get_game_versions(&self) -> ServiceResponse {
         let req = TestRequest::get()
             .uri("/v2/tag/game_version")
-            .append_header(("Authorization", ADMIN_USER_PAT))
+            .append_pat(ADMIN_USER_PAT)
             .to_request();
         self.call(req).await
     }
@@ -57,6 +59,21 @@ impl ApiV2 {
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
+
+    pub async fn get_donation_platforms(&self) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri("/v2/tag/donation_platform")
+            .append_pat(ADMIN_USER_PAT)
+            .to_request();
+        self.call(req).await
+    }
+
+    pub async fn get_donation_platforms_deserialized(&self) -> Vec<DonationPlatformQueryData> {
+        let resp = self.get_donation_platforms().await;
+        println!("Response: {:?}", resp.response().body());
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
 }
 
 #[async_trait(?Send)]
@@ -64,7 +81,7 @@ impl ApiTags for ApiV2 {
     async fn get_loaders(&self) -> ServiceResponse {
         let req = TestRequest::get()
             .uri("/v2/tag/loader")
-            .append_header(("Authorization", ADMIN_USER_PAT))
+            .append_pat(ADMIN_USER_PAT)
             .to_request();
         self.call(req).await
     }
@@ -82,7 +99,7 @@ impl ApiTags for ApiV2 {
     async fn get_categories(&self) -> ServiceResponse {
         let req = TestRequest::get()
             .uri("/v2/tag/category")
-            .append_header(("Authorization", ADMIN_USER_PAT))
+            .append_pat(ADMIN_USER_PAT)
             .to_request();
         self.call(req).await
     }
