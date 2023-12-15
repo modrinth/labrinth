@@ -102,7 +102,7 @@ impl ApiV3 {
         version_type: Option<VersionType>,
         limit: Option<usize>,
         offset: Option<usize>,
-        pat: &str,
+        pat: Option<&str>,
     ) -> Vec<Version> {
         let resp = self
             .get_project_versions(

@@ -3,9 +3,7 @@ use crate::database::models::project_item;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
-use crate::models::projects::{
-    Link, MonetizationStatus, Project, ProjectStatus, SearchRequest,
-};
+use crate::models::projects::{Link, MonetizationStatus, Project, ProjectStatus, SearchRequest};
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType};
 use crate::models::v2::search::LegacySearchResults;
 use crate::queue::session::AuthQueue;

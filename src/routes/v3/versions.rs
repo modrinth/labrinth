@@ -744,14 +744,13 @@ pub async fn projects_version_list(
 ) -> Result<HttpResponse, ApiError> {
     let version_list =
         version_list_inner(req, web::Query(filters), pool, redis, session_queue).await?;
-    let proj_version_hashmap = version_list
-        .into_iter()
-        .fold(HashMap::new(), |mut acc: HashMap<_, Vec<_>>, version| {
-            acc.entry(version.project_id)
-                .or_default()
-                .push(version);
-            acc
-        });
+    let proj_version_hashmap =
+        version_list
+            .into_iter()
+            .fold(HashMap::new(), |mut acc: HashMap<_, Vec<_>>, version| {
+                acc.entry(version.project_id).or_default().push(version);
+                acc
+            });
     Ok(HttpResponse::Ok().json(proj_version_hashmap))
 }
 

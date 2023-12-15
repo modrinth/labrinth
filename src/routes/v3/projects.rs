@@ -483,9 +483,17 @@ pub async fn project_edit(
                 .await?;
 
                 if project_item.inner.status.is_searchable() && !status.is_searchable() {
+                    let version_ids: Vec<db_models::VersionId> =
+                        database::models::Project::get_versions(
+                            project_item.inner.id,
+                            &**pool,
+                            &redis,
+                        )
+                        .await?
+                        .unwrap_or_default();
+
                     remove_documents(
-                        &project_item
-                            .versions
+                        &version_ids
                             .into_iter()
                             .map(|x| x.into())
                             .collect::<Vec<_>>(),
@@ -2107,6 +2115,11 @@ pub async fn project_delete(
         image_item::Image::remove(image.id, &mut transaction, &redis).await?;
     }
 
+    let version_ids: Vec<database::models::VersionId> =
+        database::models::Project::get_versions(project.inner.id, &mut *transaction, &redis)
+            .await?
+            .unwrap_or_default();
+
     sqlx::query!(
         "
         DELETE FROM collections_mods
@@ -2122,8 +2135,7 @@ pub async fn project_delete(
     transaction.commit().await?;
 
     remove_documents(
-        &project
-            .versions
+        &version_ids
             .into_iter()
             .map(|x| x.into())
             .collect::<Vec<_>>(),

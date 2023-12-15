@@ -15,6 +15,7 @@ use crate::models::projects::{
 };
 use crate::models::threads::ThreadId;
 use crate::queue::session::AuthQueue;
+use crate::routes::v2_reroute::capitalize_first;
 use crate::routes::v3::versions::{VersionListFilters, VersionListFiltersWithProjects};
 use crate::routes::{v2_reroute, v3};
 use actix_web::web::Data;
@@ -275,15 +276,13 @@ impl LegacyProject {
         .await
         .unwrap_or_default();
 
-        let proj_version_hashmap =
-            found_versions
-                .into_iter()
-                .fold(HashMap::new(), |mut acc: HashMap<ProjectId, Vec<_>>, version| {
-                    acc.entry(version.project_id)
-                        .or_default()
-                        .push(version);
-                    acc
-                });
+        let proj_version_hashmap = found_versions.into_iter().fold(
+            HashMap::new(),
+            |mut acc: HashMap<ProjectId, Vec<_>>, version| {
+                acc.entry(version.project_id).or_default().push(version);
+                acc
+            },
+        );
 
         Ok(projects
             .into_iter()
