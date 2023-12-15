@@ -546,30 +546,33 @@ pub async fn add_team_member(
     .insert(&mut transaction)
     .await?;
 
-    match team_association {
-        TeamAssociationId::Project(pid) => {
-            NotificationBuilder {
-                body: NotificationBody::TeamInvite {
-                    project_id: pid.into(),
-                    team_id: team_id.into(),
-                    invited_by: current_user.id,
-                    role: new_member.role.clone(),
-                },
+    // If the user has an opportunity to accept the invite, send a notification
+    if !force_accepted {
+        match team_association {
+            TeamAssociationId::Project(pid) => {
+                NotificationBuilder {
+                    body: NotificationBody::TeamInvite {
+                        project_id: pid.into(),
+                        team_id: team_id.into(),
+                        invited_by: current_user.id,
+                        role: new_member.role.clone(),
+                    },
+                }
+                .insert(new_member.user_id.into(), &mut transaction, &redis)
+                .await?;
             }
-            .insert(new_member.user_id.into(), &mut transaction, &redis)
-            .await?;
-        }
-        TeamAssociationId::Organization(oid) => {
-            NotificationBuilder {
-                body: NotificationBody::OrganizationInvite {
-                    organization_id: oid.into(),
-                    team_id: team_id.into(),
-                    invited_by: current_user.id,
-                    role: new_member.role.clone(),
-                },
+            TeamAssociationId::Organization(oid) => {
+                NotificationBuilder {
+                    body: NotificationBody::OrganizationInvite {
+                        organization_id: oid.into(),
+                        team_id: team_id.into(),
+                        invited_by: current_user.id,
+                        role: new_member.role.clone(),
+                    },
+                }
+                .insert(new_member.user_id.into(), &mut transaction, &redis)
+                .await?;
             }
-            .insert(new_member.user_id.into(), &mut transaction, &redis)
-            .await?;
         }
     }
 
