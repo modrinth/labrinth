@@ -63,7 +63,9 @@ pub async fn images_add(
                 if let Some(id) = data.project_id {
                     let project = project_item::Project::get(&id, &**pool, &redis).await?;
                     if let Some(project) = project {
-                        if is_team_member_project(&project.inner, &Some(user.clone()), &pool).await? {
+                        if is_team_member_project(&project.inner, &Some(user.clone()), &pool)
+                            .await?
+                        {
                             *project_id = Some(project.inner.id.into());
                         } else {
                             return Err(ApiError::CustomAuthentication(
@@ -82,7 +84,13 @@ pub async fn images_add(
                 if let Some(id) = data.version_id {
                     let version = version_item::Version::get(id.into(), &**pool, &redis).await?;
                     if let Some(version) = version {
-                        if is_team_member_version(&version.inner, &Some(user.clone()), &pool, &redis).await?
+                        if is_team_member_version(
+                            &version.inner,
+                            &Some(user.clone()),
+                            &pool,
+                            &redis,
+                        )
+                        .await?
                         {
                             *version_id = Some(version.inner.id.into());
                         } else {

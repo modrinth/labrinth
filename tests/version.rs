@@ -678,96 +678,94 @@ async fn version_ordering_when_specified_orders_specified_before_unspecified() {
     .await;
 }
 
-
 #[actix_rt::test]
 async fn versions_various_visibility() {
-    with_test_environment(None, |env: common::environment::TestEnvironment<ApiV3>| async move {
-        let alpha_project_id_parsed = env.dummy.as_ref().unwrap().project_alpha.project_id_parsed;
-        let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
-        let beta_project_id_parsed = env.dummy.as_ref().unwrap().project_beta.project_id_parsed;
-        let beta_version_id = env.dummy.as_ref().unwrap().project_beta.version_id.clone();
+    with_test_environment(
+        None,
+        |env: common::environment::TestEnvironment<ApiV3>| async move {
+            let alpha_project_id_parsed =
+                env.dummy.as_ref().unwrap().project_alpha.project_id_parsed;
+            let alpha_version_id = env.dummy.as_ref().unwrap().project_alpha.version_id.clone();
+            let beta_project_id_parsed = env.dummy.as_ref().unwrap().project_beta.project_id_parsed;
+            let beta_version_id = env.dummy.as_ref().unwrap().project_beta.version_id.clone();
 
-        // Check that alpha project starts with one version
-        let versions = env
-            .api
-            .get_versions_deserialized_common(
-                vec![alpha_version_id.clone()],
-                USER_USER_PAT,
-            )
-            .await;
-        assert_common_version_ids(&versions, vec![alpha_version_id.clone()]);
-
-        // Check that beta project starts with zero versions
-        let versions = env
-            .api
-            .get_versions_deserialized_common(
-                vec![beta_version_id.clone()],
-                USER_USER_PAT,
-            )
-            .await;
-        assert_common_version_ids(&versions, vec![beta_version_id.clone()]);
-
-        // For each project, we add test versions:
-        for project_id_parsed in [alpha_project_id_parsed, beta_project_id_parsed] {
-            // Add a new version, which should be hidden
-            env.api
-                .add_public_version_deserialized_common(
-                    project_id_parsed,
-                    "1.0.0",
-                    TestFile::build_random_jar(),
-                    None,
-                    Some(serde_json::from_value(json!([
-                        { "op": "add", "path": "/status", "value": "draft"},
-                    ]))
-                    .unwrap()),
-                    USER_USER_PAT,
-                )
-                .await.id;
-
-            // Add a new version that is visible
-            env.api
-                .add_public_version_deserialized_common(
-                    project_id_parsed,
-                    "1.0.1",
-                    TestFile::build_random_jar(),
-                    None,
-                    None,
-                    USER_USER_PAT,
-                )
-                .await.id;
-        }
-
-        let visible_pat_pairs = vec![
-            (&alpha_project_id_parsed, USER_USER_PAT, 3),
-            (&alpha_project_id_parsed, USER_USER_PAT, 3),
-            (&alpha_project_id_parsed, ENEMY_USER_PAT, 2),
-            (&beta_project_id_parsed, USER_USER_PAT, 3),
-            (&beta_project_id_parsed, ENEMY_USER_PAT, 0),
-        ];
-
-        // Alpha project should have
-        // - 3 versions visible to USER_USER_PAT
-        // - 2 versions visible to ENEMY_USER_PAT
-        for (project_id, pat, expected_count) in visible_pat_pairs {
-            // Uses the new get multiple route to ensure a 404 is not returned on failure
-            // but instead 0 versions
+            // Check that alpha project starts with one version
             let versions = env
                 .api
-                .get_projects_versions_deserialized_common(
-                    &[&project_id.to_string()], 
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    pat,
-                )
+                .get_versions_deserialized_common(vec![alpha_version_id.clone()], USER_USER_PAT)
                 .await;
-            let versions = versions.get(&project_id).cloned().unwrap_or_default();
-            assert_eq!(versions.len(), expected_count);
-        }
-    })
-    .await;
+            assert_common_version_ids(&versions, vec![alpha_version_id.clone()]);
 
+            // Check that beta project starts with zero versions
+            let versions = env
+                .api
+                .get_versions_deserialized_common(vec![beta_version_id.clone()], USER_USER_PAT)
+                .await;
+            assert_common_version_ids(&versions, vec![beta_version_id.clone()]);
+
+            // For each project, we add test versions:
+            for project_id_parsed in [alpha_project_id_parsed, beta_project_id_parsed] {
+                // Add a new version, which should be hidden
+                env.api
+                    .add_public_version_deserialized_common(
+                        project_id_parsed,
+                        "1.0.0",
+                        TestFile::build_random_jar(),
+                        None,
+                        Some(
+                            serde_json::from_value(json!([
+                                { "op": "add", "path": "/status", "value": "draft"},
+                            ]))
+                            .unwrap(),
+                        ),
+                        USER_USER_PAT,
+                    )
+                    .await;
+
+                // Add a new version that is visible
+                env.api
+                    .add_public_version_deserialized_common(
+                        project_id_parsed,
+                        "1.0.1",
+                        TestFile::build_random_jar(),
+                        None,
+                        None,
+                        USER_USER_PAT,
+                    )
+                    .await;
+            }
+
+            let visible_pat_pairs = vec![
+                (&alpha_project_id_parsed, USER_USER_PAT, 3),
+                (&alpha_project_id_parsed, USER_USER_PAT, 3),
+                (&alpha_project_id_parsed, ENEMY_USER_PAT, 2),
+                (&beta_project_id_parsed, USER_USER_PAT, 3),
+                (&beta_project_id_parsed, ENEMY_USER_PAT, 0),
+            ];
+
+            // Alpha project should have
+            // - 3 versions visible to USER_USER_PAT
+            // - 2 versions visible to ENEMY_USER_PAT
+            for (project_id, pat, expected_count) in visible_pat_pairs {
+                // Uses the new get multiple route to ensure a 404 is not returned on failure
+                // but instead 0 versions
+                let versions = env
+                    .api
+                    .get_projects_versions_deserialized_common(
+                        &[&project_id.to_string()],
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        pat,
+                    )
+                    .await;
+                let versions = versions.get(project_id).cloned().unwrap_or_default();
+                assert_eq!(versions.len(), expected_count);
+            }
+        },
+    )
+    .await;
 }

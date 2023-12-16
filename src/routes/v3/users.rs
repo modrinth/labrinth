@@ -8,7 +8,7 @@ use sqlx::PgPool;
 use validator::Validate;
 
 use crate::{
-    auth::{get_user_from_headers, filter_visible_projects},
+    auth::{filter_visible_projects, get_user_from_headers},
     database::{models::User, redis::RedisPool},
     file_hosting::FileHost,
     models::{
@@ -68,8 +68,7 @@ pub async fn projects_list(
         let project_data = User::get_projects(id, &**pool, &redis).await?;
 
         let projects: Vec<_> =
-            crate::database::Project::get_many_ids(&project_data, &**pool, &redis)
-                .await?;
+            crate::database::Project::get_many_ids(&project_data, &**pool, &redis).await?;
         let projects = filter_visible_projects(projects, &user, &pool).await?;
         Ok(HttpResponse::Ok().json(projects))
     } else {

@@ -167,8 +167,8 @@ impl ApiV3 {
 
         let req = test::TestRequest::get()
             .uri(&format!(
-            "/v3/projects_versions?ids={ids_or_slugs}{}",
-            query_string
+                "/v3/projects_versions?ids={ids_or_slugs}{}",
+                query_string
             ))
             .append_pat(pat)
             .to_request();

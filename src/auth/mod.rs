@@ -4,7 +4,7 @@ pub mod oauth;
 pub mod templates;
 pub mod validate;
 pub use checks::{
-    filter_visible_projects, filter_visible_version_ids, is_visible_project, is_visible_version, 
+    filter_visible_projects, filter_visible_version_ids, is_visible_project, is_visible_version,
 };
 use serde::{Deserialize, Serialize};
 // pub use pat::{generate_pat, PersonalAccessToken};

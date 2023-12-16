@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::ApiError;
-use crate::auth::{get_user_from_headers, filter_visible_projects};
+use crate::auth::{filter_visible_projects, get_user_from_headers};
 use crate::database::models::team_item::TeamMember;
 use crate::database::models::{generate_organization_id, team_item, Organization};
 use crate::database::redis::RedisPool;

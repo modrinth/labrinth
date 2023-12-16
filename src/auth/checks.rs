@@ -34,7 +34,9 @@ pub async fn is_visible_project(
     user_option: &Option<User>,
     pool: &web::Data<PgPool>,
 ) -> Result<bool, ApiError> {
-    filter_visible_project_ids(vec![project_data], user_option, pool).await.map(|x| !x.is_empty())
+    filter_visible_project_ids(vec![project_data], user_option, pool)
+        .await
+        .map(|x| !x.is_empty())
 }
 
 pub async fn is_team_member_project(
@@ -42,16 +44,23 @@ pub async fn is_team_member_project(
     user_option: &Option<User>,
     pool: &web::Data<PgPool>,
 ) -> Result<bool, ApiError> {
-    filter_enlisted_projects_ids(vec![project_data], user_option, pool).await.map(|x| !x.is_empty())
+    filter_enlisted_projects_ids(vec![project_data], user_option, pool)
+        .await
+        .map(|x| !x.is_empty())
 }
-
 
 pub async fn filter_visible_projects(
     mut projects: Vec<QueryProject>,
     user_option: &Option<User>,
     pool: &web::Data<PgPool>,
 ) -> Result<Vec<crate::models::projects::Project>, ApiError> {
-    let filtered_project_ids = filter_visible_project_ids(projects.iter().map(|x| &x.inner ).collect_vec(), user_option, pool).await.unwrap();
+    let filtered_project_ids = filter_visible_project_ids(
+        projects.iter().map(|x| &x.inner).collect_vec(),
+        user_option,
+        pool,
+    )
+    .await
+    .unwrap();
     projects.retain(|x| filtered_project_ids.contains(&x.inner.id));
     Ok(projects.into_iter().map(|x| x.into()).collect())
 }
@@ -85,9 +94,10 @@ pub async fn filter_visible_project_ids(
 
     // For hidden projects, return a filtered list of projects for which we are enlisted on the team
     if !check_projects.is_empty() {
-        return_projects.extend(filter_enlisted_projects_ids(check_projects, user_option, pool).await?);
+        return_projects
+            .extend(filter_enlisted_projects_ids(check_projects, user_option, pool).await?);
     }
-    
+
     Ok(return_projects)
 }
 
@@ -99,7 +109,6 @@ pub async fn filter_enlisted_projects_ids(
     user_option: &Option<User>,
     pool: &web::Data<PgPool>,
 ) -> Result<Vec<crate::database::models::ProjectId>, ApiError> {
-
     let mut return_projects = vec![];
 
     if let Some(user) = user_option {
@@ -119,10 +128,7 @@ pub async fn filter_enlisted_projects_ids(
             INNER JOIN mods m ON m.organization_id = o.id
             WHERE o.id = ANY($2) AND tm.user_id = $3
             ",
-            &projects
-                .iter()
-                .map(|x| x.team_id.0)
-                .collect::<Vec<_>>(),
+            &projects.iter().map(|x| x.team_id.0).collect::<Vec<_>>(),
             &projects
                 .iter()
                 .filter_map(|x| x.organization_id.map(|x| x.0))
@@ -137,7 +143,7 @@ pub async fn filter_enlisted_projects_ids(
                     if bool {
                         return_projects.push(x.id);
                     }
-                };
+                }
             }
 
             futures::future::ready(Ok(()))
@@ -147,14 +153,15 @@ pub async fn filter_enlisted_projects_ids(
     Ok(return_projects)
 }
 
-
 pub async fn is_visible_version(
     version_data: &Version,
     user_option: &Option<User>,
     pool: &web::Data<PgPool>,
     redis: &RedisPool,
 ) -> Result<bool, ApiError> {
-    filter_visible_version_ids(vec![version_data], user_option, pool, redis).await.map(|x| !x.is_empty())
+    filter_visible_version_ids(vec![version_data], user_option, pool, redis)
+        .await
+        .map(|x| !x.is_empty())
 }
 
 pub async fn is_team_member_version(
@@ -163,7 +170,9 @@ pub async fn is_team_member_version(
     pool: &web::Data<PgPool>,
     redis: &RedisPool,
 ) -> Result<bool, ApiError> {
-    filter_enlisted_version_ids(vec![version_data], user_option, pool, redis).await.map(|x| !x.is_empty())
+    filter_enlisted_version_ids(vec![version_data], user_option, pool, redis)
+        .await
+        .map(|x| !x.is_empty())
 }
 
 pub async fn filter_visible_versions(
@@ -172,11 +181,17 @@ pub async fn filter_visible_versions(
     pool: &web::Data<PgPool>,
     redis: &RedisPool,
 ) -> Result<Vec<crate::models::projects::Version>, ApiError> {
-    let filtered_version_ids = filter_visible_version_ids(versions.iter().map(|x| &x.inner ).collect_vec(), user_option, pool, redis).await.unwrap();
+    let filtered_version_ids = filter_visible_version_ids(
+        versions.iter().map(|x| &x.inner).collect_vec(),
+        user_option,
+        pool,
+        redis,
+    )
+    .await
+    .unwrap();
     versions.retain(|x| filtered_version_ids.contains(&x.inner.id));
     Ok(versions.into_iter().map(|x| x.into()).collect())
 }
-
 
 impl ValidateAuthorized for models::OAuthClient {
     fn validate_authorized(&self, user_option: Option<&User>) -> Result<(), ApiError> {
@@ -207,21 +222,23 @@ pub async fn filter_visible_version_ids(
     // First, filter out versions belonging to projects we can't see
     // (ie: a hidden project, but public version, should still be hidden)
     // Gets project ids of versions
-    let project_ids = versions
-        .iter()
-        .map(|x| x.project_id)
-        .collect::<Vec<_>>();
+    let project_ids = versions.iter().map(|x| x.project_id).collect::<Vec<_>>();
 
     // Get visible projects- ones we are allowed to see public versions for.
     let visible_project_ids = filter_visible_project_ids(
-        Project::get_many_ids(&project_ids, &***pool, &redis).await?.iter().map(|x| &x.inner).collect(),
+        Project::get_many_ids(&project_ids, &***pool, redis)
+            .await?
+            .iter()
+            .map(|x| &x.inner)
+            .collect(),
         user_option,
         pool,
     )
     .await?;
 
     // Then, get enlisted versions (Versions that are a part of a project we are a member of)
-    let enlisted_version_ids = filter_enlisted_version_ids(versions.clone(), user_option, pool, redis).await?;
+    let enlisted_version_ids =
+        filter_enlisted_version_ids(versions.clone(), user_option, pool, redis).await?;
 
     // Return versions that are not hidden, we are a mod of, or we are enlisted on the team of
     for version in versions {
@@ -254,14 +271,15 @@ pub async fn filter_enlisted_version_ids(
     let mut return_versions = Vec::new();
 
     // Get project ids of versions
-    let project_ids = versions
-        .iter()
-        .map(|x| x.project_id)
-        .collect::<Vec<_>>();
+    let project_ids = versions.iter().map(|x| x.project_id).collect::<Vec<_>>();
 
     // Get enlisted projects- ones we are allowed to see hidden versions for.
     let authorized_project_ids = filter_enlisted_projects_ids(
-        Project::get_many_ids(&project_ids, &***pool, &redis).await?.iter().map(|x| &x.inner).collect(),
+        Project::get_many_ids(&project_ids, &***pool, redis)
+            .await?
+            .iter()
+            .map(|x| &x.inner)
+            .collect(),
         user_option,
         pool,
     )
@@ -269,9 +287,9 @@ pub async fn filter_enlisted_version_ids(
 
     for version in versions {
         if user_option
-                .as_ref()
-                .map(|x| x.role.is_mod())
-                .unwrap_or(false)
+            .as_ref()
+            .map(|x| x.role.is_mod())
+            .unwrap_or(false)
             || (user_option.is_some() && authorized_project_ids.contains(&version.project_id))
         {
             return_versions.push(version.id);

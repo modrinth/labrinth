@@ -626,7 +626,10 @@ impl Project {
                 INNER JOIN version_fields vf ON v.id = vf.version_id
                 WHERE v.id = ANY($1)
                 ",
-                &all_public_version_ids.iter().map(|x| x.0).collect::<Vec<_>>()
+                &all_public_version_ids
+                    .iter()
+                    .map(|x| x.0)
+                    .collect::<Vec<_>>()
             )
             .fetch(&mut *exec)
             .try_fold(

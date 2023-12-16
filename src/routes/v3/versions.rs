@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use super::ApiError;
 use crate::auth::checks::filter_visible_versions;
-use crate::auth::{ get_user_from_headers, is_visible_project, filter_visible_projects, is_visible_version,
+use crate::auth::{
+    filter_visible_projects, get_user_from_headers, is_visible_project, is_visible_version,
 };
 use crate::database;
 use crate::database::models::loader_fields::{
