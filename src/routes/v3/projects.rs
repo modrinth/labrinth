@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
+use crate::auth::{get_user_from_headers, filter_visible_projects, is_visible_project};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
@@ -41,7 +41,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("search", web::get().to(project_search));
     cfg.route("projects", web::get().to(projects_get));
     cfg.route("projects", web::patch().to(projects_edit));
-    cfg.route("projects/versions", web::patch().to(projects_version_list));
+    cfg.route("projects_versions", web::get().to(projects_version_list));
     cfg.route("projects_random", web::get().to(random_projects_get));
 
     cfg.service(
@@ -142,7 +142,7 @@ pub async fn projects_get(
     .map(|x| x.1)
     .ok();
 
-    let projects = filter_authorized_projects(projects_data, &user_option, &pool).await?;
+    let projects = filter_visible_projects(projects_data, &user_option, &pool).await?;
 
     Ok(HttpResponse::Ok().json(projects))
 }
@@ -169,7 +169,7 @@ pub async fn project_get(
     .ok();
 
     if let Some(data) = project_data {
-        if is_authorized(&data.inner, &user_option, &pool).await? {
+        if is_visible_project(&data.inner, &user_option, &pool).await? {
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
     }
@@ -986,7 +986,7 @@ pub async fn dependency_list(
     .ok();
 
     if let Some(project) = result {
-        if !is_authorized(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -2177,7 +2177,7 @@ pub async fn project_follow(
     let user_id: db_ids::UserId = user.id.into();
     let project_id: db_ids::ProjectId = result.inner.id;
 
-    if !is_authorized(&result.inner, &Some(user), &pool).await? {
+    if !is_visible_project(&result.inner, &Some(user), &pool).await? {
         return Err(ApiError::NotFound);
     }
 

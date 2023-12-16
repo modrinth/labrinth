@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use super::ApiError;
-use crate::auth::{
-    filter_authorized_projects, filter_authorized_versions, get_user_from_headers, is_authorized,
-    is_authorized_version,
+use crate::auth::checks::filter_visible_versions;
+use crate::auth::{ get_user_from_headers, is_visible_project, filter_visible_projects, is_visible_version,
 };
 use crate::database;
 use crate::database::models::loader_fields::{
@@ -86,7 +85,7 @@ pub async fn version_project_get_helper(
         let versions =
             database::models::Project::get_versions(project.inner.id, &**pool, &redis).await?;
         if let Some(versions) = versions {
-            if !is_authorized(&project.inner, &user_option, &pool).await? {
+            if !is_visible_project(&project.inner, &user_option, &pool).await? {
                 return Err(ApiError::NotFound);
             }
 
@@ -98,7 +97,7 @@ pub async fn version_project_get_helper(
                 .find(|x| Some(x.inner.id.0 as u64) == id_opt || x.inner.version_number == id.1);
 
             if let Some(version) = version {
-                if is_authorized_version(&version.inner, &user_option, &pool).await? {
+                if is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
                     return Ok(HttpResponse::Ok().json(models::projects::Version::from(version)));
                 }
             }
@@ -137,7 +136,7 @@ pub async fn versions_get(
     .map(|x| x.1)
     .ok();
 
-    let versions = filter_authorized_versions(versions_data, &user_option, &pool, redis).await?;
+    let versions = filter_visible_versions(versions_data, &user_option, &pool, &redis).await?;
 
     Ok(HttpResponse::Ok().json(versions))
 }
@@ -174,7 +173,7 @@ pub async fn version_get_helper(
     .ok();
 
     if let Some(data) = version_data {
-        if is_authorized_version(&data.inner, &user_option, &pool).await? {
+        if is_visible_version(&data.inner, &user_option, &pool, &redis).await? {
             return Ok(HttpResponse::Ok().json(models::projects::Version::from(data)));
         }
     }
@@ -776,11 +775,12 @@ pub async fn version_list_inner(
     .map(|x| x.1)
     .ok();
 
-    let allowed_projects = filter_authorized_projects(projects.clone(), &user_option, &pool)
+    let allowed_projects = filter_visible_projects(projects.clone(), &user_option, &pool)
         .await?
         .into_iter()
         .map(|x| x.id)
         .collect::<Vec<ProjectId>>();
+
     let projects = projects
         .into_iter()
         .filter_map(|x| {
@@ -791,112 +791,105 @@ pub async fn version_list_inner(
             }
         })
         .collect::<Vec<_>>();
+    let loader_field_filters = filters.loader_fields.as_ref().map(|x| {
+        serde_json::from_str::<HashMap<String, Vec<serde_json::Value>>>(x).unwrap_or_default()
+    });
+    let loader_filters = filters
+        .loaders
+        .as_ref()
+        .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
+    let version_ids = database::models::Project::get_versions_many(&projects, &**pool, &redis)
+        .await?
+        .into_iter()
+        .flat_map(|(_, v)| v)
+        .collect::<Vec<database::models::VersionId>>();
+    let mut versions = database::models::Version::get_many(&version_ids, &**pool, &redis)
+        .await?
+        .into_iter()
+        .skip(filters.offset.unwrap_or(0))
+        .take(filters.limit.unwrap_or(usize::MAX))
+        .filter(|x| {
+            let mut bool = true;
 
-    if !projects.is_empty() {
-        let loader_field_filters = filters.loader_fields.as_ref().map(|x| {
-            serde_json::from_str::<HashMap<String, Vec<serde_json::Value>>>(x).unwrap_or_default()
-        });
-        let loader_filters = filters
-            .loaders
-            .as_ref()
-            .map(|x| serde_json::from_str::<Vec<String>>(x).unwrap_or_default());
-        let version_ids = database::models::Project::get_versions_many(&projects, &**pool, &redis)
-            .await?
-            .into_iter()
-            .flat_map(|(_, v)| v)
-            .collect::<Vec<database::models::VersionId>>();
-        let mut versions = database::models::Version::get_many(&version_ids, &**pool, &redis)
-            .await?
-            .into_iter()
-            .skip(filters.offset.unwrap_or(0))
-            .take(filters.limit.unwrap_or(usize::MAX))
-            .filter(|x| {
-                let mut bool = true;
-
-                if let Some(version_type) = filters.version_type {
-                    bool &= &*x.inner.version_type == version_type.as_str();
-                }
-                if let Some(loaders) = &loader_filters {
-                    bool &= x.loaders.iter().any(|y| loaders.contains(y));
-                }
-                if let Some(loader_fields) = &loader_field_filters {
-                    for (key, values) in loader_fields {
-                        bool &= if let Some(x_vf) =
-                            x.version_fields.iter().find(|y| y.field_name == *key)
-                        {
-                            values.iter().any(|v| x_vf.value.contains_json_value(v))
-                        } else {
-                            true
-                        };
-                    }
-                }
-                bool
-            })
-            .collect::<Vec<_>>();
-
-        let mut response = versions
-            .iter()
-            .filter(|version| {
-                filters
-                    .featured
-                    .map(|featured| featured == version.inner.featured)
-                    .unwrap_or(true)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-
-        versions.sort();
-
-        // Attempt to populate versions with "auto featured" versions
-        if response.is_empty() && !versions.is_empty() && filters.featured.unwrap_or(false) {
-            // TODO: Re-implement this
-            // let (loaders, game_versions) = futures::future::try_join(
-            //     database::models::loader_fields::Loader::list(&**pool, &redis),
-            //     database::models::loader_fields::GameVersion::list_filter(
-            //         None,
-            //         Some(true),
-            //         &**pool,
-            //         &redis,
-            //     ),
-            // )
-            // .await?;
-
-            // let mut joined_filters = Vec::new();
-            // for game_version in &game_versions {
-            //     for loader in &loaders {
-            //         joined_filters.push((game_version, loader))
-            //     }
-            // }
-
-            // joined_filters.into_iter().for_each(|filter| {
-            //     versions
-            //         .iter()
-            //         .find(|version| {
-            //             // version.game_versions.contains(&filter.0.version)
-            //                 // &&
-            //                 version.loaders.contains(&filter.1.loader)
-            //         })
-            //         .map(|version| response.push(version.clone()))
-            //         .unwrap_or(());
-            // });
-
-            if response.is_empty() {
-                versions
-                    .into_iter()
-                    .for_each(|version| response.push(version));
+            if let Some(version_type) = filters.version_type {
+                bool &= &*x.inner.version_type == version_type.as_str();
             }
+            if let Some(loaders) = &loader_filters {
+                bool &= x.loaders.iter().any(|y| loaders.contains(y));
+            }
+            if let Some(loader_fields) = &loader_field_filters {
+                for (key, values) in loader_fields {
+                    bool &= if let Some(x_vf) =
+                        x.version_fields.iter().find(|y| y.field_name == *key)
+                    {
+                        values.iter().any(|v| x_vf.value.contains_json_value(v))
+                    } else {
+                        true
+                    };
+                }
+            }
+            bool
+        })
+        .collect::<Vec<_>>();
+
+    let mut response = versions
+        .iter()
+        .filter(|version| {
+            filters
+                .featured
+                .map(|featured| featured == version.inner.featured)
+                .unwrap_or(true)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    versions.sort();
+
+    // Attempt to populate versions with "auto featured" versions
+    if response.is_empty() && !versions.is_empty() && filters.featured.unwrap_or(false) {
+        // TODO: Re-implement this
+        // let (loaders, game_versions) = futures::future::try_join(
+        //     database::models::loader_fields::Loader::list(&**pool, &redis),
+        //     database::models::loader_fields::GameVersion::list_filter(
+        //         None,
+        //         Some(true),
+        //         &**pool,
+        //         &redis,
+        //     ),
+        // )
+        // .await?;
+
+        // let mut joined_filters = Vec::new();
+        // for game_version in &game_versions {
+        //     for loader in &loaders {
+        //         joined_filters.push((game_version, loader))
+        //     }
+        // }
+
+        // joined_filters.into_iter().for_each(|filter| {
+        //     versions
+        //         .iter()
+        //         .find(|version| {
+        //             // version.game_versions.contains(&filter.0.version)
+        //                 // &&
+        //                 version.loaders.contains(&filter.1.loader)
+        //         })
+        //         .map(|version| response.push(version.clone()))
+        //         .unwrap_or(());
+        // });
+
+        if response.is_empty() {
+            versions
+                .into_iter()
+                .for_each(|version| response.push(version));
         }
-
-        response.sort();
-        response.dedup_by(|a, b| a.inner.id == b.inner.id);
-
-        println!("R - {:?}", serde_json::to_string(&response.iter().map(|x| x.inner.id.0).collect::<Vec<_>>()));
-        let response = filter_authorized_versions(response, &user_option, &pool, redis).await?;
-        println!("Rafter - {:?}", serde_json::to_string(&response.iter().map(|x| x.id.0).collect::<Vec<_>>()));
-        Ok(response)
-    } else {
-        Err(ApiError::NotFound)
     }
+
+    response.sort();
+    response.dedup_by(|a, b| a.inner.id == b.inner.id);
+
+    let response = filter_visible_versions(response, &user_option, &pool, &redis).await?;
+    Ok(response)
 }
 
 #[derive(Deserialize)]

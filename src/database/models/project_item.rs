@@ -581,20 +581,23 @@ impl Project {
                 .map(|x| x.to_lowercase())
                 .collect::<Vec<_>>();
 
-            let all_version_ids = DashSet::new();
+            let all_public_version_ids = DashSet::new();
+            let listed_statuses = crate::models::projects::VersionStatus::iterator()
+                .filter(|x| x.is_listed())
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>();
+
+            // Versions includes all versions, including hidden ones
+            // TODO: These will be removed in a subsequent commit.
             let versions: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>> = sqlx::query!(
                 "
-                SELECT DISTINCT mod_id, v.id as id, date_published
+                SELECT DISTINCT mod_id, v.id as id, date_published, v.status
                 FROM mods m
-                INNER JOIN versions v ON m.id = v.mod_id AND v.status = ANY($3)
+                INNER JOIN versions v ON m.id = v.mod_id
                 WHERE m.id = ANY($1) OR m.slug = ANY($2)
                 ",
                 &project_ids_parsed,
-                &slugs,
-                &*crate::models::projects::VersionStatus::iterator()
-                    .filter(|x| x.is_listed())
-                    .map(|x| x.to_string())
-                    .collect::<Vec<String>>()
+                &slugs
             )
             .fetch(&mut *exec)
             .try_fold(
@@ -602,7 +605,10 @@ impl Project {
                 |acc: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>>, m| {
                     let version_id = VersionId(m.id);
                     let date_published = m.date_published;
-                    all_version_ids.insert(version_id);
+
+                    if listed_statuses.contains(&m.status) {
+                        all_public_version_ids.insert(version_id);
+                    }
                     acc.entry(ProjectId(m.mod_id))
                         .or_default()
                         .push((version_id, date_published));
@@ -620,7 +626,7 @@ impl Project {
                 INNER JOIN version_fields vf ON v.id = vf.version_id
                 WHERE v.id = ANY($1)
                 ",
-                &all_version_ids.iter().map(|x| x.0).collect::<Vec<_>>()
+                &all_public_version_ids.iter().map(|x| x.0).collect::<Vec<_>>()
             )
             .fetch(&mut *exec)
             .try_fold(
@@ -756,7 +762,7 @@ impl Project {
                 WHERE v.id = ANY($1)
                 GROUP BY mod_id
                 ",
-                &all_version_ids.iter().map(|x| x.0).collect::<Vec<_>>()
+                &all_public_version_ids.iter().map(|x| x.0).collect::<Vec<_>>()
             ).fetch(&mut *exec)
             .map_ok(|m| {
                 let project_id = ProjectId(m.mod_id);

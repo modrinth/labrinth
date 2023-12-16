@@ -1,8 +1,6 @@
 use super::ApiError;
-use crate::auth::{
-    filter_authorized_projects, filter_authorized_versions, get_user_from_headers,
-    is_authorized_version,
-};
+use crate::auth::checks::filter_visible_versions;
+use crate::auth::{get_user_from_headers, is_visible_version, filter_visible_projects};
 use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
@@ -67,7 +65,7 @@ pub async fn get_version_from_hash(
     if let Some(file) = file {
         let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
         if let Some(version) = version {
-            if !is_authorized_version(&version.inner, &user_option, &pool).await? {
+            if !is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
                 return Err(ApiError::NotFound);
             }
 
@@ -183,7 +181,7 @@ pub async fn get_update_from_hash(
                 .sorted();
 
             if let Some(first) = versions.last() {
-                if !is_authorized_version(&first.inner, &user_option, &pool).await? {
+                if !is_visible_version(&first.inner, &user_option, &pool, &redis).await? {
                     return Err(ApiError::NotFound);
                 }
 
@@ -234,11 +232,11 @@ pub async fn get_versions_from_hashes(
     .await?;
 
     let version_ids = files.iter().map(|x| x.version_id).collect::<Vec<_>>();
-    let versions_data = filter_authorized_versions(
+    let versions_data = filter_visible_versions(
         database::models::Version::get_many(&version_ids, &**pool, &redis).await?,
         &user_option,
         &pool,
-        redis,
+        &redis,
     )
     .await?;
 
@@ -287,7 +285,7 @@ pub async fn get_projects_from_hashes(
 
     let project_ids = files.iter().map(|x| x.project_id).collect::<Vec<_>>();
 
-    let projects_data = filter_authorized_projects(
+    let projects_data = filter_visible_projects(
         database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?,
         &user_option,
         &pool,
@@ -398,7 +396,7 @@ pub async fn update_files(
                 .last();
 
             if let Some(version) = version {
-                if is_authorized_version(&version.inner, &user_option, &pool).await? {
+                if is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
                     if let Some(hash) = file.hashes.get(&algorithm) {
                         response.insert(
                             hash.clone(),
@@ -520,7 +518,7 @@ pub async fn update_individual_files(
                         .last();
 
                     if let Some(version) = version {
-                        if is_authorized_version(&version.inner, &user_option, &pool).await? {
+                        if is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
                             response.insert(
                                 hash.clone(),
                                 models::projects::Version::from(version.clone()),
@@ -696,7 +694,7 @@ pub async fn download_version(
         let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
 
         if let Some(version) = version {
-            if !is_authorized_version(&version.inner, &user_option, &pool).await? {
+            if !is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
                 return Err(ApiError::NotFound);
             }
 
