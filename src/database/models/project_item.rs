@@ -589,33 +589,33 @@ impl Project {
 
             // Versions includes all versions, including hidden ones
             // TODO: These will be removed in a subsequent commit.
-            let versions: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>> = sqlx::query!(
-                "
+            let public_versions: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>> =
+                sqlx::query!(
+                    "
                 SELECT DISTINCT mod_id, v.id as id, date_published, v.status
                 FROM mods m
-                INNER JOIN versions v ON m.id = v.mod_id
+                INNER JOIN versions v ON m.id = v.mod_id AND v.status = ANY($3)
                 WHERE m.id = ANY($1) OR m.slug = ANY($2)
                 ",
-                &project_ids_parsed,
-                &slugs
-            )
-            .fetch(&mut *exec)
-            .try_fold(
-                DashMap::new(),
-                |acc: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>>, m| {
-                    let version_id = VersionId(m.id);
-                    let date_published = m.date_published;
+                    &project_ids_parsed,
+                    &slugs,
+                    &listed_statuses
+                )
+                .fetch(&mut *exec)
+                .try_fold(
+                    DashMap::new(),
+                    |acc: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>>, m| {
+                        let version_id = VersionId(m.id);
+                        let date_published = m.date_published;
 
-                    if listed_statuses.contains(&m.status) {
                         all_public_version_ids.insert(version_id);
-                    }
-                    acc.entry(ProjectId(m.mod_id))
-                        .or_default()
-                        .push((version_id, date_published));
-                    async move { Ok(acc) }
-                },
-            )
-            .await?;
+                        acc.entry(ProjectId(m.mod_id))
+                            .or_default()
+                            .push((version_id, date_published));
+                        async move { Ok(acc) }
+                    },
+                )
+                .await?;
 
             let loader_field_ids = DashSet::new();
             let loader_field_enum_value_ids = DashSet::new();
@@ -808,7 +808,7 @@ impl Project {
                         let id = m.id;
                         let project_id = ProjectId(id);
                         let (loaders, project_types, games) = loaders_ptypes_games.remove(&project_id).map(|x| x.1).unwrap_or_default();
-                        let mut versions = versions.remove(&project_id).map(|x| x.1).unwrap_or_default();
+                        let mut public_versions = public_versions.remove(&project_id).map(|x| x.1).unwrap_or_default();
                         let mut gallery = mods_gallery.remove(&project_id).map(|x| x.1).unwrap_or_default();
                         let urls = links.remove(&project_id).map(|x| x.1).unwrap_or_default();
                         let version_fields = version_fields.remove(&project_id).map(|x| x.1).unwrap_or_default();
@@ -851,8 +851,8 @@ impl Project {
                         games,
                         public_versions: {
                                 // Each version is a tuple of (VersionId, DateTime<Utc>)
-                                versions.sort_by(|a, b| a.1.cmp(&b.1));
-                                versions.into_iter().map(|x| x.0).collect()
+                                public_versions.sort_by(|a, b| a.1.cmp(&b.1));
+                                public_versions.into_iter().map(|x| x.0).collect()
                             },
                             gallery_items: {
                                 gallery.sort_by(|a, b| a.ordering.cmp(&b.ordering));

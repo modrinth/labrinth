@@ -261,7 +261,7 @@ async fn add_remove_organization_projects() {
                 .api
                 .organization_add_project(zeta_organization_id, alpha, USER_USER_PAT)
                 .await;
-            assert_eq!(resp.status(), 200);
+            assert_eq!(resp.status(), 204);
 
             // Get organization projects
             let projects = test_env
@@ -276,7 +276,7 @@ async fn add_remove_organization_projects() {
                 .api
                 .organization_remove_project(zeta_organization_id, alpha, USER_USER_PAT)
                 .await;
-            assert_eq!(resp.status(), 200);
+            assert_eq!(resp.status(), 204);
 
             // Get organization projects
             let projects = test_env
