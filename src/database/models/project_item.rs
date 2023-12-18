@@ -592,7 +592,7 @@ impl Project {
             let public_versions: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>> =
                 sqlx::query!(
                     "
-                SELECT DISTINCT mod_id, v.id as id, date_published, v.status
+                SELECT DISTINCT mod_id, v.id as id, date_published
                 FROM mods m
                 INNER JOIN versions v ON m.id = v.mod_id AND v.status = ANY($3)
                 WHERE m.id = ANY($1) OR m.slug = ANY($2)
