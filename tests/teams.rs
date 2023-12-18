@@ -17,15 +17,10 @@ mod common;
 async fn test_get_team() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
-        let zeta_organization_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .organization_zeta
-            .organization_id;
-        let zeta_team_id = &test_env.dummy.as_ref().unwrap().organization_zeta.team_id;
+        let alpha_project_id = &test_env.dummy.project_alpha.project_id;
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
+        let zeta_organization_id = &test_env.dummy.organization_zeta.organization_id;
+        let zeta_team_id = &test_env.dummy.organization_zeta.team_id;
 
         // Perform tests for an organization team and a project team
         for (team_association_id, team_association, team_id) in [
@@ -144,15 +139,10 @@ async fn test_get_team() {
 async fn test_get_team_project_orgs() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
-        let zeta_organization_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .organization_zeta
-            .organization_id;
-        let zeta_team_id = &test_env.dummy.as_ref().unwrap().organization_zeta.team_id;
+        let alpha_project_id = &test_env.dummy.project_alpha.project_id;
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
+        let zeta_organization_id = &test_env.dummy.organization_zeta.organization_id;
+        let zeta_team_id = &test_env.dummy.organization_zeta.team_id;
 
         // Attach alpha to zeta
         let req = test::TestRequest::post()
@@ -218,7 +208,7 @@ async fn test_patch_project_team_member() {
     with_test_environment_all(None, |test_env| async move {
         let api = &test_env.api;
 
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
 
         // Edit team as admin/mod but not a part of the team should be OK
         let resp = api.edit_team_member(alpha_team_id, USER_USER_ID, json!({}), ADMIN_USER_PAT).await;
@@ -287,7 +277,7 @@ async fn test_patch_project_team_member() {
 async fn test_patch_organization_team_member() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let zeta_team_id = &test_env.dummy.as_ref().unwrap().organization_zeta.team_id;
+        let zeta_team_id = &test_env.dummy.organization_zeta.team_id;
 
         // Edit team as admin/mod but not a part of the team should be OK
         let req = test::TestRequest::patch()
@@ -408,7 +398,7 @@ async fn transfer_ownership_v3() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
 
         // Cannot set friend as owner (not a member)
         let resp = api
@@ -514,10 +504,10 @@ async fn transfer_ownership_v3() {
 //     let test_env = TestEnvironment::build(None).await;
 //     let api = &test_env.api;
 
-//     let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
-//     let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-//     let zeta_organization_id = &test_env.dummy.as_ref().unwrap().zeta_organization_id;
-//     let zeta_team_id = &test_env.dummy.as_ref().unwrap().zeta_team_id;
+//     let alpha_team_id = &test_env.dummy.project_alpha.team_id;
+//     let alpha_project_id = &test_env.dummy.project_alpha.project_id;
+//     let zeta_organization_id = &test_env.dummy.zeta_organization_id;
+//     let zeta_team_id = &test_env.dummy.zeta_team_id;
 
 //     // Link alpha team to zeta org
 //     let resp = api.organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT).await;

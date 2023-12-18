@@ -21,17 +21,23 @@ use serde_json::json;
 use crate::common::api_common::models::CommonItemType;
 use crate::common::api_common::request_data::ProjectCreationRequestData;
 use crate::common::api_common::{ApiProject, ApiTeams, ApiVersion, AppendsOptionalPat};
-use crate::common::dummy_data::{DummyImage, TestFile};
+use crate::common::dummy_data::{DummyImage, DummyProjectAlpha, DummyProjectBeta, TestFile};
 mod common;
 
 #[actix_rt::test]
 async fn test_get_project() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let beta_project_id = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
-        let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
-        let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
+        let DummyProjectAlpha {
+            project_id: alpha_project_id,
+            project_slug: alpha_project_slug,
+            version_id: alpha_version_id,
+            ..
+        } = &test_env.dummy.project_alpha;
+        let DummyProjectBeta {
+            project_id: beta_project_id,
+            ..
+        } = &test_env.dummy.project_beta;
 
         // Perform request on dummy data
         let req = test::TestRequest::get()
@@ -290,8 +296,8 @@ pub async fn test_patch_project() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
-        let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
-        let beta_project_slug = &test_env.dummy.as_ref().unwrap().project_beta.project_slug;
+        let alpha_project_slug = &test_env.dummy.project_alpha.project_slug;
+        let beta_project_slug = &test_env.dummy.project_beta.project_slug;
 
         // First, we do some patch requests that should fail.
         // Failure because the user is not authorized.
@@ -472,7 +478,7 @@ pub async fn test_patch_v3() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
 
-        let alpha_project_slug = &test_env.dummy.as_ref().unwrap().project_alpha.project_slug;
+        let alpha_project_slug = &test_env.dummy.project_alpha.project_slug;
 
         // Sucessful request to patch many fields.
         let resp = api
@@ -503,8 +509,8 @@ pub async fn test_patch_v3() {
 pub async fn test_bulk_edit_categories() {
     with_test_environment_all(None, |test_env| async move {
         let api = &test_env.api;
-        let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
+        let alpha_project_id: &str = &test_env.dummy.project_alpha.project_id;
+        let beta_project_id: &str = &test_env.dummy.project_beta.project_id;
 
         let resp = api
             .edit_project_bulk(
@@ -544,8 +550,8 @@ pub async fn test_bulk_edit_categories() {
 pub async fn test_bulk_edit_links() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
-        let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
+        let alpha_project_id: &str = &test_env.dummy.project_alpha.project_id;
+        let beta_project_id: &str = &test_env.dummy.project_beta.project_id;
 
         // Sets links for issue, source, wiki, and patreon for all projects
         // The first loop, sets issue, the second, clears it for all projects.
@@ -595,8 +601,8 @@ pub async fn test_bulk_edit_links() {
 async fn delete_project_with_report() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
-        let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
+        let alpha_project_id: &str = &test_env.dummy.project_alpha.project_id;
+        let beta_project_id: &str = &test_env.dummy.project_beta.project_id;
 
         // Create a report for the project
         let resp = api
@@ -682,8 +688,8 @@ async fn delete_project_with_report() {
 #[actix_rt::test]
 async fn permissions_patch_project_v3() {
     with_test_environment(Some(8), |test_env: TestEnvironment<ApiV3>| async move {
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
+        let alpha_project_id = &test_env.dummy.project_alpha.project_id;
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
 
         let api = &test_env.api;
         // TODO: This should be a separate test from v3
@@ -801,11 +807,17 @@ async fn permissions_patch_project_v3() {
 #[actix_rt::test]
 async fn permissions_edit_details() {
     with_test_environment_all(None, |test_env| async move {
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
-        let beta_project_id = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
-        let beta_team_id = &test_env.dummy.as_ref().unwrap().project_beta.team_id;
-        let beta_version_id = &test_env.dummy.as_ref().unwrap().project_beta.version_id;
+        let DummyProjectAlpha {
+            project_id: alpha_project_id,
+            team_id: alpha_team_id,
+            ..
+        } = &test_env.dummy.project_alpha;
+        let DummyProjectBeta {
+            project_id: beta_project_id,
+            version_id: beta_version_id,
+            team_id: beta_team_id,
+            ..
+        } = &test_env.dummy.project_beta;
 
         let edit_details = ProjectPermissions::EDIT_DETAILS;
         let api = &test_env.api;
@@ -940,10 +952,10 @@ async fn permissions_edit_details() {
 #[actix_rt::test]
 async fn permissions_upload_version() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let alpha_version_id = &test_env.dummy.as_ref().unwrap().project_alpha.version_id;
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
-        let alpha_file_hash = &test_env.dummy.as_ref().unwrap().project_alpha.file_hash;
+        let alpha_project_id = &test_env.dummy.project_alpha.project_id;
+        let alpha_version_id = &test_env.dummy.project_alpha.version_id;
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
+        let alpha_file_hash = &test_env.dummy.project_alpha.file_hash;
 
         let api = &test_env.api;
 
@@ -1038,8 +1050,8 @@ async fn permissions_upload_version() {
 async fn permissions_manage_invites() {
     // Add member, remove member, edit member
     with_test_environment_all(None, |test_env| async move {
-        let alpha_project_id = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let alpha_team_id = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
+        let alpha_project_id = &test_env.dummy.project_alpha.project_id;
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
 
         let api = &test_env.api;
         let manage_invites = ProjectPermissions::MANAGE_INVITES;

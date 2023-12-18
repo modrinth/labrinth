@@ -15,7 +15,7 @@ use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegment
 use serde_json::json;
 
 use crate::common::api_common::{ApiTeams, AppendsOptionalPat};
-use crate::common::dummy_data::DummyImage;
+use crate::common::dummy_data::{DummyImage, DummyProjectAlpha, DummyProjectBeta};
 
 // For each scope, we (using test_scope):
 // - create a PAT with a given set of scopes for a function
@@ -95,13 +95,7 @@ async fn user_scopes() {
 #[actix_rt::test]
 pub async fn notifications_scopes() {
     with_test_environment_all(None, |test_env| async move {
-        let alpha_team_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_alpha
-            .team_id
-            .clone();
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
 
         // We will invite user 'friend' to project team, and use that as a notification
         // Get notifications
@@ -255,34 +249,16 @@ pub async fn project_version_create_scopes_v3() {
 #[actix_rt::test]
 pub async fn project_version_reads_scopes() {
     with_test_environment_all(None, |test_env| async move {
-        let beta_project_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_beta
-            .project_id
-            .clone();
-        let beta_version_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_beta
-            .version_id
-            .clone();
-        let alpha_team_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_alpha
-            .team_id
-            .clone();
-        let beta_file_hash = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_beta
-            .file_hash
-            .clone();
+        let DummyProjectAlpha {
+            team_id: alpha_team_id,
+            ..
+        } = &test_env.dummy.project_alpha;
+        let DummyProjectBeta {
+            project_id: beta_project_id,
+            version_id: beta_version_id,
+            file_hash: beta_file_hash,
+            ..
+        } = &test_env.dummy.project_beta;
 
         // Project reading
         // Uses 404 as the expected failure code (or 200 and an empty list for mass reads)
@@ -491,20 +467,8 @@ pub async fn project_version_reads_scopes() {
 pub async fn project_write_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let beta_project_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_beta
-            .project_id
-            .clone();
-        let alpha_team_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_alpha
-            .team_id
-            .clone();
+        let beta_project_id = &test_env.dummy.project_beta.project_id;
+        let alpha_team_id = &test_env.dummy.project_alpha.team_id;
 
         let test_icon = DummyImage::SmallIcon;
 
@@ -709,27 +673,12 @@ pub async fn project_write_scopes() {
 pub async fn version_write_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let alpha_version_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_alpha
-            .version_id
-            .clone();
-        let beta_version_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_beta
-            .version_id
-            .clone();
-        let alpha_file_hash = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_alpha
-            .file_hash
-            .clone();
+        let DummyProjectAlpha {
+            version_id: alpha_version_id,
+            file_hash: alpha_file_hash,
+            ..
+        } = &test_env.dummy.project_alpha;
+        let beta_version_id = &test_env.dummy.project_beta.version_id;
 
         let basic_zip = TestFile::BasicZip;
 
@@ -842,13 +791,7 @@ pub async fn version_write_scopes() {
 pub async fn report_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let beta_project_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_beta
-            .project_id
-            .clone();
+        let beta_project_id = &test_env.dummy.project_beta.project_id;
 
         // Create report
         let report_create = Scopes::REPORT_CREATE;
@@ -923,20 +866,8 @@ pub async fn report_scopes() {
 pub async fn thread_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let alpha_thread_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_alpha
-            .thread_id
-            .clone();
-        let beta_thread_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_beta
-            .thread_id
-            .clone();
+        let alpha_thread_id = &test_env.dummy.project_alpha.thread_id;
+        let beta_thread_id = &test_env.dummy.project_beta.thread_id;
 
         // Thread read
         let thread_read = Scopes::THREAD_READ;
@@ -1072,13 +1003,7 @@ pub async fn pat_scopes() {
 pub async fn collections_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let alpha_project_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_alpha
-            .project_id
-            .clone();
+        let alpha_project_id = &test_env.dummy.project_alpha.project_id;
 
         let small_icon = DummyImage::SmallIcon;
 
@@ -1176,13 +1101,7 @@ pub async fn collections_scopes() {
 pub async fn organization_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
-        let beta_project_id = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .project_beta
-            .project_id
-            .clone();
+        let beta_project_id = &test_env.dummy.project_beta.project_id;
 
         let icon = DummyImage::SmallIcon;
 
