@@ -75,12 +75,12 @@ impl<A: ApiBuildable> TestEnvironment<A> {
     async fn build(max_connections: Option<u32>) -> Self {
         let db = TemporaryDatabase::create(max_connections).await;
         let labrinth_config = setup(&db).await;
-        let setup_api = ApiV3::build(labrinth_config.clone()).await;
+        let api = A::build(labrinth_config.clone()).await;
+        let setup_api = ApiV3::build(labrinth_config).await;
         let dummy = dummy_data::get_dummy_data(&setup_api).await;
-
         Self {
             db,
-            api: A::build(labrinth_config.clone()).await,
+            api,
             setup_api,
             dummy,
         }
