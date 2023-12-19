@@ -31,19 +31,20 @@ pub async fn get_projects(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::moderation::get_projects(
-        req,
+        req.clone(),
         pool.clone(),
         redis.clone(),
         web::Query(v3::moderation::ResultCount { count: count.count }),
-        session_queue,
+        session_queue.clone(),
     )
     .await
     .or_else(v2_reroute::flatten_404_error)?;
 
-    // Convert to V2 projects
+    // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
-        Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+        Ok(projects) => {
+            let legacy_projects =
+                LegacyProject::from_many(req, pool, redis, session_queue, projects).await?;
             Ok(HttpResponse::Ok().json(legacy_projects))
         }
         Err(response) => Ok(response),
