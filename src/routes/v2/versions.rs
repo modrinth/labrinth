@@ -268,6 +268,7 @@ pub async fn version_delete(
     session_queue: web::Data<AuthQueue>,
     search_config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
+    // Returns NoContent, so we don't need to convert the response
     v3::versions::version_delete(req, info, pool, redis, session_queue, search_config)
         .await
         .or_else(v2_reroute::flatten_404_error)
