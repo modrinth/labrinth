@@ -32,7 +32,7 @@ async fn oauth_flow_happy_path() {
         let resp = env
             .api
             .oauth_authorize(
-                &client_id,
+                client_id,
                 Some("USER_READ NOTIFICATION_READ"),
                 Some(&redirect_uri),
                 Some(original_state),
@@ -60,7 +60,7 @@ async fn oauth_flow_happy_path() {
                 auth_code.to_string(),
                 Some(redirect_uri.clone()),
                 client_id.to_string(),
-                &client_secret,
+                client_secret,
             )
             .await;
         assert_status(&resp, StatusCode::OK);
@@ -282,8 +282,8 @@ async fn revoke_authorization_after_issuing_token_revokes_token() {
         let access_token = env
             .api
             .complete_full_authorize_flow(
-                &client_id,
-                &client_secret,
+                client_id,
+                client_secret,
                 Some("NOTIFICATION_READ"),
                 None,
                 None,
@@ -295,7 +295,7 @@ async fn revoke_authorization_after_issuing_token_revokes_token() {
 
         let resp = env
             .api
-            .revoke_oauth_authorization(&client_id, USER_USER_PAT)
+            .revoke_oauth_authorization(client_id, USER_USER_PAT)
             .await;
         assert_status(&resp, StatusCode::OK);
 

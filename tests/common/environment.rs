@@ -86,7 +86,7 @@ impl<A: ApiBuildable> TestEnvironment<A> {
         }
     }
     pub async fn build_setup_api(db: &TemporaryDatabase) -> ApiV3 {
-        let labrinth_config = setup(&db).await;
+        let labrinth_config = setup(db).await;
         ApiV3::build(labrinth_config).await
     }
 }

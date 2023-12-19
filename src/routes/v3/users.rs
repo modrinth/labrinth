@@ -93,6 +93,7 @@ pub async fn user_auth_get(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    println!("AUTH GET!");
     let (scopes, mut user) = get_user_from_headers(
         &req,
         &**pool,
@@ -101,6 +102,7 @@ pub async fn user_auth_get(
         Some(&[Scopes::USER_READ]),
     )
     .await?;
+    println!("User: {:?}", serde_json::to_string(&user));
 
     if !scopes.contains(Scopes::USER_READ_EMAIL) {
         user.email = None;

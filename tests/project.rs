@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use actix_http::StatusCode;
 use actix_web::test;
-use chrono::{Duration, Utc};
 use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
@@ -20,7 +19,7 @@ use serde_json::json;
 
 use crate::common::api_common::models::CommonItemType;
 use crate::common::api_common::request_data::ProjectCreationRequestData;
-use crate::common::api_common::{ApiProject, ApiTeams, ApiVersion, AppendsOptionalPat};
+use crate::common::api_common::{ApiProject, ApiTeams, ApiVersion};
 use crate::common::dummy_data::{DummyImage, DummyProjectAlpha, DummyProjectBeta, TestFile};
 mod common;
 
@@ -39,12 +38,10 @@ async fn test_get_project() {
             ..
         } = &test_env.dummy.project_beta;
 
+        let api = &test_env.api;
+
         // Perform request on dummy data
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/project/{alpha_project_id}"))
-            .append_pat(USER_USER_PAT)
-            .to_request();
-        let resp = test_env.call(req).await;
+        let resp = api.get_project(alpha_project_id, USER_USER_PAT).await;
         let status = resp.status();
         let body: serde_json::Value = test::read_body_json(resp).await;
 
@@ -77,11 +74,7 @@ async fn test_get_project() {
         assert_eq!(cached_project["inner"]["slug"], json!(alpha_project_slug));
 
         // Make the request again, this time it should be cached
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/project/{alpha_project_id}"))
-            .append_pat(USER_USER_PAT)
-            .to_request();
-        let resp = test_env.call(req).await;
+        let resp = api.get_project(alpha_project_id, USER_USER_PAT).await;
         let status = resp.status();
         assert_eq!(status, 200);
 
@@ -90,21 +83,11 @@ async fn test_get_project() {
         assert_eq!(body["slug"], json!(alpha_project_slug));
 
         // Request should fail on non-existent project
-        let req = test::TestRequest::get()
-            .uri("/v3/project/nonexistent")
-            .append_pat(USER_USER_PAT)
-            .to_request();
-
-        let resp = test_env.call(req).await;
+        let resp = api.get_project("nonexistent", USER_USER_PAT).await;
         assert_eq!(resp.status(), 404);
 
         // Similarly, request should fail on non-authorized user, on a yet-to-be-approved or hidden project, with a 404 (hiding the existence of the project)
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/project/{beta_project_id}"))
-            .append_pat(ENEMY_USER_PAT)
-            .to_request();
-
-        let resp = test_env.call(req).await;
+        let resp = api.get_project(beta_project_id, ENEMY_USER_PAT).await;
         assert_eq!(resp.status(), 404);
     })
     .await;
@@ -803,6 +786,56 @@ async fn permissions_patch_project_v3() {
     .await;
 }
 
+// TODO: Project scheduling has been temporarily disabled, so this test is disabled as well
+// #[actix_rt::test]
+// async fn permissions_schedule() {
+//     with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
+//         let DummyProjectAlpha {
+//             project_id: alpha_project_id,
+//             team_id: alpha_team_id,
+//             ..
+//         } = &test_env.dummy.project_alpha;
+//         let DummyProjectBeta {
+//             project_id: beta_project_id,
+//             version_id: beta_version_id,
+//             team_id: beta_team_id,
+//             ..
+//         } = &test_env.dummy.project_beta;
+
+//         let edit_details = ProjectPermissions::EDIT_DETAILS;
+//         let api = &test_env.api;
+
+//         // Approve beta version as private so we can schedule it
+//         let resp = api
+//             .edit_version(
+//                 beta_version_id,
+//                 json!({
+//                     "status": "unlisted"
+//                 }),
+//                 MOD_USER_PAT,
+//             )
+//             .await;
+//         assert_eq!(resp.status(), 204);
+
+//         // Schedule version
+//         let req_gen = |ctx: PermissionsTestContext| async move {
+//             api.schedule_version(
+//                 beta_version_id,
+//                 "archived",
+//                 Utc::now() + Duration::days(1),
+//                 ctx.test_pat.as_deref(),
+//             )
+//             .await
+//         };
+//         PermissionsTest::new(&test_env)
+//             .with_existing_project(beta_project_id, beta_team_id)
+//             .with_user(FRIEND_USER_ID, FRIEND_USER_PAT, true)
+//             .simple_project_permissions_test(edit_details, req_gen)
+//             .await
+//             .unwrap();
+//     }).await
+// }
+
 // Not covered by PATCH /project
 #[actix_rt::test]
 async fn permissions_edit_details() {
@@ -812,43 +845,9 @@ async fn permissions_edit_details() {
             team_id: alpha_team_id,
             ..
         } = &test_env.dummy.project_alpha;
-        let DummyProjectBeta {
-            project_id: beta_project_id,
-            version_id: beta_version_id,
-            team_id: beta_team_id,
-            ..
-        } = &test_env.dummy.project_beta;
 
         let edit_details = ProjectPermissions::EDIT_DETAILS;
         let api = &test_env.api;
-
-        // Approve beta version as private so we can schedule it
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v3/version/{beta_version_id}"))
-            .append_pat(MOD_USER_PAT)
-            .set_json(json!({
-                "status": "unlisted"
-            }))
-            .to_request();
-        let resp = test_env.call(req).await;
-        assert_eq!(resp.status(), 204);
-
-        // Schedule version
-        let req_gen = |ctx: PermissionsTestContext| async move {
-            api.schedule_project(
-                beta_version_id,
-                "archived",
-                Utc::now() + Duration::days(1),
-                ctx.test_pat.as_deref(),
-            )
-            .await
-        };
-        PermissionsTest::new(&test_env)
-            .with_existing_project(beta_project_id, beta_team_id)
-            .with_user(FRIEND_USER_ID, FRIEND_USER_PAT, true)
-            .simple_project_permissions_test(edit_details, req_gen)
-            .await
-            .unwrap();
 
         // Icon edit
         // Uses alpha project to delete this icon
@@ -901,11 +900,7 @@ async fn permissions_edit_details() {
             .await
             .unwrap();
         // Get project, as we need the gallery image url
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/project/{alpha_project_id}"))
-            .append_pat(USER_USER_PAT)
-            .to_request();
-        let resp = test_env.call(req).await;
+        let resp = api.get_project(alpha_project_id, USER_USER_PAT).await;
         let project: serde_json::Value = test::read_body_json(resp).await;
         let gallery_url = project["gallery"][0]["url"].as_str().unwrap();
 
@@ -1108,22 +1103,19 @@ async fn permissions_manage_invites() {
             .unwrap();
 
         // re-add member for testing
-        let req = test::TestRequest::post()
-            .uri(&format!("/v3/team/{}/members", alpha_team_id))
-            .append_pat(ADMIN_USER_PAT)
-            .set_json(json!({
-                "user_id": MOD_USER_ID,
-            }))
-            .to_request();
-        let resp = test_env.call(req).await;
+        let resp = api
+            .add_user_to_team(
+                alpha_team_id,
+                MOD_USER_ID,
+                Some(ProjectPermissions::empty()),
+                None,
+                ADMIN_USER_PAT,
+            )
+            .await;
         assert_eq!(resp.status(), 204);
 
         // Accept invite
-        let req = test::TestRequest::post()
-            .uri(&format!("/v3/team/{}/join", alpha_team_id))
-            .append_pat(MOD_USER_PAT)
-            .to_request();
-        let resp = test_env.call(req).await;
+        let resp = api.join_team(alpha_team_id, MOD_USER_PAT).await;
         assert_eq!(resp.status(), 204);
 
         // remove existing member (requires remove_member)
