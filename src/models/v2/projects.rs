@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use super::super::ids::OrganizationId;
 use super::super::teams::TeamId;
 use super::super::users::UserId;
-use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
-use crate::database::models::{version_item, DatabaseError};
+use crate::database;
+use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
 use crate::models::ids::{ProjectId, VersionId};
 use crate::models::projects::{
@@ -14,10 +14,16 @@ use crate::models::projects::{
     ProjectStatus, Version, VersionFile, VersionStatus, VersionType,
 };
 use crate::models::threads::ThreadId;
-use crate::routes::v2_reroute::{self, capitalize_first};
+use crate::queue::session::AuthQueue;
+use crate::routes::v2_reroute::capitalize_first;
+use crate::routes::v3::versions::{VersionListFilters, VersionListFiltersWithProjects};
+use crate::routes::{v2_reroute, v3};
+use actix_web::web::Data;
+use actix_web::{web, HttpRequest};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use validator::Validate;
 
 /// A project returned from the API
@@ -77,7 +83,11 @@ impl LegacyProject {
     // - Its conceivable that certain V3 projects that have many different ones may not have the same fields on all of them.
     // TODO: Should this return an error instead for v2 users?
     // It's safe to use a db version_item for this as the only info is side types, game versions, and loader fields (for loaders), which used to be public on project anyway.
-    pub fn from(data: Project, versions_item: Option<version_item::QueryVersion>) -> Self {
+    fn from_inner(
+        data: Project,
+        versions_option: Option<Version>,
+        visible_version_ids: Vec<database::models::ids::VersionId>,
+    ) -> Self {
         let mut client_side = LegacySideType::Unknown;
         let mut server_side = LegacySideType::Unknown;
         let mut game_versions = Vec::new();
@@ -105,26 +115,32 @@ impl LegacyProject {
 
         let mut loaders = data.loaders;
 
-        if let Some(versions_item) = versions_item {
+        if let Some(versions_item) = versions_option {
             game_versions = versions_item
-                .version_fields
+                .fields
                 .iter()
-                .find(|f| f.field_name == "game_versions")
-                .and_then(|f| MinecraftGameVersion::try_from_version_field(f).ok())
-                .map(|v| v.into_iter().map(|v| v.version).collect())
+                .find_map(|(name, value)| {
+                    if *name == "game_versions" {
+                        value.as_array().map(|v| {
+                            v.iter()
+                                .filter_map(|gv| gv.as_str().map(|gv| gv.to_string()))
+                                .collect::<Vec<_>>()
+                        })
+                    } else {
+                        None
+                    }
+                })
                 .unwrap_or(Vec::new());
 
             // Extract side types from remaining fields (singleplayer, client_only, etc)
-            let fields = versions_item
-                .version_fields
-                .iter()
-                .map(|f| (f.field_name.clone(), f.value.clone().serialize_internal()))
-                .collect::<HashMap<_, _>>();
-            (client_side, server_side) = v2_reroute::convert_side_types_v2(&fields);
+            (client_side, server_side) = v2_reroute::convert_side_types_v2(&versions_item.fields);
 
             // - if loader is mrpack, this is a modpack
             // the loaders are whatever the corresponding loader fields are
-            if loaders.contains(&"mrpack".to_string()) {
+            if versions_item
+                .loaders
+                .contains(&Loader("mrpack".to_string()))
+            {
                 project_type = "modpack".to_string();
                 if let Some(mrpack_loaders) = data.fields.iter().find(|f| f.0 == "mrpack_loaders") {
                     let values = mrpack_loaders
@@ -182,7 +198,7 @@ impl LegacyProject {
             categories: data.categories,
             additional_categories: data.additional_categories,
             loaders,
-            versions: data.versions,
+            versions: visible_version_ids.into_iter().map(|i| i.into()).collect(),
             icon_url: data.icon_url,
             issues_url,
             source_url,
@@ -203,30 +219,86 @@ impl LegacyProject {
         }
     }
 
-    // Because from needs a version_item, this is a helper function to get many from one db query.
-    pub async fn from_many<'a, E>(
-        data: Vec<Project>,
-        exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<Self>, DatabaseError>
-    where
-        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
-    {
-        let version_ids: Vec<_> = data
+    pub async fn from(
+        req: HttpRequest,
+        client: Data<PgPool>,
+        redis: Data<RedisPool>,
+        session_queue: Data<AuthQueue>,
+        project: Project,
+    ) -> Result<Self, DatabaseError> {
+        // Call v3 project version get
+        let project_ids = serde_json::to_string(&[project.id])?;
+        let found_versions = match v3::versions::version_list_inner(
+            req,
+            web::Query(VersionListFiltersWithProjects {
+                ids: project_ids,
+                filters: VersionListFilters::default(),
+            }),
+            client.clone(),
+            redis.clone(),
+            session_queue.clone(),
+        )
+        .await
+        {
+            Ok(versions) => versions,
+            Err(_) => vec![],
+        };
+
+        let version_ids = found_versions
             .iter()
-            .filter_map(|p| p.versions.first().map(|i| (*i).into()))
-            .collect();
-        let example_versions = version_item::Version::get_many(&version_ids, exec, redis).await?;
-        let mut legacy_projects = Vec::new();
-        for project in data {
-            let version_item = example_versions
-                .iter()
-                .find(|v| v.inner.project_id == project.id.into())
-                .cloned();
-            let project = LegacyProject::from(project, version_item);
-            legacy_projects.push(project);
-        }
-        Ok(legacy_projects)
+            .map(|v| v.id.into())
+            .collect::<Vec<_>>();
+        let version_item = found_versions.into_iter().next().take();
+        let project = LegacyProject::from_inner(project, version_item, version_ids);
+        Ok(project)
+    }
+
+    pub async fn from_many(
+        req: HttpRequest,
+        client: Data<PgPool>,
+        redis: Data<RedisPool>,
+        session_queue: Data<AuthQueue>,
+        projects: Vec<Project>,
+    ) -> Result<Vec<Self>, DatabaseError> {
+        let project_ids =
+            serde_json::to_string(&projects.iter().map(|p| p.id).collect::<Vec<_>>())?;
+        // Call v3 project version get
+        let found_versions = v3::versions::version_list_inner(
+            req,
+            web::Query(VersionListFiltersWithProjects {
+                ids: project_ids,
+                filters: VersionListFilters::default(),
+            }),
+            client.clone(),
+            redis.clone(),
+            session_queue.clone(),
+        )
+        .await
+        .unwrap_or_default();
+
+        let proj_version_hashmap = found_versions.into_iter().fold(
+            HashMap::new(),
+            |mut acc: HashMap<ProjectId, Vec<_>>, version| {
+                acc.entry(version.project_id).or_default().push(version);
+                acc
+            },
+        );
+
+        Ok(projects
+            .into_iter()
+            .map(|project| {
+                let found_version = proj_version_hashmap
+                    .get(&project.id)
+                    .cloned()
+                    .unwrap_or_default();
+                let version_ids = found_version
+                    .iter()
+                    .map(|v| v.id.into())
+                    .collect::<Vec<_>>();
+                let version_item = found_version.into_iter().next().take();
+                LegacyProject::from_inner(project, version_item, version_ids)
+            })
+            .collect())
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::auth::{is_visible_project, is_visible_version};
 use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
 use crate::database::models::loader_fields::Loader;
 use crate::database::models::project_item::QueryProject;
@@ -7,10 +8,7 @@ use crate::models::pats::Scopes;
 use crate::models::projects::{ProjectId, VersionId};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use crate::{
-    auth::{get_user_from_headers, is_authorized, is_authorized_version},
-    database,
-};
+use crate::{auth::get_user_from_headers, database};
 use actix_web::{get, route, web, HttpRequest, HttpResponse};
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -94,7 +92,7 @@ pub async fn maven_metadata(
     .map(|x| x.1)
     .ok();
 
-    if !is_authorized(&project.inner, &user_option, &pool).await? {
+    if !is_visible_project(&project.inner, &user_option, &pool).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -166,7 +164,11 @@ async fn find_version(
         .ok()
         .map(|x| x as i64);
 
-    let all_versions = database::models::Version::get_many(&project.versions, pool, redis).await?;
+    // Maven routes check for authorized versions, so we can get all versions here rather than just public ones
+    let versions = database::models::Project::get_versions(project.inner.id, pool, redis)
+        .await?
+        .unwrap_or_default();
+    let all_versions = database::models::Version::get_many(&versions, pool, redis).await?;
 
     let exact_matches = all_versions
         .iter()
@@ -288,7 +290,7 @@ pub async fn version_file(
     .map(|x| x.1)
     .ok();
 
-    if !is_authorized(&project.inner, &user_option, &pool).await? {
+    if !is_visible_project(&project.inner, &user_option, &pool).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -296,7 +298,7 @@ pub async fn version_file(
         return Err(ApiError::NotFound);
     };
 
-    if !is_authorized_version(&version.inner, &user_option, &pool).await? {
+    if !is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -349,7 +351,7 @@ pub async fn version_file_sha1(
     .map(|x| x.1)
     .ok();
 
-    if !is_authorized(&project.inner, &user_option, &pool).await? {
+    if !is_visible_project(&project.inner, &user_option, &pool).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -357,7 +359,7 @@ pub async fn version_file_sha1(
         return Err(ApiError::NotFound);
     };
 
-    if !is_authorized_version(&version.inner, &user_option, &pool).await? {
+    if !is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -391,7 +393,7 @@ pub async fn version_file_sha512(
     .map(|x| x.1)
     .ok();
 
-    if !is_authorized(&project.inner, &user_option, &pool).await? {
+    if !is_visible_project(&project.inner, &user_option, &pool).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -399,7 +401,7 @@ pub async fn version_file_sha512(
         return Err(ApiError::NotFound);
     };
 
-    if !is_authorized_version(&version.inner, &user_option, &pool).await? {
+    if !is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
         return Err(ApiError::NotFound);
     }
 

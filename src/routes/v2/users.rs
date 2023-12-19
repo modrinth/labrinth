@@ -107,14 +107,21 @@ pub async fn projects_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::projects_list(req, info, pool.clone(), redis.clone(), session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::users::projects_list(
+        req.clone(),
+        info,
+        pool.clone(),
+        redis.clone(),
+        session_queue.clone(),
+    )
+    .await
+    .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert to V2 projects
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
-        Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+        Ok(projects) => {
+            let legacy_projects =
+                LegacyProject::from_many(req, pool, redis, session_queue, projects).await?;
             Ok(HttpResponse::Ok().json(legacy_projects))
         }
         Err(response) => Ok(response),
@@ -231,14 +238,21 @@ pub async fn user_follows(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::user_follows(req, info, pool.clone(), redis.clone(), session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::users::user_follows(
+        req.clone(),
+        info,
+        pool.clone(),
+        redis.clone(),
+        session_queue.clone(),
+    )
+    .await
+    .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert to V2 projects
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
-        Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+        Ok(projects) => {
+            let legacy_projects =
+                LegacyProject::from_many(req, pool, redis, session_queue, projects).await?;
             Ok(HttpResponse::Ok().json(legacy_projects))
         }
         Err(response) => Ok(response),

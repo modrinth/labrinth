@@ -470,11 +470,13 @@ pub async fn project_version_reads_scopes() {
         let read_project_and_version = Scopes::PROJECT_READ | Scopes::VERSION_READ;
         let req_gen =
             || test::TestRequest::get().uri(&format!("/v3/project/{beta_project_id}/version"));
-        ScopeTest::new(&test_env)
-            .with_failure_code(404)
+        let (failure, success) = ScopeTest::new(&test_env)
+            .with_failure_code(200)
             .test(req_gen, read_project_and_version)
             .await
             .unwrap();
+        assert!(failure.as_array().unwrap().is_empty());
+        assert!(!success.as_array().unwrap().is_empty());
 
         // TODO: fails for the same reason as above
         // let req_gen = || {

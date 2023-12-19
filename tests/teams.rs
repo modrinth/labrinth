@@ -163,7 +163,7 @@ async fn test_get_team_project_orgs() {
             }))
             .to_request();
         let resp = test_env.call(req).await;
-        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.status(), 204);
 
         // Invite and add friend to zeta
         let req = test::TestRequest::post()

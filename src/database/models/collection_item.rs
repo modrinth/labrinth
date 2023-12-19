@@ -210,7 +210,7 @@ impl Collection {
                         id: CollectionId(id),
                         user_id: UserId(m.user_id),
                         name: m.name.clone(),
-                        description: m.description.clone(),
+                        description: m.description,
                         icon_url: m.icon_url.clone(),
                         color: m.color.map(|x| x as u32),
                         created: m.created,

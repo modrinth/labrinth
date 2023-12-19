@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 /// The ID of a specific project, encoded as base62 for usage in the API
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, Debug)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
 pub struct ProjectId(pub u64);
@@ -85,8 +85,6 @@ pub struct Project {
     /// A list of loaders this project supports
     pub loaders: Vec<String>,
 
-    /// A list of ids for versions of the project.
-    pub versions: Vec<VersionId>,
     /// The URL of the icon of the project
     pub icon_url: Option<String>,
 
@@ -206,7 +204,6 @@ impl From<QueryProject> for Project {
             categories: data.categories,
             additional_categories: data.additional_categories,
             loaders: m.loaders,
-            versions: data.versions.into_iter().map(|v| v.into()).collect(),
             icon_url: m.icon_url,
             link_urls: data
                 .urls
@@ -242,11 +239,6 @@ impl Project {
             .organization_id
             .and_then(|id| Some(OrganizationId(parse_base62(&id).ok()?)));
         let thread_id = ThreadId(parse_base62(&m.thread_id).ok()?);
-        let versions = m
-            .versions
-            .iter()
-            .filter_map(|id| Some(VersionId(parse_base62(id).ok()?)))
-            .collect();
 
         let approved = DateTime::parse_from_rfc3339(&m.date_created).ok()?;
         let published = DateTime::parse_from_rfc3339(&m.date_published).ok()?.into();
@@ -367,7 +359,6 @@ impl Project {
             categories,
             additional_categories,
             loaders,
-            versions,
             icon_url,
             link_urls,
             gallery,

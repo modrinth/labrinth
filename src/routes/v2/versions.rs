@@ -74,10 +74,16 @@ pub async fn version_list(
         offset: filters.offset,
     };
 
-    let response =
-        v3::versions::version_list(req, info, web::Query(filters), pool, redis, session_queue)
-            .await
-            .or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::versions::project_version_list(
+        req,
+        info,
+        web::Query(filters),
+        pool,
+        redis,
+        session_queue,
+    )
+    .await
+    .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Version>>(response).await {

@@ -806,11 +806,6 @@ async fn project_create_inner(
             categories: project_create_data.categories,
             additional_categories: project_create_data.additional_categories,
             loaders: vec![],
-            versions: project_builder
-                .initial_versions
-                .iter()
-                .map(|v| v.version_id.into())
-                .collect::<Vec<_>>(),
             icon_url: project_builder.icon_url.clone(),
             link_urls: project_builder
                 .link_urls

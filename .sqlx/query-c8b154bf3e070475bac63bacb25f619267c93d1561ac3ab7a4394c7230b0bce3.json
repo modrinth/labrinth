@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT m.id as mod_id, v.id as version_id\n                FROM mods m\n                INNER JOIN versions v ON m.id = v.mod_id\n                WHERE m.id = ANY($1) \n                ORDER BY m.id, v.id;\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "version_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c8b154bf3e070475bac63bacb25f619267c93d1561ac3ab7a4394c7230b0bce3"
+}

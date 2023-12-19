@@ -1,14 +1,13 @@
 use crate::database::models::categories::LinkPlatform;
-use crate::database::models::{project_item, version_item};
+use crate::database::models::project_item;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models::projects::{
-    Link, MonetizationStatus, Project, ProjectStatus, SearchRequest, Version,
-};
+use crate::models::projects::{Link, MonetizationStatus, Project, ProjectStatus, SearchRequest};
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType, LegacyVersion};
 use crate::models::v2::search::LegacySearchResults;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::ProjectIds;
+use crate::routes::v3::versions::{VersionListFilters, VersionListFiltersWithProjects};
 use crate::routes::{v2_reroute, v3, ApiError};
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
@@ -136,6 +135,8 @@ pub struct RandomProjects {
 
 #[get("projects_random")]
 pub async fn random_projects_get(
+    req: HttpRequest,
+    session_queue: web::Data<AuthQueue>,
     web::Query(count): web::Query<RandomProjects>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
@@ -149,8 +150,9 @@ pub async fn random_projects_get(
             .or_else(v2_reroute::flatten_404_error)?;
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
-        Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+        Ok(projects) => {
+            let legacy_projects =
+                LegacyProject::from_many(req, pool, redis, session_queue, projects).await?;
             Ok(HttpResponse::Ok().json(legacy_projects))
         }
         Err(response) => Ok(response),
@@ -167,11 +169,11 @@ pub async fn projects_get(
 ) -> Result<HttpResponse, ApiError> {
     // Call V3 project creation
     let response = v3::projects::projects_get(
-        req,
+        req.clone(),
         web::Query(ids),
         pool.clone(),
         redis.clone(),
-        session_queue,
+        session_queue.clone(),
     )
     .await
     .or_else(v2_reroute::flatten_404_error)
@@ -179,8 +181,9 @@ pub async fn projects_get(
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
-        Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
+        Ok(projects) => {
+            let legacy_projects =
+                LegacyProject::from_many(req, pool, redis, session_queue, projects).await?;
             Ok(HttpResponse::Ok().json(legacy_projects))
         }
         Err(response) => Ok(response),
@@ -197,18 +200,20 @@ pub async fn project_get(
 ) -> Result<HttpResponse, ApiError> {
     // Convert V2 data to V3 data
     // Call V3 project creation
-    let response = v3::projects::project_get(req, info, pool.clone(), redis.clone(), session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::projects::project_get(
+        req.clone(),
+        info,
+        pool.clone(),
+        redis.clone(),
+        session_queue.clone(),
+    )
+    .await
+    .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Project>(response).await {
         Ok(project) => {
-            let version_item = match project.versions.first() {
-                Some(vid) => version_item::Version::get((*vid).into(), &**pool, &redis).await?,
-                None => None,
-            };
-            let project = LegacyProject::from(project, version_item);
+            let project = LegacyProject::from(req, pool, redis, session_queue, project).await?;
             Ok(HttpResponse::Ok().json(project))
         }
         Err(response) => Ok(response),
@@ -243,16 +248,22 @@ pub async fn dependency_list(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // TODO: tests, probably
-    let response =
-        v3::projects::dependency_list(req, info, pool.clone(), redis.clone(), session_queue)
-            .await
-            .or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::projects::dependency_list(
+        req.clone(),
+        info,
+        pool.clone(),
+        redis.clone(),
+        session_queue.clone(),
+    )
+    .await
+    .or_else(v2_reroute::flatten_404_error)?;
 
     match v2_reroute::extract_ok_json::<crate::routes::v3::projects::DependencyInfo>(response).await
     {
         Ok(dependency_info) => {
             let converted_projects =
-                LegacyProject::from_many(dependency_info.projects, &**pool, &redis).await?;
+                LegacyProject::from_many(req, pool, redis, session_queue, dependency_info.projects)
+                    .await?;
             let converted_versions = dependency_info
                 .versions
                 .into_iter()
@@ -380,7 +391,6 @@ pub async fn project_edit(
     let v2_new_project = new_project.into_inner();
     let client_side = v2_new_project.client_side;
     let server_side = v2_new_project.server_side;
-    let new_slug = v2_new_project.slug.clone();
 
     // TODO: Some kind of handling here to ensure project type is fine.
     // We expect the version uploaded to be of loader type modpack, but there might  not be a way to check here for that.
@@ -489,12 +499,19 @@ pub async fn project_edit(
     // If client and server side were set, we will call
     // the version setting route for each version to set the side types for each of them.
     if response.status().is_success() && (client_side.is_some() || server_side.is_some()) {
-        let project_item =
-            project_item::Project::get(&new_slug.unwrap_or(project_id), &**pool, &redis).await?;
-        let version_ids = project_item.map(|x| x.versions).unwrap_or_default();
-        let versions = version_item::Version::get_many(&version_ids, &**pool, &redis).await?;
+        let versions = v3::versions::version_list_inner(
+            req.clone(),
+            web::Query(VersionListFiltersWithProjects {
+                ids: serde_json::to_string(&[project_id])?,
+                filters: VersionListFilters::default(),
+            }),
+            pool.clone(),
+            redis.clone(),
+            session_queue.clone(),
+        )
+        .await?;
+
         for version in versions {
-            let version = Version::from(version);
             let mut fields = version.fields;
             let (current_client_side, current_server_side) =
                 v2_reroute::convert_side_types_v2(&fields);

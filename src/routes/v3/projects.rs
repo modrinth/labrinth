@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
+use crate::auth::{filter_visible_projects, get_user_from_headers, is_visible_project};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
@@ -35,10 +35,13 @@ use serde_json::json;
 use sqlx::PgPool;
 use validator::Validate;
 
+use super::versions::projects_version_list;
+
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("search", web::get().to(project_search));
     cfg.route("projects", web::get().to(projects_get));
     cfg.route("projects", web::patch().to(projects_edit));
+    cfg.route("projects_versions", web::get().to(projects_version_list));
     cfg.route("projects_random", web::get().to(random_projects_get));
 
     cfg.service(
@@ -61,7 +64,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                         "members",
                         web::get().to(super::teams::team_members_get_project),
                     )
-                    .route("version", web::get().to(super::versions::version_list))
+                    .route(
+                        "version",
+                        web::get().to(super::versions::project_version_list),
+                    )
                     .route(
                         "version/{slug}",
                         web::get().to(super::versions::version_project_get),
@@ -136,7 +142,7 @@ pub async fn projects_get(
     .map(|x| x.1)
     .ok();
 
-    let projects = filter_authorized_projects(projects_data, &user_option, &pool).await?;
+    let projects = filter_visible_projects(projects_data, &user_option, &pool).await?;
 
     Ok(HttpResponse::Ok().json(projects))
 }
@@ -163,7 +169,7 @@ pub async fn project_get(
     .ok();
 
     if let Some(data) = project_data {
-        if is_authorized(&data.inner, &user_option, &pool).await? {
+        if is_visible_project(&data.inner, &user_option, &pool).await? {
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
     }
@@ -333,8 +339,12 @@ pub async fn project_edit(
                     ));
                 }
 
+                let versions =
+                    database::models::Project::get_versions(project_item.inner.id, &**pool, &redis)
+                        .await?
+                        .unwrap_or_default();
                 if status == &ProjectStatus::Processing {
-                    if project_item.versions.is_empty() {
+                    if versions.is_empty() {
                         return Err(ApiError::InvalidInput(String::from(
                             "Project submitted for review with no initial versions",
                         )));
@@ -473,9 +483,17 @@ pub async fn project_edit(
                 .await?;
 
                 if project_item.inner.status.is_searchable() && !status.is_searchable() {
+                    let version_ids: Vec<db_models::VersionId> =
+                        database::models::Project::get_versions(
+                            project_item.inner.id,
+                            &**pool,
+                            &redis,
+                        )
+                        .await?
+                        .unwrap_or_default();
+
                     remove_documents(
-                        &project_item
-                            .versions
+                        &version_ids
                             .into_iter()
                             .map(|x| x.into())
                             .collect::<Vec<_>>(),
@@ -968,7 +986,7 @@ pub async fn dependency_list(
     .ok();
 
     if let Some(project) = result {
-        if !is_authorized(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -2097,6 +2115,11 @@ pub async fn project_delete(
         image_item::Image::remove(image.id, &mut transaction, &redis).await?;
     }
 
+    let version_ids: Vec<database::models::VersionId> =
+        database::models::Project::get_versions(project.inner.id, &mut *transaction, &redis)
+            .await?
+            .unwrap_or_default();
+
     sqlx::query!(
         "
         DELETE FROM collections_mods
@@ -2112,8 +2135,7 @@ pub async fn project_delete(
     transaction.commit().await?;
 
     remove_documents(
-        &project
-            .versions
+        &version_ids
             .into_iter()
             .map(|x| x.into())
             .collect::<Vec<_>>(),
@@ -2155,7 +2177,7 @@ pub async fn project_follow(
     let user_id: db_ids::UserId = user.id.into();
     let project_id: db_ids::ProjectId = result.inner.id;
 
-    if !is_authorized(&result.inner, &Some(user), &pool).await? {
+    if !is_visible_project(&result.inner, &Some(user), &pool).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -2279,3 +2301,88 @@ pub async fn project_unfollow(
         ))
     }
 }
+
+// pub async fn project_get_versions(
+//     req: HttpRequest,
+//     info: web::Path<(String,)>,
+//     pool: web::Data<PgPool>,
+//     redis: web::Data<RedisPool>,
+//     session_queue: web::Data<AuthQueue>,
+// ) -> Result<HttpResponse, ApiError> {
+//     project_get_versions_inner(req, info.into_inner().0, pool, redis, session_queue).await
+// }
+// pub async fn project_get_versions_inner(
+//     req: HttpRequest,
+//     info: String,
+//     pool: web::Data<PgPool>,
+//     redis: web::Data<RedisPool>,
+//     session_queue: web::Data<AuthQueue>,
+// ) -> Result<HttpResponse, ApiError> {
+//     let user_option = get_user_from_headers(
+//         &req,
+//         &**pool,
+//         &redis,
+//         &session_queue,
+//         Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
+//     )
+//     .await.ok().map(|x| x.1);
+
+//     let project = db_models::Project::get(&info, &**pool, &redis).await?.ok_or_else(|| {ApiError::NotFound})?;
+
+//     if !is_authorized(&project.inner, &user_option, &pool).await? {
+//         return Err(ApiError::NotFound);
+//     }
+
+//     let project_versions = db_models::Project::get_versions(project.inner.id, &**pool, &redis).await?.ok_or_else(|| {ApiError::NotFound})?;
+
+//     let versions_data = filter_authorized_versions(
+//         database::models::Version::get_many(&project_versions, &**pool, &redis).await?,
+//         &user_option,
+//         &pool,
+//     )
+//     .await?;
+
+//     Ok(HttpResponse::Ok().json(versions_data))
+// }
+
+// pub async fn projects_get_versions(
+//     req: HttpRequest,
+//     web::Query(ids): web::Query<ProjectIds>,
+//     pool: web::Data<PgPool>,
+//     redis: web::Data<RedisPool>,
+//     session_queue: web::Data<AuthQueue>,
+// ) -> Result<HttpResponse, ApiError> {
+//     let user_option = get_user_from_headers(
+//         &req,
+//         &**pool,
+//         &redis,
+//         &session_queue,
+//         Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
+//     )
+//     .await.ok().map(|x| x.1);
+
+//     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
+//     let projects_data = db_models::Project::get_many(&ids, &**pool, &redis).await?;
+//     let projects_data = filter_authorized_projects(
+//         projects_data,
+//         &user_option,
+//         &pool,
+//     ).await?;
+//     let allowed_project_ids = projects_data.iter().map(|x| x.id.into()).collect::<Vec<_>>();
+
+//     let project_versions = db_models::Project::get_versions_many(&allowed_project_ids, &**pool, &redis).await?;
+//     let all_version_ids = project_versions.into_iter().map(|x| x.1).flatten().collect::<Vec<_>>();
+//     let versions_data = database::models::Version::get_many(&all_version_ids, &**pool, &redis).await?;
+
+//     let versions_data = filter_authorized_versions(
+//         versions_data,
+//         &user_option,
+//         &pool,
+//     )
+//     .await?.into_iter().fold(HashMap::new(), |mut acc, version | {
+//         acc.entry(version.project_id).or_insert_with(Vec::new).push(version);
+//         acc
+//     });
+
+//     Ok(HttpResponse::Ok().json(versions_data))
+// }

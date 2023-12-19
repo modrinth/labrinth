@@ -1,4 +1,3 @@
-use crate::database::models::version_item;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
@@ -235,23 +234,19 @@ pub async fn project_create(
 
     // Call V3 project creation
     let response = v3::project_creation::project_create(
-        req,
+        req.clone(),
         payload,
         client.clone(),
         redis.clone(),
         file_host,
-        session_queue,
+        session_queue.clone(),
     )
     .await?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Project>(response).await {
         Ok(project) => {
-            let version_item = match project.versions.first() {
-                Some(vid) => version_item::Version::get((*vid).into(), &**client, &redis).await?,
-                None => None,
-            };
-            let project = LegacyProject::from(project, version_item);
+            let project = LegacyProject::from(req, client, redis, session_queue, project).await?;
             Ok(HttpResponse::Ok().json(project))
         }
         Err(response) => Ok(response),

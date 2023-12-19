@@ -91,6 +91,121 @@ impl ApiV3 {
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn get_project_versions_deserialized(
+        &self,
+        slug: &str,
+        game_versions: Option<Vec<String>>,
+        loaders: Option<Vec<String>>,
+        featured: Option<bool>,
+        version_type: Option<VersionType>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        pat: Option<&str>,
+    ) -> Vec<Version> {
+        let resp = self
+            .get_project_versions(
+                slug,
+                game_versions,
+                loaders,
+                featured,
+                version_type,
+                limit,
+                offset,
+                pat,
+            )
+            .await;
+        assert_eq!(resp.status(), 200);
+        test::read_body_json(resp).await
+    }
+
+    // TODO: Not all fields are tested currently in the v3 tests, only the v2-v3 relevant ones are
+    #[allow(clippy::too_many_arguments)]
+    pub async fn get_projects_versions(
+        &self,
+        ids_or_slugs: &[&str],
+        game_versions: Option<Vec<String>>,
+        loaders: Option<Vec<String>>,
+        featured: Option<bool>,
+        version_type: Option<VersionType>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
+        let mut query_string = String::new();
+
+        let ids_or_slugs = serde_json::to_string(ids_or_slugs).unwrap();
+        let ids_or_slugs = urlencoding::encode(&ids_or_slugs);
+
+        if let Some(game_versions) = game_versions {
+            query_string.push_str(&format!(
+                "&game_versions={}",
+                urlencoding::encode(&serde_json::to_string(&game_versions).unwrap())
+            ));
+        }
+        if let Some(loaders) = loaders {
+            query_string.push_str(&format!(
+                "&loaders={}",
+                urlencoding::encode(&serde_json::to_string(&loaders).unwrap())
+            ));
+        }
+        if let Some(featured) = featured {
+            query_string.push_str(&format!("&featured={}", featured));
+        }
+        if let Some(version_type) = version_type {
+            query_string.push_str(&format!("&version_type={}", version_type));
+        }
+        if let Some(limit) = limit {
+            let limit = limit.to_string();
+            query_string.push_str(&format!("&limit={}", limit));
+        }
+        if let Some(offset) = offset {
+            let offset = offset.to_string();
+            query_string.push_str(&format!("&offset={}", offset));
+        }
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/v3/projects_versions?ids={ids_or_slugs}{}",
+                query_string
+            ))
+            .append_pat(pat)
+            .to_request();
+        self.call(req).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn get_projects_versions_deserialized_common(
+        &self,
+        ids_or_slugs: &[&str],
+        game_versions: Option<Vec<String>>,
+        loaders: Option<Vec<String>>,
+        featured: Option<bool>,
+        version_type: Option<VersionType>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        pat: Option<&str>,
+    ) -> HashMap<ProjectId, Vec<CommonVersion>> {
+        let resp = self
+            .get_projects_versions(
+                ids_or_slugs,
+                game_versions,
+                loaders,
+                featured,
+                version_type,
+                limit,
+                offset,
+                pat,
+            )
+            .await;
+        assert_eq!(resp.status(), 200);
+        // First, deserialize to the non-common format (to test the response is valid for this api version)
+        let v: HashMap<ProjectId, Vec<Version>> = test::read_body_json(resp).await;
+        // Then, deserialize to the common format
+        let value = serde_json::to_value(v).unwrap();
+        serde_json::from_value(value).unwrap()
+    }
 }
 
 #[async_trait(?Send)]
