@@ -91,7 +91,7 @@ async fn test_get_team() {
 
         // An accepted member of the team should appear in the team members list
         // and should be able to see private data about the team
-        let resp = api.join_team(&alpha_team_id, FRIEND_USER_PAT).await;
+        let resp = api.join_team(alpha_team_id, FRIEND_USER_PAT).await;
         assert_eq!(resp.status(), 204);
 
         // Team check directly
@@ -108,9 +108,9 @@ async fn test_get_team() {
             .find(|x| x.user.id.0 == FRIEND_USER_ID_PARSED as u64)
             .unwrap();
         assert_eq!(user_user.user.id.0, USER_USER_ID_PARSED as u64);
-        assert!(!user_user.permissions.is_none()); // SHOULD see private data of the team
+        assert!(user_user.permissions.is_some()); // SHOULD see private data of the team
         assert_eq!(friend_user.user.id.0, FRIEND_USER_ID_PARSED as u64);
-        assert!(!friend_user.permissions.is_none());
+        assert!(friend_user.permissions.is_some());
 
         // team check via association
         let members = api
@@ -126,9 +126,9 @@ async fn test_get_team() {
             .find(|x| x.user.id.0 == FRIEND_USER_ID_PARSED as u64)
             .unwrap();
         assert_eq!(user_user.user.id.0, USER_USER_ID_PARSED as u64);
-        assert!(!user_user.permissions.is_none()); // SHOULD see private data of the team
+        assert!(user_user.permissions.is_some()); // SHOULD see private data of the team
         assert_eq!(friend_user.user.id.0, FRIEND_USER_ID_PARSED as u64);
-        assert!(!friend_user.permissions.is_none());
+        assert!(friend_user.permissions.is_some());
     })
     .await;
 }
@@ -233,9 +233,9 @@ async fn test_get_team_organization() {
             .find(|x| x.user.id.0 == FRIEND_USER_ID_PARSED as u64)
             .unwrap();
         assert_eq!(user_user.user.id.0, USER_USER_ID_PARSED as u64);
-        assert!(!user_user.permissions.is_none()); // SHOULD see private data of the team
+        assert!(user_user.permissions.is_some()); // SHOULD see private data of the team
         assert_eq!(friend_user.user.id.0, FRIEND_USER_ID_PARSED as u64);
-        assert!(!friend_user.permissions.is_none());
+        assert!(friend_user.permissions.is_some());
 
         // team check via association
         let members = api
@@ -251,9 +251,9 @@ async fn test_get_team_organization() {
             .find(|x| x.user.id.0 == FRIEND_USER_ID_PARSED as u64)
             .unwrap();
         assert_eq!(user_user.user.id.0, USER_USER_ID_PARSED as u64);
-        assert!(!user_user.permissions.is_none()); // SHOULD see private data of the team
+        assert!(user_user.permissions.is_some()); // SHOULD see private data of the team
         assert_eq!(friend_user.user.id.0, FRIEND_USER_ID_PARSED as u64);
-        assert!(!friend_user.permissions.is_none());
+        assert!(friend_user.permissions.is_some());
     })
     .await;
 }
@@ -453,7 +453,7 @@ async fn test_patch_organization_team_member() {
             .iter()
             .find(|x| x.user.id.0 == FRIEND_USER_ID_PARSED as u64)
             .unwrap();
-        assert_eq!(member.payouts_split.unwrap(), Decimal::from_f64_retain(51.0 as f64).unwrap());
+        assert_eq!(member.payouts_split.unwrap(), Decimal::from_f64_retain(51.0_f64).unwrap());
         assert_eq!(
             member.organization_permissions,
             Some(OrganizationPermissions::EDIT_MEMBER)
