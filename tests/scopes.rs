@@ -713,7 +713,6 @@ pub async fn version_write_scopes() {
         //  Delete version file
         // TODO: Should this scope be VERSION_DELETE?
         let req_gen = |pat: Option<String>| async move {
-            // test::TestRequest::delete().uri(&format!("/v3/version_file/{alpha_file_hash}"))
             api.remove_version_file(alpha_file_hash, pat.as_deref())
                 .await
             // Delete from alpha_version_id, as we uploaded to alpha_version_id and it needs another file
