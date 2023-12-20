@@ -4,7 +4,7 @@ use crate::common::{
         generate_random_name, ADMIN_USER_PAT, ENEMY_USER_ID_PARSED, ENEMY_USER_PAT,
         FRIEND_USER_ID_PARSED, MOD_USER_ID, MOD_USER_PAT, USER_USER_ID, USER_USER_ID_PARSED,
     },
-    dummy_data::DummyImage,
+    dummy_data::{DummyImage, DummyOrganizationZeta, DummyProjectAlpha, DummyProjectBeta},
 };
 use common::{
     api_v3::ApiV3,
@@ -279,17 +279,21 @@ async fn add_remove_organization_projects() {
 #[actix_rt::test]
 async fn add_remove_organization_project_ownership_to_user() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
-        let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-        let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
-        let alpha_team_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
-        let beta_team_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.team_id;
-        let zeta_team_id: &str = &test_env.dummy.as_ref().unwrap().organization_zeta.team_id;
-        let zeta_organization_id: &str = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .organization_zeta
-            .organization_id;
+        let DummyProjectAlpha {
+            project_id: alpha_project_id,
+            team_id: alpha_team_id,
+            ..
+        } = &test_env.dummy.project_alpha;
+        let DummyProjectBeta {
+            project_id: beta_project_id,
+            team_id: beta_team_id,
+            ..
+        } = &test_env.dummy.project_beta;
+        let DummyOrganizationZeta {
+            organization_id: zeta_organization_id,
+            team_id: zeta_team_id,
+            ..
+        } = &test_env.dummy.organization_zeta;
 
         // Add friend to alpha, beta, and zeta
         for (team, organization) in [
@@ -362,7 +366,7 @@ async fn add_remove_organization_project_ownership_to_user() {
             // Get and confirm it has been added
             let project = test_env.api.get_project_deserialized(project_id, pat).await;
             assert_eq!(
-                project.organization.unwrap().to_string(),
+                &project.organization.unwrap().to_string(),
                 zeta_organization_id
             );
         }
@@ -487,18 +491,21 @@ async fn add_remove_organization_project_ownership_to_user() {
 #[actix_rt::test]
 async fn delete_organization_means_all_projects_to_org_owner() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
-        let alpha_project_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.project_id;
-
-        let alpha_team_id: &str = &test_env.dummy.as_ref().unwrap().project_alpha.team_id;
-        let beta_team_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.team_id;
-        let beta_project_id: &str = &test_env.dummy.as_ref().unwrap().project_beta.project_id;
-        let zeta_team_id: &str = &test_env.dummy.as_ref().unwrap().organization_zeta.team_id;
-        let zeta_organization_id: &str = &test_env
-            .dummy
-            .as_ref()
-            .unwrap()
-            .organization_zeta
-            .organization_id;
+        let DummyProjectAlpha {
+            project_id: alpha_project_id,
+            team_id: alpha_team_id,
+            ..
+        } = &test_env.dummy.project_alpha;
+        let DummyProjectBeta {
+            project_id: beta_project_id,
+            team_id: beta_team_id,
+            ..
+        } = &test_env.dummy.project_beta;
+        let DummyOrganizationZeta {
+            organization_id: zeta_organization_id,
+            team_id: zeta_team_id,
+            ..
+        } = &test_env.dummy.organization_zeta;
 
         // Create random project from enemy, ensure it wont get affected
         let (enemy_project, _) = test_env
