@@ -46,6 +46,22 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
+    pub async fn get_organizations(
+        &self,
+        ids_or_titles: &[&str],
+        pat: Option<&str>,
+    ) -> ServiceResponse {
+        let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/v3/organizations?ids={}",
+                urlencoding::encode(&ids_or_titles)
+            ))
+            .append_pat(pat)
+            .to_request();
+        self.call(req).await
+    }
+
     pub async fn get_organization_projects(
         &self,
         id_or_title: &str,
