@@ -1,5 +1,5 @@
 use crate::auth::checks::is_visible_project;
-use crate::auth::{get_user_from_headers};
+use crate::auth::get_user_from_headers;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::team_item::TeamAssociationId;
 use crate::database::models::{Organization, Team, TeamMember, User};

@@ -1,8 +1,6 @@
 use super::ApiError;
 use crate::auth::checks::{filter_visible_versions, is_visible_version};
-use crate::auth::{
-    get_user_from_headers, filter_visible_projects,
-};
+use crate::auth::{filter_visible_projects, get_user_from_headers};
 use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
