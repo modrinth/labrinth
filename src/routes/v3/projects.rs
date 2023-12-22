@@ -2205,7 +2205,7 @@ pub async fn project_get_organization(
             ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
-    if is_authorized(&result.inner, &Some(user), &pool).await? {
+    if is_visible_project(&result.inner, &Some(user), &pool).await? {
         Err(ApiError::InvalidInput(
             "The specified project does not exist!".to_string(),
         ))
