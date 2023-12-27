@@ -839,7 +839,7 @@ async fn permissions_patch_project_v3() {
 // Not covered by PATCH /project
 #[actix_rt::test]
 async fn permissions_edit_details() {
-    with_test_environment_all(None, |test_env| async move {
+    with_test_environment_all(Some(10), |test_env| async move {
         let DummyProjectAlpha {
             project_id: alpha_project_id,
             team_id: alpha_team_id,
@@ -1233,8 +1233,20 @@ async fn align_search_projects() {
             // Aggregate project loader fields will not match exactly,
             // because the search will only return the matching version, whereas the project returns the aggregate.
             // So, we remove them from both.
+            let project_model_mrpack_loaders : Vec<_> = project_model.fields.remove("mrpack_loaders").unwrap_or_default().into_iter().filter_map(|v| v.as_str().map(|v|v.to_string())).collect();
             project_model.fields = HashMap::new();
             project.fields = HashMap::new();
+
+            // For a similar reason we also remove the mrpack loaders from the additional categories of the search model
+            // (Becasue they are not returned by the search)
+            // TODO: get models to match *exactly* without an additional project fetch,
+            // including these fields removed here
+            project.additional_categories = project
+                .additional_categories
+                .into_iter()
+                .filter(|x| !project_model_mrpack_loaders.contains(&x))
+                .collect();
+
 
             let project_model = serde_json::to_value(project_model).unwrap();
             let searched_project_serialized = serde_json::to_value(project).unwrap();

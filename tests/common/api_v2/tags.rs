@@ -70,7 +70,6 @@ impl ApiV2 {
 
     pub async fn get_donation_platforms_deserialized(&self) -> Vec<DonationPlatformQueryData> {
         let resp = self.get_donation_platforms().await;
-        println!("Response: {:?}", resp.response().body());
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }

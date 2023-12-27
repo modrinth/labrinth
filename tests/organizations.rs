@@ -185,7 +185,7 @@ async fn patch_organization() {
 // add/remove icon
 #[actix_rt::test]
 async fn add_remove_icon() {
-    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+    with_test_environment(Some(10), |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
         let zeta_organization_id = &test_env.dummy.organization_zeta.organization_id;
 
@@ -708,7 +708,7 @@ async fn permissions_patch_organization() {
 // Not covered by PATCH /organization
 #[actix_rt::test]
 async fn permissions_edit_details() {
-    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+    with_test_environment(Some(12), |test_env: TestEnvironment<ApiV3>| async move {
         let zeta_organization_id = &test_env.dummy.organization_zeta.organization_id;
         let zeta_team_id = &test_env.dummy.organization_zeta.team_id;
 

@@ -383,10 +383,7 @@ impl ApiProject for ApiV3 {
             .append_pat(pat)
             .to_request();
 
-        let t = self.call(req).await;
-        println!("Status: {}", t.status());
-        println!("respone Body: {:?}", t.response().body());
-        t
+        self.call(req).await
     }
 
     async fn remove_gallery_item(
