@@ -2,9 +2,9 @@
 pub mod local_import;
 
 use itertools::Itertools;
-use tokio::sync::Semaphore;
 use std::collections::HashMap;
-use std::sync::Arc;
+
+
 
 use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::to_base62;
@@ -302,9 +302,11 @@ async fn update_and_add_to_index(
     let displayable_task = index
         .set_displayed_attributes(new_displayed_attributes)
         .await?;
-    filterable_task.wait_for_completion(client, None, Some(TIMEOUT))
+    filterable_task
+        .wait_for_completion(client, None, Some(TIMEOUT))
         .await?;
-    displayable_task.wait_for_completion(client, None, Some(TIMEOUT))
+    displayable_task
+        .wait_for_completion(client, None, Some(TIMEOUT))
         .await?;
 
     info!("Adding to index.");

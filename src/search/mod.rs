@@ -76,7 +76,7 @@ impl SearchConfig {
         Self {
             address,
             key,
-            meta_namespace: meta_namespace.unwrap_or_else(|| "".to_string()),
+            meta_namespace: meta_namespace.unwrap_or_default(),
         }
     }
 
@@ -190,7 +190,10 @@ pub struct ResultSearchProject {
     pub loader_fields: HashMap<String, Vec<serde_json::Value>>,
 }
 
-pub fn get_sort_index<'a>(config : &'a SearchConfig, index: &str) -> Result<(String, [&'static str; 1]), SearchError> {
+pub fn get_sort_index(
+    config: &SearchConfig,
+    index: &str,
+) -> Result<(String, [&'static str; 1]), SearchError> {
     let projects_name = config.get_index_name("projects");
     let projects_filtered_name = config.get_index_name("projects_filtered");
     Ok(match index {
@@ -213,7 +216,7 @@ pub async fn search_for_project(
     let index = info.index.as_deref().unwrap_or("relevance");
     let limit = info.limit.as_deref().unwrap_or("10").parse()?;
 
-    let sort = get_sort_index(&config, index)?;
+    let sort = get_sort_index(config, index)?;
     let meilisearch_index = client.get_index(sort.0).await?;
 
     let mut filter_string = String::new();

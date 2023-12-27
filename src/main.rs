@@ -6,10 +6,10 @@ use labrinth::file_hosting::S3Host;
 use labrinth::ratelimit::errors::ARError;
 use labrinth::ratelimit::memory::{MemoryStore, MemoryStoreActor};
 use labrinth::ratelimit::middleware::RateLimiter;
+use labrinth::search;
 use labrinth::util::env::parse_var;
 use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
 use log::{error, info};
-use labrinth::search;
 use std::sync::Arc;
 
 #[derive(Clone)]

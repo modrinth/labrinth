@@ -1233,7 +1233,13 @@ async fn align_search_projects() {
             // Aggregate project loader fields will not match exactly,
             // because the search will only return the matching version, whereas the project returns the aggregate.
             // So, we remove them from both.
-            let project_model_mrpack_loaders : Vec<_> = project_model.fields.remove("mrpack_loaders").unwrap_or_default().into_iter().filter_map(|v| v.as_str().map(|v|v.to_string())).collect();
+            let project_model_mrpack_loaders: Vec<_> = project_model
+                .fields
+                .remove("mrpack_loaders")
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| v.as_str().map(|v| v.to_string()))
+                .collect();
             project_model.fields = HashMap::new();
             project.fields = HashMap::new();
 
@@ -1241,12 +1247,7 @@ async fn align_search_projects() {
             // (Becasue they are not returned by the search)
             // TODO: get models to match *exactly* without an additional project fetch,
             // including these fields removed here
-            project.additional_categories = project
-                .additional_categories
-                .into_iter()
-                .filter(|x| !project_model_mrpack_loaders.contains(&x))
-                .collect();
-
+            project.additional_categories.retain(|x| !project_model_mrpack_loaders.contains(x));
 
             let project_model = serde_json::to_value(project_model).unwrap();
             let searched_project_serialized = serde_json::to_value(project).unwrap();
