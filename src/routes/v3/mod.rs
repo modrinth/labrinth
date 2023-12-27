@@ -6,6 +6,7 @@ use serde_json::json;
 pub mod analytics_get;
 pub mod collections;
 pub mod images;
+pub mod minecraft;
 pub mod moderation;
 pub mod notifications;
 pub mod organizations;

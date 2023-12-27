@@ -192,6 +192,14 @@ generate_ids!(
     PayoutId
 );
 
+generate_ids!(
+    pub generate_minecraft_profile_id,
+    MinecraftProfileId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM shared_profiles WHERE id=$1)",
+    MinecraftProfileId
+);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Hash, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct UserId(pub i64);
@@ -310,6 +318,14 @@ pub struct OAuthAccessTokenId(pub i64);
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[sqlx(transparent)]
 pub struct PayoutId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct MinecraftProfileId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct MinecraftProfileLinkId(pub i64);
 
 use crate::models::ids;
 
@@ -462,5 +478,17 @@ impl From<ids::PayoutId> for PayoutId {
 impl From<PayoutId> for ids::PayoutId {
     fn from(id: PayoutId) -> Self {
         ids::PayoutId(id.0 as u64)
+    }
+}
+
+impl From<ids::MinecraftProfileId> for MinecraftProfileId {
+    fn from(id: ids::MinecraftProfileId) -> Self {
+        MinecraftProfileId(id.0 as i64)
+    }
+}
+
+impl From<MinecraftProfileId> for ids::MinecraftProfileId {
+    fn from(id: MinecraftProfileId) -> Self {
+        ids::MinecraftProfileId(id.0 as u64)
     }
 }
