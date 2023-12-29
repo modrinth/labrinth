@@ -3,6 +3,7 @@ CREATE TABLE shared_profiles (
     name varchar(255) NOT NULL,
     owner_id bigint NOT NULL,
     icon_url varchar(255),
+    color integer NULL,
     updated timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

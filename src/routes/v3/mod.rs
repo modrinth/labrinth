@@ -32,6 +32,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(analytics_get::config)
             .configure(collections::config)
             .configure(images::config)
+            .configure(minecraft::profiles::config)
             .configure(moderation::config)
             .configure(notifications::config)
             .configure(organizations::config)

@@ -8,6 +8,7 @@ use dashmap::DashMap;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 
+// Hash and install path
 type Override = (String, PathBuf);
 
 pub const MINECRAFT_PROFILES_NAMESPACE: &str = "minecraft_profiles";
@@ -22,8 +23,11 @@ pub struct MinecraftProfile {
     pub updated: DateTime<Utc>,
 
     pub game_version_id: LoaderFieldEnumValueId,
-    pub loader_id: LoaderId,
     pub loader_version: String,
+
+    // These represent the same loader
+    pub loader_id: LoaderId,
+    pub loader : String,
 
     pub versions: Vec<VersionId>,
     pub overrides: Vec<Override>,
@@ -201,11 +205,14 @@ impl MinecraftProfile {
             )
             .await?;
 
+            // One to many for shared_profiles to loaders, so can safely group by shared_profile_id
             let db_profiles: Vec<MinecraftProfile> = sqlx::query!(
                 "
-                SELECT id, name, owner_id, icon_url, created, updated, game_version_id, loader_id, loader_version
+                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version
                 FROM shared_profiles sp                
+                LEFT JOIN loaders l ON l.id = sp.loader_id
                 WHERE sp.id = ANY($1)
+                GROUP BY sp.id, l.id
                 ",
                 &remaining_ids.iter().map(|x| x.0).collect::<Vec<i64>>()
             )
@@ -217,14 +224,15 @@ impl MinecraftProfile {
                         let files = shared_profiles_mods.1.get(&id).map(|x| x.value().clone()).unwrap_or_default();
                         MinecraftProfile {
                             id,
-                            name: m.name.clone(),
-                            icon_url: m.icon_url.clone(),
+                            name: m.name,
+                            icon_url: m.icon_url,
                             updated: m.updated,
                             created: m.created,
                             owner_id: UserId(m.owner_id),
                             game_version_id: LoaderFieldEnumValueId(m.game_version_id),
                             loader_id: LoaderId(m.loader_id),
-                            loader_version: m.loader_version.clone(),
+                            loader_version: m.loader_version,
+                            loader: m.loader,
                             versions,
                             overrides: files
                         }
@@ -273,6 +281,32 @@ pub struct MinecraftProfileLink {
 }
 
 impl MinecraftProfileLink {
+    pub async fn insert(
+        &self,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        sqlx::query!(
+            "
+            INSERT INTO shared_profiles_links (
+                id, link, shared_profile_id, created, expires, uses_remaining
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6
+            )
+            ",
+            self.id.0,
+            self.link_identifier,
+            self.shared_profile_id.0,
+            self.created,
+            self.expires,
+            self.uses_remaining,
+        )
+        .execute(&mut **transaction)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn list<'a, 'b, E>(
         shared_profile_id: MinecraftProfileId,
         executor: E,
@@ -305,6 +339,37 @@ impl MinecraftProfileLink {
         .await?;
 
         Ok(links)
+    }
+
+    pub async fn get<'a, 'b, E>(
+        id: MinecraftProfileLinkId,
+        executor: E,
+    ) -> Result<Option<MinecraftProfileLink>, DatabaseError>
+    where
+        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
+    {
+        let mut exec = executor.acquire().await?;
+
+        let link = sqlx::query!(
+            "
+            SELECT id, link, shared_profile_id, created, expires, uses_remaining
+            FROM shared_profiles_links spl
+            WHERE spl.id = $1
+            ",
+            id.0
+        )
+        .fetch_optional(&mut *exec)
+        .await?
+        .map(|m| MinecraftProfileLink {
+            id: MinecraftProfileLinkId(m.id),
+            link_identifier: m.link,
+            shared_profile_id: MinecraftProfileId(m.shared_profile_id),
+            created: m.created,
+            expires: m.expires,
+            uses_remaining: m.uses_remaining,
+        });
+
+        Ok(link)
     }
 
     pub async fn get_url<'a, 'b, E>(
@@ -342,7 +407,8 @@ impl MinecraftProfileLink {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MinecraftProfileLinkToken {
     pub token: String,
-    pub shared_profiles_links_id: MinecraftProfileId,
+    pub shared_profiles_links_id: MinecraftProfileLinkId,
+    pub user_id: UserId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
 }
@@ -355,14 +421,15 @@ impl MinecraftProfileLinkToken {
         sqlx::query!(
             "
             INSERT INTO cdn_auth_tokens (
-                token, shared_profiles_links_id, created, expires
+                token, shared_profiles_links_id, user_id, created, expires
             )
             VALUES (
-                $1, $2, $3, $4
+                $1, $2, $3, $4, $5
             )
             ",
             self.token,
             self.shared_profiles_links_id.0,
+            self.user_id.0,
             self.created,
             self.expires,
         )
@@ -383,7 +450,7 @@ impl MinecraftProfileLinkToken {
 
         let token = sqlx::query!(
             "
-            SELECT token, shared_profiles_links_id, created, expires
+            SELECT token, user_id, shared_profiles_links_id, created, expires
             FROM cdn_auth_tokens cat
             WHERE cat.token = $1
             ",
@@ -393,7 +460,8 @@ impl MinecraftProfileLinkToken {
         .await?
         .map(|m| MinecraftProfileLinkToken {
             token: m.token,
-            shared_profiles_links_id: MinecraftProfileId(m.shared_profiles_links_id),
+            user_id: UserId(m.user_id),
+            shared_profiles_links_id: MinecraftProfileLinkId(m.shared_profiles_links_id),
             created: m.created,
             expires: m.expires,
         });
@@ -401,6 +469,7 @@ impl MinecraftProfileLinkToken {
         Ok(token)
     }
 
+    // Get existing token for link and user
     pub async fn get_from_link_user<'a, 'b, E>(
         profile_link_id: MinecraftProfileLinkId,
         user_id: UserId,
@@ -413,7 +482,7 @@ impl MinecraftProfileLinkToken {
 
         let token = sqlx::query!(
             "
-            SELECT cat.token, cat.shared_profiles_links_id, cat.created, cat.expires
+            SELECT cat.token, cat.user_id, cat.shared_profiles_links_id, cat.created, cat.expires
             FROM cdn_auth_tokens cat
             INNER JOIN shared_profiles_links spl ON spl.id = cat.shared_profiles_links_id
             WHERE spl.id = $1 AND spl.shared_profile_id IN (
@@ -427,7 +496,8 @@ impl MinecraftProfileLinkToken {
         .await?
         .map(|m| MinecraftProfileLinkToken {
             token: m.token,
-            shared_profiles_links_id: MinecraftProfileId(m.shared_profiles_links_id),
+            user_id: UserId(m.user_id),
+            shared_profiles_links_id: MinecraftProfileLinkId(m.shared_profiles_links_id),
             created: m.created,
             expires: m.expires,
         });
@@ -468,4 +538,10 @@ impl MinecraftProfileLinkToken {
 
         Ok(())
     }
+}
+
+pub struct MinecraftProfileOverride {
+    pub file_hash: String,
+    pub url: String,
+    pub install_path: PathBuf,
 }

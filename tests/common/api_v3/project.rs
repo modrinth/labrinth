@@ -384,8 +384,6 @@ impl ApiProject for ApiV3 {
             .to_request();
 
         let t = self.call(req).await;
-        println!("Status: {}", t.status());
-        println!("respone Body: {:?}", t.response().body());
         t
     }
 

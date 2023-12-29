@@ -10,6 +10,7 @@ use labrinth::LabrinthConfig;
 use std::rc::Rc;
 
 pub mod collections;
+pub mod minecraft_profile;
 pub mod oauth;
 pub mod oauth_clients;
 pub mod organization;

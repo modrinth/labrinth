@@ -200,6 +200,14 @@ generate_ids!(
     MinecraftProfileId
 );
 
+generate_ids!(
+    pub generate_minecraft_profile_link_id,
+    MinecraftProfileLinkId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM shared_profiles_links WHERE id=$1)",
+    MinecraftProfileLinkId
+);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Hash, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct UserId(pub i64);

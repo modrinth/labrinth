@@ -6,10 +6,13 @@ use serde::{Deserialize, Serialize};
 use crate::{
     database::{
         self,
-        models::{LoaderFieldEnumValueId, LoaderId},
+        models::LoaderFieldEnumValueId,
     },
     models::ids::{Base62Id, UserId, VersionId},
 };
+
+// How many uses should a share link have before it becomes invalid?
+pub const DEFAULT_STARTING_LINK_USES: u32 = 5;
 
 /// The ID of a specific profile, encoded as base62 for usage in the API
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -34,8 +37,8 @@ pub struct MinecraftProfile {
     /// The icon of the project.
     pub icon_url: Option<String>,
 
-    /// The loader id
-    pub loader_id: LoaderId,
+    /// The loader
+    pub loader: String,
     /// The loader version
     pub loader_version: String,
     /// Minecraft game version id
@@ -57,7 +60,7 @@ impl From<database::models::minecraft_profile_item::MinecraftProfile> for Minecr
             created: profile.created,
             updated: profile.updated,
             icon_url: profile.icon_url,
-            loader_id: profile.loader_id.into(),
+            loader: profile.loader,
             loader_version: profile.loader_version,
             game_version_id: profile.game_version_id.into(),
             versions: profile.versions.into_iter().map(Into::into).collect(),
@@ -66,6 +69,41 @@ impl From<database::models::minecraft_profile_item::MinecraftProfile> for Minecr
                 .into_iter()
                 .map(|(_, v)| v.into())
                 .collect(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MinecraftProfileShareLink {
+    pub url_identifier: String,
+    pub url: String, // Includes the url identifier, intentionally redundant
+    pub profile_id: MinecraftProfileId,
+    pub uses_remaining: u32,
+    pub created: DateTime<Utc>,
+    pub expires: DateTime<Utc>,
+}
+
+impl From<database::models::minecraft_profile_item::MinecraftProfileLink>
+    for MinecraftProfileShareLink
+{
+    fn from(link: database::models::minecraft_profile_item::MinecraftProfileLink) -> Self {
+
+        // Generate URL for easy access
+        let profile_id : MinecraftProfileId = link.shared_profile_id.into();
+        let url = format!(
+            "{}/v3/minecraft/profile/{}/download/{}",
+            dotenvy::var("SELF_ADDR").unwrap(),
+            profile_id,
+            link.link_identifier
+        );
+
+        Self {
+            url_identifier: link.link_identifier,
+            url,
+            profile_id,
+            uses_remaining: link.uses_remaining as u32,
+            created: link.created,
+            expires: link.expires,
         }
     }
 }
