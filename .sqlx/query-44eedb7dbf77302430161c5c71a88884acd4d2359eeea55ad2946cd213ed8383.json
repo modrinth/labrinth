@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT token, user_id, shared_profiles_links_id, created, expires\n            FROM cdn_auth_tokens cat\n            WHERE cat.token = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "shared_profiles_links_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "created",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "expires",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "44eedb7dbf77302430161c5c71a88884acd4d2359eeea55ad2946cd213ed8383"
+}

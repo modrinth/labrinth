@@ -27,7 +27,7 @@ pub struct MinecraftProfile {
 
     // These represent the same loader
     pub loader_id: LoaderId,
-    pub loader : String,
+    pub loader: String,
 
     pub versions: Vec<VersionId>,
     pub overrides: Vec<Override>,

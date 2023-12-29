@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT shared_profile_id, version_id, file_hash, install_path\n                FROM shared_profiles_mods spm\n                WHERE spm.shared_profile_id = ANY($1)\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "shared_profile_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "version_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "file_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "install_path",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "196bbbebb943163d6c6fad254a4fb177b339f6d83e7053102d71edc3c4df72a3"
+}

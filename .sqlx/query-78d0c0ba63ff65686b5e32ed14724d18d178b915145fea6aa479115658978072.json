@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE shared_profiles\n        SET icon_url = NULL, color = NULL\n        WHERE (id = $1)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "78d0c0ba63ff65686b5e32ed14724d18d178b915145fea6aa479115658978072"
+}

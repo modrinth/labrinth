@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO shared_profiles_mods (shared_profile_id, version_id) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "11b484208e8a2344a20a05a5427158d139e953eb3456c1fe76d9423cfa7ec631"
+}

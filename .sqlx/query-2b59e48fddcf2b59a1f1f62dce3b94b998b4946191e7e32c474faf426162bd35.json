@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO shared_profiles_mods (shared_profile_id, file_hash, install_path)\n            SELECT * FROM UNNEST($1::bigint[], $2::text[], $3::text[])\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8Array",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2b59e48fddcf2b59a1f1f62dce3b94b998b4946191e7e32c474faf426162bd35"
+}

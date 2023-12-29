@@ -383,8 +383,8 @@ impl ApiProject for ApiV3 {
             .append_pat(pat)
             .to_request();
 
-        let t = self.call(req).await;
-        t
+        
+        self.call(req).await
     }
 
     async fn remove_gallery_item(

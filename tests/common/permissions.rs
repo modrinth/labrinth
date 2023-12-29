@@ -1109,7 +1109,7 @@ async fn get_project_permissions(
         .await;
     let permissions = members
         .iter()
-        .find(|member| &member.user.id.to_string() == user_id)
+        .find(|member| member.user.id.to_string() == user_id)
         .and_then(|member| member.permissions);
 
     let organization_members = match organization {
@@ -1123,7 +1123,7 @@ async fn get_project_permissions(
     let organization_default_project_permissions = match organization_members {
         Some(members) => members
             .iter()
-            .find(|member| &member.user.id.to_string() == user_id)
+            .find(|member| member.user.id.to_string() == user_id)
             .and_then(|member| member.permissions),
         None => None,
     };

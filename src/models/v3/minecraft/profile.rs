@@ -4,10 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    database::{
-        self,
-        models::LoaderFieldEnumValueId,
-    },
+    database::{self, models::LoaderFieldEnumValueId},
     models::ids::{Base62Id, UserId, VersionId},
 };
 
@@ -62,12 +59,12 @@ impl From<database::models::minecraft_profile_item::MinecraftProfile> for Minecr
             icon_url: profile.icon_url,
             loader: profile.loader,
             loader_version: profile.loader_version,
-            game_version_id: profile.game_version_id.into(),
+            game_version_id: profile.game_version_id,
             versions: profile.versions.into_iter().map(Into::into).collect(),
             override_install_paths: profile
                 .overrides
                 .into_iter()
-                .map(|(_, v)| v.into())
+                .map(|(_, v)| v)
                 .collect(),
         }
     }
@@ -87,9 +84,8 @@ impl From<database::models::minecraft_profile_item::MinecraftProfileLink>
     for MinecraftProfileShareLink
 {
     fn from(link: database::models::minecraft_profile_item::MinecraftProfileLink) -> Self {
-
         // Generate URL for easy access
-        let profile_id : MinecraftProfileId = link.shared_profile_id.into();
+        let profile_id: MinecraftProfileId = link.shared_profile_id.into();
         let url = format!(
             "{}/v3/minecraft/profile/{}/download/{}",
             dotenvy::var("SELF_ADDR").unwrap(),

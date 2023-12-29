@@ -4,20 +4,27 @@ use actix_web::{
 };
 use bytes::Bytes;
 use itertools::Itertools;
-use labrinth::{models::minecraft::profile::{MinecraftProfile, MinecraftProfileShareLink}, util::actix::{MultipartSegment, MultipartSegmentData, AppendsMultipart}, routes::v3::minecraft::profiles::ProfileDownload};
+use labrinth::{
+    models::minecraft::profile::{MinecraftProfile, MinecraftProfileShareLink},
+    routes::v3::minecraft::profiles::ProfileDownload,
+    util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData},
+};
 use serde_json::json;
 
-use crate::common::{api_common::{request_data::ImageData, Api, AppendsOptionalPat}, dummy_data::TestFile};
+use crate::common::{
+    api_common::{request_data::ImageData, Api, AppendsOptionalPat},
+    dummy_data::TestFile,
+};
 
 use super::ApiV3;
 pub struct MinecraftProfileOverride {
     pub file_name: String,
     pub install_path: String,
-    pub bytes: Vec<u8>
+    pub bytes: Vec<u8>,
 }
 
 impl MinecraftProfileOverride {
-    pub fn new(test_file : TestFile, install_path : &str) -> Self {
+    pub fn new(test_file: TestFile, install_path: &str) -> Self {
         Self {
             file_name: test_file.filename(),
             install_path: install_path.to_string(),
@@ -25,7 +32,6 @@ impl MinecraftProfileOverride {
         }
     }
 }
-
 
 impl ApiV3 {
     pub async fn create_minecraft_profile(
@@ -81,7 +87,11 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_minecraft_profile_deserialized(&self, id: &str, pat: Option<&str>) -> MinecraftProfile {
+    pub async fn get_minecraft_profile_deserialized(
+        &self,
+        id: &str,
+        pat: Option<&str>,
+    ) -> MinecraftProfile {
         let resp = self.get_minecraft_profile(id, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
@@ -95,7 +105,10 @@ impl ApiV3 {
     ) -> ServiceResponse {
         if let Some(icon) = icon {
             let req = TestRequest::patch()
-                .uri(&format!("/v3/minecraft/profile/{}/icon?ext={}", id, icon.extension))
+                .uri(&format!(
+                    "/v3/minecraft/profile/{}/icon?ext={}",
+                    id, icon.extension
+                ))
                 .append_pat(pat)
                 .set_payload(Bytes::from(icon.icon))
                 .to_request();
@@ -116,7 +129,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let mut data = Vec::new();
-        let mut multipart_segments : Vec<MultipartSegment> = Vec::new();
+        let mut multipart_segments: Vec<MultipartSegment> = Vec::new();
         for override_ in overrides {
             data.push(serde_json::json!({
                 "file_name": override_.file_name,
@@ -134,7 +147,9 @@ impl ApiV3 {
             filename: None,
             content_type: Some("application/json".to_string()),
             data: MultipartSegmentData::Text(serde_json::to_string(&data).unwrap()),
-        }).chain(multipart_segments.into_iter()).collect_vec();
+        })
+        .chain(multipart_segments.into_iter())
+        .collect_vec();
 
         let req = TestRequest::post()
             .uri(&format!("/v3/minecraft/profile/{}/override", id))
@@ -151,7 +166,10 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::delete()
-            .uri(&format!("/v3/minecraft/profile/{}/overrides/{}", id, file_name))
+            .uri(&format!(
+                "/v3/minecraft/profile/{}/overrides/{}",
+                id, file_name
+            ))
             .append_pat(pat)
             .to_request();
         self.call(req).await
@@ -183,10 +201,13 @@ impl ApiV3 {
         &self,
         profile_id: &str,
         url_identifier: &str,
-        pat: Option<&str>
+        pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/minecraft/profile/{}/share/{}", profile_id, url_identifier))
+            .uri(&format!(
+                "/v3/minecraft/profile/{}/share/{}",
+                profile_id, url_identifier
+            ))
             .append_pat(pat)
             .to_request();
         self.call(req).await
@@ -196,12 +217,14 @@ impl ApiV3 {
         &self,
         profile_id: &str,
         url_identifier: &str,
-        pat: Option<&str>
+        pat: Option<&str>,
     ) -> MinecraftProfileShareLink {
-        let resp = self.get_minecraft_profile_share_link(profile_id, url_identifier, pat).await;
+        let resp = self
+            .get_minecraft_profile_share_link(profile_id, url_identifier, pat)
+            .await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
-    }    
+    }
 
     pub async fn download_minecraft_profile(
         &self,
@@ -209,21 +232,24 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/minecraft/profile/{}/download", url_identifier))
+            .uri(&format!(
+                "/v3/minecraft/profile/{}/download",
+                url_identifier
+            ))
             .append_pat(pat)
             .to_request();
         self.call(req).await
     }
 
-     pub async fn download_minecraft_profile_deserialized(
+    pub async fn download_minecraft_profile_deserialized(
         &self,
         url_identifier: &str,
         pat: Option<&str>,
-     )-> ProfileDownload {
+    ) -> ProfileDownload {
         let resp = self.download_minecraft_profile(url_identifier, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
-     }
+    }
 
     pub async fn check_download_minecraft_profile_token(
         &self,
@@ -231,12 +257,12 @@ impl ApiV3 {
         url: &str, // Full URL, the route will parse it
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/minecraft/check_token?url={url}", url=urlencoding::encode(url)))
+            .uri(&format!(
+                "/v3/minecraft/check_token?url={url}",
+                url = urlencoding::encode(url)
+            ))
             .append_header(("Authorization", token))
             .to_request();
         self.call(req).await
     }
-
-
 }
-

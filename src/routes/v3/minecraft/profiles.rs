@@ -2,21 +2,24 @@ use crate::auth::checks::filter_visible_version_ids;
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
 use crate::database::models::{
-    generate_minecraft_profile_id, minecraft_profile_item, version_item, generate_minecraft_profile_link_id,
+    generate_minecraft_profile_id, generate_minecraft_profile_link_id, minecraft_profile_item,
+    version_item,
 };
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::VersionId;
-use crate::models::minecraft::profile::{MinecraftProfile, MinecraftProfileShareLink, MinecraftProfileId, DEFAULT_STARTING_LINK_USES};
+use crate::models::minecraft::profile::{
+    MinecraftProfile, MinecraftProfileId, MinecraftProfileShareLink, DEFAULT_STARTING_LINK_USES,
+};
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::CreateError;
 use crate::routes::ApiError;
-use crate::util::routes::{read_from_payload, read_from_field};
+use crate::util::routes::{read_from_field, read_from_payload};
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
-use actix_multipart::{Multipart, Field};
+use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::Utc;
@@ -34,23 +37,28 @@ use validator::Validate;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("minecraft")
-        .route("profile", web::post().to(profile_create))
-        .route("check_token", web::get().to(profile_token_check))
-        .service(
-            web::scope("profile")
-                .route("{id}", web::get().to(profile_get))
-                .route("{id}", web::patch().to(profile_edit)) 
-                .route("{id}", web::delete().to(profile_delete))
-                .route("{id}/override", web::post().to(minecraft_profile_add_override))
-                .route("{id}/share", web::get().to(profile_share))
-                .route("{id}/share/{url_identifier}", web::get().to(profile_link_get))
-                .route("{id}/download", web::get().to(profile_download))
-                .route("{id}/icon", web::patch().to(profile_icon_edit))
-                .route("{id}/icon", web::delete().to(delete_profile_icon))
-        )
+            .route("profile", web::post().to(profile_create))
+            .route("check_token", web::get().to(profile_token_check))
+            .service(
+                web::scope("profile")
+                    .route("{id}", web::get().to(profile_get))
+                    .route("{id}", web::patch().to(profile_edit))
+                    .route("{id}", web::delete().to(profile_delete))
+                    .route(
+                        "{id}/override",
+                        web::post().to(minecraft_profile_add_override),
+                    )
+                    .route("{id}/share", web::get().to(profile_share))
+                    .route(
+                        "{id}/share/{url_identifier}",
+                        web::get().to(profile_link_get),
+                    )
+                    .route("{id}/download", web::get().to(profile_download))
+                    .route("{id}/icon", web::patch().to(profile_icon_edit))
+                    .route("{id}/icon", web::delete().to(delete_profile_icon)),
+            ),
     );
 }
-
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct ProfileCreateData {
@@ -67,7 +75,7 @@ pub struct ProfileCreateData {
     // The game version string (parsed to a game version)
     pub game_version: String,
     // The list of versions to include in the profile (does not include overrides)
-    pub versions: Vec<VersionId>, 
+    pub versions: Vec<VersionId>,
 }
 
 // Create a new minecraft profile
@@ -112,11 +120,15 @@ pub async fn profile_create(
 
     let mut transaction = client.begin().await?;
 
-    let profile_id: database::models::MinecraftProfileId = generate_minecraft_profile_id(&mut transaction)
-        .await?
-        .into();
+    let profile_id: database::models::MinecraftProfileId =
+        generate_minecraft_profile_id(&mut transaction)
+            .await?;
 
-    let version_ids = profile_create_data.versions.into_iter().map(|x| x.into()).collect::<Vec<_>>();
+    let version_ids = profile_create_data
+        .versions
+        .into_iter()
+        .map(|x| x.into())
+        .collect::<Vec<_>>();
     let versions = version_item::Version::get_many(&version_ids, &**client, &redis)
         .await?
         .into_iter()
@@ -124,7 +136,13 @@ pub async fn profile_create(
         .collect::<Vec<_>>();
 
     // Filters versions authorized to see
-    let versions = filter_visible_version_ids(versions.iter().collect_vec(), &Some(current_user.clone()), &client, &redis).await
+    let versions = filter_visible_version_ids(
+        versions.iter().collect_vec(),
+        &Some(current_user.clone()),
+        &client,
+        &redis,
+    )
+    .await
     .map_err(|_| CreateError::InvalidInput("Could not fetch submitted version ids".to_string()))?;
 
     let profile_builder_actual = minecraft_profile_item::MinecraftProfile {
@@ -172,7 +190,7 @@ pub async fn profiles_get(
             .await?;
     let profiles = profiles_data
         .into_iter()
-        .map(|data| MinecraftProfile::from(data))
+        .map(MinecraftProfile::from)
         .collect::<Vec<_>>();
 
     Ok(HttpResponse::Ok().json(profiles))
@@ -241,13 +259,15 @@ pub async fn profile_edit(
     )
     .await?;
 
-
     // Confirm this is our project, then if so, edit
     let id = database::models::MinecraftProfileId(parse_base62(&string)? as i64);
     let mut transaction = pool.begin().await?;
-    let profile_data =
-        database::models::minecraft_profile_item::MinecraftProfile::get(id, &mut *transaction, &redis)
-            .await?;
+    let profile_data = database::models::minecraft_profile_item::MinecraftProfile::get(
+        id,
+        &mut *transaction,
+        &redis,
+    )
+    .await?;
 
     if let Some(data) = profile_data {
         if data.owner_id == user_option.1.id.into() {
@@ -288,11 +308,16 @@ pub async fn profile_edit(
                 .await?;
             }
             if let Some(game_version) = edit_data.game_version {
-                let new_game_id = database::models::legacy_loader_fields::MinecraftGameVersion::list(&**pool, &redis)
+                let new_game_id =
+                    database::models::legacy_loader_fields::MinecraftGameVersion::list(
+                        &**pool, &redis,
+                    )
                     .await?
                     .into_iter()
                     .find(|x| x.version == game_version)
-                    .ok_or_else(|| ApiError::InvalidInput("Invalid Minecraft game version".to_string()))?
+                    .ok_or_else(|| {
+                        ApiError::InvalidInput("Invalid Minecraft game version".to_string())
+                    })?
                     .id;
 
                 sqlx::query!(
@@ -305,16 +330,24 @@ pub async fn profile_edit(
             }
             if let Some(versions) = edit_data.versions {
                 let version_ids = versions.into_iter().map(|x| x.into()).collect::<Vec<_>>();
-                let versions = version_item::Version::get_many(&version_ids, &mut *transaction
-                , &redis)
-                    .await?
-                    .into_iter()
-                    .map(|x| x.inner)
-                    .collect::<Vec<_>>();
-                    
+                let versions =
+                    version_item::Version::get_many(&version_ids, &mut *transaction, &redis)
+                        .await?
+                        .into_iter()
+                        .map(|x| x.inner)
+                        .collect::<Vec<_>>();
+
                 // Filters versions authorized to see
-                let versions = filter_visible_version_ids(versions.iter().collect_vec(), &Some(user_option.1.clone()), &pool, &redis).await
-                .map_err(|_| ApiError::InvalidInput("Could not fetch submitted version ids".to_string()))?;
+                let versions = filter_visible_version_ids(
+                    versions.iter().collect_vec(),
+                    &Some(user_option.1.clone()),
+                    &pool,
+                    &redis,
+                )
+                .await
+                .map_err(|_| {
+                    ApiError::InvalidInput("Could not fetch submitted version ids".to_string())
+                })?;
 
                 // Remove all shared profile mods of this profile where version_id is set
                 sqlx::query!(
@@ -334,20 +367,18 @@ pub async fn profile_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
-
             }
             transaction.commit().await?;
             minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
             return Ok(HttpResponse::Ok().finish());
+        } else {
+            return Err(ApiError::CustomAuthentication(
+                "You are not the owner of this profile".to_string(),
+            ));
         }
-    
-    else {
-        return Err(ApiError::CustomAuthentication("You are not the owner of this profile".to_string()));
-    }
     }
     Err(ApiError::NotFound)
 }
-
 
 // Delete a minecraft profile
 pub async fn profile_delete(
@@ -377,14 +408,18 @@ pub async fn profile_delete(
     if let Some(data) = profile_data {
         if data.owner_id == user_option.1.id.into() {
             let mut transaction = pool.begin().await?;
-            database::models::minecraft_profile_item::MinecraftProfile::remove(data.id, &mut transaction, &redis)
-                .await?;
+            database::models::minecraft_profile_item::MinecraftProfile::remove(
+                data.id,
+                &mut transaction,
+                &redis,
+            )
+            .await?;
             transaction.commit().await?;
             minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
             return Ok(HttpResponse::Ok().finish());
         }
     }
-    
+
     Err(ApiError::NotFound)
 }
 
@@ -416,17 +451,15 @@ pub async fn profile_share(
     let profile_data =
         database::models::minecraft_profile_item::MinecraftProfile::get(id, &**pool, &redis)
             .await?;
-        
+
     if let Some(data) = profile_data {
         if data.owner_id == user_option.1.id.into() {
-
             // Generate a share link identifier
             let identifier = ChaCha20Rng::from_entropy()
                 .sample_iter(&Alphanumeric)
                 .take(8)
                 .map(char::from)
                 .collect::<String>();
-
 
             // Generate a new share link id
             let mut transaction = pool.begin().await?;
@@ -454,7 +487,7 @@ pub async fn profile_share(
 // This is used by the launcher to check if the link is still valid, expired, or has uses left.
 pub async fn profile_link_get(
     req: HttpRequest,
-    info: web::Path<(String,String)>,
+    info: web::Path<(String, String)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -470,21 +503,22 @@ pub async fn profile_link_get(
     )
     .await?;
 
-
     // Confirm this is our project, then if so, share
     let link_data = database::models::minecraft_profile_item::MinecraftProfileLink::get_url(
         &url_identifier,
         &**pool,
     )
-    .await?.ok_or_else(|| ApiError::NotFound)?;
+    .await?
+    .ok_or_else(|| ApiError::NotFound)?;
 
     let data = database::models::minecraft_profile_item::MinecraftProfile::get(
         link_data.shared_profile_id,
         &**pool,
         &redis,
     )
-    .await?.ok_or_else(|| ApiError::NotFound)?;
-    
+    .await?
+    .ok_or_else(|| ApiError::NotFound)?;
+
     // Only view link meta information if the user is the owner of the profile
     if data.owner_id == user_option.1.id.into() {
         Ok(HttpResponse::Ok().json(MinecraftProfileShareLink::from(link_data)))
@@ -492,7 +526,6 @@ pub async fn profile_link_get(
         Err(ApiError::NotFound)
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 pub struct ProfileDownload {
@@ -610,7 +643,11 @@ pub async fn profile_download(
     };
     token.insert(&mut transaction).await?;
 
-    let override_cdns = profile.overrides.into_iter().map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1)).collect::<Vec<_>>();
+    let override_cdns = profile
+        .overrides
+        .into_iter()
+        .map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1))
+        .collect::<Vec<_>>();
     transaction.commit().await?;
     minecraft_profile_item::MinecraftProfile::clear_cache(profile.id, &redis).await?;
 
@@ -622,22 +659,22 @@ pub async fn profile_download(
 }
 
 #[derive(Deserialize)]
- pub struct TokenUrl {
+pub struct TokenUrl {
     pub url: String, // TODO: could take a vec instead?
- }
+}
 
 // Used by cloudflare to check headers and permit CDN downloads for a pack
 // Checks headers for 'authorization: xxyyzz' where xxyyzz is a valid token
 // that allows for downloading of url 'url'
 pub async fn profile_token_check(
     req: HttpRequest,
-    file_url : web::Query<TokenUrl>,
+    file_url: web::Query<TokenUrl>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let cdn_url = dotenvy::var("CDN_URL")?;
     let file_url = file_url.into_inner().url;
-    
+
     // Extract token from 'authorization' of headers
     let token = req
         .headers()
@@ -646,12 +683,15 @@ pub async fn profile_token_check(
         .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
     let token = database::models::minecraft_profile_item::MinecraftProfileLinkToken::get_token(
-        &token, &**pool,
+        token, &**pool,
     )
-    .await?.ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
+    .await?
+    .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
     if token.expires <= Utc::now() {
-        return Err(ApiError::Authentication(AuthenticationError::InvalidAuthMethod));
+        return Err(ApiError::Authentication(
+            AuthenticationError::InvalidAuthMethod,
+        ));
     }
 
     // Get share link
@@ -659,7 +699,8 @@ pub async fn profile_token_check(
         token.shared_profiles_links_id,
         &**pool,
     )
-    .await?.ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
+    .await?
+    .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
     // Get valid urls for the profile
     let profile = database::models::minecraft_profile_item::MinecraftProfile::get(
@@ -667,21 +708,21 @@ pub async fn profile_token_check(
         &**pool,
         &redis,
     )
-    .await?.ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
+    .await?
+    .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
     // Check the token is valid for the requested file
-    let file_url_hash = file_url.split(&format!("{cdn_url}/custom_files/")).nth(1).ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
-    
+    let file_url_hash = file_url
+        .split(&format!("{cdn_url}/custom_files/"))
+        .nth(1)
+        .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
-    let valid = profile
-    .overrides
-        .iter()
-        .any(|x| {
-            x.0 == file_url_hash
-        });          
-  
+    let valid = profile.overrides.iter().any(|x| x.0 == file_url_hash);
+
     if !valid {
-        return Err(ApiError::Authentication(AuthenticationError::InvalidAuthMethod));
+        Err(ApiError::Authentication(
+            AuthenticationError::InvalidAuthMethod,
+        ))
     } else {
         Ok(HttpResponse::Ok().finish())
     }
@@ -716,11 +757,15 @@ pub async fn profile_icon_edit(
         .1;
         let id = info.into_inner().0;
 
-        let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(id.into(), &**pool, &redis)
-            .await?
-            .ok_or_else(|| {
-                ApiError::InvalidInput("The specified profile does not exist!".to_string())
-            })?;
+        let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(
+            id.into(),
+            &**pool,
+            &redis,
+        )
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified profile does not exist!".to_string())
+        })?;
 
         if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
             return Err(ApiError::CustomAuthentication(
@@ -742,7 +787,7 @@ pub async fn profile_icon_edit(
         let color = crate::util::img::get_color_from_img(&bytes)?;
 
         let hash = sha1::Sha1::from(&bytes).hexdigest();
-        let id : MinecraftProfileId = profile_item.id.into();
+        let id: MinecraftProfileId = profile_item.id.into();
         let upload_data = file_host
             .upload_file(
                 content_type,
@@ -801,16 +846,17 @@ pub async fn delete_profile_icon(
     .1;
     let id = info.into_inner().0;
 
-    let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(id.into(), &**pool, &redis)
-        .await?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified profile does not exist!".to_string())
-        })?;
+    let profile_item =
+        database::models::minecraft_profile_item::MinecraftProfile::get(id.into(), &**pool, &redis)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput("The specified profile does not exist!".to_string())
+            })?;
 
     if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
-            return Err(ApiError::CustomAuthentication(
-                "You don't have permission to edit this profile's icon.".to_string(),
-            ));
+        return Err(ApiError::CustomAuthentication(
+            "You don't have permission to edit this profile's icon.".to_string(),
+        ));
     }
 
     let cdn_url = dotenvy::var("CDN_URL")?;
@@ -846,7 +892,6 @@ pub async fn delete_profile_icon(
     Ok(HttpResponse::NoContent().body(""))
 }
 
-
 // Add a new override mod to a minecraft profile, by uploading it to the CDN
 // Accepts a multipart field
 // the first part is called `data` and contains a json array of objects with the following fields:
@@ -856,7 +901,7 @@ pub async fn delete_profile_icon(
 #[derive(Serialize, Deserialize)]
 struct MultipartFile {
     pub file_name: String,
-    pub install_path : String,
+    pub install_path: String,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -881,11 +926,15 @@ pub async fn minecraft_profile_add_override(
     .1;
 
     // Check if this is our profile
-    let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(client_id.into(), &**pool, &redis)
-        .await?
-        .ok_or_else(|| {
-            CreateError::InvalidInput("The specified profile does not exist!".to_string())
-        })?;
+    let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(
+        client_id.into(),
+        &**pool,
+        &redis,
+    )
+    .await?
+    .ok_or_else(|| {
+        CreateError::InvalidInput("The specified profile does not exist!".to_string())
+    })?;
 
     if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
         return Err(CreateError::CustomAuthenticationError(
@@ -894,14 +943,14 @@ pub async fn minecraft_profile_add_override(
     }
 
     struct UploadedFile {
-        pub install_path : String,
+        pub install_path: String,
         pub hash: String,
     }
 
     let mut error = None;
     let mut uploaded_files = Vec::new();
 
-   let files : Vec<MultipartFile> = {
+    let files: Vec<MultipartFile> = {
         // First, get the data field
         let mut field = payload.next().await.ok_or_else(|| {
             CreateError::InvalidInput(String::from("Upload must have a data field"))
@@ -909,9 +958,9 @@ pub async fn minecraft_profile_add_override(
 
         let content_disposition = field.content_disposition().clone();
         // Allow any content type
-        let name = content_disposition.get_name().ok_or_else(|| {
-            CreateError::InvalidInput(String::from("Upload must have a name"))
-        })?;
+        let name = content_disposition
+            .get_name()
+            .ok_or_else(|| CreateError::InvalidInput(String::from("Upload must have a name")))?;
 
         if name == "data" {
             let mut d: Vec<u8> = Vec::new();
@@ -924,8 +973,8 @@ pub async fn minecraft_profile_add_override(
                 "`data` field must come before file fields",
             )));
         }
-   };
-   
+    };
+
     while let Some(item) = payload.next().await {
         let mut field: Field = item?;
         if error.is_some() {
@@ -933,33 +982,44 @@ pub async fn minecraft_profile_add_override(
         }
         let result = async {
             let content_disposition = field.content_disposition().clone();
-            let content_type = field.content_type().map(|x| x.essence_str()).unwrap_or_else(|| "application/octet-stream").to_string();
-             // Allow any content type
+            let content_type = field
+                .content_type()
+                .map(|x| x.essence_str())
+                .unwrap_or_else(|| "application/octet-stream")
+                .to_string();
+            // Allow any content type
             let name = content_disposition.get_name().ok_or_else(|| {
                 CreateError::InvalidInput(String::from("Upload must have a name"))
             })?;
 
-                let data = read_from_field(&mut field, 262144, "Icons must be smaller than 256KiB").await?;     
-                let install_path = files.iter().find(|x| x.file_name == name)
-                .ok_or_else(|| CreateError::InvalidInput(format!("No matching file name in `data` for file '{}'", 
-                name)))?.install_path.clone();
+            let data =
+                read_from_field(&mut field, 262144, "Icons must be smaller than 256KiB").await?;
+            let install_path = files
+                .iter()
+                .find(|x| x.file_name == name)
+                .ok_or_else(|| {
+                    CreateError::InvalidInput(format!(
+                        "No matching file name in `data` for file '{}'",
+                        name
+                    ))
+                })?
+                .install_path
+                .clone();
 
-                let hash = sha1::Sha1::from(&data).hexdigest();
-                
-                file_host
-                    .upload_file(
-                        &content_type,
-                        &format!("custom_files/{hash}"),
-                        data.freeze(),
-                    )
-                    .await?;
-        
-                uploaded_files.push(UploadedFile {
-                    install_path,
-                    hash,
-                });
-                Ok(())
-        }.await;
+            let hash = sha1::Sha1::from(&data).hexdigest();
+
+            file_host
+                .upload_file(
+                    &content_type,
+                    &format!("custom_files/{hash}"),
+                    data.freeze(),
+                )
+                .await?;
+
+            uploaded_files.push(UploadedFile { install_path, hash });
+            Ok(())
+        }
+        .await;
 
         if result.is_err() {
             error = result.err();
@@ -972,32 +1032,22 @@ pub async fn minecraft_profile_add_override(
 
     let mut transaction = pool.begin().await?;
 
-    let (ids, hashes, install_paths): (
-        Vec<_>,
-        Vec<_>,
-        Vec<_>,
-    ) = uploaded_files
+    let (ids, hashes, install_paths): (Vec<_>, Vec<_>, Vec<_>) = uploaded_files
         .into_iter()
-        .map(|f| {
-            (
-                profile_item.id.0,
-                f.hash,
-                f.install_path,
-            )
-        })
+        .map(|f| (profile_item.id.0, f.hash, f.install_path))
         .multiunzip();
 
     sqlx::query!(
-            "
+        "
             INSERT INTO shared_profiles_mods (shared_profile_id, file_hash, install_path)
             SELECT * FROM UNNEST($1::bigint[], $2::text[], $3::text[])
             ",
-            &ids[..],
-            &hashes[..],
-            &install_paths[..],
-        )
-        .execute(&mut *transaction)
-        .await?;
+        &ids[..],
+        &hashes[..],
+        &install_paths[..],
+    )
+    .execute(&mut *transaction)
+    .await?;
 
     transaction.commit().await?;
 
