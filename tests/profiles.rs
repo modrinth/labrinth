@@ -5,6 +5,7 @@ use common::api_v3::ApiV3;
 use common::database::*;
 use common::environment::with_test_environment;
 use common::environment::TestEnvironment;
+use labrinth::database;
 use labrinth::models::minecraft::profile::MinecraftProfile;
 
 use crate::common::api_v3::minecraft_profile::MinecraftProfileOverride;
@@ -240,9 +241,18 @@ async fn download_profile() {
 
         // As 'friend', try to get the download links for the profile
         // *Anyone* with the link can get
+        let download_old = api
+            .download_minecraft_profile_deserialized(&share_link.url_identifier, FRIEND_USER_PAT)
+            .await;
+
         let mut download = api
             .download_minecraft_profile_deserialized(&share_link.url_identifier, FRIEND_USER_PAT)
             .await;
+
+        // TODO: expiry test
+
+        // Repeated calls should return the same link assuming not expired and same user
+        assert_eq!(download_old.auth_token, download.auth_token);
 
         // Download url should be:
         // - CDN url
@@ -265,6 +275,62 @@ async fn download_profile() {
             )
             .await;
         assert_eq!(share_link.uses_remaining, 4);
+
+        // Generate more tokens until we run ouut
+        for i in 0..=4 {
+            let resp = api
+                .download_minecraft_profile(&share_link.url_identifier, FRIEND_USER_PAT)
+                .await;
+            println!("resp: {:?}", resp.response().body());
+            assert_eq!(resp.status(), 200);
+
+            let share_link = api
+                .get_minecraft_profile_share_link_deserialized(
+                    &id,
+                    &share_link.url_identifier,
+                    USER_USER_PAT,
+                )
+                .await;
+            assert_eq!(share_link.uses_remaining, 4 - i);
+
+            // Manually delete the created token. This forces it the get route regenerate a new one, and allolws us to
+            // do a decrement test for the uses remaining.
+            // We use a database call for the sake of the tests which currently only has 5 users
+            let mut transaction = test_env.db.pool.begin().await.unwrap();
+            let id = database::models::minecraft_profile_item::MinecraftProfileLink::get_url(
+                &share_link.url_identifier,
+                &mut transaction,
+            )
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+            database::models::minecraft_profile_item::MinecraftProfileLinkToken::delete_all(
+                id,
+                &mut transaction,
+            )
+            .await
+            .unwrap();
+            transaction.commit().await.unwrap();
+        }
+
+        // Now we should be out of tokens
+        let resp = api
+            .download_minecraft_profile(&share_link.url_identifier, FRIEND_USER_PAT)
+            .await;
+        assert_eq!(resp.status(), 400);
+
+        // Repeat the process to get a new token
+        // Generate a new token which shoould have 5 uses remaining
+        let share_link = api
+            .generate_minecraft_profile_share_link_deserialized(&id, USER_USER_PAT)
+            .await;
+        assert_eq!(share_link.uses_remaining, 5);
+
+        // Get token as 'friend' and download the profile
+        let download = api
+            .download_minecraft_profile_deserialized(&share_link.url_identifier, FRIEND_USER_PAT)
+            .await;
 
         // Check cloudflare helper route with a bad token (eg: the profile id), should fail
         let resp = api

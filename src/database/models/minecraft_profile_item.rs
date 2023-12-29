@@ -372,6 +372,8 @@ impl MinecraftProfileLink {
         Ok(link)
     }
 
+    // DELETE in here needs to clear all fields as well to prevent orphaned data
+
     pub async fn get_url<'a, 'b, E>(
         url_identifier: &str,
         executor: E,
@@ -478,6 +480,10 @@ impl MinecraftProfileLinkToken {
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
+        println!(
+            "Getting for link {} and user {}",
+            profile_link_id.0, user_id.0
+        );
         let mut exec = executor.acquire().await?;
 
         let token = sqlx::query!(
@@ -485,9 +491,7 @@ impl MinecraftProfileLinkToken {
             SELECT cat.token, cat.user_id, cat.shared_profiles_links_id, cat.created, cat.expires
             FROM cdn_auth_tokens cat
             INNER JOIN shared_profiles_links spl ON spl.id = cat.shared_profiles_links_id
-            WHERE spl.id = $1 AND spl.shared_profile_id IN (
-                SELECT id FROM shared_profiles sp WHERE sp.owner_id = $2
-            )
+            WHERE spl.id = $1 AND cat.user_id = $2
             ",
             profile_link_id.0,
             user_id.0

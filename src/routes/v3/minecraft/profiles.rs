@@ -121,8 +121,7 @@ pub async fn profile_create(
     let mut transaction = client.begin().await?;
 
     let profile_id: database::models::MinecraftProfileId =
-        generate_minecraft_profile_id(&mut transaction)
-            .await?;
+        generate_minecraft_profile_id(&mut transaction).await?;
 
     let version_ids = profile_create_data
         .versions
@@ -594,6 +593,7 @@ pub async fn profile_download(
             &mut *transaction,
         )
         .await?;
+    println!("Existing token: {:?}", existing_token);
     if let Some(token) = existing_token {
         // Check if the token is still valid
         if token.expires > Utc::now() {
@@ -602,7 +602,11 @@ pub async fn profile_download(
             return Ok(HttpResponse::Ok().json(ProfileDownload {
                 auth_token: token.token,
                 version_ids: profile.versions.iter().map(|x| (*x).into()).collect(),
-                override_cdns: profile.overrides,
+                override_cdns: profile
+                    .overrides
+                    .into_iter()
+                    .map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1))
+                    .collect::<Vec<_>>(),
             }));
         }
 
@@ -613,6 +617,8 @@ pub async fn profile_download(
         )
         .await?;
     }
+
+    println!("Uses remaining: {}", profile_link_data.uses_remaining);
 
     // If there's no token, or the token is invalid, create a new one
     if profile_link_data.uses_remaining < 1 {
@@ -711,14 +717,17 @@ pub async fn profile_token_check(
     .await?
     .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
+    println!("Profile: {:?}", profile);
     // Check the token is valid for the requested file
     let file_url_hash = file_url
         .split(&format!("{cdn_url}/custom_files/"))
         .nth(1)
         .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
+    println!("File url hash: {}", file_url_hash);
     let valid = profile.overrides.iter().any(|x| x.0 == file_url_hash);
 
+    println!("Valid: {}", valid);
     if !valid {
         Err(ApiError::Authentication(
             AuthenticationError::InvalidAuthMethod,

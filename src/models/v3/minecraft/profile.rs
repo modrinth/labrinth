@@ -61,11 +61,7 @@ impl From<database::models::minecraft_profile_item::MinecraftProfile> for Minecr
             loader_version: profile.loader_version,
             game_version_id: profile.game_version_id,
             versions: profile.versions.into_iter().map(Into::into).collect(),
-            override_install_paths: profile
-                .overrides
-                .into_iter()
-                .map(|(_, v)| v)
-                .collect(),
+            override_install_paths: profile.overrides.into_iter().map(|(_, v)| v).collect(),
         }
     }
 }
