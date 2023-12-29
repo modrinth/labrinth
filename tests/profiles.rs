@@ -68,7 +68,6 @@ async fn create_modify_profile() {
         let profile = api
             .create_minecraft_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
             .await;
-        println!("{:?}", profile.response().body());
         assert_eq!(profile.status(), 200);
         let profile: MinecraftProfile = test::read_body_json(profile).await;
         let id = profile.id.to_string();
@@ -84,8 +83,6 @@ async fn create_modify_profile() {
         assert_eq!(profile.versions, vec![]);
         assert_eq!(profile.icon_url, None);
 
-        println!("Profile id is {}", profile.id);
-
         // Modify the profile illegally in the same ways
         let resp = api
             .edit_minecraft_profile(
@@ -97,7 +94,6 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 400);
 
         // Currently fake version for loader is not checked
@@ -111,9 +107,7 @@ async fn create_modify_profile() {
         //         USER_USER_PAT,
         //     )
         //     .await;
-
-        println!("{:?}", resp.response().body());
-        assert_eq!(resp.status(), 400);
+        // assert_eq!(resp.status(), 400);
 
         let resp = api
             .edit_minecraft_profile(
@@ -125,7 +119,6 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 400);
 
         // Can't modify the profile as another user
@@ -139,14 +132,12 @@ async fn create_modify_profile() {
                 FRIEND_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 401);
 
         //  Get and make sure the properties are the same
         let profile = api
             .get_minecraft_profile_deserialized(&id, USER_USER_PAT)
             .await;
-
         assert_eq!(profile.name, "test");
         assert_eq!(profile.loader, "fabric");
         assert_eq!(profile.loader_version, "1.0.0");
@@ -164,16 +155,12 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 200);
 
         // Get the profile and check the properties
         let profile = api
             .get_minecraft_profile_deserialized(&id, USER_USER_PAT)
             .await;
-
-        println!("{:?}", serde_json::to_string(&profile));
-
         assert_eq!(profile.name, "test2");
         assert_eq!(profile.loader, "forge");
         assert_eq!(profile.loader_version, "1.0.1");
@@ -191,7 +178,6 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 200);
 
         // Get the profile and check the properties
@@ -234,10 +220,7 @@ async fn download_profile() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 204);
-
-        println!("Here123123123123213");
 
         // As 'user', try to generate a download link for the profile
         let share_link = api
@@ -281,19 +264,16 @@ async fn download_profile() {
                 USER_USER_PAT,
             )
             .await;
-        println!("\n\n{:?}", serde_json::to_string(&share_link));
         assert_eq!(share_link.uses_remaining, 4);
 
         // Check cloudflare helper route with a bad token (eg: the profile id), should fail
         let resp = api
             .check_download_minecraft_profile_token(&share_link.url_identifier, &override_file_url)
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 401);
         let resp = api
             .check_download_minecraft_profile_token(&share_link.url, &override_file_url)
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 401);
 
         let resp = api
@@ -306,7 +286,6 @@ async fn download_profile() {
         let download = api
             .check_download_minecraft_profile_token(&download.auth_token, &override_file_url)
             .await;
-        println!("{:?}", download.response().body());
         assert_eq!(download.status(), 200);
     })
     .await;
@@ -333,7 +312,6 @@ async fn add_remove_profile_icon() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", icon.response().body());
         assert_eq!(icon.status(), 204);
 
         // Get the profile and check the icon
@@ -381,7 +359,6 @@ async fn add_remove_profile_versions() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 200);
 
         // Add an override file to the profile
@@ -395,7 +372,6 @@ async fn add_remove_profile_versions() {
                 USER_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 204);
 
         // Get the profile and check the versions
@@ -438,7 +414,6 @@ async fn hidden_versions_are_forbidden() {
                 FRIEND_USER_PAT,
             )
             .await;
-        println!("{:?}", profile.response().body());
         assert_eq!(profile.status(), 200);
         let profile: MinecraftProfile = test::read_body_json(profile).await;
         assert_eq!(profile.versions, vec![alpha_version_id_parsed]);
@@ -455,7 +430,6 @@ async fn hidden_versions_are_forbidden() {
                 FRIEND_USER_PAT,
             )
             .await;
-        println!("{:?}", resp.response().body());
         assert_eq!(resp.status(), 200);
 
         // Get the profile and check the versions
