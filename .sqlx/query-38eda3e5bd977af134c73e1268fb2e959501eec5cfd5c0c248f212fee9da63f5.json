@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM shared_profiles_users\n            WHERE shared_profile_id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "38eda3e5bd977af134c73e1268fb2e959501eec5cfd5c0c248f212fee9da63f5"
+}

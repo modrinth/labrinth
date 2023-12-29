@@ -10,7 +10,7 @@ use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::VersionId;
 use crate::models::minecraft::profile::{
-    MinecraftProfile, MinecraftProfileId, MinecraftProfileShareLink, DEFAULT_STARTING_LINK_USES,
+    MinecraftProfile, MinecraftProfileId, MinecraftProfileShareLink, DEFAULT_PROFILE_MAX_USERS,
 };
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
@@ -52,6 +52,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                     .route(
                         "{id}/share/{url_identifier}",
                         web::get().to(profile_link_get),
+                    )
+                    .route(
+                        "{id}/accept/{url_identifier}",
+                        web::post().to(accept_share_link),
                     )
                     .route("{id}/download", web::get().to(profile_download))
                     .route("{id}/icon", web::patch().to(profile_icon_edit))
@@ -155,6 +159,8 @@ pub async fn profile_create(
         loader_id,
         loader: profile_create_data.loader,
         loader_version: profile_create_data.loader_version,
+        maximum_users: DEFAULT_PROFILE_MAX_USERS as i32,
+        users: vec![current_user.id.into()],
         versions,
         overrides: Vec::new(),
     };
@@ -162,7 +168,10 @@ pub async fn profile_create(
     profile_builder_actual.insert(&mut transaction).await?;
     transaction.commit().await?;
 
-    let profile = models::minecraft::profile::MinecraftProfile::from(profile_builder);
+    let profile = models::minecraft::profile::MinecraftProfile::from(
+        profile_builder,
+        Some(current_user.id.into()),
+    );
     Ok(HttpResponse::Ok().json(profile))
 }
 
@@ -172,11 +181,23 @@ pub struct MinecraftProfileIds {
 }
 // Get several minecraft profiles by their ids
 pub async fn profiles_get(
+    req: HttpRequest,
     web::Query(ids): web::Query<MinecraftProfileIds>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    // No user check ,as any user/scope can view profiles.
+    let user_id = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        None, // No scopes required to read your own links
+    )
+    .await
+    .ok()
+    .map(|x| x.1.id.into());
+
     // In addition, private information (ie: CDN links, tokens, anything outside of the list of hosted versions and install paths) is not returned
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
     let ids = ids
@@ -189,7 +210,7 @@ pub async fn profiles_get(
             .await?;
     let profiles = profiles_data
         .into_iter()
-        .map(MinecraftProfile::from)
+        .map(|x| MinecraftProfile::from(x, user_id))
         .collect::<Vec<_>>();
 
     Ok(HttpResponse::Ok().json(profiles))
@@ -197,11 +218,24 @@ pub async fn profiles_get(
 
 // Get a minecraft profile by its id
 pub async fn profile_get(
+    req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
+
+    let user_id = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        None, // No scopes required to read your own links
+    )
+    .await
+    .ok()
+    .map(|x| x.1.id.into());
 
     // No user check ,as any user/scope can view profiles.
     // In addition, private information (ie: CDN links, tokens, anything outside of the list of hosted versions and install paths) is not returned
@@ -210,7 +244,7 @@ pub async fn profile_get(
         database::models::minecraft_profile_item::MinecraftProfile::get(id, &**pool, &redis)
             .await?;
     if let Some(data) = profile_data {
-        return Ok(HttpResponse::Ok().json(MinecraftProfile::from(data)));
+        return Ok(HttpResponse::Ok().json(MinecraftProfile::from(data, user_id)));
     }
     Err(ApiError::NotFound)
 }
@@ -470,8 +504,6 @@ pub async fn profile_share(
                 link_identifier: identifier.clone(),
                 created: Utc::now(),
                 expires: Utc::now() + chrono::Duration::days(7),
-
-                uses_remaining: DEFAULT_STARTING_LINK_USES as i32,
             };
             link.insert(&mut transaction).await?;
             transaction.commit().await?;
@@ -483,7 +515,7 @@ pub async fn profile_share(
 }
 
 // See the status of a link to a profile by its id
-// This is used by the launcher to check if the link is still valid, expired, or has uses left.
+// This is used by the to check if the link is expired, etc.
 pub async fn profile_link_get(
     req: HttpRequest,
     info: web::Path<(String, String)>,
@@ -526,6 +558,83 @@ pub async fn profile_link_get(
     }
 }
 
+// Accept a share link to a profile
+// This adds the user to the team
+// TODO: With above change, this is the API link that is translated from a modrinth:// link by the launcher, which would then download it
+pub async fn accept_share_link(
+    req: HttpRequest,
+    info: web::Path<(MinecraftProfileId, String)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let (profile_id, url_identifier) = info.into_inner();
+
+    // Must be logged in to accept
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+    )
+    .await?;
+
+    // Fetch the profile information of the desired minecraft profile
+    let link_data = database::models::minecraft_profile_item::MinecraftProfileLink::get_url(
+        &url_identifier,
+        &**pool,
+    )
+    .await?
+    .ok_or_else(|| ApiError::NotFound)?;
+
+    // Confirm it matches the profile id
+    if link_data.shared_profile_id != profile_id.into() {
+        return Err(ApiError::NotFound);
+    }
+
+    let data = database::models::minecraft_profile_item::MinecraftProfile::get(
+        link_data.shared_profile_id,
+        &**pool,
+        &redis,
+    )
+    .await?
+    .ok_or_else(|| ApiError::NotFound)?;
+
+    // Confirm this is not our profile
+    if data.owner_id == user_option.1.id.into() {
+        return Err(ApiError::InvalidInput(
+            "You cannot accept your own share link".to_string(),
+        ));
+    }
+
+    // Confirm we are not already on the team
+    if data.users.iter().any(|x| *x == user_option.1.id.into()) {
+        return Err(ApiError::InvalidInput(
+            "You are already on this profile's team".to_string(),
+        ));
+    }
+
+    // Confirm we are not over the maximum users
+    if data.maximum_users <= data.users.len() as i32 {
+        return Err(ApiError::InvalidInput(
+            "This profile has too many users".to_string(),
+        ));
+    }
+
+    // Add the user to the team
+    sqlx::query!(
+        "INSERT INTO shared_profiles_users (shared_profile_id, user_id) VALUES ($1, $2)",
+        data.id.0 as i64,
+        user_option.1.id.0 as i64
+    )
+    .execute(&**pool)
+    .await?;
+    minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
+
+    Ok(HttpResponse::NoContent().finish())
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct ProfileDownload {
     // temporary authorization token for the CDN, for downloading the profile files
@@ -540,17 +649,16 @@ pub struct ProfileDownload {
 }
 
 // Download a minecraft profile
-// This converts a share link into a temporary authorization token for the CDN
-// TODO: With above change, this is the API link that is translated from a modrinth:// link by the launcher
+// Only the owner of the profile or an invited user can download
 pub async fn profile_download(
     req: HttpRequest,
-    info: web::Path<(String,)>,
+    info: web::Path<(MinecraftProfileId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let cdn_url = dotenvy::var("CDN_URL")?;
-    let url_identifier = info.into_inner().0;
+    let profile_id = info.into_inner().0;
 
     // Must be logged in to download
     let user_option = get_user_from_headers(
@@ -563,18 +671,8 @@ pub async fn profile_download(
     .await?;
 
     // Fetch the profile information of the desired minecraft profile
-    let Some(profile_link_data) =
-        database::models::minecraft_profile_item::MinecraftProfileLink::get_url(
-            &url_identifier,
-            &**pool,
-        )
-        .await?
-    else {
-        return Err(ApiError::NotFound);
-    };
-
     let Some(profile) = database::models::minecraft_profile_item::MinecraftProfile::get(
-        profile_link_data.shared_profile_id,
+        profile_id.into(),
         &**pool,
         &redis,
     )
@@ -583,17 +681,23 @@ pub async fn profile_download(
         return Err(ApiError::NotFound);
     };
 
+    // Check if this user is on the profile user list
+    if !profile.users.contains(&user_option.1.id.into()) {
+        return Err(ApiError::CustomAuthentication(
+            "You are not on this profile's team".to_string(),
+        ));
+    }
+
     let mut transaction = pool.begin().await?;
 
     // Check no token exists for the username and profile
     let existing_token =
-        database::models::minecraft_profile_item::MinecraftProfileLinkToken::get_from_link_user(
-            profile_link_data.id,
+        database::models::minecraft_profile_item::MinecraftProfileLinkToken::get_from_profile_user(
+            profile.id,
             user_option.1.id.into(),
             &mut *transaction,
         )
         .await?;
-    println!("Existing token: {:?}", existing_token);
     if let Some(token) = existing_token {
         // Check if the token is still valid
         if token.expires > Utc::now() {
@@ -618,23 +722,6 @@ pub async fn profile_download(
         .await?;
     }
 
-    println!("Uses remaining: {}", profile_link_data.uses_remaining);
-
-    // If there's no token, or the token is invalid, create a new one
-    if profile_link_data.uses_remaining < 1 {
-        return Err(ApiError::InvalidInput(
-            "No more downloads remaining".to_string(),
-        ));
-    }
-
-    // Reduce the number of downloads remaining
-    sqlx::query!(
-        "UPDATE shared_profiles_links SET uses_remaining = uses_remaining - 1 WHERE id = $1",
-        profile_link_data.id.0
-    )
-    .execute(&mut *transaction)
-    .await?;
-
     // Create a new cdn auth token
     let token = database::models::minecraft_profile_item::MinecraftProfileLinkToken {
         user_id: user_option.1.id.into(), // This user is requesting the download
@@ -643,7 +730,7 @@ pub async fn profile_download(
             .take(32)
             .map(char::from)
             .collect::<String>(),
-        shared_profiles_links_id: profile_link_data.id,
+        shared_profiles_id: profile.id,
         created: Utc::now(),
         expires: Utc::now() + chrono::Duration::minutes(5),
     };
@@ -700,34 +787,22 @@ pub async fn profile_token_check(
         ));
     }
 
-    // Get share link
-    let share_link = database::models::minecraft_profile_item::MinecraftProfileLink::get(
-        token.shared_profiles_links_id,
-        &**pool,
-    )
-    .await?
-    .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
-
     // Get valid urls for the profile
     let profile = database::models::minecraft_profile_item::MinecraftProfile::get(
-        share_link.shared_profile_id,
+        token.shared_profiles_id,
         &**pool,
         &redis,
     )
     .await?
     .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
-    println!("Profile: {:?}", profile);
     // Check the token is valid for the requested file
     let file_url_hash = file_url
         .split(&format!("{cdn_url}/custom_files/"))
         .nth(1)
         .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
-    println!("File url hash: {}", file_url_hash);
     let valid = profile.overrides.iter().any(|x| x.0 == file_url_hash);
-
-    println!("Valid: {}", valid);
     if !valid {
         Err(ApiError::Authentication(
             AuthenticationError::InvalidAuthMethod,

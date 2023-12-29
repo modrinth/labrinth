@@ -226,16 +226,30 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
-    pub async fn download_minecraft_profile(
+    pub async fn accept_minecraft_profile_share_link(
         &self,
+        profile_id: &str,
         url_identifier: &str,
         pat: Option<&str>,
     ) -> ServiceResponse {
-        let req = TestRequest::get()
+        let req = TestRequest::post()
             .uri(&format!(
-                "/v3/minecraft/profile/{}/download",
-                url_identifier
+                "/v3/minecraft/profile/{}/accept/{}",
+                profile_id, url_identifier
             ))
+            .append_pat(pat)
+            .to_request();
+        self.call(req).await
+    }
+
+    // Get links and token
+    pub async fn download_minecraft_profile(
+        &self,
+        profile_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri(&format!("/v3/minecraft/profile/{}/download", profile_id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
@@ -243,10 +257,10 @@ impl ApiV3 {
 
     pub async fn download_minecraft_profile_deserialized(
         &self,
-        url_identifier: &str,
+        profile_id: &str,
         pat: Option<&str>,
     ) -> ProfileDownload {
-        let resp = self.download_minecraft_profile(url_identifier, pat).await;
+        let resp = self.download_minecraft_profile(profile_id, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }

@@ -1,21 +1,21 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT token, user_id, shared_profiles_links_id, created, expires\n            FROM cdn_auth_tokens cat\n            WHERE cat.token = $1\n            ",
+  "query": "\n            SELECT id, link, shared_profile_id, created, expires\n            FROM shared_profiles_links spl\n            WHERE spl.link = $1\n            ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "token",
-        "type_info": "Varchar"
-      },
-      {
-        "ordinal": 1,
-        "name": "user_id",
+        "name": "id",
         "type_info": "Int8"
       },
       {
+        "ordinal": 1,
+        "name": "link",
+        "type_info": "Varchar"
+      },
+      {
         "ordinal": 2,
-        "name": "shared_profiles_links_id",
+        "name": "shared_profile_id",
         "type_info": "Int8"
       },
       {
@@ -42,5 +42,5 @@
       false
     ]
   },
-  "hash": "44eedb7dbf77302430161c5c71a88884acd4d2359eeea55ad2946cd213ed8383"
+  "hash": "fd3b2321af19366304bcf46b3cf8e6a1d0bb17a0bccefc5d52f775808cba8361"
 }

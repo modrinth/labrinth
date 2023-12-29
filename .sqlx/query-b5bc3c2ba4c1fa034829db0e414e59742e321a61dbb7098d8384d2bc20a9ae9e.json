@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version\n                FROM shared_profiles sp                \n                LEFT JOIN loaders l ON l.id = sp.loader_id\n                WHERE sp.id = ANY($1)\n                GROUP BY sp.id, l.id\n                ",
+  "query": "\n                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version, sp.maximum_users,\n                ARRAY_AGG(spu.user_id) as users\n                FROM shared_profiles sp                \n                LEFT JOIN loaders l ON l.id = sp.loader_id\n                LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id\n                WHERE sp.id = ANY($1)\n                GROUP BY sp.id, l.id\n                ",
   "describe": {
     "columns": [
       {
@@ -52,6 +52,16 @@
         "ordinal": 9,
         "name": "loader_version",
         "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "maximum_users",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "users",
+        "type_info": "Int8Array"
       }
     ],
     "parameters": {
@@ -69,8 +79,10 @@
       false,
       false,
       false,
-      false
+      false,
+      false,
+      null
     ]
   },
-  "hash": "c11470b8ddaa4f482b6b56c9eb3041ca8f3f4b7209f13b26ce7edfe2d56dc7f1"
+  "hash": "b5bc3c2ba4c1fa034829db0e414e59742e321a61dbb7098d8384d2bc20a9ae9e"
 }

@@ -18,19 +18,22 @@ pub const ADMIN_USER_ID: &str = "1";
 pub const MOD_USER_ID: &str = "2";
 pub const USER_USER_ID: &str = "3"; // This is the 'main' user ID, and is used for most tests.
 pub const FRIEND_USER_ID: &str = "4"; // This is exactly the same as USER_USER_ID, but could be used for testing friend-only endpoints (ie: teams, etc)
-pub const ENEMY_USER_ID: &str = "5"; // This is exactly the same as USER_USER_ID, but could be used for testing friend-only endpoints (ie: teams, etc)
+pub const OTHER_FRIEND_USER_ID: &str = "5"; // This is exactly the same as USER_USER_ID, but could be used for testing friend-only endpoints (ie: teams, etc)
+pub const ENEMY_USER_ID: &str = "6"; // This is exactly the same as USER_USER_ID, but could be used for testing friend-only endpoints (ie: teams, etc)
 
 pub const ADMIN_USER_ID_PARSED: i64 = 1;
 pub const MOD_USER_ID_PARSED: i64 = 2;
 pub const USER_USER_ID_PARSED: i64 = 3;
 pub const FRIEND_USER_ID_PARSED: i64 = 4;
-pub const ENEMY_USER_ID_PARSED: i64 = 5;
+pub const OTHER_FRIEND_USER_ID_PARSED: i64 = 5;
+pub const ENEMY_USER_ID_PARSED: i64 = 6;
 
 // These are full-scoped PATs- as if the user was logged in (including illegal scopes).
 pub const ADMIN_USER_PAT: Option<&str> = Some("mrp_patadmin");
 pub const MOD_USER_PAT: Option<&str> = Some("mrp_patmoderator");
 pub const USER_USER_PAT: Option<&str> = Some("mrp_patuser");
 pub const FRIEND_USER_PAT: Option<&str> = Some("mrp_patfriend");
+pub const OTHER_FRIEND_USER_PAT: Option<&str> = Some("mrp_patotherfriend");
 pub const ENEMY_USER_PAT: Option<&str> = Some("mrp_patenemy");
 
 const TEMPLATE_DATABASE_NAME: &str = "labrinth_tests_template";

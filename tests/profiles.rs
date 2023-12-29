@@ -5,8 +5,8 @@ use common::api_v3::ApiV3;
 use common::database::*;
 use common::environment::with_test_environment;
 use common::environment::TestEnvironment;
-use labrinth::database;
 use labrinth::models::minecraft::profile::MinecraftProfile;
+use labrinth::models::users::UserId;
 
 use crate::common::api_v3::minecraft_profile::MinecraftProfileOverride;
 use crate::common::dummy_data::DummyImage;
@@ -196,6 +196,86 @@ async fn create_modify_profile() {
 }
 
 #[actix_rt::test]
+async fn accept_share_link() {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+        // Get download links for a created profile (including failure), create a share link, and create the correct number of tokens based on that
+        // They should expire after a time
+        let api = &test_env.api;
+
+        // Create a simple profile
+        let profile = api
+            .create_minecraft_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
+            .await;
+        assert_eq!(profile.status(), 200);
+        let profile: MinecraftProfile = test::read_body_json(profile).await;
+        let id = profile.id.to_string();
+        let users: Vec<UserId> = profile.users.unwrap();
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].0, USER_USER_ID_PARSED as u64);
+
+        // Friend can't see the profile user yet, but can see the profile
+        let profile = api
+            .get_minecraft_profile_deserialized(&id, FRIEND_USER_PAT)
+            .await;
+        assert_eq!(profile.users, None);
+
+        // As 'user', try to generate a download link for the profile
+        let share_link = api
+            .generate_minecraft_profile_share_link_deserialized(&id, USER_USER_PAT)
+            .await;
+
+        // Links should be internally consistent and match the expected format
+        assert_eq!(
+            share_link.url,
+            format!(
+                "{}/v3/minecraft/profile/{}/accept/{}",
+                dotenvy::var("SELF_ADDR").unwrap(),
+                id,
+                share_link.url_identifier
+            )
+        );
+
+        // Link is an 'accept' link, when visited using any user token using POST, it should add the user to the profile
+        // As 'friend', accept the share link
+        let resp = api
+            .accept_minecraft_profile_share_link(&id, &share_link.url_identifier, FRIEND_USER_PAT)
+            .await;
+        assert_eq!(resp.status(), 204);
+
+        // Profile users should now include the friend
+        let profile = api
+            .get_minecraft_profile_deserialized(&id, USER_USER_PAT)
+            .await;
+        let mut users = profile.users.unwrap();
+        users.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(users.len(), 2);
+        assert_eq!(users[0].0, USER_USER_ID_PARSED as u64);
+        assert_eq!(users[1].0, FRIEND_USER_ID_PARSED as u64);
+
+        // Add all of test dummy users until we hit the limit, the last one should fail
+        let dummy_user_pats = [
+            USER_USER_PAT,   // Fails because owner (and already added)
+            FRIEND_USER_PAT, // Fails because already added
+            OTHER_FRIEND_USER_PAT,
+            MOD_USER_PAT,
+            ADMIN_USER_PAT,
+            ENEMY_USER_PAT, // Fails because too many users
+        ];
+        for (i, pat) in dummy_user_pats.iter().enumerate().take(4 + 1) {
+            let resp = api
+                .accept_minecraft_profile_share_link(&id, &share_link.url_identifier, *pat)
+                .await;
+            if i == 0 || i == 1 || i == 6 {
+                assert_eq!(resp.status(), 400);
+            } else {
+                assert_eq!(resp.status(), 204);
+            }
+        }
+    })
+    .await;
+}
+
+#[actix_rt::test]
 async fn download_profile() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         // Get download links for a created profile (including failure), create a share link, and create the correct number of tokens based on that
@@ -224,35 +304,32 @@ async fn download_profile() {
         assert_eq!(resp.status(), 204);
 
         // As 'user', try to generate a download link for the profile
+        let resp = api.download_minecraft_profile(&id, USER_USER_PAT).await;
+        assert_eq!(resp.status(), 200);
+
+        // As 'friend', try to get the download links for the profile
+        // Not invited yet, should fail
+        let resp = api.download_minecraft_profile(&id, FRIEND_USER_PAT).await;
+        assert_eq!(resp.status(), 401);
+
+        // As 'user', try to generate a share link for the profile, and accept it as 'friend'
         let share_link = api
             .generate_minecraft_profile_share_link_deserialized(&id, USER_USER_PAT)
             .await;
-        // Links should add up
-        assert_eq!(share_link.uses_remaining, 5);
-        assert_eq!(
-            share_link.url,
-            format!(
-                "{}/v3/minecraft/profile/{}/download/{}",
-                dotenvy::var("SELF_ADDR").unwrap(),
-                id,
-                share_link.url_identifier
-            )
-        );
+        let resp = api
+            .accept_minecraft_profile_share_link(&id, &share_link.url_identifier, FRIEND_USER_PAT)
+            .await;
+        assert_eq!(resp.status(), 204);
 
         // As 'friend', try to get the download links for the profile
-        // *Anyone* with the link can get
-        let download_old = api
-            .download_minecraft_profile_deserialized(&share_link.url_identifier, FRIEND_USER_PAT)
-            .await;
-
+        // Should succeed
         let mut download = api
-            .download_minecraft_profile_deserialized(&share_link.url_identifier, FRIEND_USER_PAT)
+            .download_minecraft_profile_deserialized(&id, FRIEND_USER_PAT)
             .await;
 
-        // TODO: expiry test
-
-        // Repeated calls should return the same link assuming not expired and same user
-        assert_eq!(download_old.auth_token, download.auth_token);
+        // But enemy should fail
+        let resp = api.download_minecraft_profile(&id, ENEMY_USER_PAT).await;
+        assert_eq!(resp.status(), 401);
 
         // Download url should be:
         // - CDN url
@@ -266,73 +343,7 @@ async fn download_profile() {
             format!("{}/custom_files/{}", dotenvy::var("CDN_URL").unwrap(), hash)
         );
 
-        // This generates a token, and now the link should have 4 uses remaining
-        let share_link = api
-            .get_minecraft_profile_share_link_deserialized(
-                &id,
-                &share_link.url_identifier,
-                USER_USER_PAT,
-            )
-            .await;
-        assert_eq!(share_link.uses_remaining, 4);
-
-        // Generate more tokens until we run ouut
-        for i in 0..=4 {
-            let resp = api
-                .download_minecraft_profile(&share_link.url_identifier, FRIEND_USER_PAT)
-                .await;
-            println!("resp: {:?}", resp.response().body());
-            assert_eq!(resp.status(), 200);
-
-            let share_link = api
-                .get_minecraft_profile_share_link_deserialized(
-                    &id,
-                    &share_link.url_identifier,
-                    USER_USER_PAT,
-                )
-                .await;
-            assert_eq!(share_link.uses_remaining, 4 - i);
-
-            // Manually delete the created token. This forces it the get route regenerate a new one, and allolws us to
-            // do a decrement test for the uses remaining.
-            // We use a database call for the sake of the tests which currently only has 5 users
-            let mut transaction = test_env.db.pool.begin().await.unwrap();
-            let id = database::models::minecraft_profile_item::MinecraftProfileLink::get_url(
-                &share_link.url_identifier,
-                &mut transaction,
-            )
-            .await
-            .unwrap()
-            .unwrap()
-            .id;
-            database::models::minecraft_profile_item::MinecraftProfileLinkToken::delete_all(
-                id,
-                &mut transaction,
-            )
-            .await
-            .unwrap();
-            transaction.commit().await.unwrap();
-        }
-
-        // Now we should be out of tokens
-        let resp = api
-            .download_minecraft_profile(&share_link.url_identifier, FRIEND_USER_PAT)
-            .await;
-        assert_eq!(resp.status(), 400);
-
-        // Repeat the process to get a new token
-        // Generate a new token which shoould have 5 uses remaining
-        let share_link = api
-            .generate_minecraft_profile_share_link_deserialized(&id, USER_USER_PAT)
-            .await;
-        assert_eq!(share_link.uses_remaining, 5);
-
-        // Get token as 'friend' and download the profile
-        let download = api
-            .download_minecraft_profile_deserialized(&share_link.url_identifier, FRIEND_USER_PAT)
-            .await;
-
-        // Check cloudflare helper route with a bad token (eg: the profile id), should fail
+        // Check cloudflare helper route with a bad token (eg: the profile id), or bad url should fail
         let resp = api
             .check_download_minecraft_profile_token(&share_link.url_identifier, &override_file_url)
             .await;
@@ -344,6 +355,23 @@ async fn download_profile() {
 
         let resp = api
             .check_download_minecraft_profile_token(&id, &override_file_url)
+            .await;
+        assert_eq!(resp.status(), 401);
+
+        let resp = api
+            .check_download_minecraft_profile_token(&download.auth_token, "bad_url")
+            .await;
+        assert_eq!(resp.status(), 401);
+
+        let resp = api
+            .check_download_minecraft_profile_token(
+                &download.auth_token,
+                &format!(
+                    "{}/custom_files/{}",
+                    dotenvy::var("CDN_URL").unwrap(),
+                    "example_hash"
+                ),
+            )
             .await;
         assert_eq!(resp.status(), 401);
 

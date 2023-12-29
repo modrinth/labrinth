@@ -25,6 +25,9 @@ pub struct MinecraftProfile {
     pub game_version_id: LoaderFieldEnumValueId,
     pub loader_version: String,
 
+    pub maximum_users: i32,
+    pub users: Vec<UserId>,
+
     // These represent the same loader
     pub loader_id: LoaderId,
     pub loader: String,
@@ -41,12 +44,12 @@ impl MinecraftProfile {
         sqlx::query!(
             "
             INSERT INTO shared_profiles (
-                id, name, owner_id, icon_url, created, updated,  
-                game_version_id, loader_id, loader_version
+                id, name, owner_id, icon_url, created, updated,
+                game_version_id, loader_id, loader_version, maximum_users
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, 
-                $7, $8, $9
+                $7, $8, $9, $10
             )
             ",
             self.id as MinecraftProfileId,
@@ -58,9 +61,28 @@ impl MinecraftProfile {
             self.game_version_id as LoaderFieldEnumValueId,
             self.loader_id as LoaderId,
             self.loader_version,
+            self.maximum_users,
         )
         .execute(&mut **transaction)
         .await?;
+
+        // Insert users
+        for user_id in &self.users {
+            sqlx::query!(
+                "
+                INSERT INTO shared_profiles_users (
+                    shared_profile_id, user_id
+                )
+                VALUES (
+                    $1, $2
+                )
+                ",
+                self.id as MinecraftProfileId,
+                user_id.0,
+            )
+            .execute(&mut **transaction)
+            .await?;
+        }
 
         Ok(())
     }
@@ -74,10 +96,7 @@ impl MinecraftProfile {
         sqlx::query!(
             "
             DELETE FROM cdn_auth_tokens
-            WHERE shared_profiles_links_id IN (
-                SELECT id FROM shared_profiles_links
-                WHERE shared_profile_id = $1
-            )
+            WHERE shared_profiles_id = $1
             ",
             id as MinecraftProfileId,
         )
@@ -88,6 +107,17 @@ impl MinecraftProfile {
         sqlx::query!(
             "
             DELETE FROM shared_profiles_links
+            WHERE shared_profile_id = $1
+            ",
+            id as MinecraftProfileId,
+        )
+        .execute(&mut **transaction)
+        .await?;
+
+        // Delete shared_profiles_users
+        sqlx::query!(
+            "
+            DELETE FROM shared_profiles_users
             WHERE shared_profile_id = $1
             ",
             id as MinecraftProfileId,
@@ -208,9 +238,11 @@ impl MinecraftProfile {
             // One to many for shared_profiles to loaders, so can safely group by shared_profile_id
             let db_profiles: Vec<MinecraftProfile> = sqlx::query!(
                 "
-                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version
+                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version, sp.maximum_users,
+                ARRAY_AGG(spu.user_id) as users
                 FROM shared_profiles sp                
                 LEFT JOIN loaders l ON l.id = sp.loader_id
+                LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id
                 WHERE sp.id = ANY($1)
                 GROUP BY sp.id, l.id
                 ",
@@ -230,9 +262,11 @@ impl MinecraftProfile {
                             created: m.created,
                             owner_id: UserId(m.owner_id),
                             game_version_id: LoaderFieldEnumValueId(m.game_version_id),
+                            users: m.users.unwrap_or_default().into_iter().map(UserId).collect(),
                             loader_id: LoaderId(m.loader_id),
                             loader_version: m.loader_version,
                             loader: m.loader,
+                            maximum_users: m.maximum_users,
                             versions,
                             overrides: files
                         }
@@ -277,7 +311,6 @@ pub struct MinecraftProfileLink {
     pub shared_profile_id: MinecraftProfileId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
-    pub uses_remaining: i32,
 }
 
 impl MinecraftProfileLink {
@@ -288,10 +321,10 @@ impl MinecraftProfileLink {
         sqlx::query!(
             "
             INSERT INTO shared_profiles_links (
-                id, link, shared_profile_id, created, expires, uses_remaining
+                id, link, shared_profile_id, created, expires
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6
+                $1, $2, $3, $4, $5
             )
             ",
             self.id.0,
@@ -299,7 +332,6 @@ impl MinecraftProfileLink {
             self.shared_profile_id.0,
             self.created,
             self.expires,
-            self.uses_remaining,
         )
         .execute(&mut **transaction)
         .await?;
@@ -318,7 +350,7 @@ impl MinecraftProfileLink {
 
         let links = sqlx::query!(
             "
-            SELECT id, link, shared_profile_id, created, expires, uses_remaining
+            SELECT id, link, shared_profile_id, created, expires
             FROM shared_profiles_links spl
             WHERE spl.shared_profile_id = $1
             ",
@@ -332,7 +364,6 @@ impl MinecraftProfileLink {
                 shared_profile_id: MinecraftProfileId(m.shared_profile_id),
                 created: m.created,
                 expires: m.expires,
-                uses_remaining: m.uses_remaining,
             }))
         })
         .try_collect::<Vec<MinecraftProfileLink>>()
@@ -352,7 +383,7 @@ impl MinecraftProfileLink {
 
         let link = sqlx::query!(
             "
-            SELECT id, link, shared_profile_id, created, expires, uses_remaining
+            SELECT id, link, shared_profile_id, created, expires
             FROM shared_profiles_links spl
             WHERE spl.id = $1
             ",
@@ -366,13 +397,12 @@ impl MinecraftProfileLink {
             shared_profile_id: MinecraftProfileId(m.shared_profile_id),
             created: m.created,
             expires: m.expires,
-            uses_remaining: m.uses_remaining,
         });
 
         Ok(link)
     }
 
-    // DELETE in here needs to clear all fields as well to prevent orphaned data
+    // TODO: DELETE in here needs to clear all fields as well to prevent orphaned data
 
     pub async fn get_url<'a, 'b, E>(
         url_identifier: &str,
@@ -385,7 +415,7 @@ impl MinecraftProfileLink {
 
         let link = sqlx::query!(
             "
-            SELECT id, link, shared_profile_id, created, expires, uses_remaining
+            SELECT id, link, shared_profile_id, created, expires
             FROM shared_profiles_links spl
             WHERE spl.link = $1
             ",
@@ -399,7 +429,6 @@ impl MinecraftProfileLink {
             shared_profile_id: MinecraftProfileId(m.shared_profile_id),
             created: m.created,
             expires: m.expires,
-            uses_remaining: m.uses_remaining,
         });
 
         Ok(link)
@@ -409,7 +438,7 @@ impl MinecraftProfileLink {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MinecraftProfileLinkToken {
     pub token: String,
-    pub shared_profiles_links_id: MinecraftProfileLinkId,
+    pub shared_profiles_id: MinecraftProfileId,
     pub user_id: UserId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
@@ -423,14 +452,14 @@ impl MinecraftProfileLinkToken {
         sqlx::query!(
             "
             INSERT INTO cdn_auth_tokens (
-                token, shared_profiles_links_id, user_id, created, expires
+                token, shared_profiles_id, user_id, created, expires
             )
             VALUES (
                 $1, $2, $3, $4, $5
             )
             ",
             self.token,
-            self.shared_profiles_links_id.0,
+            self.shared_profiles_id.0,
             self.user_id.0,
             self.created,
             self.expires,
@@ -452,7 +481,7 @@ impl MinecraftProfileLinkToken {
 
         let token = sqlx::query!(
             "
-            SELECT token, user_id, shared_profiles_links_id, created, expires
+            SELECT token, user_id, shared_profiles_id, created, expires
             FROM cdn_auth_tokens cat
             WHERE cat.token = $1
             ",
@@ -463,7 +492,7 @@ impl MinecraftProfileLinkToken {
         .map(|m| MinecraftProfileLinkToken {
             token: m.token,
             user_id: UserId(m.user_id),
-            shared_profiles_links_id: MinecraftProfileLinkId(m.shared_profiles_links_id),
+            shared_profiles_id: MinecraftProfileId(m.shared_profiles_id),
             created: m.created,
             expires: m.expires,
         });
@@ -471,29 +500,25 @@ impl MinecraftProfileLinkToken {
         Ok(token)
     }
 
-    // Get existing token for link and user
-    pub async fn get_from_link_user<'a, 'b, E>(
-        profile_link_id: MinecraftProfileLinkId,
+    // Get existing token for profile and user
+    pub async fn get_from_profile_user<'a, 'b, E>(
+        profile_id: MinecraftProfileId,
         user_id: UserId,
         executor: E,
     ) -> Result<Option<MinecraftProfileLinkToken>, DatabaseError>
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
-        println!(
-            "Getting for link {} and user {}",
-            profile_link_id.0, user_id.0
-        );
         let mut exec = executor.acquire().await?;
 
         let token = sqlx::query!(
             "
-            SELECT cat.token, cat.user_id, cat.shared_profiles_links_id, cat.created, cat.expires
+            SELECT cat.token, cat.user_id, cat.shared_profiles_id, cat.created, cat.expires
             FROM cdn_auth_tokens cat
-            INNER JOIN shared_profiles_links spl ON spl.id = cat.shared_profiles_links_id
+            INNER JOIN shared_profiles_links spl ON spl.id = cat.shared_profiles_id
             WHERE spl.id = $1 AND cat.user_id = $2
             ",
-            profile_link_id.0,
+            profile_id.0,
             user_id.0
         )
         .fetch_optional(&mut *exec)
@@ -501,7 +526,7 @@ impl MinecraftProfileLinkToken {
         .map(|m| MinecraftProfileLinkToken {
             token: m.token,
             user_id: UserId(m.user_id),
-            shared_profiles_links_id: MinecraftProfileLinkId(m.shared_profiles_links_id),
+            shared_profiles_id: MinecraftProfileId(m.shared_profiles_id),
             created: m.created,
             expires: m.expires,
         });
@@ -527,15 +552,15 @@ impl MinecraftProfileLinkToken {
     }
 
     pub async fn delete_all(
-        shared_profile_link_id: MinecraftProfileLinkId,
+        shared_profile_id: MinecraftProfileId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), DatabaseError> {
         sqlx::query!(
             "
             DELETE FROM cdn_auth_tokens
-            WHERE shared_profiles_links_id = $1
+            WHERE shared_profiles_id = $1
             ",
-            shared_profile_link_id.0
+            shared_profile_id.0
         )
         .execute(&mut **transaction)
         .await?;

@@ -9,7 +9,7 @@ use crate::{
 };
 
 // How many uses should a share link have before it becomes invalid?
-pub const DEFAULT_STARTING_LINK_USES: u32 = 5;
+pub const DEFAULT_PROFILE_MAX_USERS: u32 = 5;
 
 /// The ID of a specific profile, encoded as base62 for usage in the API
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -34,6 +34,12 @@ pub struct MinecraftProfile {
     /// The icon of the project.
     pub icon_url: Option<String>,
 
+    // Maximum number of users that can be associated with this profile
+    pub max_users: u32,
+    // Users that are associated with this profile
+    // Hidden if the user is not the owner
+    pub users: Option<Vec<UserId>>,
+
     /// The loader
     pub loader: String,
     /// The loader version
@@ -48,8 +54,17 @@ pub struct MinecraftProfile {
     pub override_install_paths: Vec<PathBuf>,
 }
 
-impl From<database::models::minecraft_profile_item::MinecraftProfile> for MinecraftProfile {
-    fn from(profile: database::models::minecraft_profile_item::MinecraftProfile) -> Self {
+impl MinecraftProfile {
+    pub fn from(
+        profile: database::models::minecraft_profile_item::MinecraftProfile,
+        current_user_id: Option<database::models::ids::UserId>,
+    ) -> Self {
+        let users = if Some(profile.owner_id) == current_user_id {
+            Some(profile.users.into_iter().map(|v| v.into()).collect())
+        } else {
+            None
+        };
+
         Self {
             id: profile.id.into(),
             owner_id: profile.owner_id.into(),
@@ -57,6 +72,8 @@ impl From<database::models::minecraft_profile_item::MinecraftProfile> for Minecr
             created: profile.created,
             updated: profile.updated,
             icon_url: profile.icon_url,
+            max_users: profile.maximum_users as u32,
+            users,
             loader: profile.loader,
             loader_version: profile.loader_version,
             game_version_id: profile.game_version_id,
@@ -71,7 +88,6 @@ pub struct MinecraftProfileShareLink {
     pub url_identifier: String,
     pub url: String, // Includes the url identifier, intentionally redundant
     pub profile_id: MinecraftProfileId,
-    pub uses_remaining: u32,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
 }
@@ -83,7 +99,7 @@ impl From<database::models::minecraft_profile_item::MinecraftProfileLink>
         // Generate URL for easy access
         let profile_id: MinecraftProfileId = link.shared_profile_id.into();
         let url = format!(
-            "{}/v3/minecraft/profile/{}/download/{}",
+            "{}/v3/minecraft/profile/{}/accept/{}",
             dotenvy::var("SELF_ADDR").unwrap(),
             profile_id,
             link.link_identifier
@@ -93,7 +109,6 @@ impl From<database::models::minecraft_profile_item::MinecraftProfileLink>
             url_identifier: link.link_identifier,
             url,
             profile_id,
-            uses_remaining: link.uses_remaining as u32,
             created: link.created,
             expires: link.expires,
         }
