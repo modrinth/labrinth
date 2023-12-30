@@ -29,6 +29,7 @@ use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use sqlx::PgPool;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -916,7 +917,7 @@ pub async fn profile_icon_edit(
 
         let color = crate::util::img::get_color_from_img(&bytes)?;
 
-        let hash = sha1::Sha1::from(&bytes).hexdigest();
+        let hash = format!("{:x}", sha2::Sha512::digest(&bytes));
         let id: MinecraftProfileId = profile_item.id.into();
         let upload_data = file_host
             .upload_file(
@@ -1122,8 +1123,11 @@ pub async fn minecraft_profile_add_override(
                 CreateError::InvalidInput(String::from("Upload must have a name"))
             })?;
 
-            let data =
-                read_from_field(&mut field, 262144, "Icons must be smaller than 256KiB").await?;
+            let data = read_from_field(
+                &mut field, 500 * (1 << 20),
+                "Project file exceeds the maximum of 500MiB. Contact a moderator or admin to request permission to upload larger files."
+            ).await?;
+
             let install_path = files
                 .iter()
                 .find(|x| x.file_name == name)
@@ -1136,7 +1140,7 @@ pub async fn minecraft_profile_add_override(
                 .install_path
                 .clone();
 
-            let hash = sha1::Sha1::from(&data).hexdigest();
+            let hash = format!("{:x}", sha2::Sha512::digest(&data));
 
             file_host
                 .upload_file(

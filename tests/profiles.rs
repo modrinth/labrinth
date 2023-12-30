@@ -7,6 +7,7 @@ use common::environment::with_test_environment;
 use common::environment::TestEnvironment;
 use labrinth::models::minecraft::profile::MinecraftProfile;
 use labrinth::models::users::UserId;
+use sha2::Digest;
 
 use crate::common::api_v3::minecraft_profile::MinecraftProfileOverride;
 use crate::common::dummy_data::DummyImage;
@@ -426,7 +427,7 @@ async fn download_profile() {
         // - hash
         assert_eq!(download.override_cdns.len(), 1);
         let override_file_url = download.override_cdns.remove(0).0;
-        let hash = sha1::Sha1::from(TestFile::BasicMod.bytes()).hexdigest();
+        let hash = format!("{:x}", sha2::Sha512::digest(&TestFile::BasicMod.bytes()));
         assert_eq!(
             override_file_url,
             format!("{}/custom_files/{}", dotenvy::var("CDN_URL").unwrap(), hash)
@@ -708,9 +709,11 @@ async fn add_remove_profile_versions() {
             .delete_minecraft_profile_overrides(
                 &id_enemy,
                 None,
-                Some(&[sha1::Sha1::from(TestFile::BasicModDifferent.bytes())
-                    .hexdigest()
-                    .as_str()]),
+                Some(&[format!(
+                    "{:x}",
+                    sha2::Sha512::digest(&TestFile::BasicModDifferent.bytes())
+                )
+                .as_str()]),
                 ENEMY_USER_PAT,
             )
             .await;
@@ -734,9 +737,11 @@ async fn add_remove_profile_versions() {
             .delete_minecraft_profile_overrides(
                 &profile.id.to_string(),
                 None,
-                Some(&[sha1::Sha1::from(TestFile::BasicModDifferent.bytes())
-                    .hexdigest()
-                    .as_str()]),
+                Some(&[format!(
+                    "{:x}",
+                    sha2::Sha512::digest(&TestFile::BasicModDifferent.bytes())
+                )
+                .as_str()]),
                 USER_USER_PAT,
             )
             .await;
