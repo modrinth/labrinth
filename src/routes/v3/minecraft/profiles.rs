@@ -800,7 +800,7 @@ pub async fn profile_download(
 
 #[derive(Deserialize)]
 pub struct TokenUrl {
-    pub url: String, // TODO: could take a vec instead?
+    pub url: String, // TODO: Could take a vec instead for mass checking- revisit after cloudflare worker is done
 }
 
 // Used by cloudflare to check headers and permit CDN downloads for a pack

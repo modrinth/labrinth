@@ -774,7 +774,6 @@ async fn add_remove_profile_versions() {
             .get_minecraft_profile_deserialized(&profile.id.to_string(), USER_USER_PAT)
             .await;
         assert_eq!(profile.versions, vec![]);
-        // TODO: version deletion -> affects these (including an 'updated'!)
     })
     .await;
 }

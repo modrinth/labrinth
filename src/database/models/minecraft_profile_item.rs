@@ -412,8 +412,6 @@ impl MinecraftProfileLink {
         Ok(link)
     }
 
-    // TODO: DELETE in here needs to clear all fields as well to prevent orphaned data
-
     pub async fn get_url<'a, 'b, E>(
         url_identifier: &str,
         executor: E,
