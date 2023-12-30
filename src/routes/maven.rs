@@ -298,7 +298,11 @@ pub async fn version_file(
         return Err(ApiError::NotFound);
     }
 
-    if file == format!("{}-{}.pom", &project_id, &vnum) {
+    if let Some(selected_file) = find_file(&project_id, &vnum, &version, &file) {
+        return Ok(HttpResponse::TemporaryRedirect()
+            .append_header(("location", &*selected_file.url))
+            .body(""));
+    } else if file == format!("{}-{}.pom", &project_id, &vnum) {
         let respdata = MavenPom {
             schema_location:
                 "http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
@@ -314,10 +318,6 @@ pub async fn version_file(
         return Ok(HttpResponse::Ok()
             .content_type("text/xml")
             .body(yaserde::ser::to_string(&respdata).map_err(ApiError::Xml)?));
-    } else if let Some(selected_file) = find_file(&project_id, &vnum, &version, &file) {
-        return Ok(HttpResponse::TemporaryRedirect()
-            .append_header(("location", &*selected_file.url))
-            .body(""));
     }
 
     Err(ApiError::NotFound)
