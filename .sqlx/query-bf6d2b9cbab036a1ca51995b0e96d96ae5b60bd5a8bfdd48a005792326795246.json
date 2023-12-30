@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM cdn_auth_tokens\n            WHERE shared_profile_id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bf6d2b9cbab036a1ca51995b0e96d96ae5b60bd5a8bfdd48a005792326795246"
+}

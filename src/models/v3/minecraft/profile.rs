@@ -29,7 +29,7 @@ pub struct MinecraftProfile {
     pub name: String,
     /// The date at which the project was first created.
     pub created: DateTime<Utc>,
-    /// The date at which the project was last updated.
+    /// The date at which the project was last updated (versions/override were added/removed)
     pub updated: DateTime<Utc>,
     /// The icon of the project.
     pub icon_url: Option<String>,

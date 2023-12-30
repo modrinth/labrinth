@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version, sp.maximum_users,\n                ARRAY_AGG(spu.user_id) as users\n                FROM shared_profiles sp                \n                LEFT JOIN loaders l ON l.id = sp.loader_id\n                LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id\n                WHERE sp.id = ANY($1)\n                GROUP BY sp.id, l.id\n                ",
+  "query": "\n                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version, sp.maximum_users,\n                ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users\n                FROM shared_profiles sp                \n                LEFT JOIN loaders l ON l.id = sp.loader_id\n                LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id\n                WHERE sp.id = ANY($1)\n                GROUP BY sp.id, l.id\n                ",
   "describe": {
     "columns": [
       {
@@ -84,5 +84,5 @@
       null
     ]
   },
-  "hash": "b5bc3c2ba4c1fa034829db0e414e59742e321a61dbb7098d8384d2bc20a9ae9e"
+  "hash": "1877647bc2e255578344a8a88579ae0c5945e4eeb962bd36939c596b0b52999e"
 }

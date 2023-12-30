@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
@@ -57,6 +59,7 @@ impl ApiV3 {
         self.call(req).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn edit_minecraft_profile(
         &self,
         id: &str,
@@ -64,6 +67,7 @@ impl ApiV3 {
         loader: Option<&str>,
         loader_version: Option<&str>,
         versions: Option<Vec<&str>>,
+        remove_users: Option<Vec<&str>>,
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = test::TestRequest::patch()
@@ -73,7 +77,8 @@ impl ApiV3 {
                 "name": name,
                 "loader": loader,
                 "loader_version": loader_version,
-                "versions": versions
+                "versions": versions,
+                "remove_users": remove_users
             }))
             .to_request();
         self.call(req).await
@@ -95,6 +100,14 @@ impl ApiV3 {
         let resp = self.get_minecraft_profile(id, pat).await;
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
+    }
+
+    pub async fn delete_minecraft_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
+        let req = TestRequest::delete()
+            .uri(&format!("/v3/minecraft/profile/{}", id))
+            .append_pat(pat)
+            .to_request();
+        self.call(req).await
     }
 
     pub async fn edit_minecraft_profile_icon(
@@ -159,17 +172,19 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn delete_minecraft_profile_override(
+    pub async fn delete_minecraft_profile_overrides(
         &self,
         id: &str,
-        file_name: &str,
+        install_paths: Option<&[&PathBuf]>,
+        hashes: Option<&[&str]>,
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::delete()
-            .uri(&format!(
-                "/v3/minecraft/profile/{}/overrides/{}",
-                id, file_name
-            ))
+            .uri(&format!("/v3/minecraft/profile/{}/override", id))
+            .set_json(json!({
+                "install_paths": install_paths,
+                "hashes": hashes
+            }))
             .append_pat(pat)
             .to_request();
         self.call(req).await
@@ -261,6 +276,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ProfileDownload {
         let resp = self.download_minecraft_profile(profile_id, pat).await;
+        println!("{:#?}", resp.response().body());
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }

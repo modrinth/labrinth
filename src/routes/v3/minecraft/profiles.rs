@@ -8,7 +8,7 @@ use crate::database::models::{
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::base62_impl::parse_base62;
-use crate::models::ids::VersionId;
+use crate::models::ids::{UserId, VersionId};
 use crate::models::minecraft::profile::{
     MinecraftProfile, MinecraftProfileId, MinecraftProfileShareLink, DEFAULT_PROFILE_MAX_USERS,
 };
@@ -47,6 +47,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                     .route(
                         "{id}/override",
                         web::post().to(minecraft_profile_add_override),
+                    )
+                    .route(
+                        "{id}/override",
+                        web::delete().to(minecraft_profile_remove_overrides),
                     )
                     .route("{id}/share", web::get().to(profile_share))
                     .route(
@@ -269,6 +273,9 @@ pub struct EditMinecraftProfile {
     pub game_version: Option<String>,
     // The list of versions to include in the profile (does not include overrides)
     pub versions: Option<Vec<VersionId>>,
+
+    // You can remove users from your invite list here
+    pub remove_users: Option<Vec<UserId>>,
 }
 
 // Edit a minecraft profile
@@ -400,10 +407,44 @@ pub async fn profile_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
+
+                // Set updated
+                sqlx::query!(
+                    "
+                        UPDATE shared_profiles
+                        SET updated = NOW()
+                        WHERE id = $1
+                        ",
+                    data.id.0,
+                )
+                .execute(&mut *transaction)
+                .await?;
             }
+            if let Some(remove_users) = edit_data.remove_users {
+                for user in remove_users {
+                    // Remove user from list
+                    sqlx::query!(
+                        "DELETE FROM shared_profiles_users WHERE shared_profile_id = $1 AND user_id = $2",
+                        data.id.0 as i64,
+                        user.0 as i64
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+
+                    // In addition, invalidate tokens for this user and profile
+                    sqlx::query!(
+                        "DELETE FROM cdn_auth_tokens WHERE shared_profile_id = $1 AND user_id = $2",
+                        data.id.0 as i64,
+                        user.0 as i64
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+            }
+
             transaction.commit().await?;
             minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
-            return Ok(HttpResponse::Ok().finish());
+            return Ok(HttpResponse::NoContent().finish());
         } else {
             return Err(ApiError::CustomAuthentication(
                 "You are not the owner of this profile".to_string(),
@@ -449,7 +490,12 @@ pub async fn profile_delete(
             .await?;
             transaction.commit().await?;
             minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
-            return Ok(HttpResponse::Ok().finish());
+            return Ok(HttpResponse::NoContent().finish());
+        } else if data.users.contains(&user_option.1.id.into()) {
+            // We know it exists, but still can't delete it
+            return Err(ApiError::CustomAuthentication(
+                "You are not the owner of this profile".to_string(),
+            ));
         }
     }
 
@@ -730,7 +776,7 @@ pub async fn profile_download(
             .take(32)
             .map(char::from)
             .collect::<String>(),
-        shared_profiles_id: profile.id,
+        shared_profile_id: profile.id,
         created: Utc::now(),
         expires: Utc::now() + chrono::Duration::minutes(5),
     };
@@ -789,7 +835,7 @@ pub async fn profile_token_check(
 
     // Get valid urls for the profile
     let profile = database::models::minecraft_profile_item::MinecraftProfile::get(
-        token.shared_profiles_id,
+        token.shared_profile_id,
         &**pool,
         &redis,
     )
@@ -1133,7 +1179,144 @@ pub async fn minecraft_profile_add_override(
     .execute(&mut *transaction)
     .await?;
 
+    // Set updated
+    sqlx::query!(
+        "
+            UPDATE shared_profiles
+            SET updated = NOW()
+            WHERE id = $1
+            ",
+        profile_item.id.0,
+    )
+    .execute(&mut *transaction)
+    .await?;
+
     transaction.commit().await?;
+
+    database::models::minecraft_profile_item::MinecraftProfile::clear_cache(
+        profile_item.id,
+        &redis,
+    )
+    .await?;
+
+    Ok(HttpResponse::NoContent().body(""))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RemoveOverrides {
+    // Either will work, or some combination, to identify the overrides to remove
+    pub install_paths: Option<Vec<PathBuf>>,
+    pub hashes: Option<Vec<String>>,
+}
+
+pub async fn minecraft_profile_remove_overrides(
+    req: HttpRequest,
+    client_id: web::Path<MinecraftProfileId>,
+    pool: web::Data<PgPool>,
+    data: web::Json<RemoveOverrides>,
+    redis: web::Data<RedisPool>,
+    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, CreateError> {
+    let client_id = client_id.into_inner();
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+    )
+    .await?
+    .1;
+
+    // Check if this is our profile
+    let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(
+        client_id.into(),
+        &**pool,
+        &redis,
+    )
+    .await?
+    .ok_or_else(|| {
+        CreateError::InvalidInput("The specified profile does not exist!".to_string())
+    })?;
+
+    if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
+        return Err(CreateError::CustomAuthenticationError(
+            "You don't have permission to remove  overrides.".to_string(),
+        ));
+    }
+
+    let delete_hashes = data.hashes.clone().unwrap_or_default();
+    let delete_install_paths = data.install_paths.clone().unwrap_or_default();
+
+    let overrides = profile_item
+        .overrides
+        .into_iter()
+        .filter(|(hash, path)| delete_hashes.contains(hash) || delete_install_paths.contains(path))
+        .collect::<Vec<(_, _)>>();
+
+    let delete_hashes = overrides.iter().map(|x| x.0.clone()).collect::<Vec<_>>();
+    let delete_install_paths = overrides
+        .iter()
+        .map(|x| x.1.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    let mut transaction = pool.begin().await?;
+    let deleted_hashes = sqlx::query!(
+        "
+            DELETE FROM shared_profiles_mods
+            WHERE (shared_profile_id = $1 AND (file_hash = ANY($2::text[]) OR install_path = ANY($3::text[])))
+            RETURNING file_hash
+            ",
+        profile_item.id.0,
+        &delete_hashes[..],
+        &delete_install_paths[..],
+    )
+    .fetch_all(&mut *transaction)
+    .await?.into_iter().filter_map(|x| x.file_hash).collect::<Vec<_>>();
+
+    let still_existing_hashes = sqlx::query!(
+        "
+            SELECT file_hash FROM shared_profiles_mods
+            WHERE file_hash = ANY($1::text[])
+            ",
+        &deleted_hashes[..],
+    )
+    .fetch_all(&mut *transaction)
+    .await?
+    .into_iter()
+    .filter_map(|x| x.file_hash)
+    .collect::<Vec<_>>();
+
+    // Set updated
+    sqlx::query!(
+        "
+            UPDATE shared_profiles
+            SET updated = NOW()
+            WHERE id = $1
+            ",
+        profile_item.id.0,
+    )
+    .execute(&mut *transaction)
+    .await?;
+
+    transaction.commit().await?;
+
+    // We want to delete files from the server that are no longer used by any profile
+    let hashes_to_delete = deleted_hashes
+        .into_iter()
+        .filter(|x| !still_existing_hashes.contains(x))
+        .collect::<Vec<_>>();
+    let hashes_to_delete = hashes_to_delete
+        .iter()
+        .map(|x| x.as_str())
+        .collect::<Vec<_>>();
+
+    for hash in hashes_to_delete {
+        file_host
+            .delete_file_version("", &format!("custom_files/{}", hash))
+            .await?;
+    }
 
     database::models::minecraft_profile_item::MinecraftProfile::clear_cache(
         profile_item.id,

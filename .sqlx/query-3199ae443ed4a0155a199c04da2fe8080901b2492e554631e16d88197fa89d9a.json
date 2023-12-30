@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT cat.token, cat.user_id, cat.shared_profiles_id, cat.created, cat.expires\n            FROM cdn_auth_tokens cat\n            INNER JOIN shared_profiles_links spl ON spl.id = cat.shared_profiles_id\n            WHERE spl.id = $1 AND cat.user_id = $2\n            ",
+  "query": "\n            SELECT token, user_id, shared_profile_id, created, expires\n            FROM cdn_auth_tokens cat\n            WHERE cat.token = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -15,7 +15,7 @@
       },
       {
         "ordinal": 2,
-        "name": "shared_profiles_id",
+        "name": "shared_profile_id",
         "type_info": "Int8"
       },
       {
@@ -31,8 +31,7 @@
     ],
     "parameters": {
       "Left": [
-        "Int8",
-        "Int8"
+        "Text"
       ]
     },
     "nullable": [
@@ -43,5 +42,5 @@
       false
     ]
   },
-  "hash": "ff2f40e94b11fbd4b706faec648db8f8e0020b19472980b52c9f693a6cb55976"
+  "hash": "3199ae443ed4a0155a199c04da2fe8080901b2492e554631e16d88197fa89d9a"
 }

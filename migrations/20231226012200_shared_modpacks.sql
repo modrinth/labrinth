@@ -50,11 +50,11 @@ CREATE INDEX shared_profiles_links_link_idx ON shared_profiles_links(link);
 -- generated tokens for downloading files
 CREATE TABLE cdn_auth_tokens (
     token varchar(255) PRIMARY KEY,
-    shared_profiles_id bigint NOT NULL REFERENCES shared_profiles(id),
+    shared_profile_id bigint NOT NULL REFERENCES shared_profiles(id),
     user_id bigint NOT NULL REFERENCES users(id),
     created timestamptz NOT NULL DEFAULT now(),
     expires timestamptz NOT NULL,
 
     -- unique combinations of shared_profiles_links_id and user_id
-    CONSTRAINT cdn_auth_tokens_unique UNIQUE (shared_profiles_id, user_id)
+    CONSTRAINT cdn_auth_tokens_unique UNIQUE (shared_profile_id, user_id)
 );

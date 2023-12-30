@@ -96,7 +96,7 @@ impl MinecraftProfile {
         sqlx::query!(
             "
             DELETE FROM cdn_auth_tokens
-            WHERE shared_profiles_id = $1
+            WHERE shared_profile_id = $1
             ",
             id as MinecraftProfileId,
         )
@@ -139,6 +139,16 @@ impl MinecraftProfile {
             "
             DELETE FROM shared_profiles_links
             WHERE shared_profile_id = $1
+            ",
+            id as MinecraftProfileId,
+        )
+        .execute(&mut **transaction)
+        .await?;
+
+        sqlx::query!(
+            "
+            DELETE FROM shared_profiles
+            WHERE id = $1
             ",
             id as MinecraftProfileId,
         )
@@ -239,7 +249,7 @@ impl MinecraftProfile {
             let db_profiles: Vec<MinecraftProfile> = sqlx::query!(
                 "
                 SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version, sp.maximum_users,
-                ARRAY_AGG(spu.user_id) as users
+                ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users
                 FROM shared_profiles sp                
                 LEFT JOIN loaders l ON l.id = sp.loader_id
                 LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id
@@ -438,7 +448,7 @@ impl MinecraftProfileLink {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MinecraftProfileLinkToken {
     pub token: String,
-    pub shared_profiles_id: MinecraftProfileId,
+    pub shared_profile_id: MinecraftProfileId,
     pub user_id: UserId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
@@ -452,14 +462,14 @@ impl MinecraftProfileLinkToken {
         sqlx::query!(
             "
             INSERT INTO cdn_auth_tokens (
-                token, shared_profiles_id, user_id, created, expires
+                token, shared_profile_id, user_id, created, expires
             )
             VALUES (
                 $1, $2, $3, $4, $5
             )
             ",
             self.token,
-            self.shared_profiles_id.0,
+            self.shared_profile_id.0,
             self.user_id.0,
             self.created,
             self.expires,
@@ -481,7 +491,7 @@ impl MinecraftProfileLinkToken {
 
         let token = sqlx::query!(
             "
-            SELECT token, user_id, shared_profiles_id, created, expires
+            SELECT token, user_id, shared_profile_id, created, expires
             FROM cdn_auth_tokens cat
             WHERE cat.token = $1
             ",
@@ -492,7 +502,7 @@ impl MinecraftProfileLinkToken {
         .map(|m| MinecraftProfileLinkToken {
             token: m.token,
             user_id: UserId(m.user_id),
-            shared_profiles_id: MinecraftProfileId(m.shared_profiles_id),
+            shared_profile_id: MinecraftProfileId(m.shared_profile_id),
             created: m.created,
             expires: m.expires,
         });
@@ -513,10 +523,10 @@ impl MinecraftProfileLinkToken {
 
         let token = sqlx::query!(
             "
-            SELECT cat.token, cat.user_id, cat.shared_profiles_id, cat.created, cat.expires
+            SELECT cat.token, cat.user_id, cat.shared_profile_id, cat.created, cat.expires
             FROM cdn_auth_tokens cat
-            INNER JOIN shared_profiles_links spl ON spl.id = cat.shared_profiles_id
-            WHERE spl.id = $1 AND cat.user_id = $2
+            INNER JOIN shared_profiles sp ON sp.id = cat.shared_profile_id
+            WHERE sp.id = $1 AND cat.user_id = $2
             ",
             profile_id.0,
             user_id.0
@@ -526,7 +536,7 @@ impl MinecraftProfileLinkToken {
         .map(|m| MinecraftProfileLinkToken {
             token: m.token,
             user_id: UserId(m.user_id),
-            shared_profiles_id: MinecraftProfileId(m.shared_profiles_id),
+            shared_profile_id: MinecraftProfileId(m.shared_profile_id),
             created: m.created,
             expires: m.expires,
         });
@@ -558,7 +568,7 @@ impl MinecraftProfileLinkToken {
         sqlx::query!(
             "
             DELETE FROM cdn_auth_tokens
-            WHERE shared_profiles_id = $1
+            WHERE shared_profile_id = $1
             ",
             shared_profile_id.0
         )
