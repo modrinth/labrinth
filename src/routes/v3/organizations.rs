@@ -447,7 +447,7 @@ pub async fn organizations_edit(
                 sqlx::query!(
                     "
                     UPDATE organizations
-                    SET name = LOWER($1)
+                    SET name = $1
                     WHERE (id = $2)
                     ",
                     Some(name),
