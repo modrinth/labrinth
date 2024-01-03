@@ -276,22 +276,21 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ProfileDownload {
         let resp = self.download_minecraft_profile(profile_id, pat).await;
-        println!("{:#?}", resp.response().body());
         assert_eq!(resp.status(), 200);
         test::read_body_json(resp).await
     }
 
     pub async fn check_download_minecraft_profile_token(
         &self,
-        token: &str,
         url: &str, // Full URL, the route will parse it
+        pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!(
                 "/v3/minecraft/check_token?url={url}",
                 url = urlencoding::encode(url)
             ))
-            .append_header(("Authorization", token))
+            .append_pat(pat)
             .to_request();
         self.call(req).await
     }

@@ -431,15 +431,6 @@ pub async fn profile_edit(
                     )
                     .execute(&mut *transaction)
                     .await?;
-
-                    // In addition, invalidate tokens for this user and profile
-                    sqlx::query!(
-                        "DELETE FROM cdn_auth_tokens WHERE shared_profile_id = $1 AND user_id = $2",
-                        data.id.0 as i64,
-                        user.0 as i64
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
                 }
             }
 
@@ -684,9 +675,6 @@ pub async fn accept_share_link(
 
 #[derive(Serialize, Deserialize)]
 pub struct ProfileDownload {
-    // temporary authorization token for the CDN, for downloading the profile files
-    pub auth_token: String,
-
     // Version ids for modrinth-hosted versions
     pub version_ids: Vec<VersionId>,
 
@@ -735,64 +723,13 @@ pub async fn profile_download(
         ));
     }
 
-    let mut transaction = pool.begin().await?;
-
-    // Check no token exists for the username and profile
-    let existing_token =
-        database::models::minecraft_profile_item::MinecraftProfileLinkToken::get_from_profile_user(
-            profile.id,
-            user_option.1.id.into(),
-            &mut *transaction,
-        )
-        .await?;
-    if let Some(token) = existing_token {
-        // Check if the token is still valid
-        if token.expires > Utc::now() {
-            // Simply return the token
-            transaction.commit().await?;
-            return Ok(HttpResponse::Ok().json(ProfileDownload {
-                auth_token: token.token,
-                version_ids: profile.versions.iter().map(|x| (*x).into()).collect(),
-                override_cdns: profile
-                    .overrides
-                    .into_iter()
-                    .map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1))
-                    .collect::<Vec<_>>(),
-            }));
-        }
-
-        // If we're here, the token is invalid, so delete it, and create a new one if we can
-        database::models::minecraft_profile_item::MinecraftProfileLinkToken::delete(
-            &token.token,
-            &mut transaction,
-        )
-        .await?;
-    }
-
-    // Create a new cdn auth token
-    let token = database::models::minecraft_profile_item::MinecraftProfileLinkToken {
-        user_id: user_option.1.id.into(), // This user is requesting the download
-        token: ChaCha20Rng::from_entropy()
-            .sample_iter(&Alphanumeric)
-            .take(32)
-            .map(char::from)
-            .collect::<String>(),
-        shared_profile_id: profile.id,
-        created: Utc::now(),
-        expires: Utc::now() + chrono::Duration::minutes(5),
-    };
-    token.insert(&mut transaction).await?;
-
     let override_cdns = profile
         .overrides
         .into_iter()
         .map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1))
         .collect::<Vec<_>>();
-    transaction.commit().await?;
-    minecraft_profile_item::MinecraftProfile::clear_cache(profile.id, &redis).await?;
 
     Ok(HttpResponse::Ok().json(ProfileDownload {
-        auth_token: token.token,
         version_ids: profile.versions.iter().map(|x| (*x).into()).collect(),
         override_cdns,
     }))
@@ -804,44 +741,46 @@ pub struct TokenUrl {
 }
 
 // Used by cloudflare to check headers and permit CDN downloads for a pack
-// Checks headers for 'authorization: xxyyzz' where xxyyzz is a valid token
+// Checks headers for 'authorization: xxyyzz' where xxyyzz is a valid user authorization token
 // that allows for downloading of url 'url'
 pub async fn profile_token_check(
     req: HttpRequest,
     file_url: web::Query<TokenUrl>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let cdn_url = dotenvy::var("CDN_URL")?;
     let file_url = file_url.into_inner().url;
 
-    // Extract token from 'authorization' of headers
-    let token = req
-        .headers()
-        .get("authorization")
-        .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
-
-    let token = database::models::minecraft_profile_item::MinecraftProfileLinkToken::get_token(
-        token, &**pool,
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::MINECRAFT_PROFILE_DOWNLOAD]),
     )
     .await?
-    .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
+    .1;
 
-    if token.expires <= Utc::now() {
-        return Err(ApiError::Authentication(
-            AuthenticationError::InvalidAuthMethod,
-        ));
-    }
+    // Get all profiles for the user
+    let profile_ids = database::models::minecraft_profile_item::MinecraftProfile::get_ids_for_user(
+        user.id.into(),
+        &**pool,
+    )
+    .await?;
 
-    // Get valid urls for the profile
-    let profile = database::models::minecraft_profile_item::MinecraftProfile::get(
-        token.shared_profile_id,
+    let profiles = database::models::minecraft_profile_item::MinecraftProfile::get_many(
+        &profile_ids,
         &**pool,
         &redis,
     )
-    .await?
-    .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
+    .await?;
+
+    let all_allowed_urls = profiles
+        .into_iter()
+        .flat_map(|x| x.overrides.into_iter().map(|x| x.0))
+        .collect::<Vec<_>>();
 
     // Check the token is valid for the requested file
     let file_url_hash = file_url
@@ -849,7 +788,7 @@ pub async fn profile_token_check(
         .nth(1)
         .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
 
-    let valid = profile.overrides.iter().any(|x| x.0 == file_url_hash);
+    let valid = all_allowed_urls.iter().any(|x| x == file_url_hash);
     if !valid {
         Err(ApiError::Authentication(
             AuthenticationError::InvalidAuthMethod,

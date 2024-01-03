@@ -338,7 +338,7 @@ async fn delete_profile() {
 
         // Confirm it works
         let resp = api
-            .check_download_minecraft_profile_token(&token.auth_token, &token.override_cdns[0].0)
+            .check_download_minecraft_profile_token(&token.override_cdns[0].0, FRIEND_USER_PAT)
             .await;
         assert_eq!(resp.status(), 200);
 
@@ -358,7 +358,7 @@ async fn delete_profile() {
 
         // Confirm the token is gone
         let resp = api
-            .check_download_minecraft_profile_token(&token.auth_token, &token.override_cdns[0].0)
+            .check_download_minecraft_profile_token(&token.override_cdns[0].0, FRIEND_USER_PAT)
             .await;
         assert_eq!(resp.status(), 401);
     })
@@ -433,34 +433,29 @@ async fn download_profile() {
             format!("{}/custom_files/{}", dotenvy::var("CDN_URL").unwrap(), hash)
         );
 
-        // Check cloudflare helper route with a bad token (eg: the profile id), or bad url should fail
+        // Check cloudflare helper route with a bad token (eg: the wrong user, or no user), or bad url should fail
         let resp = api
-            .check_download_minecraft_profile_token(&share_link.url_identifier, &override_file_url)
+            .check_download_minecraft_profile_token(&override_file_url, None)
             .await;
         assert_eq!(resp.status(), 401);
         let resp = api
-            .check_download_minecraft_profile_token(&share_link.url, &override_file_url)
-            .await;
-        assert_eq!(resp.status(), 401);
-
-        let resp = api
-            .check_download_minecraft_profile_token(&id, &override_file_url)
+            .check_download_minecraft_profile_token(&override_file_url, ENEMY_USER_PAT)
             .await;
         assert_eq!(resp.status(), 401);
 
         let resp = api
-            .check_download_minecraft_profile_token(&download.auth_token, "bad_url")
+            .check_download_minecraft_profile_token("bad_url", FRIEND_USER_PAT)
             .await;
         assert_eq!(resp.status(), 401);
 
         let resp = api
             .check_download_minecraft_profile_token(
-                &download.auth_token,
                 &format!(
                     "{}/custom_files/{}",
                     dotenvy::var("CDN_URL").unwrap(),
                     "example_hash"
                 ),
+                FRIEND_USER_PAT,
             )
             .await;
         assert_eq!(resp.status(), 401);
@@ -468,7 +463,7 @@ async fn download_profile() {
         // Check cloudflare helper route to confirm this is a valid allowable access token
         // We attach it as an authorization token and call the route
         let resp = api
-            .check_download_minecraft_profile_token(&download.auth_token, &override_file_url)
+            .check_download_minecraft_profile_token(&override_file_url, FRIEND_USER_PAT)
             .await;
         assert_eq!(resp.status(), 200);
 
@@ -498,7 +493,7 @@ async fn download_profile() {
 
         // Confirm token invalidation
         let resp = api
-            .check_download_minecraft_profile_token(&download.auth_token, &override_file_url)
+            .check_download_minecraft_profile_token(&override_file_url, FRIEND_USER_PAT)
             .await;
         assert_eq!(resp.status(), 401);
 

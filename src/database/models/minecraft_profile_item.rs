@@ -92,17 +92,6 @@ impl MinecraftProfile {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
-        // Delete shared_profiles_links_tokens
-        sqlx::query!(
-            "
-            DELETE FROM cdn_auth_tokens
-            WHERE shared_profile_id = $1
-            ",
-            id as MinecraftProfileId,
-        )
-        .execute(&mut **transaction)
-        .await?;
-
         // Delete shared_profiles_links
         sqlx::query!(
             "
@@ -171,6 +160,30 @@ impl MinecraftProfile {
         Self::get_many(&[id], executor, redis)
             .await
             .map(|x| x.into_iter().next())
+    }
+
+    pub async fn get_ids_for_user<'a, E>(
+        user_id: UserId,
+        exec: E,
+    ) -> Result<Vec<MinecraftProfileId>, DatabaseError>
+    where
+        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
+    {
+        let mut exec = exec.acquire().await?;
+        let db_profiles: Vec<MinecraftProfileId> = sqlx::query!(
+            "
+            SELECT sp.id
+            FROM shared_profiles sp                
+            LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id
+            WHERE spu.user_id = $1
+            ",
+            user_id.0
+        )
+        .fetch_many(&mut *exec)
+        .try_filter_map(|e| async { Ok(e.right().map(|m| MinecraftProfileId(m.id))) })
+        .try_collect::<Vec<MinecraftProfileId>>()
+        .await?;
+        Ok(db_profiles)
     }
 
     pub async fn get_many<'a, E>(
@@ -440,140 +453,6 @@ impl MinecraftProfileLink {
         });
 
         Ok(link)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MinecraftProfileLinkToken {
-    pub token: String,
-    pub shared_profile_id: MinecraftProfileId,
-    pub user_id: UserId,
-    pub created: DateTime<Utc>,
-    pub expires: DateTime<Utc>,
-}
-
-impl MinecraftProfileLinkToken {
-    pub async fn insert(
-        &self,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), DatabaseError> {
-        sqlx::query!(
-            "
-            INSERT INTO cdn_auth_tokens (
-                token, shared_profile_id, user_id, created, expires
-            )
-            VALUES (
-                $1, $2, $3, $4, $5
-            )
-            ",
-            self.token,
-            self.shared_profile_id.0,
-            self.user_id.0,
-            self.created,
-            self.expires,
-        )
-        .execute(&mut **transaction)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn get_token<'a, 'b, E>(
-        token: &str,
-        executor: E,
-    ) -> Result<Option<MinecraftProfileLinkToken>, DatabaseError>
-    where
-        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
-    {
-        let mut exec = executor.acquire().await?;
-
-        let token = sqlx::query!(
-            "
-            SELECT token, user_id, shared_profile_id, created, expires
-            FROM cdn_auth_tokens cat
-            WHERE cat.token = $1
-            ",
-            token
-        )
-        .fetch_optional(&mut *exec)
-        .await?
-        .map(|m| MinecraftProfileLinkToken {
-            token: m.token,
-            user_id: UserId(m.user_id),
-            shared_profile_id: MinecraftProfileId(m.shared_profile_id),
-            created: m.created,
-            expires: m.expires,
-        });
-
-        Ok(token)
-    }
-
-    // Get existing token for profile and user
-    pub async fn get_from_profile_user<'a, 'b, E>(
-        profile_id: MinecraftProfileId,
-        user_id: UserId,
-        executor: E,
-    ) -> Result<Option<MinecraftProfileLinkToken>, DatabaseError>
-    where
-        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
-    {
-        let mut exec = executor.acquire().await?;
-
-        let token = sqlx::query!(
-            "
-            SELECT cat.token, cat.user_id, cat.shared_profile_id, cat.created, cat.expires
-            FROM cdn_auth_tokens cat
-            INNER JOIN shared_profiles sp ON sp.id = cat.shared_profile_id
-            WHERE sp.id = $1 AND cat.user_id = $2
-            ",
-            profile_id.0,
-            user_id.0
-        )
-        .fetch_optional(&mut *exec)
-        .await?
-        .map(|m| MinecraftProfileLinkToken {
-            token: m.token,
-            user_id: UserId(m.user_id),
-            shared_profile_id: MinecraftProfileId(m.shared_profile_id),
-            created: m.created,
-            expires: m.expires,
-        });
-
-        Ok(token)
-    }
-
-    pub async fn delete(
-        token: &str,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), DatabaseError> {
-        sqlx::query!(
-            "
-            DELETE FROM cdn_auth_tokens
-            WHERE token = $1
-            ",
-            token
-        )
-        .execute(&mut **transaction)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn delete_all(
-        shared_profile_id: MinecraftProfileId,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), DatabaseError> {
-        sqlx::query!(
-            "
-            DELETE FROM cdn_auth_tokens
-            WHERE shared_profile_id = $1
-            ",
-            shared_profile_id.0
-        )
-        .execute(&mut **transaction)
-        .await?;
-
-        Ok(())
     }
 }
 
