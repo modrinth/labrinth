@@ -720,12 +720,15 @@ pub async fn organization_projects_add(
         let organization_owner_user_id =
             database::models::ids::UserId(organization_owner_user_id.id);
 
-        // If the owner of the organization is a member of the project, remove them
-        database::models::TeamMember::delete(
-            project_item.inner.team_id,
-            organization_owner_user_id,
-            &mut transaction,
+        sqlx::query!(
+            "
+            DELETE FROM team_members
+            WHERE team_id = $1 AND (is_owner = TRUE OR user_id = $2)
+            ",
+            project_item.inner.team_id as database::models::ids::TeamId,
+            organization_owner_user_id as database::models::ids::UserId,
         )
+        .execute(&mut *transaction)
         .await?;
 
         transaction.commit().await?;

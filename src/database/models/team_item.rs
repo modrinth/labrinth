@@ -442,7 +442,7 @@ impl TeamMember {
         sqlx::query!(
             "
             DELETE FROM team_members
-            WHERE (team_id = $1 AND user_id = $2)
+            WHERE (team_id = $1 AND user_id = $2 AND NOT is_owner = TRUE)
             ",
             id as TeamId,
             user_id as UserId,
