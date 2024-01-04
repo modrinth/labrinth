@@ -112,7 +112,15 @@ impl Thread {
                     author_id: if users
                         .iter()
                         .find(|y| x.author_id == Some(y.id.into()))
-                        .map(|x| x.role.is_mod() && !user.role.is_mod())
+                        .map(|z| {
+                            (z.role.is_mod() && !user.role.is_mod())
+                                && match x.body {
+                                    MessageBody::StatusChange { old_status, .. } => {
+                                        old_status == ProjectStatus::Processing
+                                    }
+                                    _ => true,
+                                }
+                        })
                         .unwrap_or(false)
                     {
                         None
