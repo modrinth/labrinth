@@ -663,8 +663,7 @@ pub async fn organization_projects_add(
         &**pool,
     )
     .await?
-    .ok_or_else(|| ApiError::InvalidInput("You are not a member of this project!".to_string()))?;
-
+    .ok_or_else(|| ApiError::InvalidInput("You are not a member of this project!".to_string()))?;-
     let organization_team_member = database::models::TeamMember::get_from_user_id_organization(
         organization.id,
         current_user.id.into(),
