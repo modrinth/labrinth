@@ -77,7 +77,7 @@ FROM versions v
 INNER JOIN mods m ON v.mod_id = m.id
 INNER JOIN loader_field_enum_values lfev ON m.client_side = lfev.original_id
 CROSS JOIN loader_fields lf
-WHERE client_side IS NOT NULL AND lfev.enum_id = 1 AND lf.field = 'client_side';
+WHERE client_side IS NOT NULL AND lfev.enum_id = 1 AND lf.field = 'client_side' AND NOT (ARRAY['vanilla', 'minecraft', 'optifine', 'iris', 'canvas', 'bukkit', 'folia', 'paper', 'purpur', 'spigot', 'sponge', 'datapack', 'bungeecord', 'velocity', 'waterfall'] @> m.loaders::text[]);;
 
 INSERT INTO version_fields (version_id, field_id, enum_value) 
 SELECT v.id, lf.id, lfev.id   -- Note: bug fix/edited 2023-11-27
@@ -85,7 +85,7 @@ FROM versions v
 INNER JOIN mods m ON v.mod_id = m.id
 INNER JOIN loader_field_enum_values lfev ON m.server_side = lfev.original_id
 CROSS JOIN loader_fields lf
-WHERE server_side IS NOT NULL AND lfev.enum_id = 1 AND lf.field = 'server_side';
+WHERE server_side IS NOT NULL AND lfev.enum_id = 1 AND lf.field = 'server_side' AND NOT (ARRAY['vanilla', 'minecraft', 'optifine', 'iris', 'canvas', 'bukkit', 'folia', 'paper', 'purpur', 'spigot', 'sponge', 'datapack', 'bungeecord', 'velocity', 'waterfall'] @> m.loaders::text[]);
 
 ALTER TABLE mods DROP COLUMN client_side;
 ALTER TABLE mods DROP COLUMN server_side;
