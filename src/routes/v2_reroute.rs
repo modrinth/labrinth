@@ -332,6 +332,7 @@ mod tests {
             (Unsupported, Optional),
             (Required, Optional),
             (Optional, Required),
+            (Unsupported, Unsupported),
         ];
 
         for client_side in [Required, Optional, Unsupported] {
