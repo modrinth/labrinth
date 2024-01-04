@@ -340,7 +340,7 @@ mod tests {
                     continue;
                 }
                 let side_types = convert_side_types_v3(client_side, server_side);
-                let (client_side2, server_side2) = convert_side_types_v2(&side_types);
+                let (client_side2, server_side2) = convert_side_types_v2(&side_types, None);
                 assert_eq!(client_side, client_side2);
                 assert_eq!(server_side, server_side2);
             }
