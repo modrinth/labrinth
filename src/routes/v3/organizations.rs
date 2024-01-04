@@ -705,22 +705,7 @@ pub async fn organization_projects_add(
         // The former owner is no longer an owner (as it is now 'owned' by the organization, 'given' to them)
         // The former owner is still a member of the project, but not an owner
         // When later removed from the organization, the project will  be owned by whoever is specified as the new owner there
-        if !current_user.role.is_admin() {
-            let team_member_id = project_team_member.id;
-            sqlx::query!(
-                "
-                UPDATE team_members
-                SET is_owner = FALSE
-                WHERE id = $1
-                ",
-                team_member_id as database::models::ids::TeamMemberId
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
 
-        // The owner of the organization, should be removed as a member of the project, if they are
-        // (As it is an organization project now, and they should not have more specific permissions)
         let organization_owner_user_id = sqlx::query!(
             "
             SELECT u.id 
@@ -728,7 +713,7 @@ pub async fn organization_projects_add(
             INNER JOIN users u ON u.id = team_members.user_id
             WHERE team_id = $1 AND is_owner = TRUE
             ",
-            organization.team_id as database::models::ids::TeamId
+            project_item.inner.team_id as database::models::ids::TeamId
         )
         .fetch_one(&mut *transaction)
         .await?;
