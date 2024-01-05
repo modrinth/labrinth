@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    database::{self, models::LoaderFieldEnumValueId},
+    database,
     models::ids::{Base62Id, UserId, VersionId},
 };
 
@@ -15,13 +15,13 @@ pub const DEFAULT_PROFILE_MAX_USERS: u32 = 5;
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
-pub struct MinecraftProfileId(pub u64);
+pub struct ClientProfileId(pub u64);
 
 /// A project returned from the API
 #[derive(Serialize, Deserialize, Clone)]
-pub struct MinecraftProfile {
+pub struct ClientProfile {
     /// The ID of the profile, encoded as a base62 string.
-    pub id: MinecraftProfileId,
+    pub id: ClientProfileId,
 
     /// The person that has ownership of this profile.
     pub owner_id: UserId,
@@ -44,8 +44,10 @@ pub struct MinecraftProfile {
     pub loader: String,
     /// The loader version
     pub loader_version: String,
-    /// Minecraft game version id
-    pub game_version_id: LoaderFieldEnumValueId,
+
+    /// Game-specific information
+    #[serde(flatten)]
+    pub game: ClientProfileGame,
 
     /// Modrinth-associated versions
     pub versions: Vec<VersionId>,
@@ -54,9 +56,41 @@ pub struct MinecraftProfile {
     pub override_install_paths: Vec<PathBuf>,
 }
 
-impl MinecraftProfile {
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "game")]
+pub enum ClientProfileGame {
+    #[serde(rename = "minecraft-java")]
+    Minecraft {
+        /// Game Id (constant for Minecraft)
+        game_name: String,
+        /// Client game version id
+        game_version: String,
+    },
+    #[serde(rename = "unknown")]
+    Unknown,
+}
+
+impl From<database::models::client_profile_item::ClientProfileGame> for ClientProfileGame {
+    fn from(game: database::models::client_profile_item::ClientProfileGame) -> Self {
+        match game {
+            database::models::client_profile_item::ClientProfileGame::Minecraft {
+                game_name,
+                game_version,
+                ..
+            } => Self::Minecraft {
+                game_name,
+                game_version,
+            },
+            database::models::client_profile_item::ClientProfileGame::Unknown { .. } => {
+                Self::Unknown
+            }
+        }
+    }
+}
+
+impl ClientProfile {
     pub fn from(
-        profile: database::models::minecraft_profile_item::MinecraftProfile,
+        profile: database::models::client_profile_item::ClientProfile,
         current_user_id: Option<database::models::ids::UserId>,
     ) -> Self {
         let users = if Some(profile.owner_id) == current_user_id {
@@ -76,7 +110,7 @@ impl MinecraftProfile {
             users,
             loader: profile.loader,
             loader_version: profile.loader_version,
-            game_version_id: profile.game_version_id,
+            game: profile.game.into(),
             versions: profile.versions.into_iter().map(Into::into).collect(),
             override_install_paths: profile.overrides.into_iter().map(|(_, v)| v).collect(),
         }
@@ -84,22 +118,20 @@ impl MinecraftProfile {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct MinecraftProfileShareLink {
+pub struct ClientProfileShareLink {
     pub url_identifier: String,
     pub url: String, // Includes the url identifier, intentionally redundant
-    pub profile_id: MinecraftProfileId,
+    pub profile_id: ClientProfileId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
 }
 
-impl From<database::models::minecraft_profile_item::MinecraftProfileLink>
-    for MinecraftProfileShareLink
-{
-    fn from(link: database::models::minecraft_profile_item::MinecraftProfileLink) -> Self {
+impl From<database::models::client_profile_item::ClientProfileLink> for ClientProfileShareLink {
+    fn from(link: database::models::client_profile_item::ClientProfileLink) -> Self {
         // Generate URL for easy access
-        let profile_id: MinecraftProfileId = link.shared_profile_id.into();
+        let profile_id: ClientProfileId = link.shared_profile_id.into();
         let url = format!(
-            "{}/v3/minecraft/profile/{}/accept/{}",
+            "{}/v3/client/profile/{}/accept/{}",
             dotenvy::var("SELF_ADDR").unwrap(),
             profile_id,
             link.link_identifier

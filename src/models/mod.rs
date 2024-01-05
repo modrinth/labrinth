@@ -3,10 +3,10 @@ pub mod v2;
 pub mod v3;
 
 pub use v3::analytics;
+pub use v3::client;
 pub use v3::collections;
 pub use v3::ids;
 pub use v3::images;
-pub use v3::minecraft;
 pub use v3::notifications;
 pub use v3::oauth_clients;
 pub use v3::organizations;

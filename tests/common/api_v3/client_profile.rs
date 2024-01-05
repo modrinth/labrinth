@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
@@ -7,25 +8,26 @@ use actix_web::{
 use bytes::Bytes;
 use itertools::Itertools;
 use labrinth::{
-    models::minecraft::profile::{MinecraftProfile, MinecraftProfileShareLink},
-    routes::v3::minecraft::profiles::ProfileDownload,
+    models::client::profile::{ClientProfile, ClientProfileShareLink},
+    routes::v3::client::profiles::ProfileDownload,
     util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData},
 };
 use serde_json::json;
 
 use crate::common::{
     api_common::{request_data::ImageData, Api, AppendsOptionalPat},
+    asserts::assert_status,
     dummy_data::TestFile,
 };
 
 use super::ApiV3;
-pub struct MinecraftProfileOverride {
+pub struct ClientProfileOverride {
     pub file_name: String,
     pub install_path: String,
     pub bytes: Vec<u8>,
 }
 
-impl MinecraftProfileOverride {
+impl ClientProfileOverride {
     pub fn new(test_file: TestFile, install_path: &str) -> Self {
         Self {
             file_name: test_file.filename(),
@@ -36,7 +38,7 @@ impl MinecraftProfileOverride {
 }
 
 impl ApiV3 {
-    pub async fn create_minecraft_profile(
+    pub async fn create_client_profile(
         &self,
         name: &str,
         loader: &str,
@@ -46,12 +48,13 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = test::TestRequest::post()
-            .uri("/v3/minecraft/profile")
+            .uri("/v3/client/profile")
             .append_pat(pat)
             .set_json(json!({
                 "name": name,
                 "loader": loader,
                 "loader_version": loader_version,
+                "game": "minecraft-java",
                 "game_version": game_version,
                 "versions": versions
             }))
@@ -60,7 +63,7 @@ impl ApiV3 {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn edit_minecraft_profile(
+    pub async fn edit_client_profile(
         &self,
         id: &str,
         name: Option<&str>,
@@ -71,7 +74,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = test::TestRequest::patch()
-            .uri(&format!("/v3/minecraft/profile/{}", id))
+            .uri(&format!("/v3/client/profile/{}", id))
             .append_pat(pat)
             .set_json(json!({
                 "name": name,
@@ -84,33 +87,33 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_minecraft_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
+    pub async fn get_client_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/minecraft/profile/{}", id))
+            .uri(&format!("/v3/client/profile/{}", id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
     }
 
-    pub async fn get_minecraft_profile_deserialized(
+    pub async fn get_client_profile_deserialized(
         &self,
         id: &str,
         pat: Option<&str>,
-    ) -> MinecraftProfile {
-        let resp = self.get_minecraft_profile(id, pat).await;
-        assert_eq!(resp.status(), 200);
+    ) -> ClientProfile {
+        let resp = self.get_client_profile(id, pat).await;
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
-    pub async fn delete_minecraft_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
+    pub async fn delete_client_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
         let req = TestRequest::delete()
-            .uri(&format!("/v3/minecraft/profile/{}", id))
+            .uri(&format!("/v3/client/profile/{}", id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
     }
 
-    pub async fn edit_minecraft_profile_icon(
+    pub async fn edit_client_profile_icon(
         &self,
         id: &str,
         icon: Option<ImageData>,
@@ -119,7 +122,7 @@ impl ApiV3 {
         if let Some(icon) = icon {
             let req = TestRequest::patch()
                 .uri(&format!(
-                    "/v3/minecraft/profile/{}/icon?ext={}",
+                    "/v3/client/profile/{}/icon?ext={}",
                     id, icon.extension
                 ))
                 .append_pat(pat)
@@ -128,17 +131,17 @@ impl ApiV3 {
             self.call(req).await
         } else {
             let req = TestRequest::delete()
-                .uri(&format!("/v3/minecraft/profile/{}/icon", id))
+                .uri(&format!("/v3/client/profile/{}/icon", id))
                 .append_pat(pat)
                 .to_request();
             self.call(req).await
         }
     }
 
-    pub async fn add_minecraft_profile_overrides(
+    pub async fn add_client_profile_overrides(
         &self,
         id: &str,
-        overrides: Vec<MinecraftProfileOverride>,
+        overrides: Vec<ClientProfileOverride>,
         pat: Option<&str>,
     ) -> ServiceResponse {
         let mut data = Vec::new();
@@ -165,14 +168,14 @@ impl ApiV3 {
         .collect_vec();
 
         let req = TestRequest::post()
-            .uri(&format!("/v3/minecraft/profile/{}/override", id))
+            .uri(&format!("/v3/client/profile/{}/override", id))
             .append_pat(pat)
             .set_multipart(multipart_segments)
             .to_request();
         self.call(req).await
     }
 
-    pub async fn delete_minecraft_profile_overrides(
+    pub async fn delete_client_profile_overrides(
         &self,
         id: &str,
         install_paths: Option<&[&PathBuf]>,
@@ -180,7 +183,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::delete()
-            .uri(&format!("/v3/minecraft/profile/{}/override", id))
+            .uri(&format!("/v3/client/profile/{}/override", id))
             .set_json(json!({
                 "install_paths": install_paths,
                 "hashes": hashes
@@ -190,29 +193,29 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn generate_minecraft_profile_share_link(
+    pub async fn generate_client_profile_share_link(
         &self,
         id: &str,
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/minecraft/profile/{}/share", id))
+            .uri(&format!("/v3/client/profile/{}/share", id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
     }
 
-    pub async fn generate_minecraft_profile_share_link_deserialized(
+    pub async fn generate_client_profile_share_link_deserialized(
         &self,
         id: &str,
         pat: Option<&str>,
-    ) -> MinecraftProfileShareLink {
-        let resp = self.generate_minecraft_profile_share_link(id, pat).await;
-        assert_eq!(resp.status(), 200);
+    ) -> ClientProfileShareLink {
+        let resp = self.generate_client_profile_share_link(id, pat).await;
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
-    pub async fn get_minecraft_profile_share_link(
+    pub async fn get_client_profile_share_link(
         &self,
         profile_id: &str,
         url_identifier: &str,
@@ -220,7 +223,7 @@ impl ApiV3 {
     ) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!(
-                "/v3/minecraft/profile/{}/share/{}",
+                "/v3/client/profile/{}/share/{}",
                 profile_id, url_identifier
             ))
             .append_pat(pat)
@@ -228,20 +231,20 @@ impl ApiV3 {
         self.call(req).await
     }
 
-    pub async fn get_minecraft_profile_share_link_deserialized(
+    pub async fn get_client_profile_share_link_deserialized(
         &self,
         profile_id: &str,
         url_identifier: &str,
         pat: Option<&str>,
-    ) -> MinecraftProfileShareLink {
+    ) -> ClientProfileShareLink {
         let resp = self
-            .get_minecraft_profile_share_link(profile_id, url_identifier, pat)
+            .get_client_profile_share_link(profile_id, url_identifier, pat)
             .await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
-    pub async fn accept_minecraft_profile_share_link(
+    pub async fn accept_client_profile_share_link(
         &self,
         profile_id: &str,
         url_identifier: &str,
@@ -249,7 +252,7 @@ impl ApiV3 {
     ) -> ServiceResponse {
         let req = TestRequest::post()
             .uri(&format!(
-                "/v3/minecraft/profile/{}/accept/{}",
+                "/v3/client/profile/{}/accept/{}",
                 profile_id, url_identifier
             ))
             .append_pat(pat)
@@ -258,36 +261,36 @@ impl ApiV3 {
     }
 
     // Get links and token
-    pub async fn download_minecraft_profile(
+    pub async fn download_client_profile(
         &self,
         profile_id: &str,
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/minecraft/profile/{}/download", profile_id))
+            .uri(&format!("/v3/client/profile/{}/download", profile_id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
     }
 
-    pub async fn download_minecraft_profile_deserialized(
+    pub async fn download_client_profile_deserialized(
         &self,
         profile_id: &str,
         pat: Option<&str>,
     ) -> ProfileDownload {
-        let resp = self.download_minecraft_profile(profile_id, pat).await;
-        assert_eq!(resp.status(), 200);
+        let resp = self.download_client_profile(profile_id, pat).await;
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
-    pub async fn check_download_minecraft_profile_token(
+    pub async fn check_download_client_profile_token(
         &self,
         url: &str, // Full URL, the route will parse it
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!(
-                "/v3/minecraft/check_token?url={url}",
+                "/v3/client/check_token?url={url}",
                 url = urlencoding::encode(url)
             ))
             .append_pat(pat)

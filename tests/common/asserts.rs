@@ -7,7 +7,12 @@ use labrinth::models::v3::projects::Version;
 use super::api_common::models::CommonVersion;
 
 pub fn assert_status(response: &actix_web::dev::ServiceResponse, status: actix_http::StatusCode) {
-    assert_eq!(response.status(), status, "{:#?}", response.response());
+    assert_eq!(
+        response.status(),
+        status,
+        "{:#?}",
+        response.response().body()
+    );
 }
 
 pub fn assert_version_ids(versions: &[Version], expected_ids: Vec<String>) {

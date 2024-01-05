@@ -106,12 +106,12 @@ bitflags::bitflags! {
         // only accessible by modrinth-issued sessions
         const SESSION_ACCESS = 1 << 39;
 
-        // create a minecraft profile
-        const MINECRAFT_PROFILE_CREATE = 1 << 40;
-        // edit a minecraft profile
-        const MINECRAFT_PROFILE_WRITE = 1 << 41;
-        // download a minecraft profile
-        const MINECRAFT_PROFILE_DOWNLOAD = 1 << 42;
+        // create a client profile
+        const CLIENT_PROFILE_CREATE = 1 << 40;
+        // edit a client profile
+        const CLIENT_PROFILE_WRITE = 1 << 41;
+        // download a client profile
+        const CLIENT_PROFILE_DOWNLOAD = 1 << 42;
 
 
         const NONE = 0b0;

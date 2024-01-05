@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO shared_profiles (\n                id, name, owner_id, icon_url, created, updated,\n                game_version_id, loader_id, loader_version, maximum_users, game_id\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6, \n                $7, $8, $9, $10, $11\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Varchar",
+        "Int8",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz",
+        "Int4",
+        "Int4",
+        "Varchar",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8ec2964dcf8e9c17f698a7a06dddb7c36d707622bd397c0f72bb12d3ac3d80d2"
+}

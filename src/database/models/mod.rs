@@ -1,13 +1,13 @@
 use thiserror::Error;
 
 pub mod categories;
+pub mod client_profile_item;
 pub mod collection_item;
 pub mod flow_item;
 pub mod ids;
 pub mod image_item;
 pub mod legacy_loader_fields;
 pub mod loader_fields;
-pub mod minecraft_profile_item;
 pub mod notification_item;
 pub mod oauth_client_authorization_item;
 pub mod oauth_client_item;

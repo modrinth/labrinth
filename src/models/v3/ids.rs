@@ -1,8 +1,8 @@
 use thiserror::Error;
 
+pub use super::client::profile::ClientProfileId;
 pub use super::collections::CollectionId;
 pub use super::images::ImageId;
-pub use super::minecraft::profile::MinecraftProfileId;
 pub use super::notifications::NotificationId;
 pub use super::oauth_clients::OAuthClientAuthorizationId;
 pub use super::oauth_clients::{OAuthClientId, OAuthRedirectUriId};
@@ -130,7 +130,7 @@ base62_id_impl!(OAuthClientId, OAuthClientId);
 base62_id_impl!(OAuthRedirectUriId, OAuthRedirectUriId);
 base62_id_impl!(OAuthClientAuthorizationId, OAuthClientAuthorizationId);
 base62_id_impl!(PayoutId, PayoutId);
-base62_id_impl!(MinecraftProfileId, MinecraftProfileId);
+base62_id_impl!(ClientProfileId, ClientProfileId);
 
 pub mod base62_impl {
     use serde::de::{self, Deserializer, Visitor};

@@ -2,16 +2,15 @@ use crate::auth::checks::filter_visible_version_ids;
 use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
 use crate::database::models::{
-    generate_minecraft_profile_id, generate_minecraft_profile_link_id, minecraft_profile_item,
-    version_item,
+    client_profile_item, generate_client_profile_id, generate_client_profile_link_id, version_item,
 };
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
+use crate::models::client::profile::{
+    ClientProfile, ClientProfileId, ClientProfileShareLink, DEFAULT_PROFILE_MAX_USERS,
+};
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::{UserId, VersionId};
-use crate::models::minecraft::profile::{
-    MinecraftProfile, MinecraftProfileId, MinecraftProfileShareLink, DEFAULT_PROFILE_MAX_USERS,
-};
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::CreateError;
@@ -37,7 +36,7 @@ use validator::Validate;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("minecraft")
+        web::scope("client")
             .route("profile", web::post().to(profile_create))
             .route("check_token", web::get().to(profile_token_check))
             .service(
@@ -45,13 +44,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                     .route("{id}", web::get().to(profile_get))
                     .route("{id}", web::patch().to(profile_edit))
                     .route("{id}", web::delete().to(profile_delete))
+                    .route("{id}/override", web::post().to(client_profile_add_override))
                     .route(
                         "{id}/override",
-                        web::post().to(minecraft_profile_add_override),
-                    )
-                    .route(
-                        "{id}/override",
-                        web::delete().to(minecraft_profile_remove_overrides),
+                        web::delete().to(client_profile_remove_overrides),
                     )
                     .route("{id}/share", web::get().to(profile_share))
                     .route(
@@ -81,13 +77,24 @@ pub struct ProfileCreateData {
     pub loader: String,
     // The loader version
     pub loader_version: String,
-    // The game version string (parsed to a game version)
-    pub game_version: String,
     // The list of versions to include in the profile (does not include overrides)
     pub versions: Vec<VersionId>,
+
+    #[serde(flatten)]
+    pub game: ProfileCreateDataGame,
 }
 
-// Create a new minecraft profile
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "game")]
+pub enum ProfileCreateDataGame {
+    #[serde(rename = "minecraft-java")]
+    MinecraftJava {
+        // The game version string (parsed to a game version)
+        game_version: String,
+    },
+}
+
+// Create a new client profile
 pub async fn profile_create(
     req: HttpRequest,
     profile_create_data: web::Json<ProfileCreateData>,
@@ -96,14 +103,14 @@ pub async fn profile_create(
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     let profile_create_data = profile_create_data.into_inner();
-
+    println!("creat {:?}", serde_json::to_string(&profile_create_data));
     // The currently logged in user
     let current_user = get_user_from_headers(
         &req,
         &**client,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_CREATE]),
+        Some(&[Scopes::CLIENT_PROFILE_CREATE]),
     )
     .await?
     .1;
@@ -112,12 +119,33 @@ pub async fn profile_create(
         .validate()
         .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
 
-    let game_version_id = MinecraftGameVersion::list(&**client, &redis)
-        .await?
-        .into_iter()
-        .find(|x| x.version == profile_create_data.game_version)
-        .ok_or_else(|| CreateError::InvalidInput("Invalid Minecraft game version".to_string()))?
-        .id;
+    let game: client_profile_item::ClientProfileGame = match profile_create_data.game {
+        ProfileCreateDataGame::MinecraftJava { game_version } => {
+            let game = database::models::loader_fields::Game::get_slug(
+                "minecraft-java",
+                &**client,
+                &redis,
+            )
+            .await?
+            .ok_or_else(|| CreateError::InvalidInput("Invalid Client game".to_string()))?;
+
+            let game_version_id = MinecraftGameVersion::list(&**client, &redis)
+                .await?
+                .into_iter()
+                .find(|x| x.version == game_version)
+                .ok_or_else(|| {
+                    CreateError::InvalidInput("Invalid Client game version".to_string())
+                })?
+                .id;
+
+            client_profile_item::ClientProfileGame::Minecraft {
+                game_id: game.id,
+                game_name: "minecraft-java".to_string(),
+                game_version_id,
+                game_version,
+            }
+        }
+    };
 
     let loader_id = database::models::loader_fields::Loader::get_id(
         &profile_create_data.loader,
@@ -129,8 +157,8 @@ pub async fn profile_create(
 
     let mut transaction = client.begin().await?;
 
-    let profile_id: database::models::MinecraftProfileId =
-        generate_minecraft_profile_id(&mut transaction).await?;
+    let profile_id: database::models::ClientProfileId =
+        generate_client_profile_id(&mut transaction).await?;
 
     let version_ids = profile_create_data
         .versions
@@ -153,14 +181,14 @@ pub async fn profile_create(
     .await
     .map_err(|_| CreateError::InvalidInput("Could not fetch submitted version ids".to_string()))?;
 
-    let profile_builder_actual = minecraft_profile_item::MinecraftProfile {
+    let profile_builder_actual = client_profile_item::ClientProfile {
         id: profile_id,
         name: profile_create_data.name.clone(),
         owner_id: current_user.id.into(),
         icon_url: None,
         created: Utc::now(),
         updated: Utc::now(),
-        game_version_id,
+        game,
         loader_id,
         loader: profile_create_data.loader,
         loader_version: profile_create_data.loader_version,
@@ -173,21 +201,19 @@ pub async fn profile_create(
     profile_builder_actual.insert(&mut transaction).await?;
     transaction.commit().await?;
 
-    let profile = models::minecraft::profile::MinecraftProfile::from(
-        profile_builder,
-        Some(current_user.id.into()),
-    );
+    let profile =
+        models::client::profile::ClientProfile::from(profile_builder, Some(current_user.id.into()));
     Ok(HttpResponse::Ok().json(profile))
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct MinecraftProfileIds {
+pub struct ClientProfileIds {
     pub ids: String,
 }
-// Get several minecraft profiles by their ids
+// Get several client profiles by their ids
 pub async fn profiles_get(
     req: HttpRequest,
-    web::Query(ids): web::Query<MinecraftProfileIds>,
+    web::Query(ids): web::Query<ClientProfileIds>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -207,21 +233,21 @@ pub async fn profiles_get(
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
     let ids = ids
         .into_iter()
-        .map(|x| parse_base62(x).map(|x| database::models::MinecraftProfileId(x as i64)))
+        .map(|x| parse_base62(x).map(|x| database::models::ClientProfileId(x as i64)))
         .collect::<Result<Vec<_>, _>>()?;
 
     let profiles_data =
-        database::models::minecraft_profile_item::MinecraftProfile::get_many(&ids, &**pool, &redis)
+        database::models::client_profile_item::ClientProfile::get_many(&ids, &**pool, &redis)
             .await?;
     let profiles = profiles_data
         .into_iter()
-        .map(|x| MinecraftProfile::from(x, user_id))
+        .map(|x| ClientProfile::from(x, user_id))
         .collect::<Vec<_>>();
 
     Ok(HttpResponse::Ok().json(profiles))
 }
 
-// Get a minecraft profile by its id
+// Get a client profile by its id
 pub async fn profile_get(
     req: HttpRequest,
     info: web::Path<(String,)>,
@@ -244,18 +270,17 @@ pub async fn profile_get(
 
     // No user check ,as any user/scope can view profiles.
     // In addition, private information (ie: CDN links, tokens, anything outside of the list of hosted versions and install paths) is not returned
-    let id = database::models::MinecraftProfileId(parse_base62(&string)? as i64);
+    let id = database::models::ClientProfileId(parse_base62(&string)? as i64);
     let profile_data =
-        database::models::minecraft_profile_item::MinecraftProfile::get(id, &**pool, &redis)
-            .await?;
+        database::models::client_profile_item::ClientProfile::get(id, &**pool, &redis).await?;
     if let Some(data) = profile_data {
-        return Ok(HttpResponse::Ok().json(MinecraftProfile::from(data, user_id)));
+        return Ok(HttpResponse::Ok().json(ClientProfile::from(data, user_id)));
     }
     Err(ApiError::NotFound)
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
-pub struct EditMinecraftProfile {
+pub struct EditClientProfile {
     #[validate(
         length(min = 3, max = 64),
         custom(function = "crate::util::validate::validate_name")
@@ -279,11 +304,11 @@ pub struct EditMinecraftProfile {
     pub remove_users: Option<Vec<UserId>>,
 }
 
-// Edit a minecraft profile
+// Edit a client profile
 pub async fn profile_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
-    edit_data: web::Json<EditMinecraftProfile>,
+    edit_data: web::Json<EditClientProfile>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -296,19 +321,16 @@ pub async fn profile_edit(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+        Some(&[Scopes::CLIENT_PROFILE_WRITE]),
     )
     .await?;
 
     // Confirm this is our project, then if so, edit
-    let id = database::models::MinecraftProfileId(parse_base62(&string)? as i64);
+    let id = database::models::ClientProfileId(parse_base62(&string)? as i64);
     let mut transaction = pool.begin().await?;
-    let profile_data = database::models::minecraft_profile_item::MinecraftProfile::get(
-        id,
-        &mut *transaction,
-        &redis,
-    )
-    .await?;
+    let profile_data =
+        database::models::client_profile_item::ClientProfile::get(id, &mut *transaction, &redis)
+            .await?;
 
     if let Some(data) = profile_data {
         if data.owner_id == user_option.1.id.into() {
@@ -357,7 +379,7 @@ pub async fn profile_edit(
                     .into_iter()
                     .find(|x| x.version == game_version)
                     .ok_or_else(|| {
-                        ApiError::InvalidInput("Invalid Minecraft game version".to_string())
+                        ApiError::InvalidInput("Invalid Client game version".to_string())
                     })?
                     .id;
 
@@ -435,7 +457,7 @@ pub async fn profile_edit(
             }
 
             transaction.commit().await?;
-            minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
+            client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
             return Ok(HttpResponse::NoContent().finish());
         } else {
             return Err(ApiError::CustomAuthentication(
@@ -446,7 +468,7 @@ pub async fn profile_edit(
     Err(ApiError::NotFound)
 }
 
-// Delete a minecraft profile
+// Delete a client profile
 pub async fn profile_delete(
     req: HttpRequest,
     info: web::Path<(String,)>,
@@ -462,26 +484,25 @@ pub async fn profile_delete(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+        Some(&[Scopes::CLIENT_PROFILE_WRITE]),
     )
     .await?;
 
     // Confirm this is our project, then if so, delete
-    let id = database::models::MinecraftProfileId(parse_base62(&string)? as i64);
+    let id = database::models::ClientProfileId(parse_base62(&string)? as i64);
     let profile_data =
-        database::models::minecraft_profile_item::MinecraftProfile::get(id, &**pool, &redis)
-            .await?;
+        database::models::client_profile_item::ClientProfile::get(id, &**pool, &redis).await?;
     if let Some(data) = profile_data {
         if data.owner_id == user_option.1.id.into() {
             let mut transaction = pool.begin().await?;
-            database::models::minecraft_profile_item::MinecraftProfile::remove(
+            database::models::client_profile_item::ClientProfile::remove(
                 data.id,
                 &mut transaction,
                 &redis,
             )
             .await?;
             transaction.commit().await?;
-            minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
+            client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
             return Ok(HttpResponse::NoContent().finish());
         } else if data.users.contains(&user_option.1.id.into()) {
             // We know it exists, but still can't delete it
@@ -494,7 +515,7 @@ pub async fn profile_delete(
     Err(ApiError::NotFound)
 }
 
-// Share a minecraft profile with a friend.
+// Share a client profile with a friend.
 // This generates a link struct, including the field 'url'
 // that can be shared with friends to generate a token a limited number of times.
 // TODO: This link should not be an API link, but a modrinth:// link that is translatable to an API link by the launcher
@@ -513,15 +534,14 @@ pub async fn profile_share(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+        Some(&[Scopes::CLIENT_PROFILE_WRITE]),
     )
     .await?;
 
     // Confirm this is our project, then if so, share
-    let id = database::models::MinecraftProfileId(parse_base62(&string)? as i64);
+    let id = database::models::ClientProfileId(parse_base62(&string)? as i64);
     let profile_data =
-        database::models::minecraft_profile_item::MinecraftProfile::get(id, &**pool, &redis)
-            .await?;
+        database::models::client_profile_item::ClientProfile::get(id, &**pool, &redis).await?;
 
     if let Some(data) = profile_data {
         if data.owner_id == user_option.1.id.into() {
@@ -534,9 +554,9 @@ pub async fn profile_share(
 
             // Generate a new share link id
             let mut transaction = pool.begin().await?;
-            let profile_link_id = generate_minecraft_profile_link_id(&mut transaction).await?;
+            let profile_link_id = generate_client_profile_link_id(&mut transaction).await?;
 
-            let link = database::models::minecraft_profile_item::MinecraftProfileLink {
+            let link = database::models::client_profile_item::ClientProfileLink {
                 id: profile_link_id,
                 shared_profile_id: data.id,
                 link_identifier: identifier.clone(),
@@ -545,8 +565,8 @@ pub async fn profile_share(
             };
             link.insert(&mut transaction).await?;
             transaction.commit().await?;
-            minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
-            return Ok(HttpResponse::Ok().json(MinecraftProfileShareLink::from(link)));
+            client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
+            return Ok(HttpResponse::Ok().json(ClientProfileShareLink::from(link)));
         }
     }
     Err(ApiError::NotFound)
@@ -573,14 +593,12 @@ pub async fn profile_link_get(
     .await?;
 
     // Confirm this is our project, then if so, share
-    let link_data = database::models::minecraft_profile_item::MinecraftProfileLink::get_url(
-        &url_identifier,
-        &**pool,
-    )
-    .await?
-    .ok_or_else(|| ApiError::NotFound)?;
+    let link_data =
+        database::models::client_profile_item::ClientProfileLink::get_url(&url_identifier, &**pool)
+            .await?
+            .ok_or_else(|| ApiError::NotFound)?;
 
-    let data = database::models::minecraft_profile_item::MinecraftProfile::get(
+    let data = database::models::client_profile_item::ClientProfile::get(
         link_data.shared_profile_id,
         &**pool,
         &redis,
@@ -590,7 +608,7 @@ pub async fn profile_link_get(
 
     // Only view link meta information if the user is the owner of the profile
     if data.owner_id == user_option.1.id.into() {
-        Ok(HttpResponse::Ok().json(MinecraftProfileShareLink::from(link_data)))
+        Ok(HttpResponse::Ok().json(ClientProfileShareLink::from(link_data)))
     } else {
         Err(ApiError::NotFound)
     }
@@ -601,7 +619,7 @@ pub async fn profile_link_get(
 // TODO: With above change, this is the API link that is translated from a modrinth:// link by the launcher, which would then download it
 pub async fn accept_share_link(
     req: HttpRequest,
-    info: web::Path<(MinecraftProfileId, String)>,
+    info: web::Path<(ClientProfileId, String)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -614,24 +632,22 @@ pub async fn accept_share_link(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+        Some(&[Scopes::CLIENT_PROFILE_WRITE]),
     )
     .await?;
 
-    // Fetch the profile information of the desired minecraft profile
-    let link_data = database::models::minecraft_profile_item::MinecraftProfileLink::get_url(
-        &url_identifier,
-        &**pool,
-    )
-    .await?
-    .ok_or_else(|| ApiError::NotFound)?;
+    // Fetch the profile information of the desired client profile
+    let link_data =
+        database::models::client_profile_item::ClientProfileLink::get_url(&url_identifier, &**pool)
+            .await?
+            .ok_or_else(|| ApiError::NotFound)?;
 
     // Confirm it matches the profile id
     if link_data.shared_profile_id != profile_id.into() {
         return Err(ApiError::NotFound);
     }
 
-    let data = database::models::minecraft_profile_item::MinecraftProfile::get(
+    let data = database::models::client_profile_item::ClientProfile::get(
         link_data.shared_profile_id,
         &**pool,
         &redis,
@@ -668,7 +684,7 @@ pub async fn accept_share_link(
     )
     .execute(&**pool)
     .await?;
-    minecraft_profile_item::MinecraftProfile::clear_cache(data.id, &redis).await?;
+    client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -683,11 +699,11 @@ pub struct ProfileDownload {
     pub override_cdns: Vec<(String, PathBuf)>,
 }
 
-// Download a minecraft profile
+// Download a client profile
 // Only the owner of the profile or an invited user can download
 pub async fn profile_download(
     req: HttpRequest,
-    info: web::Path<(MinecraftProfileId,)>,
+    info: web::Path<(ClientProfileId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -701,12 +717,12 @@ pub async fn profile_download(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_DOWNLOAD]),
+        Some(&[Scopes::CLIENT_PROFILE_DOWNLOAD]),
     )
     .await?;
 
-    // Fetch the profile information of the desired minecraft profile
-    let Some(profile) = database::models::minecraft_profile_item::MinecraftProfile::get(
+    // Fetch the profile information of the desired client profile
+    let Some(profile) = database::models::client_profile_item::ClientProfile::get(
         profile_id.into(),
         &**pool,
         &redis,
@@ -758,19 +774,19 @@ pub async fn profile_token_check(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_DOWNLOAD]),
+        Some(&[Scopes::CLIENT_PROFILE_DOWNLOAD]),
     )
     .await?
     .1;
 
     // Get all profiles for the user
-    let profile_ids = database::models::minecraft_profile_item::MinecraftProfile::get_ids_for_user(
+    let profile_ids = database::models::client_profile_item::ClientProfile::get_ids_for_user(
         user.id.into(),
         &**pool,
     )
     .await?;
 
-    let profiles = database::models::minecraft_profile_item::MinecraftProfile::get_many(
+    let profiles = database::models::client_profile_item::ClientProfile::get_many(
         &profile_ids,
         &**pool,
         &redis,
@@ -807,7 +823,7 @@ pub struct Extension {
 pub async fn profile_icon_edit(
     web::Query(ext): web::Query<Extension>,
     req: HttpRequest,
-    info: web::Path<(MinecraftProfileId,)>,
+    info: web::Path<(ClientProfileId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
@@ -821,21 +837,18 @@ pub async fn profile_icon_edit(
             &**pool,
             &redis,
             &session_queue,
-            Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+            Some(&[Scopes::CLIENT_PROFILE_WRITE]),
         )
         .await?
         .1;
         let id = info.into_inner().0;
 
-        let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(
-            id.into(),
-            &**pool,
-            &redis,
-        )
-        .await?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("The specified profile does not exist!".to_string())
-        })?;
+        let profile_item =
+            database::models::client_profile_item::ClientProfile::get(id.into(), &**pool, &redis)
+                .await?
+                .ok_or_else(|| {
+                    ApiError::InvalidInput("The specified profile does not exist!".to_string())
+                })?;
 
         if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
             return Err(ApiError::CustomAuthentication(
@@ -857,7 +870,7 @@ pub async fn profile_icon_edit(
         let color = crate::util::img::get_color_from_img(&bytes)?;
 
         let hash = format!("{:x}", sha2::Sha512::digest(&bytes));
-        let id: MinecraftProfileId = profile_item.id.into();
+        let id: ClientProfileId = profile_item.id.into();
         let upload_data = file_host
             .upload_file(
                 content_type,
@@ -876,17 +889,14 @@ pub async fn profile_icon_edit(
             ",
             format!("{}/{}", cdn_url, upload_data.file_name),
             color.map(|x| x as i32),
-            profile_item.id as database::models::ids::MinecraftProfileId,
+            profile_item.id as database::models::ids::ClientProfileId,
         )
         .execute(&mut *transaction)
         .await?;
 
         transaction.commit().await?;
-        database::models::minecraft_profile_item::MinecraftProfile::clear_cache(
-            profile_item.id,
-            &redis,
-        )
-        .await?;
+        database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
+            .await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
@@ -899,7 +909,7 @@ pub async fn profile_icon_edit(
 
 pub async fn delete_profile_icon(
     req: HttpRequest,
-    info: web::Path<(MinecraftProfileId,)>,
+    info: web::Path<(ClientProfileId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
@@ -910,14 +920,14 @@ pub async fn delete_profile_icon(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+        Some(&[Scopes::CLIENT_PROFILE_WRITE]),
     )
     .await?
     .1;
     let id = info.into_inner().0;
 
     let profile_item =
-        database::models::minecraft_profile_item::MinecraftProfile::get(id.into(), &**pool, &redis)
+        database::models::client_profile_item::ClientProfile::get(id.into(), &**pool, &redis)
             .await?
             .ok_or_else(|| {
                 ApiError::InvalidInput("The specified profile does not exist!".to_string())
@@ -946,23 +956,20 @@ pub async fn delete_profile_icon(
         SET icon_url = NULL, color = NULL
         WHERE (id = $1)
         ",
-        profile_item.id as database::models::ids::MinecraftProfileId,
+        profile_item.id as database::models::ids::ClientProfileId,
     )
     .execute(&mut *transaction)
     .await?;
 
     transaction.commit().await?;
 
-    database::models::minecraft_profile_item::MinecraftProfile::clear_cache(
-        profile_item.id,
-        &redis,
-    )
-    .await?;
+    database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
+        .await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
 
-// Add a new override mod to a minecraft profile, by uploading it to the CDN
+// Add a new override mod to a client profile, by uploading it to the CDN
 // Accepts a multipart field
 // the first part is called `data` and contains a json array of objects with the following fields:
 // file_name: String
@@ -975,9 +982,9 @@ struct MultipartFile {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn minecraft_profile_add_override(
+pub async fn client_profile_add_override(
     req: HttpRequest,
-    client_id: web::Path<MinecraftProfileId>,
+    client_id: web::Path<ClientProfileId>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
@@ -990,13 +997,13 @@ pub async fn minecraft_profile_add_override(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+        Some(&[Scopes::CLIENT_PROFILE_WRITE]),
     )
     .await?
     .1;
 
     // Check if this is our profile
-    let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(
+    let profile_item = database::models::client_profile_item::ClientProfile::get(
         client_id.into(),
         &**pool,
         &redis,
@@ -1136,11 +1143,8 @@ pub async fn minecraft_profile_add_override(
 
     transaction.commit().await?;
 
-    database::models::minecraft_profile_item::MinecraftProfile::clear_cache(
-        profile_item.id,
-        &redis,
-    )
-    .await?;
+    database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
+        .await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -1152,9 +1156,9 @@ pub struct RemoveOverrides {
     pub hashes: Option<Vec<String>>,
 }
 
-pub async fn minecraft_profile_remove_overrides(
+pub async fn client_profile_remove_overrides(
     req: HttpRequest,
-    client_id: web::Path<MinecraftProfileId>,
+    client_id: web::Path<ClientProfileId>,
     pool: web::Data<PgPool>,
     data: web::Json<RemoveOverrides>,
     redis: web::Data<RedisPool>,
@@ -1167,13 +1171,13 @@ pub async fn minecraft_profile_remove_overrides(
         &**pool,
         &redis,
         &session_queue,
-        Some(&[Scopes::MINECRAFT_PROFILE_WRITE]),
+        Some(&[Scopes::CLIENT_PROFILE_WRITE]),
     )
     .await?
     .1;
 
     // Check if this is our profile
-    let profile_item = database::models::minecraft_profile_item::MinecraftProfile::get(
+    let profile_item = database::models::client_profile_item::ClientProfile::get(
         client_id.into(),
         &**pool,
         &redis,
@@ -1261,11 +1265,8 @@ pub async fn minecraft_profile_remove_overrides(
             .await?;
     }
 
-    database::models::minecraft_profile_item::MinecraftProfile::clear_cache(
-        profile_item.id,
-        &redis,
-    )
-    .await?;
+    database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
+        .await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }

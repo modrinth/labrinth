@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version, sp.maximum_users,\n                ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users\n                FROM shared_profiles sp                \n                LEFT JOIN loaders l ON l.id = sp.loader_id\n                LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id\n                WHERE sp.id = ANY($1)\n                GROUP BY sp.id, l.id\n                ",
+  "query": "\n                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id,\n                l.loader, sp.loader_version, sp.maximum_users, g.name as game_name, g.id as game_id, lfev.value as \"game_version?\",\n                ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users\n                FROM shared_profiles sp                \n                LEFT JOIN loaders l ON l.id = sp.loader_id\n                LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id\n                INNER JOIN games g ON g.id = sp.game_id\n                LEFT JOIN loader_field_enum_values lfev ON sp.game_version_id = lfev.id\n                WHERE sp.id = ANY($1)\n                GROUP BY sp.id, l.id, g.id, lfev.id\n                ",
   "describe": {
     "columns": [
       {
@@ -60,6 +60,21 @@
       },
       {
         "ordinal": 11,
+        "name": "game_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "game_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 13,
+        "name": "game_version?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
         "name": "users",
         "type_info": "Int8Array"
       }
@@ -76,6 +91,9 @@
       true,
       false,
       false,
+      true,
+      false,
+      false,
       false,
       false,
       false,
@@ -84,5 +102,5 @@
       null
     ]
   },
-  "hash": "1877647bc2e255578344a8a88579ae0c5945e4eeb962bd36939c596b0b52999e"
+  "hash": "d0341d17fbd638d8f07e2cece3568bf10ae263c70a1a8650817206b2397ed378"
 }

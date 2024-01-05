@@ -4,9 +4,9 @@ use actix_web::{web, HttpResponse};
 use serde_json::json;
 
 pub mod analytics_get;
+pub mod client;
 pub mod collections;
 pub mod images;
-pub mod minecraft;
 pub mod moderation;
 pub mod notifications;
 pub mod organizations;
@@ -32,7 +32,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(analytics_get::config)
             .configure(collections::config)
             .configure(images::config)
-            .configure(minecraft::profiles::config)
+            .configure(client::profiles::config)
             .configure(moderation::config)
             .configure(notifications::config)
             .configure(organizations::config)

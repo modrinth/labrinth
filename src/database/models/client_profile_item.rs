@@ -11,18 +11,19 @@ use serde::{Deserialize, Serialize};
 // Hash and install path
 type Override = (String, PathBuf);
 
-pub const MINECRAFT_PROFILES_NAMESPACE: &str = "minecraft_profiles";
+pub const CLIENT_PROFILES_NAMESPACE: &str = "client_profiles";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MinecraftProfile {
-    pub id: MinecraftProfileId,
+pub struct ClientProfile {
+    pub id: ClientProfileId,
     pub name: String,
     pub owner_id: UserId,
     pub icon_url: Option<String>,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
 
-    pub game_version_id: LoaderFieldEnumValueId,
+    pub game: ClientProfileGame,
+
     pub loader_version: String,
 
     pub maximum_users: i32,
@@ -36,7 +37,52 @@ pub struct MinecraftProfile {
     pub overrides: Vec<Override>,
 }
 
-impl MinecraftProfile {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ClientProfileGame {
+    Minecraft {
+        game_id: GameId,
+        game_name: String,
+        game_version_id: LoaderFieldEnumValueId,
+        game_version: String,
+    },
+    Unknown {
+        game_id: GameId,
+        game_name: String,
+    },
+}
+
+impl ClientProfileGame {
+    pub fn from(
+        game_name: String,
+        game_id: GameId,
+        game_version: Option<(String, LoaderFieldEnumValueId)>,
+    ) -> Self {
+        match game_name.as_str() {
+            "minecraft" => {
+                if let Some((game_version, game_version_id)) = game_version {
+                    Self::Minecraft {
+                        game_id,
+                        game_name,
+                        game_version_id,
+                        game_version,
+                    }
+                } else {
+                    Self::Unknown { game_id, game_name }
+                }
+            }
+            _ => Self::Unknown { game_id, game_name },
+        }
+    }
+
+    pub fn game_id(&self) -> GameId {
+        match self {
+            Self::Minecraft { game_id, .. } => *game_id,
+            Self::Unknown { game_id, .. } => *game_id,
+        }
+    }
+}
+
+impl ClientProfile {
     pub async fn insert(
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -45,23 +91,31 @@ impl MinecraftProfile {
             "
             INSERT INTO shared_profiles (
                 id, name, owner_id, icon_url, created, updated,
-                game_version_id, loader_id, loader_version, maximum_users
+                game_version_id, loader_id, loader_version, maximum_users, game_id
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, 
-                $7, $8, $9, $10
+                $7, $8, $9, $10, $11
             )
             ",
-            self.id as MinecraftProfileId,
+            self.id as ClientProfileId,
             self.name,
             self.owner_id as UserId,
             self.icon_url,
             self.created,
             self.updated,
-            self.game_version_id as LoaderFieldEnumValueId,
+            if let ClientProfileGame::Minecraft {
+                game_version_id, ..
+            } = &self.game
+            {
+                Some(game_version_id.0)
+            } else {
+                None
+            },
             self.loader_id as LoaderId,
             self.loader_version,
             self.maximum_users,
+            self.game.game_id().0
         )
         .execute(&mut **transaction)
         .await?;
@@ -77,7 +131,7 @@ impl MinecraftProfile {
                     $1, $2
                 )
                 ",
-                self.id as MinecraftProfileId,
+                self.id as ClientProfileId,
                 user_id.0,
             )
             .execute(&mut **transaction)
@@ -88,7 +142,7 @@ impl MinecraftProfile {
     }
 
     pub async fn remove(
-        id: MinecraftProfileId,
+        id: ClientProfileId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &RedisPool,
     ) -> Result<Option<()>, DatabaseError> {
@@ -98,7 +152,7 @@ impl MinecraftProfile {
             DELETE FROM shared_profiles_links
             WHERE shared_profile_id = $1
             ",
-            id as MinecraftProfileId,
+            id as ClientProfileId,
         )
         .execute(&mut **transaction)
         .await?;
@@ -109,7 +163,7 @@ impl MinecraftProfile {
             DELETE FROM shared_profiles_users
             WHERE shared_profile_id = $1
             ",
-            id as MinecraftProfileId,
+            id as ClientProfileId,
         )
         .execute(&mut **transaction)
         .await?;
@@ -119,7 +173,7 @@ impl MinecraftProfile {
             DELETE FROM shared_profiles_mods
             WHERE shared_profile_id = $1
             ",
-            id as MinecraftProfileId,
+            id as ClientProfileId,
         )
         .execute(&mut **transaction)
         .await?;
@@ -129,7 +183,7 @@ impl MinecraftProfile {
             DELETE FROM shared_profiles_links
             WHERE shared_profile_id = $1
             ",
-            id as MinecraftProfileId,
+            id as ClientProfileId,
         )
         .execute(&mut **transaction)
         .await?;
@@ -139,21 +193,21 @@ impl MinecraftProfile {
             DELETE FROM shared_profiles
             WHERE id = $1
             ",
-            id as MinecraftProfileId,
+            id as ClientProfileId,
         )
         .execute(&mut **transaction)
         .await?;
 
-        MinecraftProfile::clear_cache(id, redis).await?;
+        ClientProfile::clear_cache(id, redis).await?;
 
         Ok(Some(()))
     }
 
     pub async fn get<'a, 'b, E>(
-        id: MinecraftProfileId,
+        id: ClientProfileId,
         executor: E,
         redis: &RedisPool,
-    ) -> Result<Option<MinecraftProfile>, DatabaseError>
+    ) -> Result<Option<ClientProfile>, DatabaseError>
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
@@ -165,12 +219,12 @@ impl MinecraftProfile {
     pub async fn get_ids_for_user<'a, E>(
         user_id: UserId,
         exec: E,
-    ) -> Result<Vec<MinecraftProfileId>, DatabaseError>
+    ) -> Result<Vec<ClientProfileId>, DatabaseError>
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
         let mut exec = exec.acquire().await?;
-        let db_profiles: Vec<MinecraftProfileId> = sqlx::query!(
+        let db_profiles: Vec<ClientProfileId> = sqlx::query!(
             "
             SELECT sp.id
             FROM shared_profiles sp                
@@ -180,17 +234,17 @@ impl MinecraftProfile {
             user_id.0
         )
         .fetch_many(&mut *exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| MinecraftProfileId(m.id))) })
-        .try_collect::<Vec<MinecraftProfileId>>()
+        .try_filter_map(|e| async { Ok(e.right().map(|m| ClientProfileId(m.id))) })
+        .try_collect::<Vec<ClientProfileId>>()
         .await?;
         Ok(db_profiles)
     }
 
     pub async fn get_many<'a, E>(
-        ids: &[MinecraftProfileId],
+        ids: &[ClientProfileId],
         exec: E,
         redis: &RedisPool,
-    ) -> Result<Vec<MinecraftProfile>, DatabaseError>
+    ) -> Result<Vec<ClientProfile>, DatabaseError>
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
@@ -202,15 +256,15 @@ impl MinecraftProfile {
         let mut exec = exec.acquire().await?;
 
         let mut found_profiles = Vec::new();
-        let mut remaining_ids: Vec<MinecraftProfileId> = ids.to_vec();
+        let mut remaining_ids: Vec<ClientProfileId> = ids.to_vec();
 
         if !ids.is_empty() {
             let profiles = redis
-                .multi_get::<String>(MINECRAFT_PROFILES_NAMESPACE, ids.iter().map(|x| x.0))
+                .multi_get::<String>(CLIENT_PROFILES_NAMESPACE, ids.iter().map(|x| x.0))
                 .await?;
             for profile in profiles {
                 if let Some(profile) =
-                    profile.and_then(|x| serde_json::from_str::<MinecraftProfile>(&x).ok())
+                    profile.and_then(|x| serde_json::from_str::<ClientProfile>(&x).ok())
                 {
                     remaining_ids.retain(|x| profile.id != *x);
                     found_profiles.push(profile);
@@ -221,8 +275,8 @@ impl MinecraftProfile {
 
         if !remaining_ids.is_empty() {
             type AttachedProjectsMap = (
-                DashMap<MinecraftProfileId, Vec<VersionId>>,
-                DashMap<MinecraftProfileId, Vec<Override>>,
+                DashMap<ClientProfileId, Vec<VersionId>>,
+                DashMap<ClientProfileId, Vec<Override>>,
             );
             let shared_profiles_mods: AttachedProjectsMap = sqlx::query!(
                 "
@@ -241,14 +295,14 @@ impl MinecraftProfile {
                     let install_path = m.install_path;
                     if let Some(version_id) = version_id {
                         acc_versions
-                            .entry(MinecraftProfileId(m.shared_profile_id))
+                            .entry(ClientProfileId(m.shared_profile_id))
                             .or_default()
                             .push(version_id);
                     }
 
                     if let (Some(install_path), Some(file_hash)) = (install_path, file_hash) {
                         acc_overrides
-                            .entry(MinecraftProfileId(m.shared_profile_id))
+                            .entry(ClientProfileId(m.shared_profile_id))
                             .or_default()
                             .push((file_hash, PathBuf::from(install_path)));
                     }
@@ -259,32 +313,41 @@ impl MinecraftProfile {
             .await?;
 
             // One to many for shared_profiles to loaders, so can safely group by shared_profile_id
-            let db_profiles: Vec<MinecraftProfile> = sqlx::query!(
-                "
-                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id, l.loader, sp.loader_version, sp.maximum_users,
+            let db_profiles: Vec<ClientProfile> = sqlx::query!(
+                r#"
+                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id,
+                l.loader, sp.loader_version, sp.maximum_users, g.name as game_name, g.id as game_id, lfev.value as "game_version?",
                 ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users
                 FROM shared_profiles sp                
                 LEFT JOIN loaders l ON l.id = sp.loader_id
                 LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id
+                INNER JOIN games g ON g.id = sp.game_id
+                LEFT JOIN loader_field_enum_values lfev ON sp.game_version_id = lfev.id
                 WHERE sp.id = ANY($1)
-                GROUP BY sp.id, l.id
-                ",
+                GROUP BY sp.id, l.id, g.id, lfev.id
+                "#,
                 &remaining_ids.iter().map(|x| x.0).collect::<Vec<i64>>()
             )
                 .fetch_many(&mut *exec)
                 .try_filter_map(|e| async {
                     Ok(e.right().map(|m| {
-                        let id = MinecraftProfileId(m.id);
+                        let id = ClientProfileId(m.id);
                         let versions = shared_profiles_mods.0.get(&id).map(|x| x.value().clone()).unwrap_or_default();
                         let files = shared_profiles_mods.1.get(&id).map(|x| x.value().clone()).unwrap_or_default();
-                        MinecraftProfile {
+
+                        let game_version = match (m.game_version, m.game_version_id) {
+                            (Some(game_version), Some(game_version_id)) => Some((game_version, LoaderFieldEnumValueId(game_version_id))),
+                            _ => None
+                        };
+                        let game = ClientProfileGame::from(m.game_name, GameId(m.game_id), game_version);
+                        ClientProfile {
                             id,
                             name: m.name,
                             icon_url: m.icon_url,
                             updated: m.updated,
                             created: m.created,
                             owner_id: UserId(m.owner_id),
-                            game_version_id: LoaderFieldEnumValueId(m.game_version_id),
+                            game,
                             users: m.users.unwrap_or_default().into_iter().map(UserId).collect(),
                             loader_id: LoaderId(m.loader_id),
                             loader_version: m.loader_version,
@@ -295,17 +358,12 @@ impl MinecraftProfile {
                         }
                     }))
                 })
-                .try_collect::<Vec<MinecraftProfile>>()
+                .try_collect::<Vec<ClientProfile>>()
                 .await?;
 
             for profile in db_profiles {
                 redis
-                    .set_serialized_to_json(
-                        MINECRAFT_PROFILES_NAMESPACE,
-                        profile.id.0,
-                        &profile,
-                        None,
-                    )
+                    .set_serialized_to_json(CLIENT_PROFILES_NAMESPACE, profile.id.0, &profile, None)
                     .await?;
                 found_profiles.push(profile);
             }
@@ -314,29 +372,26 @@ impl MinecraftProfile {
         Ok(found_profiles)
     }
 
-    pub async fn clear_cache(
-        id: MinecraftProfileId,
-        redis: &RedisPool,
-    ) -> Result<(), DatabaseError> {
+    pub async fn clear_cache(id: ClientProfileId, redis: &RedisPool) -> Result<(), DatabaseError> {
         let mut redis = redis.connect().await?;
 
         redis
-            .delete_many([(MINECRAFT_PROFILES_NAMESPACE, Some(id.0.to_string()))])
+            .delete_many([(CLIENT_PROFILES_NAMESPACE, Some(id.0.to_string()))])
             .await?;
         Ok(())
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MinecraftProfileLink {
-    pub id: MinecraftProfileLinkId,
+pub struct ClientProfileLink {
+    pub id: ClientProfileLinkId,
     pub link_identifier: String,
-    pub shared_profile_id: MinecraftProfileId,
+    pub shared_profile_id: ClientProfileId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
 }
 
-impl MinecraftProfileLink {
+impl ClientProfileLink {
     pub async fn insert(
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -363,9 +418,9 @@ impl MinecraftProfileLink {
     }
 
     pub async fn list<'a, 'b, E>(
-        shared_profile_id: MinecraftProfileId,
+        shared_profile_id: ClientProfileId,
         executor: E,
-    ) -> Result<Vec<MinecraftProfileLink>, DatabaseError>
+    ) -> Result<Vec<ClientProfileLink>, DatabaseError>
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
@@ -381,24 +436,24 @@ impl MinecraftProfileLink {
         )
         .fetch_many(&mut *exec)
         .try_filter_map(|e| async {
-            Ok(e.right().map(|m| MinecraftProfileLink {
-                id: MinecraftProfileLinkId(m.id),
+            Ok(e.right().map(|m| ClientProfileLink {
+                id: ClientProfileLinkId(m.id),
                 link_identifier: m.link,
-                shared_profile_id: MinecraftProfileId(m.shared_profile_id),
+                shared_profile_id: ClientProfileId(m.shared_profile_id),
                 created: m.created,
                 expires: m.expires,
             }))
         })
-        .try_collect::<Vec<MinecraftProfileLink>>()
+        .try_collect::<Vec<ClientProfileLink>>()
         .await?;
 
         Ok(links)
     }
 
     pub async fn get<'a, 'b, E>(
-        id: MinecraftProfileLinkId,
+        id: ClientProfileLinkId,
         executor: E,
-    ) -> Result<Option<MinecraftProfileLink>, DatabaseError>
+    ) -> Result<Option<ClientProfileLink>, DatabaseError>
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
@@ -414,10 +469,10 @@ impl MinecraftProfileLink {
         )
         .fetch_optional(&mut *exec)
         .await?
-        .map(|m| MinecraftProfileLink {
-            id: MinecraftProfileLinkId(m.id),
+        .map(|m| ClientProfileLink {
+            id: ClientProfileLinkId(m.id),
             link_identifier: m.link,
-            shared_profile_id: MinecraftProfileId(m.shared_profile_id),
+            shared_profile_id: ClientProfileId(m.shared_profile_id),
             created: m.created,
             expires: m.expires,
         });
@@ -428,7 +483,7 @@ impl MinecraftProfileLink {
     pub async fn get_url<'a, 'b, E>(
         url_identifier: &str,
         executor: E,
-    ) -> Result<Option<MinecraftProfileLink>, DatabaseError>
+    ) -> Result<Option<ClientProfileLink>, DatabaseError>
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
@@ -444,10 +499,10 @@ impl MinecraftProfileLink {
         )
         .fetch_optional(&mut *exec)
         .await?
-        .map(|m| MinecraftProfileLink {
-            id: MinecraftProfileLinkId(m.id),
+        .map(|m| ClientProfileLink {
+            id: ClientProfileLinkId(m.id),
             link_identifier: m.link,
-            shared_profile_id: MinecraftProfileId(m.shared_profile_id),
+            shared_profile_id: ClientProfileId(m.shared_profile_id),
             created: m.created,
             expires: m.expires,
         });
@@ -456,7 +511,7 @@ impl MinecraftProfileLink {
     }
 }
 
-pub struct MinecraftProfileOverride {
+pub struct ClientProfileOverride {
     pub file_hash: String,
     pub url: String,
     pub install_path: PathBuf,
