@@ -356,12 +356,13 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
         .await;
         if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
             return Err(format!(
-                "Failure permissions test failed. Expected failure codes {} got {}",
+                "Failure permissions test failed. Expected failure codes {} got {}. Body: {:#?}",
                 self.allowed_failure_codes
                     .iter()
                     .map(|code| code.to_string())
                     .join(","),
-                resp.status().as_u16()
+                resp.status().as_u16(),
+                resp.response().body()
             ));
         }
 
@@ -385,8 +386,9 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
         .await;
         if !resp.status().is_success() {
             return Err(format!(
-                "Success permissions test failed. Expected success, got {}",
-                resp.status().as_u16()
+                "Success permissions test failed. Expected success, got {}. Body: {:#?}",
+                resp.status().as_u16(),
+                resp.response().body()
             ));
         }
 
