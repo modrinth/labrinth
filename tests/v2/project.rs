@@ -8,7 +8,7 @@ use crate::common::{
     },
     dummy_data::TestFile,
     environment::{with_test_environment, TestEnvironment},
-    permissions::{PermissionsTest, PermissionsTestContext},
+    permissions::{PermissionsTest, PermissionsTestContext}, asserts::assert_status,
 };
 use actix_http::StatusCode;
 use actix_web::test;
@@ -132,10 +132,8 @@ async fn test_add_remove_project() {
             .append_pat(USER_USER_PAT)
             .set_multipart(vec![json_segment.clone(), file_segment.clone()])
             .to_request();
-        let resp = test_env.call(req).await;
-
-        let status = resp.status();
-        assert_eq!(status, 200);
+        let resp: actix_web::dev::ServiceResponse = test_env.call(req).await;
+        assert_status(&resp, StatusCode::OK);
 
         // Get the project we just made, and confirm that it's correct
         let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
@@ -163,7 +161,7 @@ async fn test_add_remove_project() {
             .to_request();
 
         let resp = test_env.call(req).await;
-        assert_eq!(resp.status(), 400);
+        assert_status(&resp, StatusCode::BAD_REQUEST);
 
         // Reusing with the same slug and a different file should fail
         let req = test::TestRequest::post()
@@ -176,7 +174,7 @@ async fn test_add_remove_project() {
             .to_request();
 
         let resp = test_env.call(req).await;
-        assert_eq!(resp.status(), 400);
+        assert_status(&resp, StatusCode::BAD_REQUEST);
 
         // Different slug, different file should succeed
         let req = test::TestRequest::post()
@@ -189,7 +187,7 @@ async fn test_add_remove_project() {
             .to_request();
 
         let resp = test_env.call(req).await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
 
         // Get
         let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
@@ -197,7 +195,7 @@ async fn test_add_remove_project() {
 
         // Remove the project
         let resp = test_env.api.remove_project("demo", USER_USER_PAT).await;
-        assert_eq!(resp.status(), 204);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         // Confirm that the project is gone from the cache
         let mut redis_conn = test_env.db.redis_pool.connect().await.unwrap();
@@ -220,7 +218,7 @@ async fn test_add_remove_project() {
 
         // Old slug no longer works
         let resp = api.get_project("demo", USER_USER_PAT).await;
-        assert_eq!(resp.status(), 404);
+        assert_status(&resp, StatusCode::NOT_FOUND);
     })
     .await;
 }
@@ -344,7 +342,7 @@ pub async fn test_patch_v2() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         let project = api
             .get_project_deserialized(alpha_project_slug, USER_USER_PAT)
@@ -456,7 +454,7 @@ pub async fn test_bulk_edit_links() {
                 ADMIN_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
@@ -496,7 +494,7 @@ pub async fn test_bulk_edit_links() {
                 ADMIN_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
@@ -568,7 +566,7 @@ pub async fn test_bulk_edit_links() {
                 ADMIN_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)

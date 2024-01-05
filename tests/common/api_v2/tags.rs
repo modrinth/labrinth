@@ -1,3 +1,4 @@
+use actix_http::StatusCode;
 use actix_web::{
     dev::ServiceResponse,
     test::{self, TestRequest},
@@ -12,7 +13,7 @@ use crate::common::{
         models::{CommonCategoryData, CommonLoaderData},
         Api, ApiTags, AppendsOptionalPat,
     },
-    database::ADMIN_USER_PAT,
+    database::ADMIN_USER_PAT, asserts::assert_status,
 };
 
 use super::ApiV2;
@@ -30,7 +31,7 @@ impl ApiV2 {
 
     pub async fn get_side_types_deserialized(&self) -> Vec<String> {
         let resp = self.get_side_types().await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
@@ -44,19 +45,19 @@ impl ApiV2 {
 
     pub async fn get_game_versions_deserialized(&self) -> Vec<GameVersionQueryData> {
         let resp = self.get_game_versions().await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
     pub async fn get_loaders_deserialized(&self) -> Vec<LoaderData> {
         let resp = self.get_loaders().await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
     pub async fn get_categories_deserialized(&self) -> Vec<CategoryData> {
         let resp = self.get_categories().await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
@@ -70,7 +71,7 @@ impl ApiV2 {
 
     pub async fn get_donation_platforms_deserialized(&self) -> Vec<DonationPlatformQueryData> {
         let resp = self.get_donation_platforms().await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 }
@@ -87,7 +88,7 @@ impl ApiTags for ApiV2 {
 
     async fn get_loaders_deserialized_common(&self) -> Vec<CommonLoaderData> {
         let resp = self.get_loaders().await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
         let v: Vec<LoaderData> = test::read_body_json(resp).await;
         // Then, deserialize to the common format
@@ -105,7 +106,7 @@ impl ApiTags for ApiV2 {
 
     async fn get_categories_deserialized_common(&self) -> Vec<CommonCategoryData> {
         let resp = self.get_categories().await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
         let v: Vec<CategoryData> = test::read_body_json(resp).await;
         // Then, deserialize to the common format

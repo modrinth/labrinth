@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use actix_http::StatusCode;
 use actix_web::test;
 use common::api_v3::ApiV3;
+use common::asserts::assert_status;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
 
@@ -42,10 +43,9 @@ async fn test_get_project() {
 
         // Perform request on dummy data
         let resp = api.get_project(alpha_project_id, USER_USER_PAT).await;
-        let status = resp.status();
+        assert_status(&resp, StatusCode::OK);
         let body: serde_json::Value = test::read_body_json(resp).await;
 
-        assert_eq!(status, 200);
         assert_eq!(body["id"], json!(alpha_project_id));
         assert_eq!(body["slug"], json!(alpha_project_slug));
         let versions = body["versions"].as_array().unwrap();
@@ -75,8 +75,7 @@ async fn test_get_project() {
 
         // Make the request again, this time it should be cached
         let resp = api.get_project(alpha_project_id, USER_USER_PAT).await;
-        let status = resp.status();
-        assert_eq!(status, 200);
+        assert_status(&resp, StatusCode::OK);
 
         let body: serde_json::Value = test::read_body_json(resp).await;
         assert_eq!(body["id"], json!(alpha_project_id));
@@ -84,11 +83,11 @@ async fn test_get_project() {
 
         // Request should fail on non-existent project
         let resp = api.get_project("nonexistent", USER_USER_PAT).await;
-        assert_eq!(resp.status(), 404);
+        assert_status(&resp, StatusCode::NOT_FOUND);
 
         // Similarly, request should fail on non-authorized user, on a yet-to-be-approved or hidden project, with a 404 (hiding the existence of the project)
         let resp = api.get_project(beta_project_id, ENEMY_USER_PAT).await;
-        assert_eq!(resp.status(), 404);
+        assert_status(&resp, StatusCode::NOT_FOUND);
     })
     .await;
 }
@@ -170,8 +169,7 @@ async fn test_add_remove_project() {
             )
             .await;
 
-        let status = resp.status();
-        assert_eq!(status, 200);
+        assert_status(&resp, StatusCode::OK);
 
         // Get the project we just made, and confirm that it's correct
         let project = api
@@ -204,7 +202,7 @@ async fn test_add_remove_project() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status(&resp, StatusCode::BAD_REQUEST);
 
         // Reusing with the same slug and a different file should fail
         let resp = api
@@ -220,7 +218,7 @@ async fn test_add_remove_project() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status(&resp, StatusCode::BAD_REQUEST);
 
         // Different slug, different file should succeed
         let resp = api
@@ -236,7 +234,7 @@ async fn test_add_remove_project() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 200);
+        assert_status(&resp, StatusCode::OK);
 
         // Get
         let project = api
@@ -246,7 +244,7 @@ async fn test_add_remove_project() {
 
         // Remove the project
         let resp = test_env.api.remove_project("demo", USER_USER_PAT).await;
-        assert_eq!(resp.status(), 204);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         // Confirm that the project is gone from the cache
         let mut redis_pool = test_env.db.redis_pool.connect().await.unwrap();
@@ -269,7 +267,7 @@ async fn test_add_remove_project() {
 
         // Old slug no longer works
         let resp = api.get_project("demo", USER_USER_PAT).await;
-        assert_eq!(resp.status(), 404);
+        assert_status(&resp, StatusCode::NOT_FOUND);
     })
     .await;
 }
@@ -293,7 +291,7 @@ pub async fn test_patch_project() {
                 ENEMY_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 401);
+        assert_status(&resp, StatusCode::UNAUTHORIZED);
 
         // Failure because we are setting URL fields to invalid urls.
         for url_type in ["issues", "source", "wiki", "discord"] {
@@ -308,7 +306,7 @@ pub async fn test_patch_project() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 400);
+            assert_status(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Failure because these are illegal requested statuses for a normal user.
@@ -322,7 +320,7 @@ pub async fn test_patch_project() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 400);
+            assert_status(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Failure because these should not be able to be set by a non-mod
@@ -336,7 +334,7 @@ pub async fn test_patch_project() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 401);
+            assert_status(&resp, StatusCode::UNAUTHORIZED);
 
             // (should work for a mod, though)
             let resp = api
@@ -348,7 +346,7 @@ pub async fn test_patch_project() {
                     MOD_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 204);
+            assert_status(&resp, StatusCode::NO_CONTENT);
         }
 
         // Failed patch to alpha slug:
@@ -372,7 +370,7 @@ pub async fn test_patch_project() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 400);
+            assert_status(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Not allowed to directly set status, as 'beta_project_slug' (the other project) is "processing" and cannot have its status changed like this.
@@ -385,7 +383,7 @@ pub async fn test_patch_project() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 401);
+        assert_status(&resp, StatusCode::UNAUTHORIZED);
 
         // Sucessful request to patch many fields.
         let resp = api
@@ -406,11 +404,11 @@ pub async fn test_patch_project() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         // Old slug no longer works
         let resp = api.get_project(alpha_project_slug, USER_USER_PAT).await;
-        assert_eq!(resp.status(), 404);
+        assert_status(&resp, StatusCode::NOT_FOUND);
 
         // New slug does work
         let project = api.get_project_deserialized("newslug", USER_USER_PAT).await;
@@ -447,7 +445,7 @@ pub async fn test_patch_project() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status(&resp, StatusCode::NO_CONTENT);
         let project = api.get_project_deserialized("newslug", USER_USER_PAT).await;
         assert_eq!(project.link_urls.len(), 3);
         assert!(!project.link_urls.contains_key("issues"));
@@ -475,7 +473,7 @@ pub async fn test_patch_v3() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         let project = api
             .get_project_deserialized(alpha_project_slug, USER_USER_PAT)
@@ -509,7 +507,7 @@ pub async fn test_bulk_edit_categories() {
                 ADMIN_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized_common(alpha_project_id, ADMIN_USER_PAT)
@@ -552,7 +550,7 @@ pub async fn test_bulk_edit_links() {
                     ADMIN_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+            assert_status(&resp, StatusCode::NO_CONTENT);
 
             let alpha_body = api
                 .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
@@ -597,7 +595,7 @@ async fn delete_project_with_report() {
                 ENEMY_USER_PAT, // Enemy makes a report
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::OK);
+        assert_status(&resp, StatusCode::OK);
         let value = test::read_body_json::<serde_json::Value, _>(resp).await;
         let alpha_report_id = value["id"].as_str().unwrap();
 
@@ -608,7 +606,7 @@ async fn delete_project_with_report() {
                 ENEMY_USER_PAT, // Enemy makes a report
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::OK);
+        assert_status(&resp, StatusCode::OK);
 
         // Do the same for beta
         let resp = api
@@ -620,13 +618,13 @@ async fn delete_project_with_report() {
                 ENEMY_USER_PAT, // Enemy makes a report
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::OK);
+        assert_status(&resp, StatusCode::OK);
         let value = test::read_body_json::<serde_json::Value, _>(resp).await;
         let beta_report_id = value["id"].as_str().unwrap();
 
         // Delete the project
         let resp = api.remove_project(alpha_project_id, USER_USER_PAT).await;
-        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         // Confirm that the project is gone from the cache
         let mut redis_pool = test_env.db.redis_pool.connect().await.unwrap();
@@ -654,7 +652,7 @@ async fn delete_project_with_report() {
                 ENEMY_USER_PAT, // Enemy makes a report
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_status(&resp, StatusCode::NOT_FOUND);
 
         // Confirm that report for beta still exists
         let resp = api
@@ -663,7 +661,7 @@ async fn delete_project_with_report() {
                 ENEMY_USER_PAT, // Enemy makes a report
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::OK);
+        assert_status(&resp, StatusCode::OK);
     })
     .await;
 }
@@ -815,7 +813,7 @@ async fn permissions_patch_project_v3() {
 //                 MOD_USER_PAT,
 //             )
 //             .await;
-//         assert_eq!(resp.status(), 204);
+//         assert_status(&resp, StatusCode::NO_CONTENT);
 
 //         // Schedule version
 //         let req_gen = |ctx: PermissionsTestContext| async move {
@@ -1112,11 +1110,11 @@ async fn permissions_manage_invites() {
                 ADMIN_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         // Accept invite
         let resp = api.join_team(alpha_team_id, MOD_USER_PAT).await;
-        assert_eq!(resp.status(), 204);
+        assert_status(&resp, StatusCode::NO_CONTENT);
 
         // remove existing member (requires remove_member)
         let remove_member = ProjectPermissions::REMOVE_MEMBER;
@@ -1223,7 +1221,7 @@ async fn align_search_projects() {
             let project_model = api
                 .get_project(&project.id.to_string(), USER_USER_PAT)
                 .await;
-            assert_eq!(project_model.status(), 200);
+            assert_status(&project_model, StatusCode::OK);
             let mut project_model: Project = test::read_body_json(project_model).await;
 
             // Body/description is huge- don't store it in search, so it's OK if they differ here
@@ -1278,23 +1276,23 @@ async fn projects_various_visibility() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 204);
+            assert_status(&resp, StatusCode::NO_CONTENT);
             let resp = env.api.join_team(zeta_team_id, FRIEND_USER_PAT).await;
-            assert_eq!(resp.status(), 204);
+            assert_status(&resp, StatusCode::NO_CONTENT);
 
             let visible_pat_pairs = vec![
-                (&alpha_project_id_parsed, USER_USER_PAT, 200),
-                (&alpha_project_id_parsed, FRIEND_USER_PAT, 200),
-                (&alpha_project_id_parsed, ENEMY_USER_PAT, 200),
-                (&beta_project_id_parsed, USER_USER_PAT, 200),
-                (&beta_project_id_parsed, FRIEND_USER_PAT, 404),
-                (&beta_project_id_parsed, ENEMY_USER_PAT, 404),
+                (&alpha_project_id_parsed, USER_USER_PAT, StatusCode::OK),
+                (&alpha_project_id_parsed, FRIEND_USER_PAT, StatusCode::OK),
+                (&alpha_project_id_parsed, ENEMY_USER_PAT, StatusCode::OK),
+                (&beta_project_id_parsed, USER_USER_PAT, StatusCode::OK),
+                (&beta_project_id_parsed, FRIEND_USER_PAT, StatusCode::NOT_FOUND),
+                (&beta_project_id_parsed, ENEMY_USER_PAT, StatusCode::NOT_FOUND),
             ];
 
             // Tests get_project, a route that uses is_visible_project
             for (project_id, pat, expected_status) in visible_pat_pairs {
                 let resp = env.api.get_project(&project_id.to_string(), pat).await;
-                assert_eq!(resp.status(), expected_status);
+                assert_status(&resp, expected_status);
             }
 
             // Test get_user_projects, a route that uses filter_visible_projects
@@ -1316,26 +1314,26 @@ async fn projects_various_visibility() {
                 .api
                 .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
                 .await;
-            assert_eq!(resp.status(), 200);
+            assert_status(&resp, StatusCode::OK);
             let resp = env
                 .api
                 .organization_add_project(zeta_organization_id, beta_project_id, USER_USER_PAT)
                 .await;
-            assert_eq!(resp.status(), 200);
+            assert_status(&resp, StatusCode::OK);
 
             // Test get_project, a route that uses is_visible_project
             let visible_pat_pairs = vec![
-                (&alpha_project_id_parsed, USER_USER_PAT, 200),
-                (&alpha_project_id_parsed, FRIEND_USER_PAT, 200),
-                (&alpha_project_id_parsed, ENEMY_USER_PAT, 200),
-                (&beta_project_id_parsed, USER_USER_PAT, 200),
-                (&beta_project_id_parsed, FRIEND_USER_PAT, 200),
-                (&beta_project_id_parsed, ENEMY_USER_PAT, 404),
+                (&alpha_project_id_parsed, USER_USER_PAT, StatusCode::OK),
+                (&alpha_project_id_parsed, FRIEND_USER_PAT, StatusCode::OK),
+                (&alpha_project_id_parsed, ENEMY_USER_PAT, StatusCode::OK),
+                (&beta_project_id_parsed, USER_USER_PAT, StatusCode::OK),
+                (&beta_project_id_parsed, FRIEND_USER_PAT, StatusCode::OK),
+                (&beta_project_id_parsed, ENEMY_USER_PAT, StatusCode::NOT_FOUND),
             ];
 
             for (project_id, pat, expected_status) in visible_pat_pairs {
                 let resp = env.api.get_project(&project_id.to_string(), pat).await;
-                assert_eq!(resp.status(), expected_status);
+                assert_status(&resp, expected_status);
             }
 
             // Test get_user_projects, a route that uses filter_visible_projects

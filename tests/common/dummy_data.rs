@@ -390,7 +390,7 @@ pub async fn add_project_beta(api: &ApiV3) -> (Project, Version) {
         .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         .to_request();
     let resp = api.call(req).await;
-    assert_eq!(resp.status(), 200);
+    assert_status(&resp, StatusCode::OK);
 
     get_project_beta(api).await
 }
@@ -408,7 +408,7 @@ pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
         .to_request();
     let resp = api.call(req).await;
 
-    assert_eq!(resp.status(), 200);
+    assert_status(&resp, StatusCode::OK);
 
     get_organization_zeta(api).await
 }
