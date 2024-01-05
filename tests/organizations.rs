@@ -27,35 +27,45 @@ async fn create_organization() {
         let zeta_organization_slug = &test_env.dummy.organization_zeta.organization_id;
 
         // Failed creations title:
+        // - too short title
+        // - too long title
+        for title in ["a", &"a".repeat(100)] {
+            let resp = api
+                .create_organization(title, "theta", "theta_description", USER_USER_PAT)
+                .await;
+            assert_eq!(resp.status(), 400);
+        }
+
+        // Failed creations slug:
         // - slug collision with zeta
         // - too short slug
         // - too long slug
         // - not url safe slug
-        for title in [
+        for slug in [
             zeta_organization_slug,
             "a",
             &"a".repeat(100),
             "not url safe%&^!#$##!@#$%^&*()",
         ] {
             let resp = api
-                .create_organization(title, "theta_description", USER_USER_PAT)
+                .create_organization("Theta Org", slug, "theta_description", USER_USER_PAT)
                 .await;
             assert_eq!(resp.status(), 400);
         }
 
         // Failed creations description:
-        // - too short slug
-        // - too long slug
+        // - too short desc
+        // - too long desc
         for description in ["a", &"a".repeat(300)] {
             let resp = api
-                .create_organization("theta", description, USER_USER_PAT)
+                .create_organization("Theta Org", "theta", description, USER_USER_PAT)
                 .await;
             assert_eq!(resp.status(), 400);
         }
 
         // Create 'theta' organization
         let resp = api
-            .create_organization("theta", "not url safe%&^!#$##!@#$%^&", USER_USER_PAT)
+            .create_organization("Theta Org", "theta", "not url safe%&^!#$##!@#$%^&", USER_USER_PAT)
             .await;
         assert_eq!(resp.status(), 200);
 
@@ -63,7 +73,8 @@ async fn create_organization() {
         let theta = api
             .get_organization_deserialized("theta", USER_USER_PAT)
             .await;
-        assert_eq!(theta.name, "theta");
+        assert_eq!(theta.name, "Theta Org");
+        assert_eq!(theta.slug, "theta");
         assert_eq!(theta.description, "not url safe%&^!#$##!@#$%^&");
         assert_eq!(resp.status(), 200);
 
@@ -115,9 +126,25 @@ async fn patch_organization() {
 
         // Create 'theta' organization
         let resp = api
-            .create_organization("theta", "theta_description", USER_USER_PAT)
+            .create_organization("Theta Org", "theta", "theta_description", USER_USER_PAT)
             .await;
         assert_eq!(resp.status(), 200);
+
+        // Failed patch to theta title:
+        // - too short title
+        // - too long title
+        for title in ["a", &"a".repeat(100)] {
+            let resp = api
+                .edit_organization(
+                    "theta",
+                    json!({
+                        "name": title,
+                    }),
+                    USER_USER_PAT,
+                )
+                .await;
+            assert_eq!(resp.status(), 400);
+        }
 
         // Failed patch to zeta slug:
         // - slug collision with theta
@@ -134,7 +161,7 @@ async fn patch_organization() {
                 .edit_organization(
                     zeta_organization_id,
                     json!({
-                        "name": title,
+                        "slug": title,
                         "description": "theta_description"
                     }),
                     USER_USER_PAT,
@@ -165,6 +192,7 @@ async fn patch_organization() {
                 zeta_organization_id,
                 json!({
                     "name": "new_title",
+                    "slug": "new_slug",
                     "description": "not url safe%&^!#$##!@#$%^&" // not-URL-safe description should still work
                 }),
                 USER_USER_PAT,
@@ -174,9 +202,10 @@ async fn patch_organization() {
 
         // Get project using new slug
         let new_title = api
-            .get_organization_deserialized("new_title", USER_USER_PAT)
+            .get_organization_deserialized("new_slug", USER_USER_PAT)
             .await;
         assert_eq!(new_title.name, "new_title");
+        assert_eq!(new_title.slug, "new_slug");
         assert_eq!(new_title.description, "not url safe%&^!#$##!@#$%^&");
     })
     .await;

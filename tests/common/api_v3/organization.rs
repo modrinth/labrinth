@@ -14,6 +14,7 @@ impl ApiV3 {
     pub async fn create_organization(
         &self,
         organization_title: &str,
+        organization_slug: &str,
         description: &str,
         pat: Option<&str>,
     ) -> ServiceResponse {
@@ -22,6 +23,7 @@ impl ApiV3 {
             .append_pat(pat)
             .set_json(json!({
                 "name": organization_title,
+                "slug": organization_slug,
                 "description": description,
             }))
             .to_request();

@@ -20,7 +20,7 @@ use serde_json::json;
 use crate::common::api_common::models::CommonItemType;
 use crate::common::api_common::request_data::ProjectCreationRequestData;
 use crate::common::api_common::{ApiProject, ApiTeams, ApiVersion};
-use crate::common::dummy_data::{DummyImage, DummyProjectAlpha, DummyProjectBeta, TestFile};
+use crate::common::dummy_data::{DummyImage, DummyProjectAlpha, DummyProjectBeta, TestFile, DummyOrganizationZeta};
 mod common;
 
 #[actix_rt::test]
@@ -1256,6 +1256,106 @@ async fn align_search_projects() {
     })
     .await
 }
+
+#[actix_rt::test]
+async fn projects_various_visibility() {
+    // For testing the filter_visible_projects and is_visible_project
+    with_test_environment(
+        None,
+        |env: common::environment::TestEnvironment<ApiV3>| async move {
+            let DummyProjectAlpha { project_id: alpha_project_id, project_id_parsed: alpha_project_id_parsed, .. } = &env.dummy.project_alpha;
+            let DummyProjectBeta { project_id: beta_project_id, project_id_parsed: beta_project_id_parsed, .. } = &env.dummy.project_beta;
+            let DummyOrganizationZeta { organization_id: zeta_organization_id, team_id: zeta_team_id, .. } = &env.dummy.organization_zeta;
+
+            // Invite friend to org zeta and accept it
+            let resp = env
+                .api
+                .add_user_to_team(
+                    zeta_team_id,
+                    FRIEND_USER_ID,
+                    Some(ProjectPermissions::empty()),
+                    None,
+                    USER_USER_PAT,
+                )
+                .await;
+            assert_eq!(resp.status(), 204);
+            let resp = env.api.join_team(zeta_team_id, FRIEND_USER_PAT).await;
+            assert_eq!(resp.status(), 204);
+
+            let visible_pat_pairs = vec![
+                (&alpha_project_id_parsed, USER_USER_PAT, 200),
+                (&alpha_project_id_parsed, FRIEND_USER_PAT, 200),
+                (&alpha_project_id_parsed, ENEMY_USER_PAT, 200),
+                (&beta_project_id_parsed, USER_USER_PAT, 200),
+                (&beta_project_id_parsed, FRIEND_USER_PAT, 404),
+                (&beta_project_id_parsed, ENEMY_USER_PAT, 404),
+            ];
+
+            // Tests get_project, a route that uses is_visible_project
+            for (project_id, pat, expected_status) in visible_pat_pairs {
+                let resp = env.api.get_project(&project_id.to_string(), pat).await;
+                assert_eq!(resp.status(), expected_status);
+            }
+
+            // Test get_user_projects, a route that uses filter_visible_projects
+            let visible_pat_pairs = vec![
+                (USER_USER_PAT, 2),
+                (FRIEND_USER_PAT, 1),
+                (ENEMY_USER_PAT, 1),
+            ];
+            for (pat, expected_count) in visible_pat_pairs {
+                let projects = env
+                    .api
+                    .get_user_projects_deserialized_common(USER_USER_ID, pat)
+                    .await;
+                assert_eq!(projects.len(), expected_count);
+            }
+
+            // Add projects to org zeta
+            let resp = env
+                .api
+                .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
+                .await;
+            assert_eq!(resp.status(), 200);
+            let resp = env
+                .api
+                .organization_add_project(zeta_organization_id, beta_project_id, USER_USER_PAT)
+                .await;
+            assert_eq!(resp.status(), 200);
+
+            // Test get_project, a route that uses is_visible_project
+            let visible_pat_pairs = vec![
+                (&alpha_project_id_parsed, USER_USER_PAT, 200),
+                (&alpha_project_id_parsed, FRIEND_USER_PAT, 200),
+                (&alpha_project_id_parsed, ENEMY_USER_PAT, 200),
+                (&beta_project_id_parsed, USER_USER_PAT, 200),
+                (&beta_project_id_parsed, FRIEND_USER_PAT, 200),
+                (&beta_project_id_parsed, ENEMY_USER_PAT, 404),
+            ];
+
+            for (project_id, pat, expected_status) in visible_pat_pairs {
+                let resp = env.api.get_project(&project_id.to_string(), pat).await;
+                assert_eq!(resp.status(), expected_status);
+            }
+
+            // Test get_user_projects, a route that uses filter_visible_projects
+            let visible_pat_pairs = vec![
+                (USER_USER_PAT, 2),
+                (FRIEND_USER_PAT, 2),
+                (ENEMY_USER_PAT, 1),
+            ];
+            for (pat, expected_count) in visible_pat_pairs {
+                let projects = env
+                    .api
+                    .get_user_projects_deserialized_common(USER_USER_ID, pat)
+                    .await;
+                assert_eq!(projects.len(), expected_count);
+            }
+        },
+    )
+    .await;
+}
+
 
 // Route tests:
 // TODO: Missing routes on projects

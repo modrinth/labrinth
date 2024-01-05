@@ -1084,7 +1084,7 @@ pub async fn organization_scopes() {
         // Create organization
         let organization_create = Scopes::ORGANIZATION_CREATE;
         let req_gen = |pat: Option<String>| async move {
-            api.create_organization("TestOrg", "TestOrg Description", pat.as_deref())
+            api.create_organization("Test Org", "TestOrg", "TestOrg Description", pat.as_deref())
                 .await
         };
         let (_, success) = ScopeTest::new(&test_env)

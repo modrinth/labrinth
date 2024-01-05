@@ -1007,15 +1007,15 @@ async fn create_dummy_project(setup_api: &ApiV3) -> (String, String) {
 
 async fn create_dummy_org(setup_api: &ApiV3) -> (String, String) {
     // Create a very simple organization
-    let name = generate_random_name("test_org");
+    let slug = generate_random_name("test_org");
 
     let resp = setup_api
-        .create_organization(&name, "Example description.", ADMIN_USER_PAT)
+        .create_organization("Example org", &slug, "Example description.", ADMIN_USER_PAT)
         .await;
     assert!(resp.status().is_success());
 
     let organization = setup_api
-        .get_organization_deserialized(&name, ADMIN_USER_PAT)
+        .get_organization_deserialized(&slug, ADMIN_USER_PAT)
         .await;
     let organizaion_id = organization.id.to_string();
     let team_id = organization.team_id.to_string();
