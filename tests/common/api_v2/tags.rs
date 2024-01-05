@@ -13,7 +13,8 @@ use crate::common::{
         models::{CommonCategoryData, CommonLoaderData},
         Api, ApiTags, AppendsOptionalPat,
     },
-    database::ADMIN_USER_PAT, asserts::assert_status,
+    asserts::assert_status,
+    database::ADMIN_USER_PAT,
 };
 
 use super::ApiV2;

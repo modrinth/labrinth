@@ -1,10 +1,11 @@
 use crate::common::{
     api_common::{ApiProject, ApiTeams},
+    asserts::assert_status,
     database::{
         generate_random_name, ADMIN_USER_PAT, ENEMY_USER_ID_PARSED, ENEMY_USER_PAT,
         FRIEND_USER_ID_PARSED, MOD_USER_ID, MOD_USER_PAT, USER_USER_ID, USER_USER_ID_PARSED,
     },
-    dummy_data::{DummyImage, DummyOrganizationZeta, DummyProjectAlpha, DummyProjectBeta}, asserts::assert_status,
+    dummy_data::{DummyImage, DummyOrganizationZeta, DummyProjectAlpha, DummyProjectBeta},
 };
 use actix_http::StatusCode;
 use common::{
@@ -66,7 +67,12 @@ async fn create_organization() {
 
         // Create 'theta' organization
         let resp = api
-            .create_organization("Theta Org", "theta", "not url safe%&^!#$##!@#$%^&", USER_USER_PAT)
+            .create_organization(
+                "Theta Org",
+                "theta",
+                "not url safe%&^!#$##!@#$%^&",
+                USER_USER_PAT,
+            )
             .await;
         assert_status(&resp, StatusCode::OK);
 

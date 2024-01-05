@@ -7,7 +7,10 @@ use bytes::Bytes;
 use labrinth::models::{organizations::Organization, users::UserId, v3::projects::Project};
 use serde_json::json;
 
-use crate::common::{api_common::{request_data::ImageData, Api, AppendsOptionalPat}, asserts::assert_status};
+use crate::common::{
+    api_common::{request_data::ImageData, Api, AppendsOptionalPat},
+    asserts::assert_status,
+};
 
 use super::ApiV3;
 

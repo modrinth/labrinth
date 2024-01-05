@@ -1,4 +1,4 @@
-use crate::common::{api_common::ApiTeams, database::*, asserts::assert_status};
+use crate::common::{api_common::ApiTeams, asserts::assert_status, database::*};
 use actix_http::StatusCode;
 use common::{
     api_v3::ApiV3,

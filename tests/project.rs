@@ -21,7 +21,9 @@ use serde_json::json;
 use crate::common::api_common::models::CommonItemType;
 use crate::common::api_common::request_data::ProjectCreationRequestData;
 use crate::common::api_common::{ApiProject, ApiTeams, ApiVersion};
-use crate::common::dummy_data::{DummyImage, DummyProjectAlpha, DummyProjectBeta, TestFile, DummyOrganizationZeta};
+use crate::common::dummy_data::{
+    DummyImage, DummyOrganizationZeta, DummyProjectAlpha, DummyProjectBeta, TestFile,
+};
 mod common;
 
 #[actix_rt::test]
@@ -1245,7 +1247,9 @@ async fn align_search_projects() {
             // (Becasue they are not returned by the search)
             // TODO: get models to match *exactly* without an additional project fetch,
             // including these fields removed here
-            project.additional_categories.retain(|x| !project_model_mrpack_loaders.contains(x));
+            project
+                .additional_categories
+                .retain(|x| !project_model_mrpack_loaders.contains(x));
 
             let project_model = serde_json::to_value(project_model).unwrap();
             let searched_project_serialized = serde_json::to_value(project).unwrap();
@@ -1261,9 +1265,21 @@ async fn projects_various_visibility() {
     with_test_environment(
         None,
         |env: common::environment::TestEnvironment<ApiV3>| async move {
-            let DummyProjectAlpha { project_id: alpha_project_id, project_id_parsed: alpha_project_id_parsed, .. } = &env.dummy.project_alpha;
-            let DummyProjectBeta { project_id: beta_project_id, project_id_parsed: beta_project_id_parsed, .. } = &env.dummy.project_beta;
-            let DummyOrganizationZeta { organization_id: zeta_organization_id, team_id: zeta_team_id, .. } = &env.dummy.organization_zeta;
+            let DummyProjectAlpha {
+                project_id: alpha_project_id,
+                project_id_parsed: alpha_project_id_parsed,
+                ..
+            } = &env.dummy.project_alpha;
+            let DummyProjectBeta {
+                project_id: beta_project_id,
+                project_id_parsed: beta_project_id_parsed,
+                ..
+            } = &env.dummy.project_beta;
+            let DummyOrganizationZeta {
+                organization_id: zeta_organization_id,
+                team_id: zeta_team_id,
+                ..
+            } = &env.dummy.organization_zeta;
 
             // Invite friend to org zeta and accept it
             let resp = env
@@ -1285,8 +1301,16 @@ async fn projects_various_visibility() {
                 (&alpha_project_id_parsed, FRIEND_USER_PAT, StatusCode::OK),
                 (&alpha_project_id_parsed, ENEMY_USER_PAT, StatusCode::OK),
                 (&beta_project_id_parsed, USER_USER_PAT, StatusCode::OK),
-                (&beta_project_id_parsed, FRIEND_USER_PAT, StatusCode::NOT_FOUND),
-                (&beta_project_id_parsed, ENEMY_USER_PAT, StatusCode::NOT_FOUND),
+                (
+                    &beta_project_id_parsed,
+                    FRIEND_USER_PAT,
+                    StatusCode::NOT_FOUND,
+                ),
+                (
+                    &beta_project_id_parsed,
+                    ENEMY_USER_PAT,
+                    StatusCode::NOT_FOUND,
+                ),
             ];
 
             // Tests get_project, a route that uses is_visible_project
@@ -1328,7 +1352,11 @@ async fn projects_various_visibility() {
                 (&alpha_project_id_parsed, ENEMY_USER_PAT, StatusCode::OK),
                 (&beta_project_id_parsed, USER_USER_PAT, StatusCode::OK),
                 (&beta_project_id_parsed, FRIEND_USER_PAT, StatusCode::OK),
-                (&beta_project_id_parsed, ENEMY_USER_PAT, StatusCode::NOT_FOUND),
+                (
+                    &beta_project_id_parsed,
+                    ENEMY_USER_PAT,
+                    StatusCode::NOT_FOUND,
+                ),
             ];
 
             for (project_id, pat, expected_status) in visible_pat_pairs {
@@ -1353,7 +1381,6 @@ async fn projects_various_visibility() {
     )
     .await;
 }
-
 
 // Route tests:
 // TODO: Missing routes on projects

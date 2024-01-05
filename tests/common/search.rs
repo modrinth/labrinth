@@ -11,7 +11,7 @@ use crate::common::{
     dummy_data::{TestFile, DUMMY_CATEGORIES},
 };
 
-use super::{api_v3::ApiV3, environment::TestEnvironment, asserts::assert_status};
+use super::{api_v3::ApiV3, asserts::assert_status, environment::TestEnvironment};
 
 pub async fn setup_search_projects(test_env: &TestEnvironment<ApiV3>) -> Arc<HashMap<u64, u64>> {
     // Test setup and dummy data

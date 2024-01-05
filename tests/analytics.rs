@@ -14,7 +14,6 @@ use rust_decimal::{prelude::ToPrimitive, Decimal};
 
 mod common;
 
-
 #[actix_rt::test]
 pub async fn analytics_revenue() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {

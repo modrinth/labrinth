@@ -8,7 +8,7 @@ use sqlx::PgPool;
 use validator::Validate;
 
 use crate::{
-    auth::{get_user_from_headers, filter_visible_projects},
+    auth::{filter_visible_projects, get_user_from_headers},
     database::{models::User, redis::RedisPool},
     file_hosting::FileHost,
     models::{
