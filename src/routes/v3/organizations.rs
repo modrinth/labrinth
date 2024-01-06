@@ -732,6 +732,7 @@ pub async fn organization_projects_add(
 
         transaction.commit().await?;
 
+        database::models::User::clear_project_cache(&[current_user.id.into()], &redis).await?;
         database::models::TeamMember::clear_cache(project_item.inner.team_id, &redis).await?;
         database::models::Project::clear_cache(
             project_item.inner.id,
@@ -892,7 +893,7 @@ pub async fn organization_projects_remove(
         .await?;
 
         transaction.commit().await?;
-
+        database::models::User::clear_project_cache(&[current_user.id.into()], &redis).await?;
         database::models::TeamMember::clear_cache(project_item.inner.team_id, &redis).await?;
         database::models::Project::clear_cache(
             project_item.inner.id,

@@ -294,6 +294,16 @@ async fn add_remove_organization_projects() {
         let alpha_project_slug: &str = &test_env.dummy.project_alpha.project_slug;
         let zeta_organization_id: &str = &test_env.dummy.organization_zeta.organization_id;
 
+        // user's page should show alpha project
+        // It may contain more than one project, depending on dummy data, but should contain the alpha project
+        let projects = test_env
+            .api
+            .get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
+            .await;
+        assert!(projects
+            .iter()
+            .any(|p| p.id.to_string() == alpha_project_id));
+
         // Add/remove project to organization, first by ID, then by slug
         for alpha in [alpha_project_id, alpha_project_slug] {
             let resp = test_env
@@ -310,6 +320,16 @@ async fn add_remove_organization_projects() {
             assert_eq!(projects[0].id.to_string(), alpha_project_id);
             assert_eq!(projects[0].slug, Some(alpha_project_slug.to_string()));
 
+            // Currently, intended behaviour is that user's page should NOT show organization projects.
+            // It may contain other projects, depending on dummy data, but should not contain the alpha project
+            let projects = test_env
+                .api
+                .get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
+                .await;
+            assert!(!projects
+                .iter()
+                .any(|p| p.id.to_string() == alpha_project_id));
+
             // Remove project from organization
             let resp = test_env
                 .api
@@ -321,6 +341,17 @@ async fn add_remove_organization_projects() {
                 )
                 .await;
             assert_status(&resp, StatusCode::OK);
+
+            // Get user's projects as user - should be 1, the alpha project,
+            // as we gave back ownership to the user when we removed it from the organization
+            // So user's page should show the alpha project (and possibly others)
+            let projects = test_env
+                .api
+                .get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
+                .await;
+            assert!(projects
+                .iter()
+                .any(|p| p.id.to_string() == alpha_project_id));
 
             // Get organization projects
             let projects = test_env
