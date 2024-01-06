@@ -66,11 +66,11 @@ pub async fn index_projects(
     let indices = get_indexes(config).await?;
 
     let all_loader_fields =
-        crate::database::models::loader_fields::LoaderField::get_fields_all(&pool, &redis).await?;
-    let all_loader_fields = all_loader_fields
-        .into_iter()
-        .map(|x| x.field)
-        .collect::<Vec<_>>();
+        crate::database::models::loader_fields::LoaderField::get_fields_all(&pool, &redis)
+            .await?
+            .into_iter()
+            .map(|x| x.field)
+            .collect::<Vec<_>>();
 
     let all_ids = get_all_ids(pool.clone()).await?;
     let all_ids_len = all_ids.len();
