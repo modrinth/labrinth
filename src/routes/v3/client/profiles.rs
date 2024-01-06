@@ -103,7 +103,6 @@ pub async fn profile_create(
     session_queue: Data<AuthQueue>,
 ) -> Result<HttpResponse, CreateError> {
     let profile_create_data = profile_create_data.into_inner();
-    println!("creat {:?}", serde_json::to_string(&profile_create_data));
     // The currently logged in user
     let current_user = get_user_from_headers(
         &req,
