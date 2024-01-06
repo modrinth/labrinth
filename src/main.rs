@@ -280,10 +280,30 @@ async fn main() -> std::io::Result<()> {
     let store = MemoryStore::new();
 
     info!("Starting Actix HTTP server!");
-
     // Init App
     HttpServer::new(move || {
         App::new()
+            .wrap_fn(|req, srv| {
+                use actix_web::dev::{Service, ServiceResponse};
+                use futures::future::LocalBoxFuture;
+                use actix_web::{Error, HttpResponse};
+
+                let path = req.path().to_string();
+
+                if parse_var("READ_ONLY").unwrap_or(false) && (req.method() != actix_web::http::Method::GET || req.method() != actix_web::http::Method::HEAD) && !path.starts_with("/v2/version_file") {
+                    let fut = async move {
+                        let response = HttpResponse::Forbidden().json(models::error::ApiError {
+                            error: "read_only",
+                            description: "Modrinth is in read-only mode while the team performs an update. Check back in 15-30 minutes to perform this action.",
+                        });
+                        Ok(ServiceResponse::new(req.into_parts().0, response))
+                    };
+                    let res: LocalBoxFuture<'static, Result<ServiceResponse, Error>> = Box::pin(fut);
+                    return res;
+                }
+
+                srv.call(req)
+            })
             .wrap(actix_web::middleware::Compress::default())
             .wrap(
                 RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
