@@ -429,23 +429,32 @@ async fn add_remove_organization_project_ownership_to_user() {
             );
         }
 
-        // Both alpha and beta project should have:
+        // Alpha project should have:
         // - 1 member, FRIEND_USER_ID
+        //      -> User was removed entirely as a team_member as it is now the owner of the organization
         // - No owner.
         //      -> For alpha, user was removed as owner when it was added to the organization
-        //      -> For beta, user was removed as owner when ownership was transferred to friend
-        //              then friend was removed as owner when it was added to the organization
-        // -> In both cases, user was removed entirely as a team_member as it is now the owner of the organization
-        for team_id in [alpha_team_id, beta_team_id] {
-            let members = test_env
-                .api
-                .get_team_members_deserialized(team_id, USER_USER_PAT)
-                .await;
-            assert_eq!(members.len(), 1);
-            assert_eq!(members[0].user.id.to_string(), FRIEND_USER_ID);
-            let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
-            assert_eq!(user_member.len(), 0);
-        }
+        //      -> Friend was never an owner of the alpha project
+        let members = test_env
+            .api
+            .get_team_members_deserialized(alpha_team_id, USER_USER_PAT)
+            .await;
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].user.id.to_string(), FRIEND_USER_ID);
+        let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
+        assert_eq!(user_member.len(), 0);
+
+        // Beta project should have:
+        // - No members
+        // -> User was removed entirely as a team_member as it is now the owner of the organization
+        // -> Friend was made owner of the beta project, but was removed as a member when it was added to the organization
+        // If you are owner of a projeect, you are removed from the team when it is added to an organization,
+        // so that your former permissions are not overriding the organization permissions by default.
+        let members = test_env
+            .api
+            .get_team_members_deserialized(beta_team_id, USER_USER_PAT)
+            .await;
+        assert!(members.is_empty());
 
         // Transfer ownership of zeta organization to FRIEND
         let resp = test_env

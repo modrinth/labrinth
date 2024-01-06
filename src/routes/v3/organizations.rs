@@ -712,7 +712,7 @@ pub async fn organization_projects_add(
             INNER JOIN users u ON u.id = team_members.user_id
             WHERE team_id = $1 AND is_owner = TRUE
             ",
-            project_item.inner.team_id as database::models::ids::TeamId
+            organization.team_id as database::models::ids::TeamId
         )
         .fetch_one(&mut *transaction)
         .await?;
