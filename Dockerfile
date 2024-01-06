@@ -23,10 +23,10 @@ ARG SQLX_OFFLINE=true
 RUN cargo build --release
 
 
-FROM debian:bullseye-slim
+# Final Stage
+FROM ubuntu:latest
 
 RUN apt-get update \
- && apt-get install -y openssl \
  && apt-get install -y --no-install-recommends ca-certificates \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
