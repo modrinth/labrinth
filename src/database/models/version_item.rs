@@ -1011,7 +1011,7 @@ pub struct SingleFile {
 
 impl std::cmp::Ord for QueryVersion {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.inner.cmp(&other.inner)
+        other.inner.cmp(&self.inner)  // Invert the comparison here
     }
 }
 
@@ -1025,13 +1025,13 @@ impl std::cmp::Ord for Version {
     fn cmp(&self, other: &Self) -> Ordering {
         let ordering_order = match (self.ordering, other.ordering) {
             (None, None) => Ordering::Equal,
-            (None, Some(_)) => Ordering::Greater,
-            (Some(_), None) => Ordering::Less,
-            (Some(a), Some(b)) => a.cmp(&b),
+            (None, Some(_)) => Ordering::Less,  // Invert the comparison here
+            (Some(_), None) => Ordering::Greater,  // And here
+            (Some(a), Some(b)) => b.cmp(&a),  // And here
         };
 
         match ordering_order {
-            Ordering::Equal => self.date_published.cmp(&other.date_published),
+            Ordering::Equal => other.date_published.cmp(&self.date_published),  // And here
             ordering => ordering,
         }
     }
@@ -1061,7 +1061,7 @@ mod tests {
 
         let sorted = versions.iter().cloned().sorted().collect_vec();
 
-        let expected_sorted_ids = vec![0, 1, 2, 3, 4];
+        let expected_sorted_ids = vec![4, 3, 2, 1, 0];
         let actual_sorted_ids = sorted.iter().map(|v| v.id.0).collect_vec();
         assert_eq!(expected_sorted_ids, actual_sorted_ids);
     }
