@@ -101,10 +101,12 @@ async fn search_projects() {
                         .into_iter()
                         .map(|p| id_conversion[&p.id.0])
                         .collect();
+                    let num_hits = projects.total_hits;
                     expected_project_ids.sort();
                     found_project_ids.sort();
                     println!("Facets: {:?}", facets);
                     assert_eq!(found_project_ids, expected_project_ids);
+                    assert_eq!(num_hits, expected_project_ids.len() as usize);
                 }
             })
             .await;
