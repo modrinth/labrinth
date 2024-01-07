@@ -47,8 +47,7 @@ pub async fn version_list(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let loaders = if let Some(loaders) = filters.loaders {
-        if let Some(mut loaders) = serde_json::from_str::<Vec<String>>(&loaders)
-            .ok() {
+        if let Ok(mut loaders) = serde_json::from_str::<Vec<String>>(&loaders) {
             loaders.push("mrpack".to_string());
             Some(loaders)
         } else {
@@ -71,7 +70,13 @@ pub async fn version_list(
                 loader_fields.insert("game_versions".to_string(), game_versions);
 
                 if let Some(ref loaders) = loaders {
-                    loader_fields.insert("loaders".to_string(), loaders.iter().map(|x| serde_json::json!(x.clone())).collect());
+                    loader_fields.insert(
+                        "loaders".to_string(),
+                        loaders
+                            .iter()
+                            .map(|x| serde_json::json!(x.clone()))
+                            .collect(),
+                    );
                 }
 
                 serde_json::to_string(&loader_fields).ok()
