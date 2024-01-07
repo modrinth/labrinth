@@ -159,20 +159,15 @@ pub fn convert_plugin_loaders_v3(facets: Vec<Vec<Vec<String>>>) -> Vec<Vec<Vec<S
     facets
         .into_iter()
         .map(|inner_facets| {
-            inner_facets
-                .into_iter()
-                .map(|inner_inner_facets| {
-                    if inner_inner_facets == ["project_type:mod"] {
-                        vec![
-                            "project_type:plugin".to_string(),
-                            "project_type:datapack".to_string(),
-                            "project_type:mod".to_string(),
-                        ]
-                    } else {
-                        inner_inner_facets
-                    }
-                })
-                .collect::<Vec<_>>()
+            if inner_facets == [["project_type:mod"]] {
+                vec![
+                    vec!["project_type:plugin".to_string()],
+                    vec!["project_type:datapack".to_string()],
+                    vec!["project_type:mod".to_string()],
+                ]
+            } else {
+                inner_facets
+            }
         })
         .collect::<Vec<_>>()
 }
