@@ -381,8 +381,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "game_versions",
     "singleplayer",
     "client_and_server",
-    "mrpack_loaders", 
-
+    "mrpack_loaders",
     // Non-searchable fields for filling out the Project model.
     "license_url",
     "monetization_status",

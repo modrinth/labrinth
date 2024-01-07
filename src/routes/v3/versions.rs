@@ -781,7 +781,12 @@ pub async fn version_list(
             // In the future, not all versions will have 'game_versions' fields, so this will need to be changed.
             let (loaders, game_versions) = futures::future::try_join(
                 database::models::loader_fields::Loader::list(&**pool, &redis),
-                database::models::legacy_loader_fields::MinecraftGameVersion::list(&**pool, &redis),
+                database::models::legacy_loader_fields::MinecraftGameVersion::list(
+                    None,
+                    Some(true),
+                    &**pool,
+                    &redis,
+                ),
             )
             .await?;
 
