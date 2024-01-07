@@ -223,7 +223,7 @@ pub async fn search_for_project(
 
     let results = {
         let mut query = meilisearch_index.search();
-
+        println!("Getting results from info: {:?}", info);
         query
             .with_limit(min(100, limit))
             .with_offset(offset)
@@ -314,6 +314,6 @@ pub async fn search_for_project(
         hits: results.hits.into_iter().map(|r| r.result).collect(),
         offset: results.offset.unwrap_or_default(),
         limit: results.limit.unwrap_or_default(),
-        total_hits: results.estimated_total_hits.unwrap_or_default(),
+        total_hits: results.total_hits.unwrap_or_default(),
     })
 }
