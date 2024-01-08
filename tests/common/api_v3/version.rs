@@ -66,6 +66,16 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
+    pub async fn get_versions_deserialized(
+        &self,
+        version_ids: Vec<String>,
+        pat: Option<&str>,
+    ) -> Vec<Version> {
+        let resp = self.get_versions(version_ids, pat).await;
+        assert_status!(&resp, StatusCode::OK);
+        test::read_body_json(resp).await
+    }
+
     pub async fn update_individual_files(
         &self,
         algorithm: &str,
