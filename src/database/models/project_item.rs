@@ -273,13 +273,13 @@ impl Project {
                 id, team_id, name, summary, description,
                 published, downloads, icon_url, status, requested_status,
                 license_url, license,
-                slug, color, monetization_status
+                slug, color, monetization_status, organization_id
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, 
                 $7, $8, $9, $10, 
                 $11, $12, 
-                LOWER($13), $14, $15
+                LOWER($13), $14, $15, $16
             )
             ",
             self.id as ProjectId,
@@ -297,6 +297,7 @@ impl Project {
             self.slug.as_ref(),
             self.color.map(|x| x as i32),
             self.monetization_status.as_str(),
+            self.organization_id.map(|x| x.0 as i64),
         )
         .execute(&mut **transaction)
         .await?;
@@ -764,9 +765,6 @@ impl Project {
                 }
             ).try_collect().await?;
 
-            // TODO: Possible improvements to look into:
-            // - use multiple queries instead of CTES (for cleanliness?)
-            // - repeated joins to mods in separate CTEs- perhaps 1 CTE for mods and use later (in mods_gallery_json, mods_donations_json, etc.)
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
                 SELECT m.id id, m.name name, m.summary summary, m.downloads downloads, m.follows follows,

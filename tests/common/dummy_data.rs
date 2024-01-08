@@ -13,7 +13,10 @@ use serde_json::json;
 use sqlx::Executor;
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
-use crate::common::{api_common::Api, database::USER_USER_PAT};
+use crate::{
+    assert_status,
+    common::{api_common::Api, database::USER_USER_PAT},
+};
 use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
 use super::{
@@ -22,7 +25,7 @@ use super::{
     database::TemporaryDatabase,
 };
 
-use super::{asserts::assert_status, database::USER_USER_ID, get_json_val_str};
+use super::{database::USER_USER_ID, get_json_val_str};
 
 pub const DUMMY_DATA_UPDATE: i64 = 6;
 
@@ -207,7 +210,7 @@ impl DummyData {
             organization_zeta: DummyOrganizationZeta {
                 organization_id: organization_zeta.id.to_string(),
                 team_id: organization_zeta.team_id.to_string(),
-                organization_name: organization_zeta.name,
+                organization_slug: organization_zeta.slug,
             },
 
             oauth_client_alpha: DummyOAuthClientAlpha {
@@ -249,7 +252,7 @@ pub struct DummyProjectBeta {
 #[derive(Clone)]
 pub struct DummyOrganizationZeta {
     pub organization_id: String,
-    pub organization_name: String,
+    pub organization_slug: String,
     pub team_id: String,
 }
 
@@ -390,7 +393,7 @@ pub async fn add_project_beta(api: &ApiV3) -> (Project, Version) {
         .set_multipart(vec![json_segment.clone(), file_segment.clone()])
         .to_request();
     let resp = api.call(req).await;
-    assert_eq!(resp.status(), 200);
+    assert_status!(&resp, StatusCode::OK);
 
     get_project_beta(api).await
 }
@@ -401,13 +404,14 @@ pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
         .uri("/v3/organization")
         .append_pat(USER_USER_PAT)
         .set_json(json!({
-            "name": "zeta",
+            "name": "Zeta",
+            "slug": "zeta",
             "description": "A dummy organization for testing with."
         }))
         .to_request();
     let resp = api.call(req).await;
 
-    assert_eq!(resp.status(), 200);
+    assert_status!(&resp, StatusCode::OK);
 
     get_organization_zeta(api).await
 }
@@ -440,7 +444,7 @@ pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
         .append_pat(USER_USER_PAT)
         .to_request();
     let resp = api.call(req).await;
-    assert_status(&resp, StatusCode::OK);
+    assert_status!(&resp, StatusCode::OK);
     let project: serde_json::Value = test::read_body_json(resp).await;
     let project: Project = serde_json::from_value(project).unwrap();
 
@@ -450,7 +454,7 @@ pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
         .append_pat(USER_USER_PAT)
         .to_request();
     let resp = api.call(req).await;
-    assert_status(&resp, StatusCode::OK);
+    assert_status!(&resp, StatusCode::OK);
     let versions: Vec<Version> = test::read_body_json(resp).await;
     let version = versions.into_iter().next().unwrap();
 

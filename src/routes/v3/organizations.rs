@@ -72,7 +72,7 @@ pub async fn organization_projects_get(
         "
         SELECT m.id FROM organizations o
         INNER JOIN mods m ON m.organization_id = o.id
-        WHERE (o.id = $1 AND $1 IS NOT NULL) OR (o.name = $2 AND $2 IS NOT NULL)
+        WHERE (o.id = $1 AND $1 IS NOT NULL) OR (o.slug = $2 AND $2 IS NOT NULL)
         ",
         possible_organization_id.map(|x| x as i64),
         info
@@ -95,7 +95,9 @@ pub struct NewOrganization {
         length(min = 3, max = 64),
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
-    // Title of the organization, also used as slug
+    pub slug: String,
+    // Title of the organization
+    #[validate(length(min = 3, max = 64))]
     pub name: String,
     #[validate(length(min = 3, max = 256))]
     pub description: String,
@@ -126,12 +128,12 @@ pub async fn organization_create(
 
     // Try title
     let name_organization_id_option: Option<OrganizationId> =
-        serde_json::from_str(&format!("\"{}\"", new_organization.name)).ok();
+        serde_json::from_str(&format!("\"{}\"", new_organization.slug)).ok();
     let mut organization_strings = vec![];
     if let Some(name_organization_id) = name_organization_id_option {
         organization_strings.push(name_organization_id.to_string());
     }
-    organization_strings.push(new_organization.name.clone());
+    organization_strings.push(new_organization.slug.clone());
     let results = Organization::get_many(&organization_strings, &mut *transaction, &redis).await?;
     if !results.is_empty() {
         return Err(CreateError::SlugCollision);
@@ -157,6 +159,7 @@ pub async fn organization_create(
     // Create organization
     let organization = Organization {
         id: organization_id,
+        slug: new_organization.slug.clone(),
         name: new_organization.name.clone(),
         description: new_organization.description.clone(),
         team_id,
@@ -336,7 +339,8 @@ pub struct OrganizationEdit {
         length(min = 3, max = 64),
         regex = "crate::util::validate::RE_URL_SAFE"
     )]
-    // Title of the organization, also used as slug
+    pub slug: Option<String>,
+    #[validate(length(min = 3, max = 64))]
     pub name: Option<String>,
 }
 
@@ -406,8 +410,28 @@ pub async fn organizations_edit(
                             .to_string(),
                     ));
                 }
+                sqlx::query!(
+                    "
+                    UPDATE organizations
+                    SET name = $1
+                    WHERE (id = $2)
+                    ",
+                    name,
+                    id as database::models::ids::OrganizationId,
+                )
+                .execute(&mut *transaction)
+                .await?;
+            }
 
-                let name_organization_id_option: Option<u64> = parse_base62(name).ok();
+            if let Some(slug) = &new_organization.slug {
+                if !perms.contains(OrganizationPermissions::EDIT_DETAILS) {
+                    return Err(ApiError::CustomAuthentication(
+                        "You do not have the permissions to edit the slug of this organization!"
+                            .to_string(),
+                    ));
+                }
+
+                let name_organization_id_option: Option<u64> = parse_base62(slug).ok();
                 if let Some(name_organization_id) = name_organization_id_option {
                     let results = sqlx::query!(
                         "
@@ -420,26 +444,26 @@ pub async fn organizations_edit(
 
                     if results.exists.unwrap_or(true) {
                         return Err(ApiError::InvalidInput(
-                            "name collides with other organization's id!".to_string(),
+                            "slug collides with other organization's id!".to_string(),
                         ));
                     }
                 }
 
                 // Make sure the new name is different from the old one
                 // We are able to unwrap here because the name is always set
-                if !name.eq(&organization_item.name.clone()) {
+                if !slug.eq(&organization_item.slug.clone()) {
                     let results = sqlx::query!(
                         "
-                      SELECT EXISTS(SELECT 1 FROM organizations WHERE name = LOWER($1))
-                      ",
-                        name
+                        SELECT EXISTS(SELECT 1 FROM organizations WHERE LOWER(slug) = LOWER($1))
+                        ",
+                        slug
                     )
                     .fetch_one(&mut *transaction)
                     .await?;
 
                     if results.exists.unwrap_or(true) {
                         return Err(ApiError::InvalidInput(
-                            "Name collides with other organization's id!".to_string(),
+                            "slug collides with other organization's id!".to_string(),
                         ));
                     }
                 }
@@ -447,10 +471,10 @@ pub async fn organizations_edit(
                 sqlx::query!(
                     "
                     UPDATE organizations
-                    SET name = LOWER($1)
+                    SET slug = $1
                     WHERE (id = $2)
                     ",
-                    Some(name),
+                    Some(slug),
                     id as database::models::ids::OrganizationId,
                 )
                 .execute(&mut *transaction)
@@ -460,7 +484,7 @@ pub async fn organizations_edit(
             transaction.commit().await?;
             database::models::Organization::clear_cache(
                 organization_item.id,
-                Some(organization_item.name),
+                Some(organization_item.slug),
                 &redis,
             )
             .await?;
@@ -578,7 +602,7 @@ pub async fn organization_delete(
 
     transaction.commit().await?;
 
-    database::models::Organization::clear_cache(organization.id, Some(organization.name), &redis)
+    database::models::Organization::clear_cache(organization.id, Some(organization.slug), &redis)
         .await?;
 
     for team_id in organization_project_teams {
@@ -640,7 +664,6 @@ pub async fn organization_projects_add(
     )
     .await?
     .ok_or_else(|| ApiError::InvalidInput("You are not a member of this project!".to_string()))?;
-
     let organization_team_member = database::models::TeamMember::get_from_user_id_organization(
         organization.id,
         current_user.id.into(),
@@ -681,22 +704,7 @@ pub async fn organization_projects_add(
         // The former owner is no longer an owner (as it is now 'owned' by the organization, 'given' to them)
         // The former owner is still a member of the project, but not an owner
         // When later removed from the organization, the project will  be owned by whoever is specified as the new owner there
-        if !current_user.role.is_admin() {
-            let team_member_id = project_team_member.id;
-            sqlx::query!(
-                "
-                UPDATE team_members
-                SET is_owner = FALSE
-                WHERE id = $1
-                ",
-                team_member_id as database::models::ids::TeamMemberId
-            )
-            .execute(&mut *transaction)
-            .await?;
-        }
 
-        // The owner of the organization, should be removed as a member of the project, if they are
-        // (As it is an organization project now, and they should not have more specific permissions)
         let organization_owner_user_id = sqlx::query!(
             "
             SELECT u.id 
@@ -711,16 +719,20 @@ pub async fn organization_projects_add(
         let organization_owner_user_id =
             database::models::ids::UserId(organization_owner_user_id.id);
 
-        // If the owner of the organization is a member of the project, remove them
-        database::models::TeamMember::delete(
-            project_item.inner.team_id,
-            organization_owner_user_id,
-            &mut transaction,
+        sqlx::query!(
+            "
+            DELETE FROM team_members
+            WHERE team_id = $1 AND (is_owner = TRUE OR user_id = $2)
+            ",
+            project_item.inner.team_id as database::models::ids::TeamId,
+            organization_owner_user_id as database::models::ids::UserId,
         )
+        .execute(&mut *transaction)
         .await?;
 
         transaction.commit().await?;
 
+        database::models::User::clear_project_cache(&[current_user.id.into()], &redis).await?;
         database::models::TeamMember::clear_cache(project_item.inner.team_id, &redis).await?;
         database::models::Project::clear_cache(
             project_item.inner.id,
@@ -881,7 +893,7 @@ pub async fn organization_projects_remove(
         .await?;
 
         transaction.commit().await?;
-
+        database::models::User::clear_project_cache(&[current_user.id.into()], &redis).await?;
         database::models::TeamMember::clear_cache(project_item.inner.team_id, &redis).await?;
         database::models::Project::clear_cache(
             project_item.inner.id,
@@ -994,7 +1006,7 @@ pub async fn organization_icon_edit(
         transaction.commit().await?;
         database::models::Organization::clear_cache(
             organization_item.id,
-            Some(organization_item.name),
+            Some(organization_item.slug),
             &redis,
         )
         .await?;
@@ -1079,7 +1091,7 @@ pub async fn delete_organization_icon(
 
     database::models::Organization::clear_cache(
         organization_item.id,
-        Some(organization_item.name),
+        Some(organization_item.slug),
         &redis,
     )
     .await?;

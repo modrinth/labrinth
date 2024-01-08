@@ -16,15 +16,17 @@ use labrinth::{
 use rust_decimal::Decimal;
 use serde_json::json;
 
-use crate::common::{
-    api_common::{
-        models::{CommonItemType, CommonProject, CommonVersion},
-        request_data::{ImageData, ProjectCreationRequestData},
-        Api, ApiProject, AppendsOptionalPat,
+use crate::{
+    assert_status,
+    common::{
+        api_common::{
+            models::{CommonItemType, CommonProject, CommonVersion},
+            request_data::{ImageData, ProjectCreationRequestData},
+            Api, ApiProject, AppendsOptionalPat,
+        },
+        database::MOD_USER_PAT,
+        dummy_data::TestFile,
     },
-    asserts::assert_status,
-    database::MOD_USER_PAT,
-    dummy_data::TestFile,
 };
 
 use super::{
@@ -46,7 +48,7 @@ impl ApiProject for ApiV3 {
         // Add a project.
         let slug = creation_data.slug.clone();
         let resp = self.create_project(creation_data, pat).await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // Approve as a moderator.
         let req = TestRequest::patch()
@@ -59,7 +61,7 @@ impl ApiProject for ApiV3 {
             ))
             .to_request();
         let resp = self.call(req).await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let project = self.get_project(&slug, pat).await;
         let project = test::read_body_json(project).await;
@@ -119,7 +121,7 @@ impl ApiProject for ApiV3 {
         pat: Option<&str>,
     ) -> CommonProject {
         let resp = self.get_project(id_or_slug, pat).await;
-        assert_eq!(resp.status(), 200);
+        assert_status!(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
         let project: Project = test::read_body_json(resp).await;
         // Then, deserialize to the common format
@@ -169,7 +171,7 @@ impl ApiProject for ApiV3 {
         pat: Option<&str>,
     ) -> Vec<CommonProject> {
         let resp = self.get_user_projects(user_id_or_username, pat).await;
-        assert_eq!(resp.status(), 200);
+        assert_status!(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
         let projects: Vec<Project> = test::read_body_json(resp).await;
         // Then, deserialize to the common format
@@ -383,10 +385,7 @@ impl ApiProject for ApiV3 {
             .append_pat(pat)
             .to_request();
 
-        let t = self.call(req).await;
-        println!("Status: {}", t.status());
-        println!("respone Body: {:?}", t.response().body());
-        t
+        self.call(req).await
     }
 
     async fn remove_gallery_item(
@@ -480,7 +479,7 @@ impl ApiProject for ApiV3 {
 impl ApiV3 {
     pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: Option<&str>) -> Project {
         let resp = self.get_project(id_or_slug, pat).await;
-        assert_eq!(resp.status(), 200);
+        assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
@@ -503,7 +502,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> Organization {
         let resp = self.get_project_organization(id_or_slug, pat).await;
-        assert_eq!(resp.status(), 200);
+        assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
@@ -530,8 +529,7 @@ impl ApiV3 {
             .append_pat(pat)
             .to_request();
         let resp = self.call(req).await;
-        let status = resp.status();
-        assert_eq!(status, 200);
+        assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
@@ -598,7 +596,7 @@ impl ApiV3 {
                 pat,
             )
             .await;
-        assert_eq!(resp.status(), 200);
+        assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 }

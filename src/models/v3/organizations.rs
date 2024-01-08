@@ -15,7 +15,9 @@ pub struct OrganizationId(pub u64);
 pub struct Organization {
     /// The id of the organization
     pub id: OrganizationId,
-    /// The title (and slug) of the organization
+    /// The slug of the organization
+    pub slug: String,
+    /// The title of the organization
     pub name: String,
     /// The associated team of the organization
     pub team_id: TeamId,
@@ -38,6 +40,7 @@ impl Organization {
     ) -> Self {
         Self {
             id: data.id.into(),
+            slug: data.slug,
             name: data.name,
             team_id: data.team_id.into(),
             description: data.description,

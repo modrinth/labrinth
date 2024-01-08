@@ -1,14 +1,17 @@
 use std::sync::Arc;
 
-use crate::common::{
-    api_common::{ApiProject, ApiVersion, AppendsOptionalPat},
-    api_v2::{request_data::get_public_project_creation_data_json, ApiV2},
-    database::{
-        generate_random_name, ADMIN_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT,
+use crate::{
+    assert_status,
+    common::{
+        api_common::{ApiProject, ApiVersion, AppendsOptionalPat},
+        api_v2::{request_data::get_public_project_creation_data_json, ApiV2},
+        database::{
+            generate_random_name, ADMIN_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT,
+        },
+        dummy_data::TestFile,
+        environment::{with_test_environment, TestEnvironment},
+        permissions::{PermissionsTest, PermissionsTestContext},
     },
-    dummy_data::TestFile,
-    environment::{with_test_environment, TestEnvironment},
-    permissions::{PermissionsTest, PermissionsTestContext},
 };
 use actix_http::StatusCode;
 use actix_web::test;
@@ -31,28 +34,59 @@ async fn test_project_type_sanity() {
             ("mod", "test-mod", TestFile::build_random_jar()),
             ("modpack", "test-modpack", TestFile::build_random_mrpack()),
         ] {
+            // Create a modpack or mod
+            // both are 'fabric' (but modpack is actually 'mrpack' behind the scenes, through v3,with fabric as a 'mrpack_loader')
             let (test_project, test_version) = api
                 .add_public_project(slug, Some(file), None, USER_USER_PAT)
                 .await;
             let test_project_slug = test_project.slug.as_ref().unwrap();
 
-            // TODO:
-            // assert_eq!(test_project.project_type, mod_or_modpack);
+            // Check that the loader displays correctly as fabric from the version creation
             assert_eq!(test_project.loaders, vec!["fabric"]);
             assert_eq!(test_version[0].loaders, vec!["fabric"]);
 
+            // Check that the project type is correct when getting the project
             let project = api
                 .get_project_deserialized(test_project_slug, USER_USER_PAT)
                 .await;
             assert_eq!(test_project.loaders, vec!["fabric"]);
             assert_eq!(project.project_type, mod_or_modpack);
 
+            // Check that the project type is correct when getting the version
             let version = api
                 .get_version_deserialized(&test_version[0].id.to_string(), USER_USER_PAT)
                 .await;
             assert_eq!(
                 version.loaders.iter().map(|x| &x.0).collect_vec(),
                 vec!["fabric"]
+            );
+
+            // Edit the version loader to change it to 'forge'
+            let resp = api
+                .edit_version(
+                    &test_version[0].id.to_string(),
+                    json!({
+                        "loaders": ["forge"],
+                    }),
+                    USER_USER_PAT,
+                )
+                .await;
+            assert_status!(&resp, StatusCode::NO_CONTENT);
+
+            // Check that the project type is still correct when getting the project
+            let project = api
+                .get_project_deserialized(test_project_slug, USER_USER_PAT)
+                .await;
+            assert_eq!(project.project_type, mod_or_modpack);
+            assert_eq!(project.loaders, vec!["forge"]);
+
+            // Check that the project type is still correct when getting the version
+            let version = api
+                .get_version_deserialized(&test_version[0].id.to_string(), USER_USER_PAT)
+                .await;
+            assert_eq!(
+                version.loaders.iter().map(|x| &x.0).collect_vec(),
+                vec!["forge"]
             );
         }
 
@@ -132,10 +166,8 @@ async fn test_add_remove_project() {
             .append_pat(USER_USER_PAT)
             .set_multipart(vec![json_segment.clone(), file_segment.clone()])
             .to_request();
-        let resp = test_env.call(req).await;
-
-        let status = resp.status();
-        assert_eq!(status, 200);
+        let resp: actix_web::dev::ServiceResponse = test_env.call(req).await;
+        assert_status!(&resp, StatusCode::OK);
 
         // Get the project we just made, and confirm that it's correct
         let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
@@ -163,7 +195,7 @@ async fn test_add_remove_project() {
             .to_request();
 
         let resp = test_env.call(req).await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Reusing with the same slug and a different file should fail
         let req = test::TestRequest::post()
@@ -176,7 +208,7 @@ async fn test_add_remove_project() {
             .to_request();
 
         let resp = test_env.call(req).await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Different slug, different file should succeed
         let req = test::TestRequest::post()
@@ -189,7 +221,7 @@ async fn test_add_remove_project() {
             .to_request();
 
         let resp = test_env.call(req).await;
-        assert_eq!(resp.status(), 200);
+        assert_status!(&resp, StatusCode::OK);
 
         // Get
         let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
@@ -197,7 +229,7 @@ async fn test_add_remove_project() {
 
         // Remove the project
         let resp = test_env.api.remove_project("demo", USER_USER_PAT).await;
-        assert_eq!(resp.status(), 204);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm that the project is gone from the cache
         let mut redis_conn = test_env.db.redis_pool.connect().await.unwrap();
@@ -220,7 +252,7 @@ async fn test_add_remove_project() {
 
         // Old slug no longer works
         let resp = api.get_project("demo", USER_USER_PAT).await;
-        assert_eq!(resp.status(), 404);
+        assert_status!(&resp, StatusCode::NOT_FOUND);
     })
     .await;
 }
@@ -344,7 +376,7 @@ pub async fn test_patch_v2() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let project = api
             .get_project_deserialized(alpha_project_slug, USER_USER_PAT)
@@ -456,7 +488,7 @@ pub async fn test_bulk_edit_links() {
                 ADMIN_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
@@ -496,7 +528,7 @@ pub async fn test_bulk_edit_links() {
                 ADMIN_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
@@ -568,7 +600,7 @@ pub async fn test_bulk_edit_links() {
                 ADMIN_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let alpha_body = api
             .get_project_deserialized(alpha_project_id, ADMIN_USER_PAT)
