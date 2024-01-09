@@ -17,7 +17,6 @@ use crate::{
     assert_status,
     common::{api_common::Api, api_v3, database::USER_USER_PAT},
 };
-use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
 
 use super::{
     api_common::{request_data::ImageData, ApiProject, AppendsOptionalPat},

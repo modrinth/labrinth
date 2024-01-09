@@ -9,7 +9,6 @@ use crate::common::scopes::ScopeTest;
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::pats::Scopes;
 use labrinth::models::projects::ProjectId;
-use labrinth::routes::v2::version_file::FileUpdateData;
 
 // Project version creation scopes
 #[actix_rt::test]
@@ -54,7 +53,7 @@ pub async fn project_version_create_scopes() {
 
 #[actix_rt::test]
 pub async fn project_version_reads_scopes() {
-    with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
+    with_test_environment(None, |_test_env: TestEnvironment<ApiV2>| async move {
         // let api = &test_env.api;
         // let beta_file_hash = &test_env.dummy.project_beta.file_hash;
 
