@@ -464,7 +464,6 @@ impl ApiVersion for ApiV3 {
         serde_json::from_value(value).unwrap()
     }
 
-    // TODO: remove redundancy in these functions
     async fn edit_version_ordering(
         &self,
         version_id: &str,
