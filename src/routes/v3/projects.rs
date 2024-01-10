@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::auth::{filter_authorized_projects, get_user_from_headers, is_authorized};
+use crate::auth::checks::is_visible_project;
+use crate::auth::{filter_visible_projects, get_user_from_headers};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
-use crate::database::models::{ids as db_ids, image_item};
+use crate::database::models::{ids as db_ids, image_item, TeamMember};
 use crate::database::redis::RedisPool;
 use crate::database::{self, models as db_models};
 use crate::file_hosting::FileHost;
@@ -54,6 +55,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("{id}/gallery", web::delete().to(delete_gallery_item))
             .route("{id}/follow", web::post().to(project_follow))
             .route("{id}/follow", web::delete().to(project_unfollow))
+            .route("{id}/organization", web::get().to(project_get_organization))
             .service(
                 web::scope("{project_id}")
                     .route(
@@ -135,7 +137,7 @@ pub async fn projects_get(
     .map(|x| x.1)
     .ok();
 
-    let projects = filter_authorized_projects(projects_data, &user_option, &pool).await?;
+    let projects = filter_visible_projects(projects_data, &user_option, &pool).await?;
 
     Ok(HttpResponse::Ok().json(projects))
 }
@@ -162,7 +164,7 @@ pub async fn project_get(
     .ok();
 
     if let Some(data) = project_data {
-        if is_authorized(&data.inner, &user_option, &pool).await? {
+        if is_visible_project(&data.inner, &user_option, &pool).await? {
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
     }
@@ -894,8 +896,8 @@ pub async fn edit_project_categories(
 #[derive(Serialize, Deserialize)]
 pub struct ReturnSearchResults {
     pub hits: Vec<Project>,
-    pub offset: usize,
-    pub limit: usize,
+    pub page: usize,
+    pub hits_per_page: usize,
     pub total_hits: usize,
 }
 
@@ -911,8 +913,8 @@ pub async fn project_search(
             .into_iter()
             .filter_map(Project::from_search)
             .collect::<Vec<_>>(),
-        offset: results.offset,
-        limit: results.limit,
+        page: results.page,
+        hits_per_page: results.hits_per_page,
         total_hits: results.total_hits,
     };
 
@@ -967,7 +969,7 @@ pub async fn dependency_list(
     .ok();
 
     if let Some(project) = result {
-        if !is_authorized(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -2060,7 +2062,7 @@ pub async fn project_follow(
     let user_id: db_ids::UserId = user.id.into();
     let project_id: db_ids::ProjectId = result.inner.id;
 
-    if !is_authorized(&result.inner, &Some(user), &pool).await? {
+    if !is_visible_project(&result.inner, &Some(user), &pool).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -2182,5 +2184,82 @@ pub async fn project_unfollow(
         Err(ApiError::InvalidInput(
             "You are not following this project!".to_string(),
         ))
+    }
+}
+
+pub async fn project_get_organization(
+    req: HttpRequest,
+    info: web::Path<(String,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let current_user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ, Scopes::ORGANIZATION_READ]),
+    )
+    .await
+    .map(|x| x.1)
+    .ok();
+    let user_id = current_user.as_ref().map(|x| x.id.into());
+
+    let string = info.into_inner().0;
+    let result = db_models::Project::get(&string, &**pool, &redis)
+        .await?
+        .ok_or_else(|| {
+            ApiError::InvalidInput("The specified project does not exist!".to_string())
+        })?;
+
+    if !is_visible_project(&result.inner, &current_user, &pool).await? {
+        Err(ApiError::InvalidInput(
+            "The specified project does not exist!".to_string(),
+        ))
+    } else if let Some(organization_id) = result.inner.organization_id {
+        let organization = db_models::Organization::get_id(organization_id, &**pool, &redis)
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput("The attached organization does not exist!".to_string())
+            })?;
+
+        let members_data =
+            TeamMember::get_from_team_full(organization.team_id, &**pool, &redis).await?;
+
+        let users = crate::database::models::User::get_many_ids(
+            &members_data.iter().map(|x| x.user_id).collect::<Vec<_>>(),
+            &**pool,
+            &redis,
+        )
+        .await?;
+        let logged_in = current_user
+            .as_ref()
+            .and_then(|user| {
+                members_data
+                    .iter()
+                    .find(|x| x.user_id == user.id.into() && x.accepted)
+            })
+            .is_some();
+        let team_members: Vec<_> = members_data
+            .into_iter()
+            .filter(|x| {
+                logged_in
+                    || x.accepted
+                    || user_id
+                        .map(|y: crate::database::models::UserId| y == x.user_id)
+                        .unwrap_or(false)
+            })
+            .flat_map(|data| {
+                users.iter().find(|x| x.id == data.user_id).map(|user| {
+                    crate::models::teams::TeamMember::from(data, user.clone(), !logged_in)
+                })
+            })
+            .collect();
+
+        let organization = models::organizations::Organization::from(organization, team_members);
+        return Ok(HttpResponse::Ok().json(organization));
+    } else {
+        Err(ApiError::NotFound)
     }
 }

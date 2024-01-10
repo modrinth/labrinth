@@ -65,6 +65,13 @@ pub async fn index_projects(
 
     let indices = get_indexes(config).await?;
 
+    let all_loader_fields =
+        crate::database::models::loader_fields::LoaderField::get_fields_all(&pool, &redis)
+            .await?
+            .into_iter()
+            .map(|x| x.field)
+            .collect::<Vec<_>>();
+
     let all_ids = get_all_ids(pool.clone()).await?;
     let all_ids_len = all_ids.len();
     info!("Got all ids, indexing {} projects", all_ids_len);
@@ -90,13 +97,13 @@ pub async fn index_projects(
         let id_chunk = id_chunk
             .into_iter()
             .map(|(version_id, project_id, owner_username)| {
-                (version_id, (project_id, owner_username.to_lowercase()))
+                (version_id, (project_id, owner_username))
             })
             .collect::<HashMap<_, _>>();
-        let (uploads, loader_fields) = index_local(&pool, &redis, id_chunk).await?;
+        let uploads = index_local(&pool, &redis, id_chunk).await?;
 
         info!("Got chunk, adding to docs_to_add");
-        add_projects(&indices, uploads, loader_fields, config).await?;
+        add_projects(&indices, uploads, all_loader_fields.clone(), config).await?;
     }
 
     info!("Done adding projects.");
@@ -107,11 +114,12 @@ pub async fn get_indexes(
     config: &SearchConfig,
 ) -> Result<Vec<Index>, meilisearch_sdk::errors::Error> {
     let client = config.make_client();
-
-    let projects_index = create_or_update_index(&client, "projects", None).await?;
+    let project_name = config.get_index_name("projects");
+    let project_filtered_name = config.get_index_name("projects_filtered");
+    let projects_index = create_or_update_index(&client, &project_name, None).await?;
     let projects_filtered_index = create_or_update_index(
         &client,
-        "projects_filtered",
+        &project_filtered_name,
         Some(&[
             "sort",
             "words",
@@ -128,7 +136,7 @@ pub async fn get_indexes(
 
 async fn create_or_update_index(
     client: &Client,
-    name: &'static str,
+    name: &str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, meilisearch_sdk::errors::Error> {
     info!("Updating/creating index.");
@@ -207,7 +215,6 @@ async fn create_or_update_index(
                 typo_tolerance: None, // We don't use typo tolerance right now
                 dictionary: None,     // We don't use dictionary right now
             };
-
             if old_settings.synonyms != settings.synonyms
                 || old_settings.stop_words != settings.stop_words
                 || old_settings.ranking_rules != settings.ranking_rules
@@ -286,24 +293,32 @@ async fn update_and_add_to_index(
     client: &Client,
     index: &Index,
     projects: &[UploadSearchProject],
-    additional_fields: &[String],
+    _additional_fields: &[String],
 ) -> Result<(), IndexingError> {
-    let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
-    let mut new_displayed_attributes = index.get_displayed_attributes().await?;
+    // TODO: Uncomment this- hardcoding loader_fields is a band-aid fix, and will be fixed soon
+    // let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
+    // let mut new_displayed_attributes = index.get_displayed_attributes().await?;
 
-    new_filterable_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
-    new_displayed_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
-    info!("add attributes.");
-    index
-        .set_filterable_attributes(new_filterable_attributes)
-        .await?;
-    index
-        .set_displayed_attributes(new_displayed_attributes)
-        .await?;
+    // new_filterable_attributes.extend(additional_fields.iter().map(|s: &String| s.to_string()));
+    // new_displayed_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
+    // info!("add attributes.");
+    // let filterable_task = index
+    //     .set_filterable_attributes(new_filterable_attributes)
+    //     .await?;
+    // let displayable_task = index
+    //     .set_displayed_attributes(new_displayed_attributes)
+    //     .await?;
+    // filterable_task
+    //     .wait_for_completion(client, None, Some(TIMEOUT))
+    //     .await?;
+    // displayable_task
+    //     .wait_for_completion(client, None, Some(TIMEOUT))
+    //     .await?;
 
     info!("Adding to index.");
 
     add_to_index(client, index, projects).await?;
+
     Ok(())
 }
 
@@ -315,7 +330,6 @@ pub async fn add_projects(
 ) -> Result<(), IndexingError> {
     let client = config.make_client();
     for index in indices {
-        info!("adding projects part1 or 2.");
         update_and_add_to_index(&client, index, &projects, &additional_fields).await?;
     }
 
@@ -329,7 +343,6 @@ fn default_settings() -> Settings {
     sorted_sortable.sort();
     let mut sorted_attrs = DEFAULT_ATTRIBUTES_FOR_FACETING.to_vec();
     sorted_attrs.sort();
-
     Settings::new()
         .with_distinct_attribute("project_id")
         .with_displayed_attributes(sorted_display)
@@ -362,7 +375,16 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "featured_gallery",
     "color",
     // Note: loader fields are not here, but are added on as they are needed (so they can be dynamically added depending on which exist).
-
+    // TODO: remove these- as they should be automatically populated. This is a band-aid fix.
+    "server_only",
+    "client_only",
+    "game_versions",
+    "singleplayer",
+    "client_and_server",
+    "mrpack_loaders",
+    // V2 legacy fields for logical consistency
+    "client_side",
+    "server_side",
     // Non-searchable fields for filling out the Project model.
     "license_url",
     "monetization_status",
@@ -397,6 +419,17 @@ const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "project_id",
     "open_source",
     "color",
+    // Note: loader fields are not here, but are added on as they are needed (so they can be dynamically added depending on which exist).
+    // TODO: remove these- as they should be automatically populated. This is a band-aid fix.
+    "server_only",
+    "client_only",
+    "game_versions",
+    "singleplayer",
+    "client_and_server",
+    "mrpack_loaders",
+    // V2 legacy fields for logical consistency
+    "client_side",
+    "server_side",
 ];
 
 const DEFAULT_SORTABLE_ATTRIBUTES: &[&str] =

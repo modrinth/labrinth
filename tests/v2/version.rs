@@ -1,3 +1,4 @@
+use actix_http::StatusCode;
 use actix_web::test;
 use futures::StreamExt;
 use labrinth::models::projects::VersionId;
@@ -7,8 +8,10 @@ use labrinth::{
 };
 use serde_json::json;
 
+use crate::assert_status;
 use crate::common::api_common::{ApiProject, ApiVersion};
 use crate::common::api_v2::ApiV2;
+
 use crate::common::dummy_data::{DummyProjectAlpha, DummyProjectBeta};
 use crate::common::environment::{with_test_environment, TestEnvironment};
 use crate::common::{
@@ -34,7 +37,7 @@ pub async fn test_patch_version() {
                 ENEMY_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 401);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // Failure because these are illegal requested statuses for a normal user.
         for req in ["unknown", "scheduled"] {
@@ -48,7 +51,7 @@ pub async fn test_patch_version() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 400);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Sucessful request to patch many fields.
@@ -72,7 +75,7 @@ pub async fn test_patch_version() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let version = api
             .get_version_deserialized(alpha_version_id, USER_USER_PAT)
@@ -100,7 +103,7 @@ pub async fn test_patch_version() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let version = api
             .get_version_deserialized(alpha_version_id, USER_USER_PAT)
@@ -117,7 +120,7 @@ pub async fn test_patch_version() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let version = api
             .get_version_deserialized(alpha_version_id, USER_USER_PAT)
@@ -260,12 +263,12 @@ async fn version_updates() {
                 )
                 .await;
             if success {
-                assert_eq!(resp.status(), 200);
+                assert_status!(&resp, StatusCode::OK);
                 let body: serde_json::Value = test::read_body_json(resp).await;
                 let id = body["id"].as_str().unwrap();
                 assert_eq!(id, &result_id.to_string());
             } else {
-                assert_eq!(resp.status(), 404);
+                assert_status!(&resp, StatusCode::NOT_FOUND);
             }
 
             // update_files

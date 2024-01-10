@@ -1,4 +1,5 @@
-use crate::auth::{get_user_from_headers, is_authorized};
+use crate::auth::checks::is_visible_project;
+use crate::auth::get_user_from_headers;
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::team_item::TeamAssociationId;
 use crate::database::models::{Organization, Team, TeamMember, User};
@@ -59,41 +60,28 @@ pub async fn team_members_get_project(
         .map(|x| x.1)
         .ok();
 
-        if !is_authorized(&project.inner, &current_user, &pool).await? {
+        if !is_visible_project(&project.inner, &current_user, &pool).await? {
             return Err(ApiError::NotFound);
         }
-        let mut members_data =
+        let members_data =
             TeamMember::get_from_team_full(project.inner.team_id, &**pool, &redis).await?;
-        let mut member_user_ids = members_data.iter().map(|x| x.user_id).collect::<Vec<_>>();
-
-        // Adds the organization's team members to the list of members, if the project is associated with an organization
-        if let Some(oid) = project.inner.organization_id {
-            let organization_data = Organization::get_id(oid, &**pool, &redis).await?;
-            if let Some(organization_data) = organization_data {
-                let org_team =
-                    TeamMember::get_from_team_full(organization_data.team_id, &**pool, &redis)
-                        .await?;
-                for member in org_team {
-                    if !member_user_ids.contains(&member.user_id) {
-                        member_user_ids.push(member.user_id);
-                        members_data.push(member);
-                    }
-                }
-            }
-        }
-
-        let users =
-            crate::database::models::User::get_many_ids(&member_user_ids, &**pool, &redis).await?;
+        let users = User::get_many_ids(
+            &members_data.iter().map(|x| x.user_id).collect::<Vec<_>>(),
+            &**pool,
+            &redis,
+        )
+        .await?;
 
         let user_id = current_user.as_ref().map(|x| x.id.into());
+        let logged_in = if let Some(user_id) = user_id {
+            let (team_member, organization_team_member) =
+                TeamMember::get_for_project_permissions(&project.inner, user_id, &**pool).await?;
 
-        let logged_in = current_user
-            .and_then(|user| {
-                members_data
-                    .iter()
-                    .find(|x| x.user_id == user.id.into() && x.accepted)
-            })
-            .is_some();
+            team_member.is_some() || organization_team_member.is_some()
+        } else {
+            false
+        };
+
         let team_members: Vec<_> = members_data
             .into_iter()
             .filter(|x| {
@@ -109,6 +97,7 @@ pub async fn team_members_get_project(
                 })
             })
             .collect();
+
         Ok(HttpResponse::Ok().json(team_members))
     } else {
         Err(ApiError::NotFound)

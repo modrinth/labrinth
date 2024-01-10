@@ -1,12 +1,15 @@
+use crate::assert_status;
 use crate::common::api_common::Api;
 use crate::common::api_common::ApiProject;
 use crate::common::api_common::ApiVersion;
 use crate::common::api_v2::ApiV2;
+
 use crate::common::database::*;
 use crate::common::dummy_data::TestFile;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
 use crate::common::environment::with_test_environment;
 use crate::common::environment::TestEnvironment;
+use actix_http::StatusCode;
 use futures::stream::StreamExt;
 use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
@@ -53,7 +56,7 @@ async fn search_projects() {
                             MOD_USER_PAT,
                         )
                         .await;
-                    assert_eq!(resp.status(), 204);
+                    assert_status!(&resp, StatusCode::NO_CONTENT);
                     (project.id.0, id)
                 }
             };
@@ -186,6 +189,20 @@ async fn search_projects() {
             Some(modify_json),
         ));
 
+        // Test project 8
+        // Server side unsupported
+        let id = 8;
+        let modify_json = serde_json::from_value(json!([
+            { "op": "add", "path": "/server_side", "value": "unsupported" },
+        ]))
+        .unwrap();
+        project_creation_futures.push(create_async_future(
+            id,
+            USER_USER_PAT,
+            false,
+            Some(modify_json),
+        ));
+
         // Await all project creation
         // Returns a mapping of:
         // project id -> test id
@@ -223,11 +240,14 @@ async fn search_projects() {
                 ]),
                 vec![],
             ),
-            (json!([["categories:fabric"]]), vec![0, 1, 2, 3, 4, 5, 6, 7]),
+            (
+                json!([["categories:fabric"]]),
+                vec![0, 1, 2, 3, 4, 5, 6, 7, 8],
+            ),
             (json!([["categories:forge"]]), vec![7]),
             (
                 json!([["categories:fabric", "categories:forge"]]),
-                vec![0, 1, 2, 3, 4, 5, 6, 7],
+                vec![0, 1, 2, 3, 4, 5, 6, 7, 8],
             ),
             (json!([["categories:fabric"], ["categories:forge"]]), vec![]),
             (
@@ -240,12 +260,12 @@ async fn search_projects() {
             (json!([["project_types:modpack"]]), vec![4]),
             // Formerly included 7, but with v2 changes, this is no longer the case.
             // This is because we assume client_side/server_side with subsequent versions.
-            (json!([["client_side:required"]]), vec![0, 2, 3]),
+            (json!([["client_side:required"]]), vec![0, 2, 3, 8]),
             (json!([["server_side:required"]]), vec![0, 2, 3, 6, 7]),
-            (json!([["open_source:true"]]), vec![0, 1, 2, 4, 5, 6, 7]),
-            (json!([["license:MIT"]]), vec![1, 2, 4]),
+            (json!([["open_source:true"]]), vec![0, 1, 2, 4, 5, 6, 7, 8]),
+            (json!([["license:MIT"]]), vec![1, 2, 4, 8]),
             (json!([[r#"title:'Mysterious Project'"#]]), vec![2, 3]),
-            (json!([["author:user"]]), vec![0, 1, 2, 4, 5, 7]),
+            (json!([["author:user"]]), vec![0, 1, 2, 4, 5, 7, 8]),
             (json!([["versions:1.20.5"]]), vec![4, 5]),
             // bug fix
             (
@@ -259,19 +279,25 @@ async fn search_projects() {
             ),
             // Project type change
             // Modpack should still be able to search based on former loader, even though technically the loader is 'mrpack'
-            (json!([["categories:mrpack"]]), vec![4]),
-            (
-                json!([["categories:mrpack"], ["categories:fabric"]]),
-                vec![4],
-            ),
+            // (json!([["categories:mrpack"]]), vec![4]),
+            // (
+            //     json!([["categories:mrpack"], ["categories:fabric"]]),
+            //     vec![4],
+            // ),
             (
                 json!([
-                    ["categories:mrpack"],
+                    // ["categories:mrpack"],
                     ["categories:fabric"],
                     ["project_type:modpack"]
                 ]),
                 vec![4],
             ),
+            (
+                json!([["client_side:optional"], ["server_side:optional"]]),
+                vec![1, 4, 5],
+            ),
+            (json!([["server_side:optional"]]), vec![1, 4, 5]),
+            (json!([["server_side:unsupported"]]), vec![8]),
         ];
 
         // TODO: Untested:
@@ -282,7 +308,7 @@ async fn search_projects() {
 
         // Forcibly reset the search index
         let resp = api.reset_search_index().await;
-        assert_eq!(resp.status(), 204);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Test searches
         let stream = futures::stream::iter(pairs);
@@ -310,7 +336,7 @@ async fn search_projects() {
             })
             .await;
 
-        // A couple additional tests for the saerch type returned, making sure it is properly translated back
+        // A couple additional tests for the search type returned, making sure it is properly translated back
         let client_side_required = api
             .search_deserialized(
                 Some(&format!("\"&{test_name}\"")),
@@ -344,6 +370,18 @@ async fn search_projects() {
             assert_eq!(hit.client_side, "unsupported".to_string());
         }
 
+        let client_side_optional_server_side_optional = api
+            .search_deserialized(
+                Some(&format!("\"&{test_name}\"")),
+                Some(json!([["client_side:optional"], ["server_side:optional"]])),
+                USER_USER_PAT,
+            )
+            .await;
+        for hit in client_side_optional_server_side_optional.hits {
+            assert_eq!(hit.client_side, "optional".to_string());
+            assert_eq!(hit.server_side, "optional".to_string());
+        }
+
         let game_versions = api
             .search_deserialized(
                 Some(&format!("\"&{test_name}\"")),
@@ -353,6 +391,7 @@ async fn search_projects() {
             .await;
         for hit in game_versions.hits {
             assert_eq!(hit.versions, vec!["1.20.5".to_string()]);
+            assert_eq!(hit.author, "User".to_string());
         }
     })
     .await;

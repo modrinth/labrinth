@@ -1,30 +1,34 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use dashmap::DashSet;
 use futures::TryStreamExt;
 use log::info;
+use std::collections::HashMap;
 
 use super::IndexingError;
 use crate::database::models::{project_item, version_item, ProjectId, VersionId};
 use crate::database::redis::RedisPool;
 use crate::models;
+use crate::models::v2::projects::LegacyProject;
+use crate::routes::v2_reroute;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
 pub async fn get_all_ids(
     pool: PgPool,
 ) -> Result<Vec<(VersionId, ProjectId, String)>, IndexingError> {
+    // TODO: Currently org owner is set to be considered owner. It may be worth considering
+    // adding a new facetable 'organization' field to the search index, and using that instead,
+    // and making owner to be optional.
     let all_visible_ids: Vec<(VersionId, ProjectId, String)> = sqlx::query!(
         "
-        SELECT v.id id, m.id mod_id, u.username owner_username
-        
+        SELECT v.id id, m.id mod_id, COALESCE(u.username, ou.username) owner_username
         FROM versions v
         INNER JOIN mods m ON v.mod_id = m.id AND m.status = ANY($2)
-        INNER JOIN team_members tm ON tm.team_id = m.team_id AND tm.is_owner = TRUE AND tm.accepted = TRUE
-        INNER JOIN users u ON tm.user_id = u.id
+        LEFT JOIN team_members tm ON tm.team_id = m.team_id AND tm.is_owner = TRUE AND tm.accepted = TRUE
+        LEFT JOIN users u ON tm.user_id = u.id
+        LEFT JOIN organizations o ON o.id = m.organization_id
+        LEFT JOIN team_members otm ON otm.team_id = o.team_id AND otm.is_owner = TRUE AND otm.accepted = TRUE
+        LEFT JOIN users ou ON otm.user_id = ou.id
         WHERE v.status != ANY($1)
-        GROUP BY v.id, m.id, u.id
+        GROUP BY v.id, m.id, u.username, ou.username
         ORDER BY m.id DESC;
         ",
         &*crate::models::projects::VersionStatus::iterator()
@@ -41,7 +45,8 @@ pub async fn get_all_ids(
         Ok(e.right().map(|m| {
             let project_id: ProjectId = ProjectId(m.mod_id);
             let version_id: VersionId = VersionId(m.id);
-            (version_id, project_id, m.owner_username)
+            let owner_username = m.owner_username.unwrap_or_default();
+            (version_id, project_id, owner_username)
         }))
     })
     .try_collect::<Vec<_>>()
@@ -54,10 +59,8 @@ pub async fn index_local(
     pool: &PgPool,
     redis: &RedisPool,
     visible_ids: HashMap<VersionId, (ProjectId, String)>,
-) -> Result<(Vec<UploadSearchProject>, Vec<String>), IndexingError> {
+) -> Result<Vec<UploadSearchProject>, IndexingError> {
     info!("Indexing local projects!");
-    let loader_field_keys: Arc<DashSet<String>> = Arc::new(DashSet::new());
-
     let project_ids = visible_ids
         .values()
         .map(|(project_id, _)| project_id)
@@ -119,11 +122,12 @@ pub async fn index_local(
         categories.append(&mut additional_categories);
 
         let version_fields = v.version_fields.clone();
-        let loader_fields = models::projects::from_duplicate_version_fields(version_fields);
-        for v in loader_fields.keys().cloned() {
-            loader_field_keys.insert(v);
-        }
-
+        let unvectorized_loader_fields = v
+            .version_fields
+            .iter()
+            .map(|vf| (vf.field_name.clone(), vf.value.serialize_internal()))
+            .collect();
+        let mut loader_fields = models::projects::from_duplicate_version_fields(version_fields);
         let license = match m.inner.license.split(' ').next() {
             Some(license) => license.to_string(),
             None => m.inner.license.clone(),
@@ -163,6 +167,27 @@ pub async fn index_local(
             })
             .unwrap_or_default();
         categories.extend(mrpack_loaders);
+        if loader_fields.contains_key("mrpack_loaders") {
+            categories.retain(|x| *x != "mrpack");
+        }
+
+        // SPECIAL BEHAVIOUR:
+        // For consitency with v2 searching, we manually input the
+        // client_side and server_side fields from the loader fields into
+        // separate loader fields.
+        // 'client_side' and 'server_side' remain supported by meilisearch even though they are no longer v3 fields.
+        let (_, v2_og_project_type) = LegacyProject::get_project_type(&v.project_types);
+        let (client_side, server_side) = v2_reroute::convert_side_types_v2(
+            &unvectorized_loader_fields,
+            Some(&v2_og_project_type),
+        );
+
+        if let Ok(client_side) = serde_json::to_value(client_side) {
+            loader_fields.insert("client_side".to_string(), vec![client_side]);
+        }
+        if let Ok(server_side) = serde_json::to_value(server_side) {
+            loader_fields.insert("server_side".to_string(), vec![server_side]);
+        }
 
         let gallery = m
             .gallery_items
@@ -220,11 +245,5 @@ pub async fn index_local(
         uploads.push(usp);
     }
 
-    Ok((
-        uploads,
-        Arc::try_unwrap(loader_field_keys)
-            .unwrap_or_default()
-            .into_iter()
-            .collect(),
-    ))
+    Ok(uploads)
 }

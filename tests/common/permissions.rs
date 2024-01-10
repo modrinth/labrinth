@@ -356,12 +356,13 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
         .await;
         if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
             return Err(format!(
-                "Failure permissions test failed. Expected failure codes {} got {}",
+                "Failure permissions test failed. Expected failure codes {} got {}. Body: {:#?}",
                 self.allowed_failure_codes
                     .iter()
                     .map(|code| code.to_string())
                     .join(","),
-                resp.status().as_u16()
+                resp.status().as_u16(),
+                resp.response().body()
             ));
         }
 
@@ -385,8 +386,9 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
         .await;
         if !resp.status().is_success() {
             return Err(format!(
-                "Success permissions test failed. Expected success, got {}",
-                resp.status().as_u16()
+                "Success permissions test failed. Expected success, got {}. Body: {:#?}",
+                resp.status().as_u16(),
+                resp.response().body()
             ));
         }
 
@@ -1007,15 +1009,15 @@ async fn create_dummy_project(setup_api: &ApiV3) -> (String, String) {
 
 async fn create_dummy_org(setup_api: &ApiV3) -> (String, String) {
     // Create a very simple organization
-    let name = generate_random_name("test_org");
+    let slug = generate_random_name("test_org");
 
     let resp = setup_api
-        .create_organization(&name, "Example description.", ADMIN_USER_PAT)
+        .create_organization("Example org", &slug, "Example description.", ADMIN_USER_PAT)
         .await;
     assert!(resp.status().is_success());
 
     let organization = setup_api
-        .get_organization_deserialized(&name, ADMIN_USER_PAT)
+        .get_organization_deserialized(&slug, ADMIN_USER_PAT)
         .await;
     let organizaion_id = organization.id.to_string();
     let team_id = organization.team_id.to_string();
@@ -1093,21 +1095,44 @@ async fn get_project_permissions(
     project_id: &str,
     setup_api: &ApiV3,
 ) -> ProjectPermissions {
-    let resp = setup_api.get_project_members(project_id, user_pat).await;
-    let permissions = if resp.status().as_u16() == 200 {
-        let value: serde_json::Value = test::read_body_json(resp).await;
-        value
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|member| member["user"]["id"].as_str().unwrap() == user_id)
-            .map(|member| member["permissions"].as_u64().unwrap())
-            .unwrap_or_default()
-    } else {
-        0
+    let project = setup_api
+        .get_project_deserialized(project_id, user_pat)
+        .await;
+    let project_team_id = project.team_id.to_string();
+    let organization_id = project.organization.map(|id| id.to_string());
+
+    let organization = match organization_id {
+        Some(id) => Some(setup_api.get_organization_deserialized(&id, user_pat).await),
+        None => None,
     };
 
-    ProjectPermissions::from_bits_truncate(permissions)
+    let members = setup_api
+        .get_team_members_deserialized(&project_team_id, user_pat)
+        .await;
+    let permissions = members
+        .iter()
+        .find(|member| member.user.id.to_string() == user_id)
+        .and_then(|member| member.permissions);
+
+    let organization_members = match organization {
+        Some(org) => Some(
+            setup_api
+                .get_team_members_deserialized(&org.team_id.to_string(), user_pat)
+                .await,
+        ),
+        None => None,
+    };
+    let organization_default_project_permissions = match organization_members {
+        Some(members) => members
+            .iter()
+            .find(|member| member.user.id.to_string() == user_id)
+            .and_then(|member| member.permissions),
+        None => None,
+    };
+
+    permissions
+        .or(organization_default_project_permissions)
+        .unwrap_or_default()
 }
 
 async fn get_organization_permissions(

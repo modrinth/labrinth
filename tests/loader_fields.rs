@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use actix_http::StatusCode;
 use common::api_v3::ApiV3;
 use common::environment::{with_test_environment, TestEnvironment};
 use serde_json::json;
@@ -49,7 +50,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
         // - Patch
         let resp = api
             .edit_version(
@@ -60,7 +61,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Cannot create a version with a loader field that isnt used by the loader
         // TODO: - Create project
@@ -82,7 +83,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
         // - Patch
         let resp = api
             .edit_version(
@@ -93,7 +94,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Cannot create a version without an applicable loader field that is not optional
         // TODO: - Create project
@@ -115,7 +116,7 @@ async fn creating_loader_fields() {
             )
             .await;
 
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Cannot create a version without a loader field array that has a minimum of 1
         // TODO: - Create project
@@ -136,7 +137,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // TODO: Create a test for too many elements in the array when we have a LF that has a max (past max)
         // Cannot create a version with a loader field array that has fewer than the minimum elements
@@ -159,7 +160,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // - Patch
         let resp = api
@@ -171,7 +172,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 400);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Cannot create an invalid data type for the loader field type (including bad variant for the type)
         for bad_type_game_versions in [
@@ -199,7 +200,7 @@ async fn creating_loader_fields() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 400);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
 
             // - Patch
             let resp = api
@@ -211,7 +212,7 @@ async fn creating_loader_fields() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(resp.status(), 400);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Can create with optional loader fields (other tests have checked if we can create without them)
@@ -245,7 +246,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
         let v = api
             .get_version_deserialized(alpha_version_id, USER_USER_PAT)
             .await;
@@ -296,7 +297,7 @@ async fn creating_loader_fields() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(resp.status(), 204);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
         let v = api
             .get_version_deserialized(alpha_version_id, USER_USER_PAT)
             .await;

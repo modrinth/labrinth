@@ -78,8 +78,10 @@ pub async fn project_search(
             })
             .collect_vec();
 
-        // We will now convert side_types to their new boolean format
-        let facets = v2_reroute::convert_side_type_facets_v3(facets);
+        // These loaders specifically used to be combined with 'mod' to be a plugin, but now
+        // they are their own loader type. We will convert 'mod' to 'mod' OR 'plugin'
+        // as it essentially was before.
+        let facets = v2_reroute::convert_plugin_loaders_v3(facets);
 
         Some(
             facets
@@ -91,17 +93,13 @@ pub async fn project_search(
                             facets
                                 .into_iter()
                                 .map(|facet| {
-                                    let val = match facet.split(':').nth(1) {
-                                        Some(val) => val,
-                                        None => return facet.to_string(),
-                                    };
-
-                                    if facet.starts_with("versions:") {
-                                        format!("game_versions:{}", val)
-                                    } else if facet.starts_with("project_type:") {
-                                        format!("project_types:{}", val)
-                                    } else if facet.starts_with("title:") {
-                                        format!("name:{}", val)
+                                    if let Some((key, operator, val)) = parse_facet(&facet) {
+                                        format!("{}{}{}", match key.as_str() {
+                                            "versions" => "game_versions",
+                                            "project_type" => "project_types",
+                                            "title" => "name",
+                                            x => x,
+                                        }, operator, val)
                                     } else {
                                         facet.to_string()
                                     }
@@ -126,6 +124,40 @@ pub async fn project_search(
     let results = LegacySearchResults::from(results);
 
     Ok(HttpResponse::Ok().json(results))
+}
+
+/// Parses a facet into a key, operator, and value
+fn parse_facet(facet: &String) -> Option<(String, String, String)> {
+    let mut key = String::new();
+    let mut operator = String::new();
+    let mut val = String::new();
+
+    let mut iterator = facet.chars();
+    while let Some(char) = iterator.next() {
+        match char {
+            ':' | '=' => {
+                operator.push(char);
+                val = iterator.collect::<String>();
+                return Some((key, operator, val));
+            }
+            '<' | '>' => {
+                operator.push(char);
+                if let Some(next_char) = iterator.next() {
+                    if next_char == '=' {
+                        operator.push(next_char);
+                    } else {
+                        val.push(next_char);
+                    }
+                }
+                val.push_str(&iterator.collect::<String>());
+                return Some((key, operator, val));
+            }
+            ' ' => continue,
+            _ => key.push(char),
+        }
+    }
+
+    None
 }
 
 #[derive(Deserialize, Validate)]
@@ -497,7 +529,7 @@ pub async fn project_edit(
             let version = Version::from(version);
             let mut fields = version.fields;
             let (current_client_side, current_server_side) =
-                v2_reroute::convert_side_types_v2(&fields);
+                v2_reroute::convert_side_types_v2(&fields, None);
             let client_side = client_side.unwrap_or(current_client_side);
             let server_side = server_side.unwrap_or(current_server_side);
             fields.extend(v2_reroute::convert_side_types_v3(client_side, server_side));
