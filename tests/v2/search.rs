@@ -397,6 +397,8 @@ async fn search_projects() {
                 hit.versions,
                 vec!["1.20.1".to_string(), "1.20.2".to_string()]
             );
+            assert!(hit.categories.contains(&"forge".to_string()));
+            assert!(hit.categories.contains(&"fabric".to_string()));
 
             // Also, ensure author is correctly capitalized
             assert_eq!(hit.author, "User".to_string());

@@ -42,6 +42,7 @@ pub struct LegacyResultSearchProject {
 impl LegacyResultSearchProject {
     pub fn from(result_search_project: ResultSearchProject) -> Self {
         let mut categories = result_search_project.categories;
+        categories.extend(result_search_project.loaders);
         if categories.contains(&"mrpack".to_string()) {
             if let Some(mrpack_loaders) = result_search_project
                 .project_loader_fields
