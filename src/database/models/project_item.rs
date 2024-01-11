@@ -718,8 +718,8 @@ impl Project {
                 project_types: Vec<String>,
                 games: Vec<String>,
                 loader_loader_field_ids: Vec<LoaderFieldId>,
-             }
-            
+            }
+
             let loader_field_ids = DashSet::new();
             let loaders_ptypes_games: DashMap<ProjectId, VersionLoaderData> = sqlx::query!(
                 "
@@ -745,11 +745,11 @@ impl Project {
                 let project_id = ProjectId(m.mod_id);
 
                 // Add loader fields to the set we need to fetch
-                let loader_loader_field_ids = m.loader_fields.unwrap_or_default().into_iter().map(|x| LoaderFieldId(x)).collect::<Vec<_>>();
+                let loader_loader_field_ids = m.loader_fields.unwrap_or_default().into_iter().map(LoaderFieldId).collect::<Vec<_>>();
                 for loader_field_id in loader_loader_field_ids.iter() {
                     loader_field_ids.insert(*loader_field_id);
                 }
-                
+
                 // Add loader + loader associated data to the map
                 let version_loader_data = VersionLoaderData {
                     loaders: m.loaders.unwrap_or_default(),
@@ -784,7 +784,6 @@ impl Project {
             .try_collect()
             .await?;
 
-
             let db_projects: Vec<QueryProject> = sqlx::query!(
                 "
                 SELECT m.id id, m.name name, m.summary summary, m.downloads downloads, m.follows follows,
@@ -813,7 +812,7 @@ impl Project {
                         let project_id = ProjectId(id);
                         let VersionLoaderData {
                             loaders,
-                            project_types, 
+                            project_types,
                             games,
                             loader_loader_field_ids,
                          } = loaders_ptypes_games.remove(&project_id).map(|x|x.1).unwrap_or_default();
@@ -822,7 +821,9 @@ impl Project {
                         let urls = links.remove(&project_id).map(|x| x.1).unwrap_or_default();
                         let version_fields = version_fields.remove(&project_id).map(|x| x.1).unwrap_or_default();
 
-                        let loader_fields = loader_fields.iter().filter(|x| loader_loader_field_ids.contains(&x.id)).collect::<Vec<_>>();
+                        let loader_fields = loader_fields.iter()
+                        .filter(|x| loader_loader_field_ids.contains(&x.id))
+                        .collect::<Vec<_>>();
 
                     QueryProject {
                         inner: Project {

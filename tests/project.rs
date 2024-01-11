@@ -1382,8 +1382,6 @@ async fn projects_various_visibility() {
     .await;
 }
 
-
-
 // Route tests:
 // TODO: Missing routes on projects
 // TODO: using permissions/scopes, can we SEE projects existence that we are not allowed to? (ie 401 instead of 404)

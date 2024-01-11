@@ -11,7 +11,7 @@ use dashmap::{DashMap, DashSet};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::iter;
 
 pub const VERSIONS_NAMESPACE: &str = "versions";
@@ -547,8 +547,8 @@ impl Version {
                 project_types: Vec<String>,
                 games: Vec<String>,
                 loader_loader_field_ids: Vec<LoaderFieldId>,
-             }
-            
+            }
+
             let loader_field_ids = DashSet::new();
             let loaders_ptypes_games: DashMap<VersionId, VersionLoaderData> = sqlx::query!(
                 "
@@ -574,7 +574,7 @@ impl Version {
                 let version_id = VersionId(m.version_id);
 
                 // Add loader fields to the set we need to fetch
-                let loader_loader_field_ids = m.loader_fields.unwrap_or_default().into_iter().map(|x| LoaderFieldId(x)).collect::<Vec<_>>();
+                let loader_loader_field_ids = m.loader_fields.unwrap_or_default().into_iter().map(LoaderFieldId).collect::<Vec<_>>();
                 for loader_field_id in loader_loader_field_ids.iter() {
                     loader_field_ids.insert(*loader_field_id);
                 }
@@ -590,7 +590,6 @@ impl Version {
 
                 }
             ).try_collect().await?;
-
 
             // Fetch all loader fields from any version
             let loader_fields: Vec<QueryLoaderField> = sqlx::query!(
@@ -637,8 +636,6 @@ impl Version {
             })
             .try_collect()
             .await?;
-
-
 
             #[derive(Deserialize)]
             struct Hash {
@@ -753,7 +750,7 @@ impl Version {
                         let version_id = VersionId(v.id);
                         let VersionLoaderData {
                             loaders,
-                            project_types, 
+                            project_types,
                             games,
                             loader_loader_field_ids,
                          } = loaders_ptypes_games.remove(&version_id).map(|x|x.1).unwrap_or_default();
@@ -762,7 +759,9 @@ impl Version {
                         let version_fields = version_fields.remove(&version_id).map(|x|x.1).unwrap_or_default();
                         let dependencies = dependencies.remove(&version_id).map(|x|x.1).unwrap_or_default();
 
-                        let loader_fields = loader_fields.iter().filter(|x| loader_loader_field_ids.contains(&x.id)).collect::<Vec<_>>();
+                        let loader_fields = loader_fields.iter()
+                        .filter(|x| loader_loader_field_ids.contains(&x.id))
+                        .collect::<Vec<_>>();
 
                         QueryVersion {
                             inner: Version {

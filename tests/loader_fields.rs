@@ -8,7 +8,7 @@ use itertools::Itertools;
 use labrinth::models::v3;
 use serde_json::json;
 
-use crate::common::api_common::{ApiVersion, ApiProject};
+use crate::common::api_common::{ApiProject, ApiVersion};
 use crate::common::api_v3::request_data::get_public_project_creation_data;
 use crate::common::database::*;
 
@@ -468,7 +468,7 @@ async fn get_available_loader_fields() {
 
 // #[actix_rt::test]
 // async fn test_has_mrpack_loaders_without_mrpack_loaders() {
-//     // Ensures that a project get that 'should' have mrpack_loaders does still display it 
+//     // Ensures that a project get that 'should' have mrpack_loaders does still display it
 //     // when the project does not have any mrpack_loaders set
 //     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
 //         let api = &test_env.api;
@@ -477,15 +477,13 @@ async fn get_available_loader_fields() {
 //         let patch = json!([{
 //             "op": "remove",
 //             "path": "/initial_versions/0/mrpack_loaders",
-//         }]);    
+//         }]);
 
 //         // Create a project
 //         let slug = "test-project";
 //         let creation_data = get_public_project_creation_data(&slug, Some(TestFile::build_random_mrpack()), Some(serde_json::from_value(patch  ).unwrap()));
 //         let resp = api.create_project(creation_data, USER_USER_PAT).await;
 //         assert_status!(&resp, StatusCode::OK);
-
-        
 
 //         // Get the project
 //         let resp = api.get_project(slug, USER_USER_PAT).await;
@@ -508,7 +506,11 @@ async fn test_multi_get_redis_cache() {
         for i in 0..5 {
             let slug = format!("test-modpack-{}", i);
 
-            let creation_data = get_public_project_creation_data(&slug, Some(TestFile::build_random_mrpack()), None);
+            let creation_data = get_public_project_creation_data(
+                &slug,
+                Some(TestFile::build_random_mrpack()),
+                None,
+            );
             let resp = api.create_project(creation_data, USER_USER_PAT).await;
             assert_status!(&resp, StatusCode::OK);
             modpacks.push(slug);
@@ -518,8 +520,9 @@ async fn test_multi_get_redis_cache() {
         let mut mods = Vec::new();
         for i in 0..5 {
             let slug = format!("test-mod-{}", i);
-            
-            let creation_data = get_public_project_creation_data(&slug, Some(TestFile::build_random_jar()), None);
+
+            let creation_data =
+                get_public_project_creation_data(&slug, Some(TestFile::build_random_jar()), None);
             let resp = api.create_project(creation_data, USER_USER_PAT).await;
             assert_status!(&resp, StatusCode::OK);
             mods.push(slug);
@@ -534,30 +537,30 @@ async fn test_multi_get_redis_cache() {
         let resp = api.get_projects(&project_slugs, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
         println!("{:?}", resp.response().body());
-        let projects : Vec<v3::projects::Project> = test::read_body_json(resp).await;
+        let projects: Vec<v3::projects::Project> = test::read_body_json(resp).await;
         assert_eq!(projects.len(), 10);
 
         // Ensure all 5 modpacks have 'mrpack_loaders', and all 5 mods do not
         for project in projects.iter() {
             println!("Slug: {:?}", project.slug);
-            if modpacks.contains(&project.slug.as_ref().unwrap()) {
+            if modpacks.contains(project.slug.as_ref().unwrap()) {
                 assert!(project.fields.contains_key("mrpack_loaders"));
-            } else if mods.contains(&project.slug.as_ref().unwrap()) {
+            } else if mods.contains(project.slug.as_ref().unwrap()) {
                 assert!(!project.fields.contains_key("mrpack_loaders"));
             } else {
                 panic!("Unexpected project slug: {:?}", project.slug);
             }
         }
 
-        // Get a version from each project 
+        // Get a version from each project
         let version_ids_modpacks = projects
             .iter()
-            .filter(|x| modpacks.contains(&x.slug.as_ref().unwrap()))
+            .filter(|x| modpacks.contains(x.slug.as_ref().unwrap()))
             .map(|x| x.versions[0])
             .collect_vec();
         let version_ids_mods = projects
             .iter()
-            .filter(|x| mods.contains(&x.slug.as_ref().unwrap()))
+            .filter(|x| mods.contains(x.slug.as_ref().unwrap()))
             .map(|x| x.versions[0])
             .collect_vec();
         let version_ids = version_ids_modpacks
@@ -567,7 +570,7 @@ async fn test_multi_get_redis_cache() {
             .collect_vec();
         let resp = api.get_versions(version_ids, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
-        let versions : Vec<v3::projects::Version> = test::read_body_json(resp).await;
+        let versions: Vec<v3::projects::Version> = test::read_body_json(resp).await;
         assert_eq!(versions.len(), 10);
 
         // Ensure all 5 versions from modpacks have 'mrpack_loaders', and all 5 versions from mods do not
@@ -575,7 +578,7 @@ async fn test_multi_get_redis_cache() {
             println!("Version id: {:?}", version.id);
             if version_ids_modpacks.contains(&version.id) {
                 assert!(version.fields.contains_key("mrpack_loaders"));
-            } else if version_ids_mods.contains(&version.id ) {
+            } else if version_ids_mods.contains(&version.id) {
                 assert!(!version.fields.contains_key("mrpack_loaders"));
             } else {
                 panic!("Unexpected version id: {:?}", version.id);
