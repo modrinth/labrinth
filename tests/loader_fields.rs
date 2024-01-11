@@ -508,13 +508,11 @@ async fn test_multi_get_redis_cache() {
             .collect_vec();
         let resp = api.get_projects(&project_slugs, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
-        println!("{:?}", resp.response().body());
         let projects: Vec<v3::projects::Project> = test::read_body_json(resp).await;
         assert_eq!(projects.len(), 10);
 
         // Ensure all 5 modpacks have 'mrpack_loaders', and all 5 mods do not
         for project in projects.iter() {
-            println!("Slug: {:?}", project.slug);
             if modpacks.contains(project.slug.as_ref().unwrap()) {
                 assert!(project.fields.contains_key("mrpack_loaders"));
             } else if mods.contains(project.slug.as_ref().unwrap()) {
@@ -547,7 +545,6 @@ async fn test_multi_get_redis_cache() {
 
         // Ensure all 5 versions from modpacks have 'mrpack_loaders', and all 5 versions from mods do not
         for version in versions.iter() {
-            println!("Version id: {:?}", version.id);
             if version_ids_modpacks.contains(&version.id) {
                 assert!(version.fields.contains_key("mrpack_loaders"));
             } else if version_ids_mods.contains(&version.id) {
