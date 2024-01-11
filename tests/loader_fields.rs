@@ -466,34 +466,6 @@ async fn get_available_loader_fields() {
     .await;
 }
 
-// #[actix_rt::test]
-// async fn test_has_mrpack_loaders_without_mrpack_loaders() {
-//     // Ensures that a project get that 'should' have mrpack_loaders does still display it
-//     // when the project does not have any mrpack_loaders set
-//     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
-//         let api = &test_env.api;
-
-//         // Patch to set 'mrpack_loaders' to null
-//         let patch = json!([{
-//             "op": "remove",
-//             "path": "/initial_versions/0/mrpack_loaders",
-//         }]);
-
-//         // Create a project
-//         let slug = "test-project";
-//         let creation_data = get_public_project_creation_data(&slug, Some(TestFile::build_random_mrpack()), Some(serde_json::from_value(patch  ).unwrap()));
-//         let resp = api.create_project(creation_data, USER_USER_PAT).await;
-//         assert_status!(&resp, StatusCode::OK);
-
-//         // Get the project
-//         let resp = api.get_project(slug, USER_USER_PAT).await;
-//         assert_status!(&resp, StatusCode::OK);
-//         let project : v3::projects::Project = test::read_body_json(resp).await;
-//         assert_eq!(project.slug, Some(slug.to_string()));
-//         assert!(!project.fields.contains_key("mrpack_loaders"));
-//     }).await;
-// }
-
 #[actix_rt::test]
 async fn test_multi_get_redis_cache() {
     // Ensures a multi-project get including both modpacks and mods ddoes not
