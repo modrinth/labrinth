@@ -837,7 +837,7 @@ impl VersionField {
 
     pub fn from_query_json(
         query_version_field_combined: Vec<QueryVersionField>,
-        query_loader_fields: &[QueryLoaderField],
+        query_loader_fields: &[&QueryLoaderField],
         query_loader_field_enum_values: &[QueryLoaderFieldEnumValue],
         allow_many: bool, // If true, will allow multiple values for a single singleton field, returning them as separate VersionFields
                           // allow_many = true, multiple Bools => two VersionFields of Bool

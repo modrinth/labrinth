@@ -16,6 +16,7 @@ pub fn get_public_project_creation_data(
     modify_json: Option<json_patch::Patch>,
 ) -> ProjectCreationRequestData {
     let mut json_data = get_public_project_creation_data_json(slug, version_jar.as_ref());
+    println!("json_data: {:?}", json_data);
     if let Some(modify_json) = modify_json {
         json_patch::patch(&mut json_data, &modify_json).unwrap();
     }
