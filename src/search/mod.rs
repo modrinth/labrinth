@@ -9,7 +9,6 @@ use meilisearch_sdk::client::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
-use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt::Write;
 use thiserror::Error;
@@ -132,8 +131,9 @@ pub struct UploadSearchProject {
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
     pub links: Vec<LinkUrl>,
     pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
-    pub games: Vec<String>,              // Todo: in future, could be a searchable field.
-    pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
+    pub games: Vec<String>,
+    pub organization_id: Option<String>,
+    pub project_loader_fields: HashMap<String, Vec<serde_json::Value>>, // Aggregation of loader_fields from all versions of the project, allowing for reconstruction of the Project model.
 
     #[serde(flatten)]
     pub loader_fields: HashMap<String, Vec<serde_json::Value>>,
@@ -142,8 +142,8 @@ pub struct UploadSearchProject {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SearchResults {
     pub hits: Vec<ResultSearchProject>,
-    pub offset: usize,
-    pub limit: usize,
+    pub page: usize,
+    pub hits_per_page: usize,
     pub total_hits: usize,
 }
 
@@ -183,8 +183,9 @@ pub struct ResultSearchProject {
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
     pub links: Vec<LinkUrl>,
     pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
-    pub games: Vec<String>,              // Todo: in future, could be a searchable field.
-    pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
+    pub games: Vec<String>,
+    pub organization_id: Option<String>,
+    pub project_loader_fields: HashMap<String, Vec<serde_json::Value>>, // Aggregation of loader_fields from all versions of the project, allowing for reconstruction of the Project model.
 
     #[serde(flatten)]
     pub loader_fields: HashMap<String, Vec<serde_json::Value>>,
@@ -212,7 +213,7 @@ pub async fn search_for_project(
 ) -> Result<SearchResults, SearchError> {
     let client = Client::new(&*config.address, Some(&*config.key));
 
-    let offset = info.offset.as_deref().unwrap_or("0").parse()?;
+    let offset: usize = info.offset.as_deref().unwrap_or("0").parse()?;
     let index = info.index.as_deref().unwrap_or("relevance");
     let limit = info.limit.as_deref().unwrap_or("10").parse()?;
 
@@ -221,12 +222,15 @@ pub async fn search_for_project(
 
     let mut filter_string = String::new();
 
+    // Convert offset and limit to page and hits_per_page
+    let hits_per_page = limit;
+    let page = offset / limit + 1;
+
     let results = {
         let mut query = meilisearch_index.search();
-
         query
-            .with_limit(min(100, limit))
-            .with_offset(offset)
+            .with_page(page)
+            .with_hits_per_page(hits_per_page)
             .with_query(info.query.as_deref().unwrap_or_default())
             .with_sort(&sort.1);
 
@@ -312,8 +316,8 @@ pub async fn search_for_project(
 
     Ok(SearchResults {
         hits: results.hits.into_iter().map(|r| r.result).collect(),
-        offset: results.offset.unwrap_or_default(),
-        limit: results.limit.unwrap_or_default(),
-        total_hits: results.estimated_total_hits.unwrap_or_default(),
+        page: results.page.unwrap_or_default(),
+        hits_per_page: results.hits_per_page.unwrap_or_default(),
+        total_hits: results.total_hits.unwrap_or_default(),
     })
 }

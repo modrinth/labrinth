@@ -65,6 +65,13 @@ pub async fn index_projects(
 
     let indices = get_indexes(config).await?;
 
+    let all_loader_fields =
+        crate::database::models::loader_fields::LoaderField::get_fields_all(&pool, &redis)
+            .await?
+            .into_iter()
+            .map(|x| x.field)
+            .collect::<Vec<_>>();
+
     let all_ids = get_all_ids(pool.clone()).await?;
     let all_ids_len = all_ids.len();
     info!("Got all ids, indexing {} projects", all_ids_len);
@@ -90,13 +97,13 @@ pub async fn index_projects(
         let id_chunk = id_chunk
             .into_iter()
             .map(|(version_id, project_id, owner_username)| {
-                (version_id, (project_id, owner_username.to_lowercase()))
+                (version_id, (project_id, owner_username))
             })
             .collect::<HashMap<_, _>>();
-        let (uploads, loader_fields) = index_local(&pool, &redis, id_chunk).await?;
+        let uploads = index_local(&pool, &redis, id_chunk).await?;
 
         info!("Got chunk, adding to docs_to_add");
-        add_projects(&indices, uploads, loader_fields, config).await?;
+        add_projects(&indices, uploads, all_loader_fields.clone(), config).await?;
     }
 
     info!("Done adding projects.");
@@ -288,24 +295,37 @@ async fn update_and_add_to_index(
     projects: &[UploadSearchProject],
     additional_fields: &[String],
 ) -> Result<(), IndexingError> {
+    // TODO: Uncomment this- hardcoding loader_fields is a band-aid fix, and will be fixed soon
     let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
     let mut new_displayed_attributes = index.get_displayed_attributes().await?;
 
-    new_filterable_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
-    new_displayed_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
-    info!("add attributes.");
-    let filterable_task = index
-        .set_filterable_attributes(new_filterable_attributes)
-        .await?;
-    let displayable_task = index
-        .set_displayed_attributes(new_displayed_attributes)
-        .await?;
-    filterable_task
-        .wait_for_completion(client, None, Some(TIMEOUT))
-        .await?;
-    displayable_task
-        .wait_for_completion(client, None, Some(TIMEOUT))
-        .await?;
+    // Check if any 'additional_fields' are not already in the index
+    // Only add if they are not already in the index
+    let new_fields = additional_fields
+        .iter()
+        .filter(|x| !new_filterable_attributes.contains(x))
+        .collect::<Vec<_>>();
+    if !new_fields.is_empty() {
+        info!("Adding new fields to index: {:?}", new_fields);
+        new_filterable_attributes.extend(new_fields.iter().map(|s: &&String| s.to_string()));
+        new_displayed_attributes.extend(new_fields.iter().map(|s| s.to_string()));
+
+        // Adds new fields to the index
+        let filterable_task = index
+            .set_filterable_attributes(new_filterable_attributes)
+            .await?;
+        let displayable_task = index
+            .set_displayed_attributes(new_displayed_attributes)
+            .await?;
+
+        // Allow a long timeout for adding new attributes- it only needs to happen the once
+        filterable_task
+            .wait_for_completion(client, None, Some(TIMEOUT * 100))
+            .await?;
+        displayable_task
+            .wait_for_completion(client, None, Some(TIMEOUT * 100))
+            .await?;
+    }
 
     info!("Adding to index.");
 
@@ -366,8 +386,9 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "gallery",
     "featured_gallery",
     "color",
-    // Note: loader fields are not here, but are added on as they are needed (so they can be dynamically added depending on which exist).
-
+    // V2 legacy fields for logical consistency
+    "client_side",
+    "server_side",
     // Non-searchable fields for filling out the Project model.
     "license_url",
     "monetization_status",
@@ -383,6 +404,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "links",
     "gallery_items",
     "loaders", // search uses loaders as categories- this is purely for the Project model.
+    "project_loader_fields",
 ];
 
 const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["name", "summary", "author", "slug"];
@@ -402,6 +424,9 @@ const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "project_id",
     "open_source",
     "color",
+    // V2 legacy fields for logical consistency
+    "client_side",
+    "server_side",
 ];
 
 const DEFAULT_SORTABLE_ATTRIBUTES: &[&str] =

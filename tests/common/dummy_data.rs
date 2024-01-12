@@ -13,8 +13,10 @@ use serde_json::json;
 use sqlx::Executor;
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
-use crate::common::{api_common::Api, database::USER_USER_PAT};
-use labrinth::util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData};
+use crate::{
+    assert_status,
+    common::{api_common::Api, api_v3, database::USER_USER_PAT},
+};
 
 use super::{
     api_common::{request_data::ImageData, ApiProject, AppendsOptionalPat},
@@ -22,7 +24,7 @@ use super::{
     database::TemporaryDatabase,
 };
 
-use super::{asserts::assert_status, database::USER_USER_ID, get_json_val_str};
+use super::{database::USER_USER_ID, get_json_val_str};
 
 pub const DUMMY_DATA_UPDATE: i64 = 7;
 
@@ -343,58 +345,22 @@ pub async fn add_project_beta(api: &ApiV3) -> (Project, Version) {
     // Generate test project data.
     let jar = TestFile::DummyProjectBeta;
     // TODO: this shouldnt be hardcoded (nor should other similar ones be)
-    let json_data = json!(
-        {
-            "name": "Test Project Beta",
-            "slug": "beta",
-            "summary": "A dummy project for testing with.",
-            "description": "This project is not-yet-approved, and versions are draft.",
-            "initial_versions": [{
-                "file_parts": [jar.filename()],
-                "version_number": "1.2.3",
-                "version_title": "start",
-                "status": "unlisted",
-                "dependencies": [],
-                "singleplayer": true,
-                "client_and_server": true,
-                "client_only": true,
-                "server_only": false,
-                "game_versions": ["1.20.1"] ,
-                "release_channel": "release",
-                "loaders": ["fabric"],
-                "featured": true
-            }],
-            "status": "private",
-            "requested_status": "private",
-            "categories": [],
-            "license_id": "MIT"
-        }
+
+    let modify_json = serde_json::from_value(json!([
+        { "op": "add", "path": "/summary", "value": "A dummy project for testing with." },
+        { "op": "add", "path": "/description", "value": "This project is not-yet-approved, and versions are draft." },
+        { "op": "add", "path": "/initial_versions/0/status", "value": "unlisted" },
+        { "op": "add", "path": "/status", "value": "private" },
+        { "op": "add", "path": "/requested_status", "value": "private" },
+    ]))
+    .unwrap();
+
+    let creation_data = api_v3::request_data::get_public_project_creation_data(
+        "beta",
+        Some(jar),
+        Some(modify_json),
     );
-
-    // Basic json
-    let json_segment = MultipartSegment {
-        name: "data".to_string(),
-        filename: None,
-        content_type: Some("application/json".to_string()),
-        data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
-    };
-
-    // Basic file
-    let file_segment = MultipartSegment {
-        name: jar.filename(),
-        filename: Some(jar.filename()),
-        content_type: Some("application/java-archive".to_string()),
-        data: MultipartSegmentData::Binary(jar.bytes()),
-    };
-
-    // Add a project.
-    let req = TestRequest::post()
-        .uri("/v3/project")
-        .append_pat(USER_USER_PAT)
-        .set_multipart(vec![json_segment.clone(), file_segment.clone()])
-        .to_request();
-    let resp = api.call(req).await;
-    assert_status(&resp, StatusCode::OK);
+    api.create_project(creation_data, USER_USER_PAT).await;
 
     get_project_beta(api).await
 }
@@ -412,7 +378,7 @@ pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
         .to_request();
     let resp = api.call(req).await;
 
-    assert_status(&resp, StatusCode::OK);
+    assert_status!(&resp, StatusCode::OK);
 
     get_organization_zeta(api).await
 }
@@ -445,7 +411,7 @@ pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
         .append_pat(USER_USER_PAT)
         .to_request();
     let resp = api.call(req).await;
-    assert_status(&resp, StatusCode::OK);
+    assert_status!(&resp, StatusCode::OK);
     let project: serde_json::Value = test::read_body_json(resp).await;
     let project: Project = serde_json::from_value(project).unwrap();
 
@@ -455,7 +421,7 @@ pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
         .append_pat(USER_USER_PAT)
         .to_request();
     let resp = api.call(req).await;
-    assert_status(&resp, StatusCode::OK);
+    assert_status!(&resp, StatusCode::OK);
     let versions: Vec<Version> = test::read_body_json(resp).await;
     let version = versions.into_iter().next().unwrap();
 

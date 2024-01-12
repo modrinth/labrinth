@@ -1,6 +1,5 @@
 use crate::common::{
     api_common::{ApiProject, ApiTeams},
-    asserts::assert_status,
     database::{
         generate_random_name, ADMIN_USER_PAT, ENEMY_USER_ID_PARSED, ENEMY_USER_PAT,
         FRIEND_USER_ID_PARSED, MOD_USER_ID, MOD_USER_PAT, USER_USER_ID, USER_USER_ID_PARSED,
@@ -35,7 +34,7 @@ async fn create_organization() {
             let resp = api
                 .create_organization(title, "theta", "theta_description", USER_USER_PAT)
                 .await;
-            assert_status(&resp, StatusCode::BAD_REQUEST);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Failed creations slug:
@@ -52,7 +51,7 @@ async fn create_organization() {
             let resp = api
                 .create_organization("Theta Org", slug, "theta_description", USER_USER_PAT)
                 .await;
-            assert_status(&resp, StatusCode::BAD_REQUEST);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Failed creations description:
@@ -62,7 +61,7 @@ async fn create_organization() {
             let resp = api
                 .create_organization("Theta Org", "theta", description, USER_USER_PAT)
                 .await;
-            assert_status(&resp, StatusCode::BAD_REQUEST);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Create 'theta' organization
@@ -74,7 +73,7 @@ async fn create_organization() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // Get organization using slug
         let theta = api
@@ -83,7 +82,7 @@ async fn create_organization() {
         assert_eq!(theta.name, "Theta Org");
         assert_eq!(theta.slug, "theta");
         assert_eq!(theta.description, "not url safe%&^!#$##!@#$%^&");
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // Get created team
         let members = api
@@ -96,7 +95,7 @@ async fn create_organization() {
             members[0].organization_permissions,
             Some(OrganizationPermissions::all())
         );
-        assert_eq!(members[0].role, "Owner");
+        assert_eq!(members[0].role, "Member");
         assert!(members[0].is_owner);
     })
     .await;
@@ -113,7 +112,7 @@ async fn get_project_organization() {
         let resp = api
             .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // Get project organization
         let zeta = api
@@ -135,7 +134,7 @@ async fn patch_organization() {
         let resp = api
             .create_organization("Theta Org", "theta", "theta_description", USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // Failed patch to theta title:
         // - too short title
@@ -150,7 +149,7 @@ async fn patch_organization() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_status(&resp, StatusCode::BAD_REQUEST);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Failed patch to zeta slug:
@@ -174,7 +173,7 @@ async fn patch_organization() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_status(&resp, StatusCode::BAD_REQUEST);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Failed patch to zeta description:
@@ -190,7 +189,7 @@ async fn patch_organization() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_status(&resp, StatusCode::BAD_REQUEST);
+            assert_status!(&resp, StatusCode::BAD_REQUEST);
         }
 
         // Successful patch to many fields
@@ -205,7 +204,7 @@ async fn patch_organization() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get project using new slug
         let new_title = api
@@ -241,7 +240,7 @@ async fn add_remove_icon() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get project
         let zeta_org = api
@@ -254,7 +253,7 @@ async fn add_remove_icon() {
         let resp = api
             .edit_organization_icon(zeta_organization_id, None, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get project
         let zeta_org = api
@@ -275,13 +274,13 @@ async fn delete_org() {
         let resp = api
             .delete_organization(zeta_organization_id, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get organization, which should no longer exist
         let resp = api
             .get_organization(zeta_organization_id, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NOT_FOUND);
+        assert_status!(&resp, StatusCode::NOT_FOUND);
     })
     .await;
 }
@@ -294,13 +293,23 @@ async fn add_remove_organization_projects() {
         let alpha_project_slug: &str = &test_env.dummy.project_alpha.project_slug;
         let zeta_organization_id: &str = &test_env.dummy.organization_zeta.organization_id;
 
+        // user's page should show alpha project
+        // It may contain more than one project, depending on dummy data, but should contain the alpha project
+        let projects = test_env
+            .api
+            .get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
+            .await;
+        assert!(projects
+            .iter()
+            .any(|p| p.id.to_string() == alpha_project_id));
+
         // Add/remove project to organization, first by ID, then by slug
         for alpha in [alpha_project_id, alpha_project_slug] {
             let resp = test_env
                 .api
                 .organization_add_project(zeta_organization_id, alpha, USER_USER_PAT)
                 .await;
-            assert_status(&resp, StatusCode::OK);
+            assert_status!(&resp, StatusCode::OK);
 
             // Get organization projects
             let projects = test_env
@@ -309,6 +318,16 @@ async fn add_remove_organization_projects() {
                 .await;
             assert_eq!(projects[0].id.to_string(), alpha_project_id);
             assert_eq!(projects[0].slug, Some(alpha_project_slug.to_string()));
+
+            // Currently, intended behaviour is that user's page should NOT show organization projects.
+            // It may contain other projects, depending on dummy data, but should not contain the alpha project
+            let projects = test_env
+                .api
+                .get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
+                .await;
+            assert!(!projects
+                .iter()
+                .any(|p| p.id.to_string() == alpha_project_id));
 
             // Remove project from organization
             let resp = test_env
@@ -320,7 +339,18 @@ async fn add_remove_organization_projects() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_status(&resp, StatusCode::OK);
+            assert_status!(&resp, StatusCode::OK);
+
+            // Get user's projects as user - should be 1, the alpha project,
+            // as we gave back ownership to the user when we removed it from the organization
+            // So user's page should show the alpha project (and possibly others)
+            let projects = test_env
+                .api
+                .get_user_projects_deserialized_common(USER_USER_ID, USER_USER_PAT)
+                .await;
+            assert!(projects
+                .iter()
+                .any(|p| p.id.to_string() == alpha_project_id));
 
             // Get organization projects
             let projects = test_env
@@ -374,11 +404,11 @@ async fn add_remove_organization_project_ownership_to_user() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_status(&resp, StatusCode::NO_CONTENT);
+            assert_status!(&resp, StatusCode::NO_CONTENT);
 
             // Accept invites
             let resp = test_env.api.join_team(team, FRIEND_USER_PAT).await;
-            assert_status(&resp, StatusCode::NO_CONTENT);
+            assert_status!(&resp, StatusCode::NO_CONTENT);
         }
 
         // For each team, confirm there are two members, but only one owner of the project, and it is USER_USER_ID
@@ -398,7 +428,7 @@ async fn add_remove_organization_project_ownership_to_user() {
             .api
             .transfer_team_ownership(beta_team_id, FRIEND_USER_ID, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm there are still two users, but now FRIEND_USER_ID is the owner
         let members = test_env
@@ -419,7 +449,7 @@ async fn add_remove_organization_project_ownership_to_user() {
                 .api
                 .organization_add_project(zeta_organization_id, project_id, pat)
                 .await;
-            assert_status(&resp, StatusCode::OK);
+            assert_status!(&resp, StatusCode::OK);
 
             // Get and confirm it has been added
             let project = test_env.api.get_project_deserialized(project_id, pat).await;
@@ -429,30 +459,39 @@ async fn add_remove_organization_project_ownership_to_user() {
             );
         }
 
-        // Both alpha and beta project should have:
+        // Alpha project should have:
         // - 1 member, FRIEND_USER_ID
+        //      -> User was removed entirely as a team_member as it is now the owner of the organization
         // - No owner.
         //      -> For alpha, user was removed as owner when it was added to the organization
-        //      -> For beta, user was removed as owner when ownership was transferred to friend
-        //              then friend was removed as owner when it was added to the organization
-        // -> In both cases, user was removed entirely as a team_member as it is now the owner of the organization
-        for team_id in [alpha_team_id, beta_team_id] {
-            let members = test_env
-                .api
-                .get_team_members_deserialized(team_id, USER_USER_PAT)
-                .await;
-            assert_eq!(members.len(), 1);
-            assert_eq!(members[0].user.id.to_string(), FRIEND_USER_ID);
-            let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
-            assert_eq!(user_member.len(), 0);
-        }
+        //      -> Friend was never an owner of the alpha project
+        let members = test_env
+            .api
+            .get_team_members_deserialized(alpha_team_id, USER_USER_PAT)
+            .await;
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].user.id.to_string(), FRIEND_USER_ID);
+        let user_member = members.iter().filter(|m| m.is_owner).collect::<Vec<_>>();
+        assert_eq!(user_member.len(), 0);
+
+        // Beta project should have:
+        // - No members
+        // -> User was removed entirely as a team_member as it is now the owner of the organization
+        // -> Friend was made owner of the beta project, but was removed as a member when it was added to the organization
+        // If you are owner of a projeect, you are removed from the team when it is added to an organization,
+        // so that your former permissions are not overriding the organization permissions by default.
+        let members = test_env
+            .api
+            .get_team_members_deserialized(beta_team_id, USER_USER_PAT)
+            .await;
+        assert!(members.is_empty());
 
         // Transfer ownership of zeta organization to FRIEND
         let resp = test_env
             .api
             .transfer_team_ownership(zeta_team_id, FRIEND_USER_ID, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm there are no members of the alpha project OR the beta project
         // - Friend was removed as a member of these projects when ownership was transferred to them
@@ -469,14 +508,14 @@ async fn add_remove_organization_project_ownership_to_user() {
             .api
             .add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::BAD_REQUEST);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // As friend, can add user to alpha project, as they are not the org owner
         let resp = test_env
             .api
             .add_user_to_team(alpha_team_id, USER_USER_ID, None, None, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // At this point, friend owns the org
         // Alpha member has user as a member, but not as an owner
@@ -493,7 +532,7 @@ async fn add_remove_organization_project_ownership_to_user() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::BAD_REQUEST);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Set user's permissions within the project that it is a member of to none (for a later test)
         let resp = test_env
@@ -507,7 +546,7 @@ async fn add_remove_organization_project_ownership_to_user() {
                 FRIEND_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Remove project from organization with a user that is an organization member, and a project member
         // This should succeed
@@ -520,7 +559,7 @@ async fn add_remove_organization_project_ownership_to_user() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // Remove project from organization with a user that is an organization member, but not a project member
         // This should succeed
@@ -533,7 +572,7 @@ async fn add_remove_organization_project_ownership_to_user() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // For each of alpha and beta, confirm:
         // - There is one member of each project, the owner, USER_USER_ID
@@ -595,11 +634,11 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .add_user_to_team(zeta_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Accept invite
         let resp = test_env.api.join_team(zeta_team_id, FRIEND_USER_PAT).await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm there is only one owner of the project, and it is USER_USER_ID
         let members = test_env
@@ -615,7 +654,7 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // Add beta to zeta organization
         test_env
@@ -628,13 +667,13 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .add_user_to_team(beta_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Try to accept invite
         // This returns a failure, because since beta and FRIEND are in the organizations,
         // they can be added to the project without an invite
         let resp = test_env.api.join_team(beta_team_id, FRIEND_USER_PAT).await;
-        assert_status(&resp, StatusCode::BAD_REQUEST);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Confirm there is NO owner of the project, as it is owned by the organization
         let members = test_env
@@ -649,7 +688,7 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .transfer_team_ownership(zeta_team_id, FRIEND_USER_ID, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm there is NO owner of the project, as it is owned by the organization
         let members = test_env
@@ -664,7 +703,7 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .delete_organization(zeta_organization_id, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm there is only one owner of the alpha project, and it is now FRIEND_USER_ID
         let members = test_env
@@ -850,9 +889,9 @@ async fn permissions_manage_invites() {
         let resp = api
             .add_user_to_team(zeta_team_id, MOD_USER_ID, None, None, ADMIN_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
         let resp = api.join_team(zeta_team_id, MOD_USER_PAT).await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // remove existing member (requires remove_member)
         let remove_member = OrganizationPermissions::REMOVE_MEMBER;
@@ -888,13 +927,13 @@ async fn permissions_add_remove_project() {
         let resp = api
             .add_user_to_team(alpha_team_id, FRIEND_USER_ID, None, None, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
         let resp = api.join_team(alpha_team_id, FRIEND_USER_PAT).await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
         let resp = api
             .transfer_team_ownership(alpha_team_id, FRIEND_USER_ID, USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Now, FRIEND_USER_ID owns the alpha project
         // Add alpha project to zeta organization

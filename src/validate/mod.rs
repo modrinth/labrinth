@@ -44,7 +44,7 @@ pub enum ValidationError {
     Database(#[from] DatabaseError),
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Debug)]
 pub enum ValidationResult {
     /// File should be marked as primary with pack file data
     PassWithPackDataAndFiles {
@@ -132,7 +132,7 @@ pub async fn validate_file(
                 .find_map(|v| MinecraftGameVersion::try_from_version_field(&v).ok())
                 .unwrap_or_default();
             let all_game_versions =
-                MinecraftGameVersion::list_transaction(&mut *transaction, redis).await?;
+                MinecraftGameVersion::list(None, None, &mut *transaction, redis).await?;
             validate_minecraft_file(
                 data,
                 file_extension,

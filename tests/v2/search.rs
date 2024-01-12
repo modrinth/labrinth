@@ -1,8 +1,9 @@
+use crate::assert_status;
 use crate::common::api_common::Api;
 use crate::common::api_common::ApiProject;
 use crate::common::api_common::ApiVersion;
 use crate::common::api_v2::ApiV2;
-use crate::common::asserts::assert_status;
+
 use crate::common::database::*;
 use crate::common::dummy_data::TestFile;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
@@ -17,9 +18,6 @@ use std::sync::Arc;
 
 #[actix_rt::test]
 async fn search_projects() {
-    // TODO: ("Match changes in the 2 version of thee add_public_version_creation_data to those made in v3
-    // It should drastically simplify this function
-
     // Test setup and dummy data
     with_test_environment(Some(10), |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
@@ -55,7 +53,7 @@ async fn search_projects() {
                             MOD_USER_PAT,
                         )
                         .await;
-                    assert_status(&resp, StatusCode::NO_CONTENT);
+                    assert_status!(&resp, StatusCode::NO_CONTENT);
                     (project.id.0, id)
                 }
             };
@@ -169,8 +167,9 @@ async fn search_projects() {
         ));
 
         // Test project 7 (testing the search bug)
-        // This project has an initial private forge version that is 1.20.3, and a fabric 1.20.5 version.
-        // This means that a search for fabric + 1.20.3 or forge + 1.20.5 should not return this project.
+        // This project has an initial private forge version that is 1.20.2, and a fabric 1.20.1 version.
+        // This means that a search for fabric + 1.20.1 or forge + 1.20.1 should not return this project,
+        // but a search for fabric + 1.20.1 should, and it should include both versions in the data.
         let id = 7;
         let modify_json = serde_json::from_value(json!([
             { "op": "add", "path": "/categories", "value": DUMMY_CATEGORIES[5..6] },
@@ -179,6 +178,20 @@ async fn search_projects() {
             { "op": "add", "path": "/license_id", "value": "LGPL-3.0-or-later" },
             { "op": "add", "path": "/initial_versions/0/loaders", "value": ["forge"] },
             { "op": "add", "path": "/initial_versions/0/game_versions", "value": ["1.20.2"] },
+        ]))
+        .unwrap();
+        project_creation_futures.push(create_async_future(
+            id,
+            USER_USER_PAT,
+            false,
+            Some(modify_json),
+        ));
+
+        // Test project 8
+        // Server side unsupported
+        let id = 8;
+        let modify_json = serde_json::from_value(json!([
+            { "op": "add", "path": "/server_side", "value": "unsupported" },
         ]))
         .unwrap();
         project_creation_futures.push(create_async_future(
@@ -216,20 +229,14 @@ async fn search_projects() {
         // 1. vec of search facets
         // 2. expected project ids to be returned by this search
         let pairs = vec![
-            // For testing: remove me
             (
-                json!([
-                    ["client_side:required"],
-                    ["versions:1.20.5"],
-                    [&format!("categories:{}", DUMMY_CATEGORIES[5])]
-                ]),
-                vec![],
+                json!([["categories:fabric"]]),
+                vec![0, 1, 2, 3, 4, 5, 6, 7, 8],
             ),
-            (json!([["categories:fabric"]]), vec![0, 1, 2, 3, 4, 5, 6, 7]),
             (json!([["categories:forge"]]), vec![7]),
             (
                 json!([["categories:fabric", "categories:forge"]]),
-                vec![0, 1, 2, 3, 4, 5, 6, 7],
+                vec![0, 1, 2, 3, 4, 5, 6, 7, 8],
             ),
             (json!([["categories:fabric"], ["categories:forge"]]), vec![]),
             (
@@ -242,12 +249,12 @@ async fn search_projects() {
             (json!([["project_types:modpack"]]), vec![4]),
             // Formerly included 7, but with v2 changes, this is no longer the case.
             // This is because we assume client_side/server_side with subsequent versions.
-            (json!([["client_side:required"]]), vec![0, 2, 3]),
+            (json!([["client_side:required"]]), vec![0, 2, 3, 8]),
             (json!([["server_side:required"]]), vec![0, 2, 3, 6, 7]),
-            (json!([["open_source:true"]]), vec![0, 1, 2, 4, 5, 6, 7]),
-            (json!([["license:MIT"]]), vec![1, 2, 4]),
+            (json!([["open_source:true"]]), vec![0, 1, 2, 4, 5, 6, 7, 8]),
+            (json!([["license:MIT"]]), vec![1, 2, 4, 8]),
             (json!([[r#"title:'Mysterious Project'"#]]), vec![2, 3]),
-            (json!([["author:user"]]), vec![0, 1, 2, 4, 5, 7]),
+            (json!([["author:user"]]), vec![0, 1, 2, 4, 5, 7, 8]),
             (json!([["versions:1.20.5"]]), vec![4, 5]),
             // bug fix
             (
@@ -258,6 +265,14 @@ async fn search_projects() {
                     ["versions:1.20.2"]
                 ]),
                 vec![],
+            ),
+            (
+                json!([
+                    // But it does have a 1.20.2 forge version, so this should return it.
+                    ["categories:forge"],
+                    ["versions:1.20.2"]
+                ]),
+                vec![7],
             ),
             // Project type change
             // Modpack should still be able to search based on former loader, even though technically the loader is 'mrpack'
@@ -274,6 +289,12 @@ async fn search_projects() {
                 ]),
                 vec![4],
             ),
+            (
+                json!([["client_side:optional"], ["server_side:optional"]]),
+                vec![1, 4, 5],
+            ),
+            (json!([["server_side:optional"]]), vec![1, 4, 5]),
+            (json!([["server_side:unsupported"]]), vec![8]),
         ];
 
         // TODO: Untested:
@@ -284,7 +305,7 @@ async fn search_projects() {
 
         // Forcibly reset the search index
         let resp = api.reset_search_index().await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Test searches
         let stream = futures::stream::iter(pairs);
@@ -312,7 +333,7 @@ async fn search_projects() {
             })
             .await;
 
-        // A couple additional tests for the saerch type returned, making sure it is properly translated back
+        // A couple additional tests for the search type returned, making sure it is properly translated back
         let client_side_required = api
             .search_deserialized(
                 Some(&format!("\"&{test_name}\"")),
@@ -346,15 +367,40 @@ async fn search_projects() {
             assert_eq!(hit.client_side, "unsupported".to_string());
         }
 
-        let game_versions = api
+        let client_side_optional_server_side_optional = api
             .search_deserialized(
                 Some(&format!("\"&{test_name}\"")),
-                Some(json!([["versions:1.20.5"]])),
+                Some(json!([["client_side:optional"], ["server_side:optional"]])),
                 USER_USER_PAT,
             )
             .await;
+        for hit in client_side_optional_server_side_optional.hits {
+            assert_eq!(hit.client_side, "optional".to_string());
+            assert_eq!(hit.server_side, "optional".to_string());
+        }
+
+        // Ensure game_versions return correctly, but also correctly aggregated
+        // over all versions of a project
+        let game_versions = api
+            .search_deserialized(
+                Some(&format!("\"&{test_name}\"")),
+                Some(json!([["categories:forge"], ["versions:1.20.2"]])),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(game_versions.hits.len(), 1);
         for hit in game_versions.hits {
-            assert_eq!(hit.versions, vec!["1.20.5".to_string()]);
+            assert_eq!(
+                hit.versions,
+                vec!["1.20.1".to_string(), "1.20.2".to_string()]
+            );
+            assert!(hit.categories.contains(&"forge".to_string()));
+            assert!(hit.categories.contains(&"fabric".to_string()));
+            assert!(hit.display_categories.contains(&"forge".to_string()));
+            assert!(hit.display_categories.contains(&"fabric".to_string()));
+
+            // Also, ensure author is correctly capitalized
+            assert_eq!(hit.author, "User".to_string());
         }
     })
     .await;
