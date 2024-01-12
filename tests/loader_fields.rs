@@ -1,11 +1,16 @@
 use std::collections::HashSet;
 
 use actix_http::StatusCode;
+use actix_web::test;
 use common::api_v3::ApiV3;
 use common::environment::{with_test_environment, TestEnvironment};
+use itertools::Itertools;
+use labrinth::database::models::legacy_loader_fields::MinecraftGameVersion;
+use labrinth::models::v3;
 use serde_json::json;
 
-use crate::common::api_common::ApiVersion;
+use crate::common::api_common::{ApiProject, ApiVersion};
+use crate::common::api_v3::request_data::get_public_project_creation_data;
 use crate::common::database::*;
 
 use crate::common::dummy_data::{DummyProjectAlpha, DummyProjectBeta, TestFile};
@@ -460,4 +465,171 @@ async fn get_available_loader_fields() {
         );
     })
     .await;
+}
+
+#[actix_rt::test]
+async fn test_multi_get_redis_cache() {
+    // Ensures a multi-project get including both modpacks and mods ddoes not
+    // incorrectly cache loader fields
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+        let api = &test_env.api;
+
+        // Create 5 modpacks
+        let mut modpacks = Vec::new();
+        for i in 0..5 {
+            let slug = format!("test-modpack-{}", i);
+
+            let creation_data = get_public_project_creation_data(
+                &slug,
+                Some(TestFile::build_random_mrpack()),
+                None,
+            );
+            let resp = api.create_project(creation_data, USER_USER_PAT).await;
+            assert_status!(&resp, StatusCode::OK);
+            modpacks.push(slug);
+        }
+
+        // Create 5 mods
+        let mut mods = Vec::new();
+        for i in 0..5 {
+            let slug = format!("test-mod-{}", i);
+
+            let creation_data =
+                get_public_project_creation_data(&slug, Some(TestFile::build_random_jar()), None);
+            let resp = api.create_project(creation_data, USER_USER_PAT).await;
+            assert_status!(&resp, StatusCode::OK);
+            mods.push(slug);
+        }
+
+        // Get all 10 projects
+        let project_slugs = modpacks
+            .iter()
+            .map(|x| x.as_str())
+            .chain(mods.iter().map(|x| x.as_str()))
+            .collect_vec();
+        let resp = api.get_projects(&project_slugs, USER_USER_PAT).await;
+        assert_status!(&resp, StatusCode::OK);
+        let projects: Vec<v3::projects::Project> = test::read_body_json(resp).await;
+        assert_eq!(projects.len(), 10);
+
+        // Ensure all 5 modpacks have 'mrpack_loaders', and all 5 mods do not
+        for project in projects.iter() {
+            if modpacks.contains(project.slug.as_ref().unwrap()) {
+                assert!(project.fields.contains_key("mrpack_loaders"));
+            } else if mods.contains(project.slug.as_ref().unwrap()) {
+                assert!(!project.fields.contains_key("mrpack_loaders"));
+            } else {
+                panic!("Unexpected project slug: {:?}", project.slug);
+            }
+        }
+
+        // Get a version from each project
+        let version_ids_modpacks = projects
+            .iter()
+            .filter(|x| modpacks.contains(x.slug.as_ref().unwrap()))
+            .map(|x| x.versions[0])
+            .collect_vec();
+        let version_ids_mods = projects
+            .iter()
+            .filter(|x| mods.contains(x.slug.as_ref().unwrap()))
+            .map(|x| x.versions[0])
+            .collect_vec();
+        let version_ids = version_ids_modpacks
+            .iter()
+            .chain(version_ids_mods.iter())
+            .map(|x| x.to_string())
+            .collect_vec();
+        let resp = api.get_versions(version_ids, USER_USER_PAT).await;
+        assert_status!(&resp, StatusCode::OK);
+        let versions: Vec<v3::projects::Version> = test::read_body_json(resp).await;
+        assert_eq!(versions.len(), 10);
+
+        // Ensure all 5 versions from modpacks have 'mrpack_loaders', and all 5 versions from mods do not
+        for version in versions.iter() {
+            if version_ids_modpacks.contains(&version.id) {
+                assert!(version.fields.contains_key("mrpack_loaders"));
+            } else if version_ids_mods.contains(&version.id) {
+                assert!(!version.fields.contains_key("mrpack_loaders"));
+            } else {
+                panic!("Unexpected version id: {:?}", version.id);
+            }
+        }
+    })
+    .await;
+}
+
+#[actix_rt::test]
+async fn minecraft_game_version_update() {
+    // We simulate adding a Minecraft game version, to ensure other data doesn't get overwritten
+    // This is basically a test for the insertion/concatenation query
+    // This doesn't use a route (as this behaviour isn't exposed via a route, but a scheduled URL call)
+    // We just interact with the labrinth functions directly
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+        let api = &test_env.api;
+
+        // First, get a list of all gameversions
+        let game_versions = api
+            .get_loader_field_variants_deserialized("game_versions")
+            .await;
+
+        // A couple specific checks- in the dummy data, all game versions are marked as major=false except 1.20.5
+        let name_to_major = game_versions
+            .iter()
+            .map(|x| {
+                (
+                    x.value.clone(),
+                    x.metadata.get("major").unwrap().as_bool().unwrap(),
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        for (name, major) in name_to_major {
+            if name == "1.20.5" {
+                assert!(major);
+            } else {
+                assert!(!major);
+            }
+        }
+
+        // Now, we add a new game version, directly to the db
+        let pool = test_env.db.pool.clone();
+        let redis = test_env.db.redis_pool.clone();
+        MinecraftGameVersion::builder()
+            .version("1.20.6")
+            .unwrap()
+            .version_type("release")
+            .unwrap()
+            .created(
+                // now
+                &chrono::Utc::now(),
+            )
+            .insert(&pool, &redis)
+            .await
+            .unwrap();
+
+        // Check again
+        let game_versions = api
+            .get_loader_field_variants_deserialized("game_versions")
+            .await;
+
+        let name_to_major = game_versions
+            .iter()
+            .map(|x| {
+                (
+                    x.value.clone(),
+                    x.metadata.get("major").unwrap().as_bool().unwrap(),
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        // Confirm that the new version is there
+        assert!(name_to_major.contains_key("1.20.6"));
+        // Confirm metadata is unaltered
+        for (name, major) in name_to_major {
+            if name == "1.20.5" {
+                assert!(major);
+            } else {
+                assert!(!major);
+            }
+        }
+    })
+    .await
 }
