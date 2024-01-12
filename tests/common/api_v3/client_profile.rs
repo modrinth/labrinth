@@ -14,10 +14,12 @@ use labrinth::{
 };
 use serde_json::json;
 
-use crate::common::{
-    api_common::{request_data::ImageData, Api, AppendsOptionalPat},
-    asserts::assert_status,
-    dummy_data::TestFile,
+use crate::{
+    assert_status,
+    common::{
+        api_common::{request_data::ImageData, Api, AppendsOptionalPat},
+        dummy_data::TestFile,
+    },
 };
 
 use super::ApiV3;
@@ -101,7 +103,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ClientProfile {
         let resp = self.get_client_profile(id, pat).await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
@@ -211,7 +213,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ClientProfileShareLink {
         let resp = self.generate_client_profile_share_link(id, pat).await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
@@ -240,7 +242,7 @@ impl ApiV3 {
         let resp = self
             .get_client_profile_share_link(profile_id, url_identifier, pat)
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 
@@ -279,7 +281,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ProfileDownload {
         let resp = self.download_client_profile(profile_id, pat).await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }
 

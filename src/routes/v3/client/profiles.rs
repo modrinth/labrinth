@@ -128,7 +128,7 @@ pub async fn profile_create(
             .await?
             .ok_or_else(|| CreateError::InvalidInput("Invalid Client game".to_string()))?;
 
-            let game_version_id = MinecraftGameVersion::list(&**client, &redis)
+            let game_version_id = MinecraftGameVersion::list(None, None, &**client, &redis)
                 .await?
                 .into_iter()
                 .find(|x| x.version == game_version)
@@ -372,7 +372,7 @@ pub async fn profile_edit(
             if let Some(game_version) = edit_data.game_version {
                 let new_game_id =
                     database::models::legacy_loader_fields::MinecraftGameVersion::list(
-                        &**pool, &redis,
+                        None, None, &**pool, &redis,
                     )
                     .await?
                     .into_iter()

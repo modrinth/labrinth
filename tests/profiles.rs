@@ -11,7 +11,6 @@ use labrinth::models::users::UserId;
 use sha2::Digest;
 
 use crate::common::api_v3::client_profile::ClientProfileOverride;
-use crate::common::asserts::assert_status;
 use crate::common::dummy_data::DummyImage;
 use crate::common::dummy_data::TestFile;
 
@@ -42,13 +41,13 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::BAD_REQUEST);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Currently fake version for loader is not checked
         // let resp = api
         //     .create_client_profile("test", "fabric", "fake", "1.20.1", vec![], USER_USER_PAT)
         //     .await;
-        // assert_status(&resp, StatusCode::BAD_REQUEST);
+        // assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         let resp = api
             .create_client_profile(
@@ -60,19 +59,19 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::BAD_REQUEST);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         let resp = api
             .create_client_profile("test", "fabric", "1.0.0", "1.19.1", vec![], USER_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::BAD_REQUEST);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Create a simple profile
         // should succeed
         let profile = api
             .create_client_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
             .await;
-        assert_status(&profile, StatusCode::OK);
+        assert_status!(&profile, StatusCode::OK);
         let profile: ClientProfile = test::read_body_json(profile).await;
         let id = profile.id.to_string();
 
@@ -100,7 +99,7 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::BAD_REQUEST);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Currently fake version for loader is not checked
         // let resp = api
@@ -113,7 +112,7 @@ async fn create_modify_profile() {
         //         USER_USER_PAT,
         //     )
         //     .await;
-        // assert_status(&resp, StatusCode::BAD_REQUEST);
+        // assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         let resp = api
             .edit_client_profile(
@@ -126,7 +125,7 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::BAD_REQUEST);
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Can't modify the profile as another user
         let resp = api
@@ -140,7 +139,7 @@ async fn create_modify_profile() {
                 FRIEND_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         //  Get and make sure the properties are the same
         let profile = api
@@ -165,7 +164,7 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get the profile and check the properties
         let profile = api
@@ -191,7 +190,7 @@ async fn create_modify_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get the profile and check the properties
         let profile = api
@@ -219,7 +218,7 @@ async fn accept_share_link() {
         let profile = api
             .create_client_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
             .await;
-        assert_status(&profile, StatusCode::OK);
+        assert_status!(&profile, StatusCode::OK);
         let profile: ClientProfile = test::read_body_json(profile).await;
         let id = profile.id.to_string();
         let users: Vec<UserId> = profile.users.unwrap();
@@ -253,7 +252,7 @@ async fn accept_share_link() {
         let resp = api
             .accept_client_profile_share_link(&id, &share_link.url_identifier, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Profile users should now include the friend
         let profile = api
@@ -279,9 +278,9 @@ async fn accept_share_link() {
                 .accept_client_profile_share_link(&id, &share_link.url_identifier, *pat)
                 .await;
             if i == 0 || i == 1 || i == 6 {
-                assert_status(&resp, StatusCode::BAD_REQUEST);
+                assert_status!(&resp, StatusCode::BAD_REQUEST);
             } else {
-                assert_status(&resp, StatusCode::NO_CONTENT);
+                assert_status!(&resp, StatusCode::NO_CONTENT);
             }
         }
     })
@@ -307,7 +306,7 @@ async fn delete_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&profile, StatusCode::OK);
+        assert_status!(&profile, StatusCode::OK);
         let profile: ClientProfile = test::read_body_json(profile).await;
         let id = profile.id.to_string();
 
@@ -322,7 +321,7 @@ async fn delete_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Invite a friend to the profile and accept it
         let share_link = api
@@ -331,7 +330,7 @@ async fn delete_profile() {
         let resp = api
             .accept_client_profile_share_link(&id, &share_link.url_identifier, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get a token as the friend
         let token = api
@@ -342,27 +341,27 @@ async fn delete_profile() {
         let resp = api
             .check_download_client_profile_token(&token.override_cdns[0].0, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // Delete the profile as the friend
         // Should fail
         let resp = api.delete_client_profile(&id, FRIEND_USER_PAT).await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // Delete the profile as the user
         // Should succeed
         let resp = api.delete_client_profile(&id, USER_USER_PAT).await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm the profile is gone
         let resp = api.get_client_profile(&id, USER_USER_PAT).await;
-        assert_status(&resp, StatusCode::NOT_FOUND);
+        assert_status!(&resp, StatusCode::NOT_FOUND);
 
         // Confirm the token is gone
         let resp = api
             .check_download_client_profile_token(&token.override_cdns[0].0, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
     })
     .await;
 }
@@ -378,7 +377,7 @@ async fn download_profile() {
         let profile = api
             .create_client_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
             .await;
-        assert_status(&profile, StatusCode::OK);
+        assert_status!(&profile, StatusCode::OK);
         let profile: ClientProfile = test::read_body_json(profile).await;
         let id = profile.id.to_string();
 
@@ -393,16 +392,16 @@ async fn download_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // As 'user', try to generate a download link for the profile
         let resp = api.download_client_profile(&id, USER_USER_PAT).await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // As 'friend', try to get the download links for the profile
         // Not invited yet, should fail
         let resp = api.download_client_profile(&id, FRIEND_USER_PAT).await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // As 'user', try to generate a share link for the profile, and accept it as 'friend'
         let share_link = api
@@ -411,7 +410,7 @@ async fn download_profile() {
         let resp = api
             .accept_client_profile_share_link(&id, &share_link.url_identifier, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // As 'friend', try to get the download links for the profile
         // Should succeed
@@ -421,7 +420,7 @@ async fn download_profile() {
 
         // But enemy should fail
         let resp = api.download_client_profile(&id, ENEMY_USER_PAT).await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // Download url should be:
         // - CDN url
@@ -439,16 +438,16 @@ async fn download_profile() {
         let resp = api
             .check_download_client_profile_token(&override_file_url, None)
             .await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
         let resp = api
             .check_download_client_profile_token(&override_file_url, ENEMY_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         let resp = api
             .check_download_client_profile_token("bad_url", FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         let resp = api
             .check_download_client_profile_token(
@@ -460,14 +459,14 @@ async fn download_profile() {
                 FRIEND_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // Check cloudflare helper route to confirm this is a valid allowable access token
         // We attach it as an authorization token and call the route
         let resp = api
             .check_download_client_profile_token(&override_file_url, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::OK);
 
         // As user, remove friend from profile
         let resp = api
@@ -481,7 +480,7 @@ async fn download_profile() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm friend is no longer on the profile
         let profile = api
@@ -491,13 +490,13 @@ async fn download_profile() {
 
         // Confirm friend can no longer download the profile
         let resp = api.download_client_profile(&id, FRIEND_USER_PAT).await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // Confirm token invalidation
         let resp = api
             .check_download_client_profile_token(&override_file_url, FRIEND_USER_PAT)
             .await;
-        assert_status(&resp, StatusCode::UNAUTHORIZED);
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // Confirm user can still download the profile
         let resp = api
@@ -518,7 +517,7 @@ async fn add_remove_profile_icon() {
         let profile = api
             .create_client_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
             .await;
-        assert_status(&profile, StatusCode::OK);
+        assert_status!(&profile, StatusCode::OK);
         let profile: ClientProfile = test::read_body_json(profile).await;
 
         // Add an icon to the profile
@@ -529,7 +528,7 @@ async fn add_remove_profile_icon() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&icon, StatusCode::NO_CONTENT);
+        assert_status!(&icon, StatusCode::NO_CONTENT);
 
         // Get the profile and check the icon
         let profile = api
@@ -541,7 +540,7 @@ async fn add_remove_profile_icon() {
         let icon = api
             .edit_client_profile_icon(&profile.id.to_string(), None, USER_USER_PAT)
             .await;
-        assert_status(&icon, StatusCode::NO_CONTENT);
+        assert_status!(&icon, StatusCode::NO_CONTENT);
 
         // Get the profile and check the icon
         let profile = api
@@ -562,7 +561,7 @@ async fn add_remove_profile_versions() {
         let profile = api
             .create_client_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
             .await;
-        assert_status(&profile, StatusCode::OK);
+        assert_status!(&profile, StatusCode::OK);
         let profile: ClientProfile = test::read_body_json(profile).await;
         let updated = profile.updated; // Save this- it will update when we modify the versions/overrides
 
@@ -578,7 +577,7 @@ async fn add_remove_profile_versions() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Add an override file to the profile
         let resp = api
@@ -591,7 +590,7 @@ async fn add_remove_profile_versions() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Add a second version to the profile
         let resp = api
@@ -604,7 +603,7 @@ async fn add_remove_profile_versions() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get the profile and check the versions
         let profile = api
@@ -628,7 +627,7 @@ async fn add_remove_profile_versions() {
         let profile_enemy = api
             .create_client_profile("test2", "fabric", "1.0.0", "1.20.1", vec![], ENEMY_USER_PAT)
             .await;
-        assert_status(&profile_enemy, StatusCode::OK);
+        assert_status!(&profile_enemy, StatusCode::OK);
         let profile_enemy: ClientProfile = test::read_body_json(profile_enemy).await;
         let id_enemy = profile_enemy.id.to_string();
 
@@ -643,7 +642,7 @@ async fn add_remove_profile_versions() {
                 ENEMY_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get the profile and check the versions
         let profile_enemy = api
@@ -664,7 +663,7 @@ async fn add_remove_profile_versions() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Should still exist in the enemy's profile, but not the user's
         let profile_enemy = api
@@ -699,7 +698,7 @@ async fn add_remove_profile_versions() {
                 ENEMY_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT); // Allow failure to return success, it just doesn't delete anything
+        assert_status!(&resp, StatusCode::NO_CONTENT); // Allow failure to return success, it just doesn't delete anything
 
         // Then, by hash
         let resp = api
@@ -714,7 +713,7 @@ async fn add_remove_profile_versions() {
                 ENEMY_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT); // Allow failure to return success, it just doesn't delete anything
+        assert_status!(&resp, StatusCode::NO_CONTENT); // Allow failure to return success, it just doesn't delete anything
 
         // Confirm user still has it
         let profile = api
@@ -742,7 +741,7 @@ async fn add_remove_profile_versions() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm user no longer has it
         let profile = api
@@ -764,7 +763,7 @@ async fn add_remove_profile_versions() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm user no longer has it
         let profile = api
@@ -797,7 +796,7 @@ async fn hidden_versions_are_forbidden() {
                 FRIEND_USER_PAT,
             )
             .await;
-        assert_status(&profile, StatusCode::OK);
+        assert_status!(&profile, StatusCode::OK);
         let profile: ClientProfile = test::read_body_json(profile).await;
         assert_eq!(profile.versions, vec![alpha_version_id_parsed]);
 
@@ -814,7 +813,7 @@ async fn hidden_versions_are_forbidden() {
                 FRIEND_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get the profile and check the versions
         // Empty, because alpha is removed, and beta is not visible
