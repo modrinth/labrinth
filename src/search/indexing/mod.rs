@@ -97,7 +97,7 @@ pub async fn index_projects(
         let id_chunk = id_chunk
             .into_iter()
             .map(|(version_id, project_id, owner_username)| {
-                (version_id, (project_id, owner_username.to_lowercase()))
+                (version_id, (project_id, owner_username))
             })
             .collect::<HashMap<_, _>>();
         let uploads = index_local(&pool, &redis, id_chunk).await?;
@@ -404,6 +404,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "links",
     "gallery_items",
     "loaders", // search uses loaders as categories- this is purely for the Project model.
+    "project_loader_fields",
 ];
 
 const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["name", "summary", "author", "slug"];
