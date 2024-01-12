@@ -72,20 +72,20 @@ pub async fn project_search(
                         .map(|facet| {
                             if let Some((key, operator, val)) = parse_facet(&facet) {
                                 format!(
-                                            "{}{}{}",
-                                            match key.as_str() {
+                                    "{}{}{}",
+                                    match key.as_str() {
                                         "versions" => "game_versions",
                                         "project_type" => "project_types",
                                         "title" => "name",
                                         x => x,
                                     },
-                                            operator,
-                                            val
-                                        )
+                                    operator,
+                                    val
+                                )
                             } else {
                                 facet.to_string()
                             }
-                })
+                        })
                         .collect::<Vec<_>>()
                 })
                 .collect(),

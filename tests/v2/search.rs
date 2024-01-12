@@ -396,6 +396,8 @@ async fn search_projects() {
             );
             assert!(hit.categories.contains(&"forge".to_string()));
             assert!(hit.categories.contains(&"fabric".to_string()));
+            assert!(hit.display_categories.contains(&"forge".to_string()));
+            assert!(hit.display_categories.contains(&"fabric".to_string()));
 
             // Also, ensure author is correctly capitalized
             assert_eq!(hit.author, "User".to_string());
