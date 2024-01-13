@@ -38,8 +38,6 @@ impl Api for ApiV2 {
     }
 
     async fn reset_search_index(&self) -> ServiceResponse {
-        println!("Resetting search index itestnner");
-
         let req = actix_web::test::TestRequest::post()
             .uri("/v2/admin/_force_reindex")
             .append_header((

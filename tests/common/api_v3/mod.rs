@@ -42,7 +42,6 @@ impl Api for ApiV3 {
     }
 
     async fn reset_search_index(&self) -> ServiceResponse {
-        println!("Resetting search index");
         let req = actix_web::test::TestRequest::post()
             .uri("/_internal/admin/_force_reindex")
             .append_header((
