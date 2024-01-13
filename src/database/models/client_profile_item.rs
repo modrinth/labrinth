@@ -340,7 +340,6 @@ impl ClientProfile {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClientProfileLink {
     pub id: ClientProfileLinkId,
-    pub link_identifier: String,
     pub shared_profile_id: ClientProfileId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
@@ -354,14 +353,13 @@ impl ClientProfileLink {
         sqlx::query!(
             "
             INSERT INTO shared_profiles_links (
-                id, link, shared_profile_id, created, expires
+                id, shared_profile_id, created, expires
             )
             VALUES (
-                $1, $2, $3, $4, $5
+                $1, $2, $3, $4
             )
             ",
             self.id.0,
-            self.link_identifier,
             self.shared_profile_id.0,
             self.created,
             self.expires,
@@ -383,7 +381,7 @@ impl ClientProfileLink {
 
         let links = sqlx::query!(
             "
-            SELECT id, link, shared_profile_id, created, expires
+            SELECT id, shared_profile_id, created, expires
             FROM shared_profiles_links spl
             WHERE spl.shared_profile_id = $1
             ",
@@ -393,7 +391,6 @@ impl ClientProfileLink {
         .try_filter_map(|e| async {
             Ok(e.right().map(|m| ClientProfileLink {
                 id: ClientProfileLinkId(m.id),
-                link_identifier: m.link,
                 shared_profile_id: ClientProfileId(m.shared_profile_id),
                 created: m.created,
                 expires: m.expires,
@@ -416,7 +413,7 @@ impl ClientProfileLink {
 
         let link = sqlx::query!(
             "
-            SELECT id, link, shared_profile_id, created, expires
+            SELECT id, shared_profile_id, created, expires
             FROM shared_profiles_links spl
             WHERE spl.id = $1
             ",
@@ -426,37 +423,6 @@ impl ClientProfileLink {
         .await?
         .map(|m| ClientProfileLink {
             id: ClientProfileLinkId(m.id),
-            link_identifier: m.link,
-            shared_profile_id: ClientProfileId(m.shared_profile_id),
-            created: m.created,
-            expires: m.expires,
-        });
-
-        Ok(link)
-    }
-
-    pub async fn get_url<'a, 'b, E>(
-        url_identifier: &str,
-        executor: E,
-    ) -> Result<Option<ClientProfileLink>, DatabaseError>
-    where
-        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
-    {
-        let mut exec = executor.acquire().await?;
-
-        let link = sqlx::query!(
-            "
-            SELECT id, link, shared_profile_id, created, expires
-            FROM shared_profiles_links spl
-            WHERE spl.link = $1
-            ",
-            url_identifier
-        )
-        .fetch_optional(&mut *exec)
-        .await?
-        .map(|m| ClientProfileLink {
-            id: ClientProfileLinkId(m.id),
-            link_identifier: m.link,
             shared_profile_id: ClientProfileId(m.shared_profile_id),
             created: m.created,
             expires: m.expires,

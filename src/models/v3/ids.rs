@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 pub use super::client::profile::ClientProfileId;
+pub use super::client::profile::ClientProfileLinkId;
 pub use super::collections::CollectionId;
 pub use super::images::ImageId;
 pub use super::notifications::NotificationId;
@@ -131,6 +132,7 @@ base62_id_impl!(OAuthRedirectUriId, OAuthRedirectUriId);
 base62_id_impl!(OAuthClientAuthorizationId, OAuthClientAuthorizationId);
 base62_id_impl!(PayoutId, PayoutId);
 base62_id_impl!(ClientProfileId, ClientProfileId);
+base62_id_impl!(ClientProfileLinkId, ClientProfileLinkId);
 
 pub mod base62_impl {
     use serde::de::{self, Deserializer, Visitor};

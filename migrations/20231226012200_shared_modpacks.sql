@@ -32,8 +32,7 @@ CREATE TABLE shared_profiles_mods (
 );
 
 CREATE TABLE shared_profiles_links (
-    id bigint PRIMARY KEY, -- id of the shared profile link (ignored in labrinth, for db use only)
-    link varchar(48) NOT NULL UNIQUE, -- extension of the url that identifies this (ie profiles/afgxxczsewq)
+    id bigint PRIMARY KEY, -- id of the shared profile link (doubles as the link identifier)
     shared_profile_id bigint NOT NULL REFERENCES shared_profiles(id),
     created timestamptz NOT NULL DEFAULT now(),
     expires timestamptz NOT NULL
@@ -44,6 +43,3 @@ CREATE TABLE shared_profiles_users (
     user_id bigint NOT NULL REFERENCES users(id),
     CONSTRAINT shared_profiles_users_unique UNIQUE (shared_profile_id, user_id)
 );
-
--- Index off 'link'
-CREATE INDEX shared_profiles_links_link_idx ON shared_profiles_links(link);

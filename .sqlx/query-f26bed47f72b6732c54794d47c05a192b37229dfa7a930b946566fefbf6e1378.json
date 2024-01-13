@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, link, shared_profile_id, created, expires\n            FROM shared_profiles_links spl\n            WHERE spl.shared_profile_id = $1\n            ",
+  "query": "\n            SELECT id, shared_profile_id, created, expires\n            FROM shared_profiles_links spl\n            WHERE spl.shared_profile_id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -10,21 +10,16 @@
       },
       {
         "ordinal": 1,
-        "name": "link",
-        "type_info": "Varchar"
-      },
-      {
-        "ordinal": 2,
         "name": "shared_profile_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 3,
+        "ordinal": 2,
         "name": "created",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "expires",
         "type_info": "Timestamptz"
       }
@@ -38,9 +33,8 @@
       false,
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "a7732d7e398e5f6dacef43a1e11957146d2d6f2631c8572cf5aa59dce26f28ef"
+  "hash": "f26bed47f72b6732c54794d47c05a192b37229dfa7a930b946566fefbf6e1378"
 }

@@ -500,3 +500,13 @@ impl From<ClientProfileId> for ids::ClientProfileId {
         ids::ClientProfileId(id.0 as u64)
     }
 }
+impl From<ids::ClientProfileLinkId> for ClientProfileLinkId {
+    fn from(id: ids::ClientProfileLinkId) -> Self {
+        ClientProfileLinkId(id.0 as i64)
+    }
+}
+impl From<ClientProfileLinkId> for ids::ClientProfileLinkId {
+    fn from(id: ClientProfileLinkId) -> Self {
+        ids::ClientProfileLinkId(id.0 as u64)
+    }
+}

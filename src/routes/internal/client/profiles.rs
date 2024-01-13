@@ -6,7 +6,9 @@ use crate::database::models::{
 };
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models::client::profile::{ClientProfile, ClientProfileId, ClientProfileShareLink};
+use crate::models::client::profile::{
+    ClientProfile, ClientProfileId, ClientProfileLinkId, ClientProfileShareLink,
+};
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::{UserId, VersionId};
 use crate::models::pats::Scopes;
@@ -568,7 +570,7 @@ pub async fn profile_share(
     if let Some(data) = profile_data {
         if data.owner_id == user_option.1.id.into() {
             // Generate a share link identifier
-            let identifier = ChaCha20Rng::from_entropy()
+            let _identifier = ChaCha20Rng::from_entropy()
                 .sample_iter(&Alphanumeric)
                 .take(8)
                 .map(char::from)
@@ -581,7 +583,6 @@ pub async fn profile_share(
             let link = database::models::client_profile_item::ClientProfileLink {
                 id: profile_link_id,
                 shared_profile_id: data.id,
-                link_identifier: identifier.clone(),
                 created: Utc::now(),
                 expires: Utc::now() + chrono::Duration::days(7),
             };
@@ -598,7 +599,7 @@ pub async fn profile_share(
 // This is used by the to check if the link is expired, etc.
 pub async fn profile_link_get(
     req: HttpRequest,
-    info: web::Path<(String, String)>,
+    info: web::Path<(String, ClientProfileLinkId)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -615,10 +616,12 @@ pub async fn profile_link_get(
     .await?;
 
     // Confirm this is our project, then if so, share
-    let link_data =
-        database::models::client_profile_item::ClientProfileLink::get_url(&url_identifier, &**pool)
-            .await?
-            .ok_or_else(|| ApiError::NotFound)?;
+    let link_data = database::models::client_profile_item::ClientProfileLink::get(
+        url_identifier.into(),
+        &**pool,
+    )
+    .await?
+    .ok_or_else(|| ApiError::NotFound)?;
 
     let data = database::models::client_profile_item::ClientProfile::get(
         link_data.shared_profile_id,
@@ -641,7 +644,7 @@ pub async fn profile_link_get(
 // TODO: With above change, this is the API link that is translated from a modrinth:// link by the launcher, which would then download it
 pub async fn accept_share_link(
     req: HttpRequest,
-    info: web::Path<(ClientProfileId, String)>,
+    info: web::Path<(ClientProfileId, ClientProfileLinkId)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -659,10 +662,12 @@ pub async fn accept_share_link(
     .await?;
 
     // Fetch the profile information of the desired client profile
-    let link_data =
-        database::models::client_profile_item::ClientProfileLink::get_url(&url_identifier, &**pool)
-            .await?
-            .ok_or_else(|| ApiError::NotFound)?;
+    let link_data = database::models::client_profile_item::ClientProfileLink::get(
+        url_identifier.into(),
+        &**pool,
+    )
+    .await?
+    .ok_or_else(|| ApiError::NotFound)?;
 
     // Confirm it matches the profile id
     if link_data.shared_profile_id != profile_id.into() {

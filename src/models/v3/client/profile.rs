@@ -14,6 +14,12 @@ use crate::{
 #[serde(into = "Base62Id")]
 pub struct ClientProfileId(pub u64);
 
+/// The ID of a specific profile link, encoded as base62 for usage in the API
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[serde(from = "Base62Id")]
+#[serde(into = "Base62Id")]
+pub struct ClientProfileLinkId(pub u64);
+
 /// A project returned from the API
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ClientProfile {
@@ -110,8 +116,8 @@ impl ClientProfile {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ClientProfileShareLink {
-    pub url_identifier: String,
-    pub url: String, // Includes the url identifier, intentionally redundant
+    pub id: ClientProfileLinkId, // The url identifier, encoded as base62
+    pub url: String,             // Includes the url identifier, intentionally redundant
     pub profile_id: ClientProfileId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
@@ -121,15 +127,16 @@ impl From<database::models::client_profile_item::ClientProfileLink> for ClientPr
     fn from(link: database::models::client_profile_item::ClientProfileLink) -> Self {
         // Generate URL for easy access
         let profile_id: ClientProfileId = link.shared_profile_id.into();
+        let link_id: ClientProfileLinkId = link.id.into();
         let url = format!(
             "{}/v3/client/profile/{}/accept/{}",
             dotenvy::var("SELF_ADDR").unwrap(),
             profile_id,
-            link.link_identifier
+            link_id
         );
 
         Self {
-            url_identifier: link.link_identifier,
+            id: link_id,
             url,
             profile_id,
             created: link.created,

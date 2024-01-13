@@ -275,14 +275,14 @@ async fn accept_share_link() {
                 "{}/v3/client/profile/{}/accept/{}",
                 dotenvy::var("SELF_ADDR").unwrap(),
                 id,
-                share_link.url_identifier
+                share_link.id
             )
         );
 
         // Link is an 'accept' link, when visited using any user token using POST, it should add the user to the profile
         // As 'friend', accept the share link
         let resp = api
-            .accept_client_profile_share_link(&id, &share_link.url_identifier, FRIEND_USER_PAT)
+            .accept_client_profile_share_link(&id, &share_link.id.to_string(), FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
@@ -307,7 +307,7 @@ async fn accept_share_link() {
         ];
         for (i, pat) in dummy_user_pats.iter().enumerate().take(4 + 1) {
             let resp = api
-                .accept_client_profile_share_link(&id, &share_link.url_identifier, *pat)
+                .accept_client_profile_share_link(&id, &share_link.id.to_string(), *pat)
                 .await;
             if i == 0 || i == 1 {
                 assert_status!(&resp, StatusCode::BAD_REQUEST);
@@ -360,7 +360,7 @@ async fn delete_profile() {
             .generate_client_profile_share_link_deserialized(&id, USER_USER_PAT)
             .await;
         let resp = api
-            .accept_client_profile_share_link(&id, &share_link.url_identifier, FRIEND_USER_PAT)
+            .accept_client_profile_share_link(&id, &share_link.id.to_string(), FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
@@ -440,7 +440,7 @@ async fn download_profile() {
             .generate_client_profile_share_link_deserialized(&id, USER_USER_PAT)
             .await;
         let resp = api
-            .accept_client_profile_share_link(&id, &share_link.url_identifier, FRIEND_USER_PAT)
+            .accept_client_profile_share_link(&id, &share_link.id.to_string(), FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
