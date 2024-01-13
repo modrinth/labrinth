@@ -6,9 +6,7 @@ use crate::database::models::{
 };
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models::client::profile::{
-    ClientProfile, ClientProfileId, ClientProfileShareLink,
-};
+use crate::models::client::profile::{ClientProfile, ClientProfileId, ClientProfileShareLink};
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::{UserId, VersionId};
 use crate::models::pats::Scopes;
@@ -118,6 +116,8 @@ pub async fn profile_create(
         .validate()
         .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
 
+    let game_id;
+    let game_name;
     let game: client_profile_item::ClientProfileMetadata = match profile_create_data.game {
         ProfileCreateDataGame::MinecraftJava { game_version } => {
             let game = database::models::loader_fields::Game::get_slug(
@@ -127,6 +127,9 @@ pub async fn profile_create(
             )
             .await?
             .ok_or_else(|| CreateError::InvalidInput("Invalid Client game".to_string()))?;
+
+            game_id = game.id;
+            game_name = game.name;
 
             let game_version_id = MinecraftGameVersion::list(None, None, &**client, &redis)
                 .await?
@@ -138,8 +141,7 @@ pub async fn profile_create(
                 .id;
 
             client_profile_item::ClientProfileMetadata::Minecraft {
-                game_id: game.id,
-                game_name: "minecraft-java".to_string(),
+                loader_version: profile_create_data.loader_version,
                 game_version_id,
                 game_version,
             }
@@ -187,10 +189,11 @@ pub async fn profile_create(
         icon_url: None,
         created: Utc::now(),
         updated: Utc::now(),
-        game,
+        metadata: game,
+        game_id,
+        game_name,
         loader_id,
         loader: profile_create_data.loader,
-        loader_version: profile_create_data.loader_version,
         users: vec![current_user.id.into()],
         versions,
         overrides: Vec::new(),
@@ -291,15 +294,17 @@ pub struct EditClientProfile {
     )]
     // The loader string (parsed to a loader)
     pub loader: Option<String>,
+    // The list of versions to include in the profile (does not include overrides)
+    pub versions: Option<Vec<VersionId>>,
+    // You can remove users from your invite list here
+    pub remove_users: Option<Vec<UserId>>,
+
+    // As these fields affect metadata but do not yet use the 'loader_fields' system,
+    // we simply list them here and compare them to the existing metadata.
     // The loader version
     pub loader_version: Option<String>,
     // The game version string (parsed to a game version)
     pub game_version: Option<String>,
-    // The list of versions to include in the profile (does not include overrides)
-    pub versions: Option<Vec<VersionId>>,
-
-    // You can remove users from your invite list here
-    pub remove_users: Option<Vec<UserId>>,
 }
 
 // Edit a client profile
@@ -354,36 +359,6 @@ pub async fn profile_edit(
                 sqlx::query!(
                     "UPDATE shared_profiles SET loader_id = $1 WHERE id = $2",
                     loader_id.0,
-                    data.id.0
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
-            if let Some(loader_version) = edit_data.loader_version {
-                sqlx::query!(
-                    "UPDATE shared_profiles SET loader_version = $1 WHERE id = $2",
-                    loader_version,
-                    data.id.0
-                )
-                .execute(&mut *transaction)
-                .await?;
-            }
-            if let Some(game_version) = edit_data.game_version {
-                let new_game_id =
-                    database::models::legacy_loader_fields::MinecraftGameVersion::list(
-                        None, None, &**pool, &redis,
-                    )
-                    .await?
-                    .into_iter()
-                    .find(|x| x.version == game_version)
-                    .ok_or_else(|| {
-                        ApiError::InvalidInput("Invalid Client game version".to_string())
-                    })?
-                    .id;
-
-                sqlx::query!(
-                    "UPDATE shared_profiles SET game_version_id = $1 WHERE id = $2",
-                    new_game_id.0,
                     data.id.0
                 )
                 .execute(&mut *transaction)
@@ -452,6 +427,55 @@ pub async fn profile_edit(
                     .execute(&mut *transaction)
                     .await?;
                 }
+            }
+
+            // Edit the metadata fields
+            if edit_data.loader_version.is_some() || edit_data.game_version.is_some() {
+                let mut metadata = data.metadata.clone();
+
+                match &mut metadata {
+                    client_profile_item::ClientProfileMetadata::Minecraft {
+                        loader_version,
+                        game_version_id,
+                        game_version,
+                    } => {
+                        if let Some(new_loader_version) = edit_data.loader_version {
+                            *loader_version = new_loader_version;
+                        }
+
+                        if let Some(new_game_version) = edit_data.game_version {
+                            let new_game_id =
+                                database::models::legacy_loader_fields::MinecraftGameVersion::list(
+                                    None, None, &**pool, &redis,
+                                )
+                                .await?
+                                .into_iter()
+                                .find(|x| x.version == new_game_version)
+                                .ok_or_else(|| {
+                                    ApiError::InvalidInput(
+                                        "Invalid Client game version".to_string(),
+                                    )
+                                })?
+                                .id;
+
+                            *game_version_id = new_game_id;
+                            *game_version = new_game_version;
+                        }
+                    }
+                    client_profile_item::ClientProfileMetadata::Unknown => {
+                        return Err(ApiError::InvalidInput(
+                            "Cannot edit metadata of unknown profile".to_string(),
+                        ));
+                    }
+                }
+
+                sqlx::query!(
+                    "UPDATE shared_profiles SET metadata = $1 WHERE id = $2",
+                    serde_json::to_value(metadata)?,
+                    data.id.0
+                )
+                .execute(&mut *transaction)
+                .await?;
             }
 
             transaction.commit().await?;

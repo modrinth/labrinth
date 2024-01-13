@@ -51,7 +51,6 @@ impl ClientProfile {
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), DatabaseError> {
-
         let metadata = serde_json::to_value(&self.metadata).map_err(|e| {
             DatabaseError::SchemaError(format!("Could not serialize metadata: {}", e))
         })?;
@@ -276,7 +275,7 @@ impl ClientProfile {
             let db_profiles: Vec<ClientProfile> = sqlx::query!(
                 r#"
                 SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id,
-                l.loader, sp.loader_version, g.name as game_name, g.id as game_id, lfev.value as "game_version?",
+                l.loader, g.name as game_name, g.id as game_id, sp.metadata,
                 ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users
                 FROM shared_profiles sp                
                 LEFT JOIN loaders l ON l.id = sp.loader_id
@@ -294,11 +293,6 @@ impl ClientProfile {
                         let id = ClientProfileId(m.id);
                         let versions = shared_profiles_mods.0.get(&id).map(|x| x.value().clone()).unwrap_or_default();
                         let files = shared_profiles_mods.1.get(&id).map(|x| x.value().clone()).unwrap_or_default();
-
-                        let game_version = match (m.game_version, m.game_version_id) {
-                            (Some(game_version), Some(game_version_id)) => Some((game_version, LoaderFieldEnumValueId(game_version_id))),
-                            _ => None
-                        };
                         let game_id = GameId(m.game_id);
                         let metadata = serde_json::from_value::<ClientProfileMetadata>(m.metadata).unwrap_or(ClientProfileMetadata::Unknown);
                         ClientProfile {

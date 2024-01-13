@@ -7,6 +7,7 @@ use common::database::*;
 use common::environment::with_test_environment;
 use common::environment::TestEnvironment;
 use labrinth::models::client::profile::ClientProfile;
+use labrinth::models::client::profile::ClientProfileMetadata;
 use labrinth::models::users::UserId;
 use sha2::Digest;
 
@@ -80,10 +81,17 @@ async fn create_modify_profile() {
             .get_client_profile_deserialized(&id, USER_USER_PAT)
             .await;
         let updated = profile.updated; // Save this- it will update when we modify the versions/overrides
-
+        let ClientProfileMetadata::Minecraft {
+            game_version,
+            loader_version,
+        } = profile.game
+        else {
+            panic!("Wrong metadata type")
+        };
         assert_eq!(profile.name, "test");
         assert_eq!(profile.loader, "fabric");
-        assert_eq!(profile.loader_version, "1.0.0");
+        assert_eq!(loader_version, "1.0.0");
+        assert_eq!(game_version, "1.20.1");
         assert_eq!(profile.versions, vec![]);
         assert_eq!(profile.icon_url, None);
 
@@ -147,7 +155,15 @@ async fn create_modify_profile() {
             .await;
         assert_eq!(profile.name, "test");
         assert_eq!(profile.loader, "fabric");
-        assert_eq!(profile.loader_version, "1.0.0");
+        let ClientProfileMetadata::Minecraft {
+            game_version,
+            loader_version,
+        } = profile.game
+        else {
+            panic!("Wrong metadata type")
+        };
+        assert_eq!(loader_version, "1.0.0");
+        assert_eq!(game_version, "1.20.1");
         assert_eq!(profile.versions, vec![]);
         assert_eq!(profile.icon_url, None);
         assert_eq!(profile.updated, updated);
@@ -172,7 +188,15 @@ async fn create_modify_profile() {
             .await;
         assert_eq!(profile.name, "test2");
         assert_eq!(profile.loader, "forge");
-        assert_eq!(profile.loader_version, "1.0.1");
+        let ClientProfileMetadata::Minecraft {
+            game_version,
+            loader_version,
+        } = profile.game
+        else {
+            panic!("Wrong metadata type")
+        };
+        assert_eq!(loader_version, "1.0.1");
+        assert_eq!(game_version, "1.20.1");
         assert_eq!(profile.versions, vec![alpha_version_id_parsed]);
         assert_eq!(profile.icon_url, None);
         assert!(profile.updated > updated);
@@ -199,7 +223,15 @@ async fn create_modify_profile() {
 
         assert_eq!(profile.name, "test3");
         assert_eq!(profile.loader, "fabric");
-        assert_eq!(profile.loader_version, "1.0.0");
+        let ClientProfileMetadata::Minecraft {
+            game_version,
+            loader_version,
+        } = profile.game
+        else {
+            panic!("Wrong metadata type")
+        };
+        assert_eq!(loader_version, "1.0.0");
+        assert_eq!(game_version, "1.20.1");
         assert_eq!(profile.versions, vec![]);
         assert_eq!(profile.icon_url, None);
         assert!(profile.updated > updated);
@@ -271,13 +303,13 @@ async fn accept_share_link() {
             OTHER_FRIEND_USER_PAT,
             MOD_USER_PAT,
             ADMIN_USER_PAT,
-            ENEMY_USER_PAT // If we add a 'max_users' field, this last test could be modified to fail
+            ENEMY_USER_PAT, // If we add a 'max_users' field, this last test could be modified to fail
         ];
         for (i, pat) in dummy_user_pats.iter().enumerate().take(4 + 1) {
             let resp = api
                 .accept_client_profile_share_link(&id, &share_link.url_identifier, *pat)
                 .await;
-            if i == 0 || i == 1  {
+            if i == 0 || i == 1 {
                 assert_status!(&resp, StatusCode::BAD_REQUEST);
             } else {
                 assert_status!(&resp, StatusCode::NO_CONTENT);

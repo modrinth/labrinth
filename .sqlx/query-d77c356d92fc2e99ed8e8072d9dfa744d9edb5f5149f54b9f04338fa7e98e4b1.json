@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE shared_profiles SET metadata = $1 WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d77c356d92fc2e99ed8e8072d9dfa744d9edb5f5149f54b9f04338fa7e98e4b1"
+}

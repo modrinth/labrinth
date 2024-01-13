@@ -269,7 +269,10 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/_internal/client/profile/{}/download", profile_id))
+            .uri(&format!(
+                "/_internal/client/profile/{}/download",
+                profile_id
+            ))
             .append_pat(pat)
             .to_request();
         self.call(req).await

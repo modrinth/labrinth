@@ -37,8 +37,6 @@ pub struct ClientProfile {
 
     /// The loader
     pub loader: String,
-    /// The loader version
-    pub loader_version: String,
 
     /// Game-specific information
     #[serde(flatten)]
@@ -56,10 +54,10 @@ pub struct ClientProfile {
 pub enum ClientProfileMetadata {
     #[serde(rename = "minecraft-java")]
     Minecraft {
-        /// Game Id (constant for Minecraft)
-        game_name: String,
         /// Client game version id
         game_version: String,
+        /// Loader version
+        loader_version: String,
     },
     #[serde(rename = "unknown")]
     Unknown,
@@ -69,11 +67,11 @@ impl From<database::models::client_profile_item::ClientProfileMetadata> for Clie
     fn from(game: database::models::client_profile_item::ClientProfileMetadata) -> Self {
         match game {
             database::models::client_profile_item::ClientProfileMetadata::Minecraft {
-                game_name,
+                loader_version,
                 game_version,
                 ..
             } => Self::Minecraft {
-                game_name,
+                loader_version,
                 game_version,
             },
             database::models::client_profile_item::ClientProfileMetadata::Unknown { .. } => {
@@ -103,8 +101,7 @@ impl ClientProfile {
             icon_url: profile.icon_url,
             users,
             loader: profile.loader,
-            loader_version: profile.loader_version,
-            game: profile.game.into(),
+            game: profile.metadata.into(),
             versions: profile.versions.into_iter().map(Into::into).collect(),
             override_install_paths: profile.overrides.into_iter().map(|(_, v)| v).collect(),
         }
