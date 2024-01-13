@@ -6,14 +6,16 @@ use log::info;
 use std::collections::HashMap;
 
 use super::IndexingError;
-use crate::database::models::{ProjectId, VersionId};
-use crate::database::redis::RedisPool;
+use crate::database::models::loader_fields::{QueryVersionField, VersionField, QueryLoaderFieldEnumValue, QueryLoaderField};
+use crate::database::models::{ProjectId, VersionId, LoaderFieldId, LoaderFieldEnumValueId, LoaderFieldEnumId};
+use crate::models::projects::from_duplicate_version_fields;
+use crate::models::v2::projects::LegacyProject;
+use crate::routes::v2_reroute;
 use crate::search::UploadSearchProject;
 use sqlx::postgres::PgPool;
 
 pub async fn index_local(
     pool: &PgPool,
-    redis: &RedisPool,
 ) -> Result<Vec<UploadSearchProject>, IndexingError> {
     info!("Indexing local projects!");
 
@@ -32,7 +34,6 @@ pub async fn index_local(
         license: String,
     }
 
-    use futures::TryStreamExt;
     let db_projects = sqlx::query!(
         "
         SELECT m.id id, m.name name, m.summary summary, m.downloads downloads, m.follows follows,
@@ -124,33 +125,8 @@ pub async fn index_local(
     )
     .await?;
 
-    struct PartialVersion {
-        id: VersionId,
-    }
-
     info!("Indexing local versions!");
-
-    let versions: DashMap<ProjectId, Vec<PartialVersion>> = sqlx::query!(
-        "
-        SELECT v.id, v.mod_id
-        FROM versions v
-        WHERE mod_id = ANY($1)
-        ",
-        &project_ids,
-    )
-    .fetch(&*pool)
-    .try_fold(
-        DashMap::new(),
-        |acc: DashMap<ProjectId, Vec<PartialVersion>>, m| {
-            acc.entry(ProjectId(m.mod_id))
-                .or_default()
-                .push(PartialVersion {
-                    id: VersionId(m.id),
-                });
-            async move { Ok(acc) }
-        },
-    )
-    .await?;
+    let mut versions = index_versions(pool, project_ids.clone()).await?;
 
     info!("Indexing local org owners!");
 
@@ -191,6 +167,51 @@ pub async fn index_local(
     })
     .await?;
 
+
+    info!("Getting all loader fields!");
+    let loader_fields: Vec<QueryLoaderField> = sqlx::query!(
+        "
+        SELECT DISTINCT id, field, field_type, enum_type, min_val, max_val, optional
+        FROM loader_fields lf
+        ",
+    )
+    .fetch(&*pool)
+    .map_ok(|m| QueryLoaderField {
+        id: LoaderFieldId(m.id),
+        field: m.field,
+        field_type: m.field_type,
+        enum_type: m.enum_type.map(LoaderFieldEnumId),
+        min_val: m.min_val,
+        max_val: m.max_val,
+        optional: m.optional,
+    })
+    .try_collect()
+    .await?;
+    let loader_fields : Vec<&QueryLoaderField> = loader_fields.iter().collect();
+    
+    info!("Getting all loader field enum values!");
+
+
+    let loader_field_enum_values: Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
+        "
+        SELECT DISTINCT id, enum_id, value, ordering, created, metadata
+        FROM loader_field_enum_values lfev
+        ORDER BY enum_id, ordering, created DESC
+        "
+    )
+    .fetch(&*pool)
+    .map_ok(|m| QueryLoaderFieldEnumValue {
+        id: LoaderFieldEnumValueId(m.id),
+        enum_id: LoaderFieldEnumId(m.enum_id),
+        value: m.value,
+        ordering: m.ordering,
+        created: m.created,
+        metadata: m.metadata,
+    })
+    .try_collect()
+    .await?;
+
+    info!("Indexing loaders, project types!");
     let mut uploads = Vec::new();
 
     let total_len = db_projects.len();
@@ -222,7 +243,7 @@ pub async fn index_local(
         };
 
         let (featured_gallery, gallery) =
-            if let Some((_, mut gallery)) = mods_gallery.remove(&project.id) {
+            if let Some((_, gallery)) = mods_gallery.remove(&project.id) {
                 let mut vals = Vec::new();
                 let mut featured = None;
 
@@ -243,7 +264,7 @@ pub async fn index_local(
             };
 
         let (categories, display_categories) =
-            if let Some((_, mut categories)) = categories.remove(&project.id) {
+            if let Some((_, categories)) = categories.remove(&project.id) {
                 let mut vals = Vec::new();
                 let mut featured_vals = Vec::new();
 
@@ -259,8 +280,73 @@ pub async fn index_local(
                 (vec![], vec![])
             };
 
-        if let Some((_, versions)) = versions.remove(&project.id) {
+            
+        if let Some(versions) = versions.remove(&project.id) {
+            // Aggregated project loader fields
+            let project_version_fields = versions.iter().flat_map(|x| x.version_fields.clone()).collect::<Vec<_>>();
+            let aggregated_version_fields = VersionField::from_query_json(project_version_fields, &loader_fields, &loader_field_enum_values, true);
+            let project_loader_fields = from_duplicate_version_fields(aggregated_version_fields);
+
+            // aggregated project loaders
+            let project_loaders = versions.iter().flat_map(|x| x.loaders.clone()).collect::<Vec<_>>();
+        
             for version in versions {
+                let version_fields = VersionField::from_query_json(version.version_fields, &loader_fields, &loader_field_enum_values, false);
+                let unvectorized_loader_fields = version_fields
+                .iter()
+                .map(|vf| (vf.field_name.clone(), vf.value.serialize_internal()))
+                .collect();
+                let mut loader_fields = from_duplicate_version_fields(version_fields);
+                let project_types = version.project_types;
+
+                let mut version_loaders = version.loaders;
+
+                // Uses version loaders, not project loaders.
+                let mut categories = categories.clone();
+                categories.append(&mut version_loaders.clone());
+
+                let display_categories = display_categories.clone();
+                categories.append(&mut version_loaders);
+
+
+                // SPECIAL BEHAVIOUR
+                // Todo: revisit.
+                // For consistency with v2 searching, we consider the loader field 'mrpack_loaders' to be a category.
+                // These were previously considered the loader, and in v2, the loader is a category for searching.
+                // So to avoid breakage or awkward conversions, we just consider those loader_fields to be categories.
+                // The loaders are kept in loader_fields as well, so that no information is lost on retrieval.
+                let mrpack_loaders = loader_fields
+                .get("mrpack_loaders")
+                .cloned()
+                .map(|x| {
+                    x.into_iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+                categories.extend(mrpack_loaders);
+                if loader_fields.contains_key("mrpack_loaders") {
+                    categories.retain(|x| *x != "mrpack");
+                }
+
+                // SPECIAL BEHAVIOUR:
+                // For consitency with v2 searching, we manually input the
+                // client_side and server_side fields from the loader fields into
+                // separate loader fields.
+                // 'client_side' and 'server_side' remain supported by meilisearch even though they are no longer v3 fields.
+                let (_, v2_og_project_type) = LegacyProject::get_project_type(&project_types);
+                let (client_side, server_side) = v2_reroute::convert_side_types_v2(
+                    &unvectorized_loader_fields,
+                    Some(&v2_og_project_type),
+                );
+
+                if let Ok(client_side) = serde_json::to_value(client_side) {
+                    loader_fields.insert("client_side".to_string(), vec![client_side]);
+                }
+                if let Ok(server_side) = serde_json::to_value(server_side) {
+                    loader_fields.insert("server_side".to_string(), vec![server_side]);
+                }
+
                 let usp = UploadSearchProject {
                     version_id: crate::models::ids::VersionId::from(version.id).to_string(),
                     project_id: crate::models::ids::ProjectId::from(project.id).to_string(),
@@ -279,19 +365,15 @@ pub async fn index_local(
                     license: license.clone(),
                     slug: project.slug.clone(),
                     // TODO
-                    project_types: vec![],
+                    project_types,
                     gallery: gallery.clone(),
                     featured_gallery: featured_gallery.clone(),
                     open_source,
                     color: project.color.map(|x| x as u32),
-                    // TODO
-                    loader_fields: HashMap::new(),
-                    // TODO
-                    project_loader_fields: HashMap::new(),
-                    // TODO
-                    loaders: vec![],
-                    // TODO
-                    versions: vec![],
+                    loader_fields,
+                    project_loader_fields: project_loader_fields.clone(),
+                    // 'loaders' is aggregate of all versions' loaders
+                    loaders: project_loaders.clone(),
                 };
 
                 uploads.push(usp);
@@ -300,4 +382,133 @@ pub async fn index_local(
     }
 
     Ok(uploads)
+}
+
+struct PartialVersion {
+    id: VersionId,
+    loaders: Vec<String>,
+    project_types: Vec<String>,
+    version_fields: Vec<QueryVersionField>,
+}
+
+async fn index_versions(
+    pool: &PgPool,
+    project_ids: Vec<i64>,
+) -> Result<HashMap<ProjectId, Vec<PartialVersion>>, IndexingError> {
+    let versions: HashMap<ProjectId, Vec<VersionId>> = sqlx::query!(
+        "
+        SELECT v.id, v.mod_id
+        FROM versions v
+        WHERE mod_id = ANY($1)
+        ",
+        &project_ids,
+    )
+    .fetch(&*pool)
+    .try_fold(
+        HashMap::new(),
+        |mut acc: HashMap<ProjectId, Vec<VersionId>>, m| {
+            acc.entry(ProjectId(m.mod_id))
+                .or_default()
+                .push(VersionId(m.id));
+            async move { Ok(acc) }
+        },
+    )
+    .await?;
+
+    // Get project types, loaders
+    #[derive(Default)]
+    struct VersionLoaderData {
+        loaders: Vec<String>,
+        project_types: Vec<String>,
+    }
+
+    let all_version_ids = versions
+        .iter()
+        .flat_map(|(_, version_ids)| version_ids.iter())
+        .map(|x| x.0)
+        .collect::<Vec<i64>>();
+
+    let loaders_ptypes: DashMap<VersionId, VersionLoaderData> = sqlx::query!(
+        "
+        SELECT DISTINCT version_id,
+            ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
+            ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types
+        FROM versions v
+        INNER JOIN loaders_versions lv ON v.id = lv.version_id
+        INNER JOIN loaders l ON lv.loader_id = l.id
+        INNER JOIN loaders_project_types lpt ON lpt.joining_loader_id = l.id
+        INNER JOIN project_types pt ON pt.id = lpt.joining_project_type_id
+        WHERE v.id = ANY($1)
+        GROUP BY version_id
+        ",
+        &all_version_ids
+    ).fetch(&*pool)
+    .map_ok(|m| {
+        let version_id = VersionId(m.version_id);
+
+        let version_loader_data = VersionLoaderData {
+            loaders: m.loaders.unwrap_or_default(),
+            project_types: m.project_types.unwrap_or_default(),
+        };
+        (version_id,version_loader_data)
+
+        }
+    ).try_collect().await?;
+
+    // Get version fields
+    let version_fields: DashMap<VersionId, Vec<QueryVersionField>> = sqlx::query!(
+        "
+        SELECT version_id, field_id, int_value, enum_value, string_value
+        FROM version_fields
+        WHERE version_id = ANY($1)
+        ",
+        &all_version_ids,
+    )
+    .fetch(&*pool)
+    .try_fold(
+        DashMap::new(),
+        |acc: DashMap<VersionId, Vec<QueryVersionField>>, m| {
+            let qvf = QueryVersionField {
+                version_id: VersionId(m.version_id),
+                field_id: LoaderFieldId(m.field_id),
+                int_value: m.int_value,
+                enum_value: m.enum_value.map(LoaderFieldEnumValueId),
+                string_value: m.string_value,
+            };
+
+            acc.entry(VersionId(m.version_id)).or_default().push(qvf);
+            async move { Ok(acc) }
+        },
+    )
+    .await?;
+
+    // Convert to partial versions
+    let mut res_versions: HashMap<ProjectId, Vec<PartialVersion>> = HashMap::new();
+    for (project_id, version_ids) in versions.iter() {
+        for version_id in version_ids {
+            // Extract version-specific data fetched
+            // We use 'remove' as every version is only in the map once
+            let version_loader_data = loaders_ptypes
+                .remove(version_id)
+                .map(|(_, version_loader_data)| version_loader_data)
+                .unwrap_or_default();
+
+            let version_fields = version_fields
+                .remove(version_id)
+                .map(|(_, version_fields)| version_fields)
+                .unwrap_or_default();
+
+            res_versions
+                .entry(project_id.clone())
+                .or_default()
+                .push(PartialVersion {
+                    id: version_id.clone(),
+                    loaders: version_loader_data.loaders,
+                    project_types: version_loader_data.project_types,
+                    version_fields,
+                });
+        }
+    }
+
+    Ok(res_versions)
 }

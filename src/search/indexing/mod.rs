@@ -30,9 +30,7 @@ pub enum IndexingError {
 // The chunk size for adding projects to the indexing database. If the request size
 // is too large (>10MiB) then the request fails with an error.  This chunk size
 // assumes a max average size of 4KiB per project to avoid this cap.
-const MEILISEARCH_CHUNK_SIZE: usize = 10000000; // Should be less than FETCH_PROJECT_SIZE
-const FETCH_PROJECT_SIZE: usize = 5000;
-
+const MEILISEARCH_CHUNK_SIZE: usize = 10000000;
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub async fn remove_documents(
@@ -66,7 +64,7 @@ pub async fn index_projects(
             .map(|x| x.field)
             .collect::<Vec<_>>();
 
-    let uploads = index_local(&pool, &redis).await?;
+    let uploads = index_local(&pool).await?;
     add_projects(&indices, uploads, all_loader_fields.clone(), config).await?;
 
     info!("Done adding projects.");

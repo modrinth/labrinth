@@ -119,7 +119,6 @@ pub struct UploadSearchProject {
     pub color: Option<u32>,
 
     // Hidden fields to get the Project model out of the search results.
-    pub versions: Vec<String>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
     pub project_loader_fields: HashMap<String, Vec<serde_json::Value>>, // Aggregation of loader_fields from all versions of the project, allowing for reconstruction of the Project model.
 
@@ -159,7 +158,6 @@ pub struct ResultSearchProject {
     pub color: Option<u32>,
 
     // Hidden fields to get the Project model out of the search results.
-    pub versions: Vec<String>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
     pub project_loader_fields: HashMap<String, Vec<serde_json::Value>>, // Aggregation of loader_fields from all versions of the project, allowing for reconstruction of the Project model.
 

@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use super::ids::base62_impl::parse_base62;
 use super::ids::{Base62Id, OrganizationId};
 use super::teams::TeamId;
 use super::users::UserId;
@@ -8,9 +7,7 @@ use crate::database::models::loader_fields::VersionField;
 use crate::database::models::project_item::{LinkUrl, QueryProject};
 use crate::database::models::version_item::QueryVersion;
 use crate::models::threads::ThreadId;
-use crate::search::ResultSearchProject;
 use chrono::{DateTime, Utc};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 

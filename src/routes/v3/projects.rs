@@ -893,13 +893,14 @@ pub async fn edit_project_categories(
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ReturnSearchResults {
-    pub hits: Vec<Project>,
-    pub page: usize,
-    pub hits_per_page: usize,
-    pub total_hits: usize,
-}
+// TODO: Re-add this if we want to match v3 Projects structure to v3 Search Result structure, otherwise, delete
+// #[derive(Serialize, Deserialize)]
+// pub struct ReturnSearchResults {
+//     pub hits: Vec<Project>,
+//     pub page: usize,
+//     pub hits_per_page: usize,
+//     pub total_hits: usize,
+// }
 
 pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
