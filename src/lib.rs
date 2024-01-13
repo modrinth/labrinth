@@ -47,7 +47,7 @@ pub struct LabrinthConfig {
     pub maxmind: Arc<queue::maxmind::MaxMindIndexer>,
     pub scheduler: Arc<Scheduler>,
     pub ip_salt: Pepper,
-    pub search_config: search::SearchConfig,
+    pub search_config: Arc<search::SearchConfig>,
     pub session_queue: web::Data<AuthQueue>,
     pub payouts_queue: web::Data<PayoutsQueue>,
     pub analytics_queue: Arc<AnalyticsQueue>,
@@ -57,7 +57,7 @@ pub struct LabrinthConfig {
 pub fn app_setup(
     pool: sqlx::Pool<Postgres>,
     redis_pool: RedisPool,
-    search_config: search::SearchConfig,
+    search_config: Arc<search::SearchConfig>,
     clickhouse: &mut Client,
     file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
     maxmind: Arc<queue::maxmind::MaxMindIndexer>,

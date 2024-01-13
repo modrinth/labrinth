@@ -5,7 +5,6 @@ use itertools::Itertools;
 use std::collections::HashMap;
 
 use crate::database::redis::RedisPool;
-use crate::models::ids::base62_impl::to_base62;
 use crate::search::{SearchConfig, UploadSearchProject};
 use local_import::index_local;
 use log::info;
@@ -41,21 +40,6 @@ const FETCH_PROJECT_SIZE: usize = 5000;
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
-pub async fn remove_documents(
-    ids: &[crate::models::ids::VersionId],
-    config: &SearchConfig,
-) -> Result<(), meilisearch_sdk::errors::Error> {
-    let indexes = get_indexes(config).await?;
-
-    for index in indexes {
-        index
-            .delete_documents(&ids.iter().map(|x| to_base62(x.0)).collect::<Vec<_>>())
-            .await?;
-    }
-
-    Ok(())
-}
-
 pub async fn index_projects(
     pool: PgPool,
     redis: RedisPool,
@@ -63,7 +47,9 @@ pub async fn index_projects(
 ) -> Result<(), IndexingError> {
     info!("Indexing projects.");
 
-    let indices = get_indexes(config).await?;
+    // First, ensure current index exists (so no error happens- current index should be worst-case empty, not missing)
+    let old_indices = get_indexes_for_indexing(config, false).await?;
+    let indices = get_indexes_for_indexing(config, true).await?;
 
     let all_loader_fields =
         crate::database::models::loader_fields::LoaderField::get_fields_all(&pool, &redis)
@@ -75,7 +61,6 @@ pub async fn index_projects(
     let all_ids = get_all_ids(pool.clone()).await?;
     let all_ids_len = all_ids.len();
     info!("Got all ids, indexing {} projects", all_ids_len);
-
     let mut so_far = 0;
     let as_chunks: Vec<_> = all_ids
         .into_iter()
@@ -106,16 +91,25 @@ pub async fn index_projects(
         add_projects(&indices, uploads, all_loader_fields.clone(), config).await?;
     }
 
+    // Swap the index
+    config.swap_index();
+
+    // Delete the old index
+    for index in old_indices {
+        index.delete().await?;
+    }
+
     info!("Done adding projects.");
     Ok(())
 }
 
-pub async fn get_indexes(
+pub async fn get_indexes_for_indexing(
     config: &SearchConfig,
+    next: bool, // Get the 'next' one
 ) -> Result<Vec<Index>, meilisearch_sdk::errors::Error> {
     let client = config.make_client();
-    let project_name = config.get_index_name("projects");
-    let project_filtered_name = config.get_index_name("projects_filtered");
+    let project_name = config.get_index_name("projects", next);
+    let project_filtered_name = config.get_index_name("projects_filtered", next);
     let projects_index = create_or_update_index(&client, &project_name, None).await?;
     let projects_filtered_index = create_or_update_index(
         &client,
@@ -139,7 +133,7 @@ async fn create_or_update_index(
     name: &str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, meilisearch_sdk::errors::Error> {
-    info!("Updating/creating index.");
+    info!("Updating/creating index {}", name);
 
     match client.get_index(name).await {
         Ok(index) => {

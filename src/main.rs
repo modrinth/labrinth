@@ -93,7 +93,7 @@ async fn main() -> std::io::Result<()> {
         .build()
         .expect("Failed to create prometheus metrics middleware");
 
-    let search_config = search::SearchConfig::new(None);
+    let search_config = Arc::new(search::SearchConfig::new(None));
     info!("Starting Actix HTTP server!");
 
     let labrinth_config = labrinth::app_setup(
