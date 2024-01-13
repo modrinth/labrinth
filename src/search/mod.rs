@@ -11,7 +11,6 @@ use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::sync::atomic::AtomicU64;
 use thiserror::Error;
 
 pub mod indexing;
@@ -64,9 +63,6 @@ pub struct SearchConfig {
     pub address: String,
     pub key: String,
     pub meta_namespace: String,
-
-    pub swap_index_id: AtomicU64,
-    pub max_swap: u64,
 }
 
 impl SearchConfig {
@@ -75,15 +71,11 @@ impl SearchConfig {
     pub fn new(meta_namespace: Option<String>) -> Self {
         let address = dotenvy::var("MEILISEARCH_ADDR").expect("MEILISEARCH_ADDR not set");
         let key = dotenvy::var("MEILISEARCH_KEY").expect("MEILISEARCH_KEY not set");
-        let swap_index_id = AtomicU64::new(0);
 
         Self {
             address,
             key,
             meta_namespace: meta_namespace.unwrap_or_default(),
-            swap_index_id,
-            max_swap: 2, // Number of indices to swap between
-                         // TODO: make env var
         }
     }
 
@@ -93,32 +85,8 @@ impl SearchConfig {
 
     // Next: true if we want the next index (we are preparing the next swap), false if we want the current index (searching)
     pub fn get_index_name(&self, index: &str, next: bool) -> String {
-        let alt = if next { 1 } else { 0 };
-        let index_id = self
-            .swap_index_id
-            .load(std::sync::atomic::Ordering::Relaxed);
-        println!(
-            "Getting index name: {}_{}_{}",
-            self.meta_namespace,
-            index,
-            (index_id + alt) % self.max_swap
-        );
-        format!(
-            "{}_{}_{}",
-            self.meta_namespace,
-            index,
-            (index_id + alt) % self.max_swap
-        )
-    }
-
-    pub fn swap_index(&self) {
-        let index_id = self
-            .swap_index_id
-            .load(std::sync::atomic::Ordering::Relaxed);
-        self.swap_index_id.store(
-            (index_id + 1) % self.max_swap,
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        let alt = if next { "_alt" } else { "" };
+        format!("{}_{}_{}", self.meta_namespace, index, alt)
     }
 }
 
@@ -231,9 +199,6 @@ pub fn get_sort_index(
 ) -> Result<(String, [&'static str; 1]), SearchError> {
     let projects_name = config.get_index_name("projects", false);
     let projects_filtered_name = config.get_index_name("projects_filtered", false);
-    println!("Getting sort index: {}", index);
-    println!("Projects name: {}", projects_name);
-    println!("Projects filtered name: {}", projects_filtered_name);
     Ok(match index {
         "relevance" => (projects_name, ["downloads:desc"]),
         "downloads" => (projects_filtered_name, ["downloads:desc"]),

@@ -2,6 +2,7 @@
 pub mod local_import;
 
 use itertools::Itertools;
+use meilisearch_sdk::SwapIndexes;
 use std::collections::HashMap;
 
 use crate::database::redis::RedisPool;
@@ -48,7 +49,14 @@ pub async fn index_projects(
     info!("Indexing projects.");
 
     // First, ensure current index exists (so no error happens- current index should be worst-case empty, not missing)
-    let old_indices = get_indexes_for_indexing(config, false).await?;
+    get_indexes_for_indexing(config, false).await?;
+
+    // Then, delete the next index if it still exists
+    let indices = get_indexes_for_indexing(config, true).await?;
+    for index in indices {
+        index.delete().await?;
+    }
+    // Recreate the next index for indexing
     let indices = get_indexes_for_indexing(config, true).await?;
 
     let all_loader_fields =
@@ -92,14 +100,31 @@ pub async fn index_projects(
     }
 
     // Swap the index
-    config.swap_index();
+    swap_index(config, "projects").await?;
+    swap_index(config, "projects_filtered").await?;
 
-    // Delete the old index
-    for index in old_indices {
+    // Delete the now-old index
+    for index in indices {
         index.delete().await?;
     }
 
     info!("Done adding projects.");
+    Ok(())
+}
+
+pub async fn swap_index(config: &SearchConfig, index_name: &str) -> Result<(), IndexingError> {
+    let client = config.make_client();
+    let index_name_next = config.get_index_name(index_name, true);
+    let index_name = config.get_index_name(index_name, false);
+    let swap_indices = SwapIndexes {
+        indexes: (index_name_next, index_name),
+    };
+    client
+        .swap_indexes([&swap_indices])
+        .await?
+        .wait_for_completion(&client, None, Some(TIMEOUT))
+        .await?;
+
     Ok(())
 }
 
