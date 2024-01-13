@@ -74,22 +74,22 @@ pub fn app_setup(
     let local_index_interval =
         std::time::Duration::from_secs(parse_var("LOCAL_INDEX_INTERVAL").unwrap_or(3600));
 
-    // let pool_ref = pool.clone();
-    // let search_config_ref = search_config.clone();
-    // let redis_pool_ref = redis_pool.clone();
-    // scheduler.run(local_index_interval, move || {
-    //     let pool_ref = pool_ref.clone();
-    //     let redis_pool_ref = redis_pool_ref.clone();
-    //     let search_config_ref = search_config_ref.clone();
-    //     async move {
-    //         info!("Indexing local database");
-    //         let result = index_projects(pool_ref, redis_pool_ref.clone(), &search_config_ref).await;
-    //         if let Err(e) = result {
-    //             warn!("Local project indexing failed: {:?}", e);
-    //         }
-    //         info!("Done indexing local database");
-    //     }
-    // });
+    let pool_ref = pool.clone();
+    let search_config_ref = search_config.clone();
+    let redis_pool_ref = redis_pool.clone();
+    scheduler.run(local_index_interval, move || {
+        let pool_ref = pool_ref.clone();
+        let redis_pool_ref = redis_pool_ref.clone();
+        let search_config_ref = search_config_ref.clone();
+        async move {
+            info!("Indexing local database");
+            let result = index_projects(pool_ref, redis_pool_ref.clone(), &search_config_ref).await;
+            if let Err(e) = result {
+                warn!("Local project indexing failed: {:?}", e);
+            }
+            info!("Done indexing local database");
+        }
+    });
 
     // Changes statuses of scheduled projects/versions
     let pool_ref = pool.clone();
