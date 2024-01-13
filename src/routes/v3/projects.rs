@@ -907,16 +907,17 @@ pub async fn project_search(
 ) -> Result<HttpResponse, SearchError> {
     let results = search_for_project(&info, &config).await?;
 
-    let results = ReturnSearchResults {
-        hits: results
-            .hits
-            .into_iter()
-            .filter_map(Project::from_search)
-            .collect::<Vec<_>>(),
-        page: results.page,
-        hits_per_page: results.hits_per_page,
-        total_hits: results.total_hits,
-    };
+    // TODO: add this back
+    // let results = ReturnSearchResults {
+    //     hits: results
+    //         .hits
+    //         .into_iter()
+    //         .filter_map(Project::from_search)
+    //         .collect::<Vec<_>>(),
+    //     page: results.page,
+    //     hits_per_page: results.hits_per_page,
+    //     total_hits: results.total_hits,
+    // };
 
     Ok(HttpResponse::Ok().json(results))
 }

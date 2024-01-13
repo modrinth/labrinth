@@ -1,9 +1,6 @@
 /// This module is used for the indexing from any source.
 pub mod local_import;
 
-use itertools::Itertools;
-use std::collections::HashMap;
-
 use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::to_base62;
 use crate::search::{SearchConfig, UploadSearchProject};
@@ -14,9 +11,6 @@ use meilisearch_sdk::indexes::Index;
 use meilisearch_sdk::settings::{PaginationSetting, Settings};
 use sqlx::postgres::PgPool;
 use thiserror::Error;
-
-use self::local_import::get_all_ids;
-
 #[derive(Error, Debug)]
 pub enum IndexingError {
     #[error("Error while connecting to the MeiliSearch database")]
@@ -36,7 +30,7 @@ pub enum IndexingError {
 // The chunk size for adding projects to the indexing database. If the request size
 // is too large (>10MiB) then the request fails with an error.  This chunk size
 // assumes a max average size of 4KiB per project to avoid this cap.
-const MEILISEARCH_CHUNK_SIZE: usize = 2500; // Should be less than FETCH_PROJECT_SIZE
+const MEILISEARCH_CHUNK_SIZE: usize = 10000000; // Should be less than FETCH_PROJECT_SIZE
 const FETCH_PROJECT_SIZE: usize = 5000;
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
@@ -72,39 +66,8 @@ pub async fn index_projects(
             .map(|x| x.field)
             .collect::<Vec<_>>();
 
-    let all_ids = get_all_ids(pool.clone()).await?;
-    let all_ids_len = all_ids.len();
-    info!("Got all ids, indexing {} projects", all_ids_len);
-
-    let mut so_far = 0;
-    let as_chunks: Vec<_> = all_ids
-        .into_iter()
-        .chunks(FETCH_PROJECT_SIZE)
-        .into_iter()
-        .map(|x| x.collect::<Vec<_>>())
-        .collect();
-
-    for id_chunk in as_chunks {
-        info!(
-            "Fetching chunk {}-{}/{}, size: {}",
-            so_far,
-            so_far + FETCH_PROJECT_SIZE,
-            all_ids_len,
-            id_chunk.len()
-        );
-        so_far += FETCH_PROJECT_SIZE;
-
-        let id_chunk = id_chunk
-            .into_iter()
-            .map(|(version_id, project_id, owner_username)| {
-                (version_id, (project_id, owner_username))
-            })
-            .collect::<HashMap<_, _>>();
-        let uploads = index_local(&pool, &redis, id_chunk).await?;
-
-        info!("Got chunk, adding to docs_to_add");
-        add_projects(&indices, uploads, all_loader_fields.clone(), config).await?;
-    }
+    let uploads = index_local(&pool, &redis).await?;
+    add_projects(&indices, uploads, all_loader_fields.clone(), config).await?;
 
     info!("Done adding projects.");
     Ok(())
