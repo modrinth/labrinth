@@ -10,8 +10,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
     models::{organizations::Organization, projects::Project},
-    routes::v3::projects::ReturnSearchResults,
-    util::actix::AppendsMultipart,
+    util::actix::AppendsMultipart, search::SearchResults,
 };
 use rust_decimal::Decimal;
 use serde_json::json;
@@ -511,7 +510,7 @@ impl ApiV3 {
         query: Option<&str>,
         facets: Option<serde_json::Value>,
         pat: Option<&str>,
-    ) -> ReturnSearchResults {
+    ) -> SearchResults {
         let query_field = if let Some(query) = query {
             format!("&query={}", urlencoding::encode(query))
         } else {
