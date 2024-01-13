@@ -101,7 +101,7 @@ async fn create_modify_profile() {
             .await;
         assert_status!(&resp, StatusCode::BAD_REQUEST);
 
-        // Currently fake version for loader is not checked
+        // TODO: Currently fake version for loader is not checked
         // let resp = api
         //     .edit_client_profile(
         //         &profile.id.to_string(),
@@ -264,20 +264,20 @@ async fn accept_share_link() {
         assert_eq!(users[0].0, USER_USER_ID_PARSED as u64);
         assert_eq!(users[1].0, FRIEND_USER_ID_PARSED as u64);
 
-        // Add all of test dummy users until we hit the limit, the last one should fail
+        // Add all of test dummy users until we hit the limit
         let dummy_user_pats = [
             USER_USER_PAT,   // Fails because owner (and already added)
             FRIEND_USER_PAT, // Fails because already added
             OTHER_FRIEND_USER_PAT,
             MOD_USER_PAT,
             ADMIN_USER_PAT,
-            ENEMY_USER_PAT, // Fails because too many users
+            ENEMY_USER_PAT // If we add a 'max_users' field, this last test could be modified to fail
         ];
         for (i, pat) in dummy_user_pats.iter().enumerate().take(4 + 1) {
             let resp = api
                 .accept_client_profile_share_link(&id, &share_link.url_identifier, *pat)
                 .await;
-            if i == 0 || i == 1 || i == 6 {
+            if i == 0 || i == 1  {
                 assert_status!(&resp, StatusCode::BAD_REQUEST);
             } else {
                 assert_status!(&resp, StatusCode::NO_CONTENT);

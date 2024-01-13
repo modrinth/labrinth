@@ -7,7 +7,7 @@ use crate::database::models::{
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::client::profile::{
-    ClientProfile, ClientProfileId, ClientProfileShareLink, DEFAULT_PROFILE_MAX_USERS,
+    ClientProfile, ClientProfileId, ClientProfileShareLink,
 };
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::{UserId, VersionId};
@@ -118,7 +118,7 @@ pub async fn profile_create(
         .validate()
         .map_err(|err| CreateError::InvalidInput(validation_errors_to_string(err, None)))?;
 
-    let game: client_profile_item::ClientProfileGame = match profile_create_data.game {
+    let game: client_profile_item::ClientProfileMetadata = match profile_create_data.game {
         ProfileCreateDataGame::MinecraftJava { game_version } => {
             let game = database::models::loader_fields::Game::get_slug(
                 "minecraft-java",
@@ -137,7 +137,7 @@ pub async fn profile_create(
                 })?
                 .id;
 
-            client_profile_item::ClientProfileGame::Minecraft {
+            client_profile_item::ClientProfileMetadata::Minecraft {
                 game_id: game.id,
                 game_name: "minecraft-java".to_string(),
                 game_version_id,
@@ -191,7 +191,6 @@ pub async fn profile_create(
         loader_id,
         loader: profile_create_data.loader,
         loader_version: profile_create_data.loader_version,
-        maximum_users: DEFAULT_PROFILE_MAX_USERS as i32,
         users: vec![current_user.id.into()],
         versions,
         overrides: Vec::new(),
@@ -665,13 +664,6 @@ pub async fn accept_share_link(
     if data.users.iter().any(|x| *x == user_option.1.id.into()) {
         return Err(ApiError::InvalidInput(
             "You are already on this profile's team".to_string(),
-        ));
-    }
-
-    // Confirm we are not over the maximum users
-    if data.maximum_users <= data.users.len() as i32 {
-        return Err(ApiError::InvalidInput(
-            "This profile has too many users".to_string(),
         ));
     }
 

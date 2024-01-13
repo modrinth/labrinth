@@ -7,10 +7,8 @@ CREATE TABLE shared_profiles (
     updated timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    maximum_users integer NOT NULL,
-
     loader_id int NOT NULL REFERENCES loaders(id), 
-    loader_version varchar(255) NOT NULL,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
 
     game_id int NOT NULL REFERENCES games(id),
     game_version_id int NULL REFERENCES loader_field_enum_values(id) -- Minecraft java

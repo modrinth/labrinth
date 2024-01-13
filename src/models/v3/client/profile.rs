@@ -8,9 +8,6 @@ use crate::{
     models::ids::{Base62Id, UserId, VersionId},
 };
 
-// How many uses should a share link have before it becomes invalid?
-pub const DEFAULT_PROFILE_MAX_USERS: u32 = 5;
-
 /// The ID of a specific profile, encoded as base62 for usage in the API
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(from = "Base62Id")]
@@ -34,8 +31,6 @@ pub struct ClientProfile {
     /// The icon of the project.
     pub icon_url: Option<String>,
 
-    // Maximum number of users that can be associated with this profile
-    pub max_users: u32,
     // Users that are associated with this profile
     // Hidden if the user is not the owner
     pub users: Option<Vec<UserId>>,
@@ -47,7 +42,7 @@ pub struct ClientProfile {
 
     /// Game-specific information
     #[serde(flatten)]
-    pub game: ClientProfileGame,
+    pub game: ClientProfileMetadata,
 
     /// Modrinth-associated versions
     pub versions: Vec<VersionId>,
@@ -58,7 +53,7 @@ pub struct ClientProfile {
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(tag = "game")]
-pub enum ClientProfileGame {
+pub enum ClientProfileMetadata {
     #[serde(rename = "minecraft-java")]
     Minecraft {
         /// Game Id (constant for Minecraft)
@@ -70,10 +65,10 @@ pub enum ClientProfileGame {
     Unknown,
 }
 
-impl From<database::models::client_profile_item::ClientProfileGame> for ClientProfileGame {
-    fn from(game: database::models::client_profile_item::ClientProfileGame) -> Self {
+impl From<database::models::client_profile_item::ClientProfileMetadata> for ClientProfileMetadata {
+    fn from(game: database::models::client_profile_item::ClientProfileMetadata) -> Self {
         match game {
-            database::models::client_profile_item::ClientProfileGame::Minecraft {
+            database::models::client_profile_item::ClientProfileMetadata::Minecraft {
                 game_name,
                 game_version,
                 ..
@@ -81,7 +76,7 @@ impl From<database::models::client_profile_item::ClientProfileGame> for ClientPr
                 game_name,
                 game_version,
             },
-            database::models::client_profile_item::ClientProfileGame::Unknown { .. } => {
+            database::models::client_profile_item::ClientProfileMetadata::Unknown { .. } => {
                 Self::Unknown
             }
         }
@@ -106,7 +101,6 @@ impl ClientProfile {
             created: profile.created,
             updated: profile.updated,
             icon_url: profile.icon_url,
-            max_users: profile.maximum_users as u32,
             users,
             loader: profile.loader,
             loader_version: profile.loader_version,

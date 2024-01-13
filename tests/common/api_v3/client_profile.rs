@@ -9,7 +9,7 @@ use bytes::Bytes;
 use itertools::Itertools;
 use labrinth::{
     models::client::profile::{ClientProfile, ClientProfileShareLink},
-    routes::v3::client::profiles::ProfileDownload,
+    routes::internal::client::profiles::ProfileDownload,
     util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData},
 };
 use serde_json::json;
@@ -50,7 +50,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = test::TestRequest::post()
-            .uri("/v3/client/profile")
+            .uri("/_internal/client/profile")
             .append_pat(pat)
             .set_json(json!({
                 "name": name,
@@ -76,7 +76,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = test::TestRequest::patch()
-            .uri(&format!("/v3/client/profile/{}", id))
+            .uri(&format!("/_internal/client/profile/{}", id))
             .append_pat(pat)
             .set_json(json!({
                 "name": name,
@@ -91,7 +91,7 @@ impl ApiV3 {
 
     pub async fn get_client_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/client/profile/{}", id))
+            .uri(&format!("/_internal/client/profile/{}", id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
@@ -109,7 +109,7 @@ impl ApiV3 {
 
     pub async fn delete_client_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
         let req = TestRequest::delete()
-            .uri(&format!("/v3/client/profile/{}", id))
+            .uri(&format!("/_internal/client/profile/{}", id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
@@ -124,7 +124,7 @@ impl ApiV3 {
         if let Some(icon) = icon {
             let req = TestRequest::patch()
                 .uri(&format!(
-                    "/v3/client/profile/{}/icon?ext={}",
+                    "/_internal/client/profile/{}/icon?ext={}",
                     id, icon.extension
                 ))
                 .append_pat(pat)
@@ -133,7 +133,7 @@ impl ApiV3 {
             self.call(req).await
         } else {
             let req = TestRequest::delete()
-                .uri(&format!("/v3/client/profile/{}/icon", id))
+                .uri(&format!("/_internal/client/profile/{}/icon", id))
                 .append_pat(pat)
                 .to_request();
             self.call(req).await
@@ -170,7 +170,7 @@ impl ApiV3 {
         .collect_vec();
 
         let req = TestRequest::post()
-            .uri(&format!("/v3/client/profile/{}/override", id))
+            .uri(&format!("/_internal/client/profile/{}/override", id))
             .append_pat(pat)
             .set_multipart(multipart_segments)
             .to_request();
@@ -185,7 +185,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::delete()
-            .uri(&format!("/v3/client/profile/{}/override", id))
+            .uri(&format!("/_internal/client/profile/{}/override", id))
             .set_json(json!({
                 "install_paths": install_paths,
                 "hashes": hashes
@@ -201,7 +201,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/client/profile/{}/share", id))
+            .uri(&format!("/_internal/client/profile/{}/share", id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
@@ -225,7 +225,7 @@ impl ApiV3 {
     ) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!(
-                "/v3/client/profile/{}/share/{}",
+                "/_internal/client/profile/{}/share/{}",
                 profile_id, url_identifier
             ))
             .append_pat(pat)
@@ -254,7 +254,7 @@ impl ApiV3 {
     ) -> ServiceResponse {
         let req = TestRequest::post()
             .uri(&format!(
-                "/v3/client/profile/{}/accept/{}",
+                "/_internal/client/profile/{}/accept/{}",
                 profile_id, url_identifier
             ))
             .append_pat(pat)
@@ -269,7 +269,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!("/v3/client/profile/{}/download", profile_id))
+            .uri(&format!("/_internal/client/profile/{}/download", profile_id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
@@ -292,7 +292,7 @@ impl ApiV3 {
     ) -> ServiceResponse {
         let req = TestRequest::get()
             .uri(&format!(
-                "/v3/client/check_token?url={url}",
+                "/_internal/client/check_token?url={url}",
                 url = urlencoding::encode(url)
             ))
             .append_pat(pat)

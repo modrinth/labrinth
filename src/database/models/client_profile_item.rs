@@ -22,11 +22,10 @@ pub struct ClientProfile {
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
 
-    pub game: ClientProfileGame,
+    pub game_id: GameId,
+    pub game_name: String,
+    pub metadata: ClientProfileMetadata,
 
-    pub loader_version: String,
-
-    pub maximum_users: i32,
     pub users: Vec<UserId>,
 
     // These represent the same loader
@@ -38,48 +37,13 @@ pub struct ClientProfile {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ClientProfileGame {
+pub enum ClientProfileMetadata {
     Minecraft {
-        game_id: GameId,
-        game_name: String,
+        loader_version: String,
         game_version_id: LoaderFieldEnumValueId,
         game_version: String,
     },
-    Unknown {
-        game_id: GameId,
-        game_name: String,
-    },
-}
-
-impl ClientProfileGame {
-    pub fn from(
-        game_name: String,
-        game_id: GameId,
-        game_version: Option<(String, LoaderFieldEnumValueId)>,
-    ) -> Self {
-        match game_name.as_str() {
-            "minecraft" => {
-                if let Some((game_version, game_version_id)) = game_version {
-                    Self::Minecraft {
-                        game_id,
-                        game_name,
-                        game_version_id,
-                        game_version,
-                    }
-                } else {
-                    Self::Unknown { game_id, game_name }
-                }
-            }
-            _ => Self::Unknown { game_id, game_name },
-        }
-    }
-
-    pub fn game_id(&self) -> GameId {
-        match self {
-            Self::Minecraft { game_id, .. } => *game_id,
-            Self::Unknown { game_id, .. } => *game_id,
-        }
-    }
+    Unknown,
 }
 
 impl ClientProfile {
@@ -87,15 +51,20 @@ impl ClientProfile {
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), DatabaseError> {
+
+        let metadata = serde_json::to_value(&self.metadata).map_err(|e| {
+            DatabaseError::SchemaError(format!("Could not serialize metadata: {}", e))
+        })?;
+
         sqlx::query!(
             "
             INSERT INTO shared_profiles (
                 id, name, owner_id, icon_url, created, updated,
-                game_version_id, loader_id, loader_version, maximum_users, game_id
+                loader_id, game_id, metadata
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, 
-                $7, $8, $9, $10, $11
+                $7, $8, $9
             )
             ",
             self.id as ClientProfileId,
@@ -104,18 +73,9 @@ impl ClientProfile {
             self.icon_url,
             self.created,
             self.updated,
-            if let ClientProfileGame::Minecraft {
-                game_version_id, ..
-            } = &self.game
-            {
-                Some(game_version_id.0)
-            } else {
-                None
-            },
             self.loader_id as LoaderId,
-            self.loader_version,
-            self.maximum_users,
-            self.game.game_id().0
+            self.game_id.0,
+            metadata
         )
         .execute(&mut **transaction)
         .await?;
@@ -316,7 +276,7 @@ impl ClientProfile {
             let db_profiles: Vec<ClientProfile> = sqlx::query!(
                 r#"
                 SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id,
-                l.loader, sp.loader_version, sp.maximum_users, g.name as game_name, g.id as game_id, lfev.value as "game_version?",
+                l.loader, sp.loader_version, g.name as game_name, g.id as game_id, lfev.value as "game_version?",
                 ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users
                 FROM shared_profiles sp                
                 LEFT JOIN loaders l ON l.id = sp.loader_id
@@ -339,7 +299,8 @@ impl ClientProfile {
                             (Some(game_version), Some(game_version_id)) => Some((game_version, LoaderFieldEnumValueId(game_version_id))),
                             _ => None
                         };
-                        let game = ClientProfileGame::from(m.game_name, GameId(m.game_id), game_version);
+                        let game_id = GameId(m.game_id);
+                        let metadata = serde_json::from_value::<ClientProfileMetadata>(m.metadata).unwrap_or(ClientProfileMetadata::Unknown);
                         ClientProfile {
                             id,
                             name: m.name,
@@ -347,12 +308,12 @@ impl ClientProfile {
                             updated: m.updated,
                             created: m.created,
                             owner_id: UserId(m.owner_id),
-                            game,
+                            game_id,
                             users: m.users.unwrap_or_default().into_iter().map(UserId).collect(),
                             loader_id: LoaderId(m.loader_id),
-                            loader_version: m.loader_version,
+                            game_name: m.game_name,
+                            metadata,
                             loader: m.loader,
-                            maximum_users: m.maximum_users,
                             versions,
                             overrides: files
                         }
