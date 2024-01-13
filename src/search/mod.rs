@@ -58,7 +58,7 @@ impl actix_web::ResponseError for SearchError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SearchConfig {
     pub address: String,
     pub key: String,

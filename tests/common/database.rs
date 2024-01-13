@@ -2,7 +2,7 @@
 
 use labrinth::{database::redis::RedisPool, search};
 use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use url::Url;
 
 use crate::common::{dummy_data, environment::TestEnvironment};
@@ -39,7 +39,7 @@ const TEMPLATE_DATABASE_NAME: &str = "labrinth_tests_template";
 pub struct TemporaryDatabase {
     pub pool: PgPool,
     pub redis_pool: RedisPool,
-    pub search_config: Arc<labrinth::search::SearchConfig>,
+    pub search_config: labrinth::search::SearchConfig,
     pub database_name: String,
 }
 
@@ -86,7 +86,7 @@ impl TemporaryDatabase {
         let redis_pool = RedisPool::new(Some(temp_database_name.clone()));
 
         // Create new meilisearch config
-        let search_config = Arc::new(search::SearchConfig::new(Some(temp_database_name.clone())));
+        let search_config = search::SearchConfig::new(Some(temp_database_name.clone()));
         Self {
             pool,
             database_name: temp_database_name,
@@ -177,7 +177,7 @@ impl TemporaryDatabase {
                         pool: pool.clone(),
                         database_name: TEMPLATE_DATABASE_NAME.to_string(),
                         redis_pool: RedisPool::new(Some(name.clone())),
-                        search_config: Arc::new(search::SearchConfig::new(Some(name))),
+                        search_config: search::SearchConfig::new(Some(name)),
                     };
                     let setup_api = TestEnvironment::<ApiV3>::build_setup_api(&db).await;
                     dummy_data::add_dummy_data(&setup_api, db.clone()).await;

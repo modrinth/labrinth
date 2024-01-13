@@ -6,6 +6,7 @@ use meilisearch_sdk::SwapIndexes;
 use std::collections::HashMap;
 
 use crate::database::redis::RedisPool;
+use crate::models::ids::base62_impl::to_base62;
 use crate::search::{SearchConfig, UploadSearchProject};
 use local_import::index_local;
 use log::info;
@@ -40,6 +41,23 @@ const MEILISEARCH_CHUNK_SIZE: usize = 2500; // Should be less than FETCH_PROJECT
 const FETCH_PROJECT_SIZE: usize = 5000;
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+pub async fn remove_documents(
+    ids: &[crate::models::ids::VersionId],
+    config: &SearchConfig,
+) -> Result<(), meilisearch_sdk::errors::Error> {
+    let mut indexes = get_indexes_for_indexing(config, false).await?;
+    let mut indexes_next = get_indexes_for_indexing(config, true).await?;
+    indexes.append(&mut indexes_next);
+
+    for index in indexes {
+        index
+            .delete_documents(&ids.iter().map(|x| to_base62(x.0)).collect::<Vec<_>>())
+            .await?;
+    }
+
+    Ok(())
+}
 
 pub async fn index_projects(
     pool: PgPool,

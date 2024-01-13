@@ -22,6 +22,7 @@ use crate::models::teams::ProjectPermissions;
 use crate::models::threads::MessageBody;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::search::indexing::remove_documents;
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use crate::util::img;
 use crate::util::routes::read_from_payload;
@@ -232,6 +233,7 @@ pub async fn project_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
+    search_config: web::Data<SearchConfig>,
     new_project: web::Json<EditProject>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -470,6 +472,18 @@ pub async fn project_edit(
                 )
                 .execute(&mut *transaction)
                 .await?;
+
+                if project_item.inner.status.is_searchable() && !status.is_searchable() {
+                    remove_documents(
+                        &project_item
+                            .versions
+                            .into_iter()
+                            .map(|x| x.into())
+                            .collect::<Vec<_>>(),
+                        &search_config,
+                    )
+                    .await?;
+                }
             }
 
             if let Some(requested_status) = &new_project.requested_status {
@@ -889,7 +903,7 @@ pub struct ReturnSearchResults {
 
 pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
-    config: web::Data<Arc<SearchConfig>>,
+    config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
     let results = search_for_project(&info, &config).await?;
 
@@ -1931,6 +1945,7 @@ pub async fn project_delete(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
+    search_config: web::Data<SearchConfig>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
@@ -2002,6 +2017,16 @@ pub async fn project_delete(
     let result = db_models::Project::remove(project.inner.id, &mut transaction, &redis).await?;
 
     transaction.commit().await?;
+
+    remove_documents(
+        &project
+            .versions
+            .into_iter()
+            .map(|x| x.into())
+            .collect::<Vec<_>>(),
+        &search_config,
+    )
+    .await?;
 
     if result.is_some() {
         Ok(HttpResponse::NoContent().body(""))
