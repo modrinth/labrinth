@@ -1,6 +1,10 @@
 /// This module is used for the indexing from any source.
 pub mod local_import;
 
+use itertools::Itertools;
+use meilisearch_sdk::SwapIndexes;
+use std::collections::HashMap;
+
 use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::to_base62;
 use crate::search::{SearchConfig, UploadSearchProject};
@@ -37,7 +41,9 @@ pub async fn remove_documents(
     ids: &[crate::models::ids::VersionId],
     config: &SearchConfig,
 ) -> Result<(), meilisearch_sdk::errors::Error> {
-    let indexes = get_indexes(config).await?;
+    let mut indexes = get_indexes_for_indexing(config, false).await?;
+    let mut indexes_next = get_indexes_for_indexing(config, true).await?;
+    indexes.append(&mut indexes_next);
 
     for index in indexes {
         index
@@ -55,7 +61,16 @@ pub async fn index_projects(
 ) -> Result<(), IndexingError> {
     info!("Indexing projects.");
 
-    let indices = get_indexes(config).await?;
+    // First, ensure current index exists (so no error happens- current index should be worst-case empty, not missing)
+    get_indexes_for_indexing(config, false).await?;
+
+    // Then, delete the next index if it still exists
+    let indices = get_indexes_for_indexing(config, true).await?;
+    for index in indices {
+        index.delete().await?;
+    }
+    // Recreate the next index for indexing
+    let indices = get_indexes_for_indexing(config, true).await?;
 
     let all_loader_fields =
         crate::database::models::loader_fields::LoaderField::get_fields_all(&pool, &redis)
@@ -67,16 +82,42 @@ pub async fn index_projects(
     let uploads = index_local(&pool).await?;
     add_projects(&indices, uploads, all_loader_fields.clone(), config).await?;
 
+    // Swap the index
+    swap_index(config, "projects").await?;
+    swap_index(config, "projects_filtered").await?;
+
+    // Delete the now-old index
+    for index in indices {
+        index.delete().await?;
+    }
+    
     info!("Done adding projects.");
     Ok(())
 }
 
-pub async fn get_indexes(
+pub async fn swap_index(config: &SearchConfig, index_name: &str) -> Result<(), IndexingError> {
+    let client = config.make_client();
+    let index_name_next = config.get_index_name(index_name, true);
+    let index_name = config.get_index_name(index_name, false);
+    let swap_indices = SwapIndexes {
+        indexes: (index_name_next, index_name),
+    };
+    client
+        .swap_indexes([&swap_indices])
+        .await?
+        .wait_for_completion(&client, None, Some(TIMEOUT))
+        .await?;
+
+    Ok(())
+}
+
+pub async fn get_indexes_for_indexing(
     config: &SearchConfig,
+    next: bool, // Get the 'next' one
 ) -> Result<Vec<Index>, meilisearch_sdk::errors::Error> {
     let client = config.make_client();
-    let project_name = config.get_index_name("projects");
-    let project_filtered_name = config.get_index_name("projects_filtered");
+    let project_name = config.get_index_name("projects", next);
+    let project_filtered_name = config.get_index_name("projects_filtered", next);
     let projects_index = create_or_update_index(&client, &project_name, None).await?;
     let projects_filtered_index = create_or_update_index(
         &client,
@@ -100,7 +141,7 @@ async fn create_or_update_index(
     name: &str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, meilisearch_sdk::errors::Error> {
-    info!("Updating/creating index.");
+    info!("Updating/creating index {}", name);
 
     match client.get_index(name).await {
         Ok(index) => {
@@ -254,39 +295,39 @@ async fn update_and_add_to_index(
     client: &Client,
     index: &Index,
     projects: &[UploadSearchProject],
-    additional_fields: &[String],
+    _additional_fields: &[String],
 ) -> Result<(), IndexingError> {
     // TODO: Uncomment this- hardcoding loader_fields is a band-aid fix, and will be fixed soon
-    let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
-    let mut new_displayed_attributes = index.get_displayed_attributes().await?;
+    // let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
+    // let mut new_displayed_attributes = index.get_displayed_attributes().await?;
 
-    // Check if any 'additional_fields' are not already in the index
-    // Only add if they are not already in the index
-    let new_fields = additional_fields
-        .iter()
-        .filter(|x| !new_filterable_attributes.contains(x))
-        .collect::<Vec<_>>();
-    if !new_fields.is_empty() {
-        info!("Adding new fields to index: {:?}", new_fields);
-        new_filterable_attributes.extend(new_fields.iter().map(|s: &&String| s.to_string()));
-        new_displayed_attributes.extend(new_fields.iter().map(|s| s.to_string()));
+    // // Check if any 'additional_fields' are not already in the index
+    // // Only add if they are not already in the index
+    // let new_fields = additional_fields
+    //     .iter()
+    //     .filter(|x| !new_filterable_attributes.contains(x))
+    //     .collect::<Vec<_>>();
+    // if !new_fields.is_empty() {
+    //     info!("Adding new fields to index: {:?}", new_fields);
+    //     new_filterable_attributes.extend(new_fields.iter().map(|s: &&String| s.to_string()));
+    //     new_displayed_attributes.extend(new_fields.iter().map(|s| s.to_string()));
 
-        // Adds new fields to the index
-        let filterable_task = index
-            .set_filterable_attributes(new_filterable_attributes)
-            .await?;
-        let displayable_task = index
-            .set_displayed_attributes(new_displayed_attributes)
-            .await?;
+    //     // Adds new fields to the index
+    //     let filterable_task = index
+    //         .set_filterable_attributes(new_filterable_attributes)
+    //         .await?;
+    //     let displayable_task = index
+    //         .set_displayed_attributes(new_displayed_attributes)
+    //         .await?;
 
-        // Allow a long timeout for adding new attributes- it only needs to happen the once
-        filterable_task
-            .wait_for_completion(client, None, Some(TIMEOUT * 100))
-            .await?;
-        displayable_task
-            .wait_for_completion(client, None, Some(TIMEOUT * 100))
-            .await?;
-    }
+    //     // Allow a long timeout for adding new attributes- it only needs to happen the once
+    //     filterable_task
+    //         .wait_for_completion(client, None, Some(TIMEOUT * 100))
+    //         .await?;
+    //     displayable_task
+    //         .wait_for_completion(client, None, Some(TIMEOUT * 100))
+    //         .await?;
+    // }
 
     info!("Adding to index.");
 
@@ -347,6 +388,14 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "gallery",
     "featured_gallery",
     "color",
+    // Note: loader fields are not here, but are added on as they are needed (so they can be dynamically added depending on which exist).
+    // TODO: remove these- as they should be automatically populated. This is a band-aid fix.
+    "server_only",
+    "client_only",
+    "game_versions",
+    "singleplayer",
+    "client_and_server",
+    "mrpack_loaders",
     // V2 legacy fields for logical consistency
     "client_side",
     "server_side",
@@ -385,6 +434,14 @@ const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "project_id",
     "open_source",
     "color",
+    // Note: loader fields are not here, but are added on as they are needed (so they can be dynamically added depending on which exist).
+    // TODO: remove these- as they should be automatically populated. This is a band-aid fix.
+    "server_only",
+    "client_only",
+    "game_versions",
+    "singleplayer",
+    "client_and_server",
+    "mrpack_loaders",
     // V2 legacy fields for logical consistency
     "client_side",
     "server_side",
