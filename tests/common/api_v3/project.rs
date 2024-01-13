@@ -10,7 +10,8 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
     models::{organizations::Organization, projects::Project},
-    util::actix::AppendsMultipart, search::SearchResults,
+    search::SearchResults,
+    util::actix::AppendsMultipart,
 };
 use rust_decimal::Decimal;
 use serde_json::json;

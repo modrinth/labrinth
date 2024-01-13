@@ -1,10 +1,6 @@
 /// This module is used for the indexing from any source.
 pub mod local_import;
 
-use itertools::Itertools;
-use meilisearch_sdk::SwapIndexes;
-use std::collections::HashMap;
-
 use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::to_base62;
 use crate::search::{SearchConfig, UploadSearchProject};
@@ -13,6 +9,7 @@ use log::info;
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::indexes::Index;
 use meilisearch_sdk::settings::{PaginationSetting, Settings};
+use meilisearch_sdk::SwapIndexes;
 use sqlx::postgres::PgPool;
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -90,7 +87,7 @@ pub async fn index_projects(
     for index in indices {
         index.delete().await?;
     }
-    
+
     info!("Done adding projects.");
     Ok(())
 }
