@@ -12,6 +12,13 @@ use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
 use log::{error, info};
 use std::sync::Arc;
 
+#[cfg(feature = "tcmalloc")]
+use tcmalloc::TCMalloc;
+
+#[cfg(feature = "tcmalloc")]
+#[global_allocator]
+static GLOBAL: TCMalloc = TCMalloc;    
+
 #[derive(Clone)]
 pub struct Pepper {
     pub pepper: String,

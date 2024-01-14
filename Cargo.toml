@@ -108,6 +108,9 @@ lettre = "0.11.3"
 derive-new = "0.6.0"
 rust_iso3166 = "0.1.11"
 
+
+tcmalloc = {version = "0.3.0", optional = true}
+
 [dev-dependencies]
 actix-http = "3.4.0"
 json-patch = "*"
@@ -116,3 +119,6 @@ opt-level = 0                # Minimal optimization, speeds up compilation
 lto = false                  # Disables Link Time Optimization
 incremental = true           # Enables incremental compilation
 codegen-units = 16           # Higher number can improve compile times but reduce runtime performance
+
+[features]
+tcmalloc = ["dep:tcmalloc"]
