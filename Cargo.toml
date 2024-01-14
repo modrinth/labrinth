@@ -109,7 +109,7 @@ derive-new = "0.6.0"
 rust_iso3166 = "0.1.11"
 
 
-tcmalloc = {version = "0.3.0", optional = true}
+tcmalloc = {version = "0.3.0", optional = true, features = ["bundled"]}
 
 [dev-dependencies]
 actix-http = "3.4.0"

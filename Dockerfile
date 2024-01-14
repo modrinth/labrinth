@@ -26,6 +26,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && apt-get install -y google-perftools libgoogle-perftools-dev libtcmalloc-minimal4  \
  && ln -s /usr/lib/x86_64-linux-gnu/libtcmalloc.so /usr/lib/libtcmalloc.so \
+ && apt-get install -y autoconf \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
