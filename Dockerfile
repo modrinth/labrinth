@@ -17,13 +17,14 @@ RUN sed -i 's|dummy.rs|src/main.rs|' Cargo.toml
 COPY . .
 # Build our code
 ARG SQLX_OFFLINE=true
-RUN cargo build --release
+RUN cargo build --release --features=tcmalloc
 
 # Final Stage
 FROM ubuntu:latest
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
+ && apt-get install -y google-perftools libgoogle-perftools-dev
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
