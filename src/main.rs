@@ -12,6 +12,9 @@ use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
 use log::{error, info};
 use std::sync::Arc;
 
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 #[derive(Clone)]
 pub struct Pepper {
     pub pepper: String,
