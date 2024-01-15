@@ -3,7 +3,7 @@ RETURNS BIGINT AS $$
 DECLARE
     base INT := 62;
     chars VARCHAR := '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-    result INT := 0;
+    result BIGINT := 0;
     i INT;
     char VARCHAR;
     index INT;
