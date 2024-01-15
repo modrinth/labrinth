@@ -3,6 +3,10 @@ pub mod email;
 pub mod oauth;
 pub mod templates;
 pub mod validate;
+
+use axum::http::StatusCode;
+use axum::Json;
+use axum::response::{IntoResponse, Response};
 pub use checks::{
     filter_enlisted_projects_ids, filter_enlisted_version_ids, filter_visible_collections,
     filter_visible_project_ids, filter_visible_projects,
@@ -13,8 +17,6 @@ pub use validate::{check_is_moderator_from_headers, get_user_from_headers};
 
 use crate::file_hosting::FileHostingError;
 use crate::models::error::ApiError;
-use actix_web::http::StatusCode;
-use actix_web::HttpResponse;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -49,9 +51,10 @@ pub enum AuthenticationError {
     Url,
 }
 
-impl actix_web::ResponseError for AuthenticationError {
-    fn status_code(&self) -> StatusCode {
-        match self {
+
+impl IntoResponse for AuthenticationError {
+    fn into_response(self) -> Response {
+        let status_code = match &self {
             AuthenticationError::Env(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::Sqlx(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::Database(..) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -66,14 +69,14 @@ impl actix_web::ResponseError for AuthenticationError {
             AuthenticationError::FileHosting(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::DuplicateUser => StatusCode::BAD_REQUEST,
             AuthenticationError::SocketError => StatusCode::BAD_REQUEST,
-        }
-    }
+        };
 
-    fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code()).json(ApiError {
+        let error_message = ApiError {
             error: self.error_name(),
-            description: &self.to_string(),
-        })
+            description: &*self.to_string(),
+        };
+
+        (status_code, Json(error_message)).into_response()
     }
 }
 

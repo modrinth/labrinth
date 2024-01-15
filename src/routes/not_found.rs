@@ -1,11 +1,9 @@
+use axum::Json;
 use crate::models::error::ApiError;
-use actix_web::{HttpResponse, Responder};
 
-pub async fn not_found() -> impl Responder {
-    let data = ApiError {
+pub async fn not_found() -> Json<ApiError> {
+   Json(ApiError {
         error: "not_found",
         description: "the requested route does not exist",
-    };
-
-    HttpResponse::NotFound().json(data)
+    })
 }

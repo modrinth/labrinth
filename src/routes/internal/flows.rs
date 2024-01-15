@@ -10,8 +10,7 @@ use crate::models::pats::Scopes;
 use crate::models::users::{Badges, Role};
 use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
-use crate::routes::internal::pats::NewPersonalAccessToken;
-use crate::routes::internal::session::{delete_session, issue_session, list, refresh};
+use crate::routes::internal::session::issue_session;
 use crate::routes::ApiError;
 use crate::util::captcha::check_turnstile_captcha;
 use crate::util::env::parse_strings_from_var;
@@ -1140,14 +1139,14 @@ pub async fn auth_callback(
     Extension(client): Extension<PgPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<impl IntoResponse, crate::auth::templates::ErrorPage> {
+) -> Result<axum::response::Response, crate::auth::templates::ErrorPage> {
     let state_string = query
         .get("state")
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?
         .clone();
 
     let state = state_string.clone();
-    let res: Result<impl IntoResponse, AuthenticationError> = async move {
+    let res: Result<axum::response::Response, AuthenticationError> = async move {
 
         let flow = Flow::get(&state, &redis).await?;
 
@@ -1205,7 +1204,7 @@ pub async fn auth_callback(
                 crate::database::models::User::clear_caches(&[(id, None)], &redis).await?;
 
                 if let Some(url) = url {
-                    Ok((Redirect::temporary(&*url), Json(serde_json::json!({ "url": url }))))
+                    Ok((Redirect::temporary(&*url), Json(serde_json::json!({ "url": url }))).into_response())
                 } else {
                     Err(AuthenticationError::InvalidCredentials)
                 }
@@ -1228,7 +1227,7 @@ pub async fn auth_callback(
                                 flow
                             );
 
-                            Ok((Redirect::temporary(&*redirect_url), Json(serde_json::json!({ "url": redirect_url }))))
+                            Ok((Redirect::temporary(&*redirect_url), Json(serde_json::json!({ "url": redirect_url }))).into_response())
                         } else {
                             let mut ws_conn = {
                                 let db = active_sockets.read().await;
@@ -1280,7 +1279,7 @@ pub async fn auth_callback(
                         }
                     );
 
-                    Ok((Redirect::temporary(&*redirect_url), Json(serde_json::json!({ "url": redirect_url }))))
+                    Ok((Redirect::temporary(&*redirect_url), Json(serde_json::json!({ "url": redirect_url }))).into_response())
                 } else {
                     let user = crate::database::models::user_item::User::get_id(
                         user_id,
@@ -1315,7 +1314,7 @@ pub async fn auth_callback(
                     return Ok(crate::auth::templates::Success {
                         icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
                         name: &user.username,
-                    }.render());
+                    }.render().into_response());
                 }
             }
         } else {

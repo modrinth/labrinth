@@ -11,16 +11,16 @@ use serde_json::json;
 use tower_http::cors::CorsLayer;
 
 pub mod internal;
-pub mod v2;
-pub mod v3;
+// pub mod v2;
+// pub mod v3;
 
 pub mod v2_reroute;
 
 mod analytics;
 mod index;
-mod maven;
+// mod maven;
 mod not_found;
-mod updates;
+// mod updates;
 
 pub use self::not_found::not_found;
 
