@@ -1,6 +1,6 @@
+use axum::Router;
 use std::sync::Arc;
 
-use actix_web::web;
 use database::redis::RedisPool;
 use log::{info, warn};
 use queue::{
@@ -12,7 +12,6 @@ use tokio::sync::RwLock;
 
 extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;
-use util::cors::default_cors;
 
 use crate::{
     queue::payouts::process_payout,
@@ -26,7 +25,6 @@ pub mod database;
 pub mod file_hosting;
 pub mod models;
 pub mod queue;
-pub mod ratelimit;
 pub mod routes;
 pub mod scheduler;
 pub mod search;
@@ -48,10 +46,10 @@ pub struct LabrinthConfig {
     pub scheduler: Arc<Scheduler>,
     pub ip_salt: Pepper,
     pub search_config: search::SearchConfig,
-    pub session_queue: web::Data<AuthQueue>,
-    pub payouts_queue: web::Data<PayoutsQueue>,
+    pub session_queue: Arc<AuthQueue>,
+    pub payouts_queue: Arc<PayoutsQueue>,
     pub analytics_queue: Arc<AnalyticsQueue>,
-    pub active_sockets: web::Data<RwLock<ActiveSockets>>,
+    pub active_sockets: Arc<RwLock<ActiveSockets>>,
 }
 
 pub fn app_setup(
@@ -135,7 +133,7 @@ pub fn app_setup(
 
     scheduler::schedule_versions(&mut scheduler, pool.clone(), redis_pool.clone());
 
-    let session_queue = web::Data::new(AuthQueue::new());
+    let session_queue = Arc::new(AuthQueue::new());
 
     let pool_ref = pool.clone();
     let redis_ref = redis_pool.clone();
@@ -225,8 +223,8 @@ pub fn app_setup(
         pepper: models::ids::Base62Id(models::ids::random_base62(11)).to_string(),
     };
 
-    let payouts_queue = web::Data::new(PayoutsQueue::new());
-    let active_sockets = web::Data::new(RwLock::new(ActiveSockets::default()));
+    let payouts_queue = Arc::new(PayoutsQueue::new());
+    let active_sockets = Arc::new(RwLock::new(ActiveSockets::default()));
 
     LabrinthConfig {
         pool,
@@ -244,39 +242,26 @@ pub fn app_setup(
     }
 }
 
-pub fn app_config(cfg: &mut web::ServiceConfig, labrinth_config: LabrinthConfig) {
-    cfg.app_data(
-        web::FormConfig::default()
-            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
-    )
-    .app_data(
-        web::PathConfig::default()
-            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
-    )
-    .app_data(
-        web::QueryConfig::default()
-            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
-    )
-    .app_data(
-        web::JsonConfig::default()
-            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
-    )
-    .app_data(web::Data::new(labrinth_config.redis_pool.clone()))
-    .app_data(web::Data::new(labrinth_config.pool.clone()))
-    .app_data(web::Data::new(labrinth_config.file_host.clone()))
-    .app_data(web::Data::new(labrinth_config.search_config.clone()))
-    .app_data(labrinth_config.session_queue.clone())
-    .app_data(labrinth_config.payouts_queue.clone())
-    .app_data(web::Data::new(labrinth_config.ip_salt.clone()))
-    .app_data(web::Data::new(labrinth_config.analytics_queue.clone()))
-    .app_data(web::Data::new(labrinth_config.clickhouse.clone()))
-    .app_data(web::Data::new(labrinth_config.maxmind.clone()))
-    .app_data(labrinth_config.active_sockets.clone())
-    .configure(routes::v2::config)
-    .configure(routes::v3::config)
-    .configure(routes::internal::config)
-    .configure(routes::root_config)
-    .default_service(web::get().wrap(default_cors()).to(routes::not_found));
+pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
+    // TODO: fix form, path, json, query error handling
+
+    Router::new()
+        .layer(labrinth_config.redis_pool.clone())
+        .layer(labrinth_config.pool.clone())
+        .layer(labrinth_config.file_host.clone())
+        .layer(labrinth_config.search_config.clone())
+        .layer(labrinth_config.session_queue.clone())
+        .layer(labrinth_config.payouts_queue.clone())
+        .layer(labrinth_config.ip_salt.clone())
+        .layer(labrinth_config.analytics_queue.clone())
+        .layer(labrinth_config.clickhouse.clone())
+        .layer(labrinth_config.maxmind.clone())
+        .layer(labrinth_config.active_sockets.clone())
+        .merge(routes::v2::config())
+        .merge(routes::v3::config())
+        .merge(routes::internal::config())
+        .merge(routes::root_config())
+    // .default_service(web::get().wrap(default_cors()).to(routes::not_found))
 }
 
 // This is so that env vars not used immediately don't panic at runtime

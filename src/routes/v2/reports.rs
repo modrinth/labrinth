@@ -32,11 +32,12 @@ pub struct CreateReport {
 
 #[post("report")]
 pub async fn report_create(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
     body: web::Payload,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::reports::report_create(req, pool, body, redis, session_queue)
         .await
@@ -69,11 +70,12 @@ fn default_all() -> bool {
 
 #[get("report")]
 pub async fn reports(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     count: web::Query<ReportsRequestOptions>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::reports::reports(
         req,
@@ -105,11 +107,12 @@ pub struct ReportIds {
 
 #[get("reports")]
 pub async fn reports_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<ReportIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::reports::reports_get(
         req,
@@ -133,11 +136,12 @@ pub async fn reports_get(
 
 #[get("report/{id}")]
 pub async fn report_get(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::reports::report_get(req, pool, redis, info, session_queue)
         .await
@@ -162,11 +166,12 @@ pub struct EditReport {
 
 #[patch("report/{id}")]
 pub async fn report_edit(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
     edit_report: web::Json<EditReport>,
 ) -> Result<HttpResponse, ApiError> {
     let edit_report = edit_report.into_inner();
@@ -188,11 +193,12 @@ pub async fn report_edit(
 
 #[delete("report/{id}")]
 pub async fn report_delete(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so no need to convert
     v3::reports::report_delete(req, pool, info, redis, session_queue)

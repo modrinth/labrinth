@@ -33,9 +33,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 #[post("_paypal")]
 pub async fn paypal_webhook(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     payouts: web::Data<PayoutsQueue>,
     body: String,
 ) -> Result<HttpResponse, ApiError> {
@@ -193,9 +194,10 @@ pub async fn paypal_webhook(
 
 #[post("_tremendous")]
 pub async fn tremendous_webhook(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     payouts: web::Data<PayoutsQueue>,
     body: String,
 ) -> Result<HttpResponse, ApiError> {
@@ -314,13 +316,15 @@ pub async fn tremendous_webhook(
 
 #[get("")]
 pub async fn user_payouts(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -353,15 +357,16 @@ pub struct Withdrawal {
 
 #[post("")]
 pub async fn create_payout(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     body: web::Json<Withdrawal>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
     payouts_queue: web::Data<PayoutsQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let (scopes, user) =
-        get_user_record_from_bearer_token(&req, None, &**pool, &redis, &session_queue)
+        get_user_record_from_bearer_token(&addr, &headers, None, &**pool, &redis, &session_queue)
             .await?
             .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidCredentials))?;
 
@@ -626,14 +631,16 @@ pub async fn create_payout(
 #[delete("{id}")]
 pub async fn cancel_payout(
     info: web::Path<(PayoutId,)>,
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     payouts: web::Data<PayoutsQueue>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

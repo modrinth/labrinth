@@ -29,14 +29,16 @@ pub struct NotificationIds {
 }
 
 pub async fn notifications_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -68,14 +70,16 @@ pub async fn notifications_get(
 }
 
 pub async fn notification_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -101,14 +105,16 @@ pub async fn notification_get(
 }
 
 pub async fn notification_read(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -147,14 +153,16 @@ pub async fn notification_read(
 }
 
 pub async fn notification_delete(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -193,14 +201,16 @@ pub async fn notification_delete(
 }
 
 pub async fn notifications_read(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -241,14 +251,16 @@ pub async fn notifications_read(
 }
 
 pub async fn notifications_delete(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

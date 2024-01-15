@@ -38,13 +38,14 @@ pub struct ImageUpload {
 }
 
 pub async fn images_add(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(data): web::Query<ImageUpload>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&data.ext) {
         let mut context = ImageContext::from_str(&data.context, None);
@@ -52,9 +53,16 @@ pub async fn images_add(
         let scopes = vec![context.relevant_scope()];
 
         let cdn_url = dotenvy::var("CDN_URL")?;
-        let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
-            .await?
-            .1;
+        let user = get_user_from_headers(
+            &addr,
+            &headers,
+            &**pool,
+            &redis,
+            &session_queue,
+            Some(&scopes),
+        )
+        .await?
+        .1;
 
         // Attempt to associated a supplied id with the context
         // If the context cannot be found, or the user is not authorized to upload images for the context, return an error

@@ -39,18 +39,19 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 // (Unlike team_members_get_project, which only returns the members of the project's team)
 // They can be differentiated by the "organization_permissions" field being null or not
 pub async fn team_members_get_project(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
     let project_data = crate::database::models::Project::get(&string, &**pool, &redis).await?;
 
     if let Some(project) = project_data {
         let current_user = get_user_from_headers(
-            &req,
+            &addr,
             &**pool,
             &redis,
             &session_queue,
@@ -105,11 +106,12 @@ pub async fn team_members_get_project(
 }
 
 pub async fn team_members_get_organization(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
     let organization_data =
@@ -117,7 +119,8 @@ pub async fn team_members_get_organization(
 
     if let Some(organization) = organization_data {
         let current_user = get_user_from_headers(
-            &req,
+            &addr,
+            &addr,
             &**pool,
             &redis,
             &session_queue,
@@ -170,11 +173,12 @@ pub async fn team_members_get_organization(
 
 // Returns all members of a team, but not necessarily those of a project-team's organization (unlike team_members_get_project)
 pub async fn team_members_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
     let members_data = TeamMember::get_from_team_full(id.into(), &**pool, &redis).await?;
@@ -186,7 +190,8 @@ pub async fn team_members_get(
     .await?;
 
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -231,11 +236,12 @@ pub struct TeamIds {
 }
 
 pub async fn teams_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<TeamIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     use itertools::Itertools;
 
@@ -253,7 +259,8 @@ pub async fn teams_get(
     .await?;
 
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -295,15 +302,17 @@ pub async fn teams_get(
 }
 
 pub async fn join_team(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -376,19 +385,21 @@ pub struct NewTeamMember {
 }
 
 pub async fn add_team_member(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId,)>,
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     new_member: web::Json<NewTeamMember>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let team_id = info.into_inner().0.into();
 
     let mut transaction = pool.begin().await?;
 
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -583,19 +594,21 @@ pub struct EditTeamMember {
 }
 
 pub async fn edit_team_member(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId, UserId)>,
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     edit_member: web::Json<EditTeamMember>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = info.into_inner();
     let id = ids.0.into();
     let user_id = ids.1.into();
 
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -745,17 +758,19 @@ pub struct TransferOwnership {
 }
 
 pub async fn transfer_ownership(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId,)>,
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     new_owner: web::Json<TransferOwnership>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
 
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -889,18 +904,20 @@ pub async fn transfer_ownership(
 }
 
 pub async fn remove_team_member(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId, UserId)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = info.into_inner();
     let id = ids.0.into();
     let user_id = ids.1.into();
 
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

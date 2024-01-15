@@ -1,6 +1,6 @@
 pub use super::ApiError;
 use crate::util::cors::default_cors;
-use actix_web::{web, HttpResponse};
+use axum::Router;
 use serde_json::json;
 
 pub mod analytics_get;
@@ -24,32 +24,29 @@ pub mod versions;
 
 pub mod oauth_clients;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("v3")
-            .wrap(default_cors())
-            .configure(analytics_get::config)
-            .configure(collections::config)
-            .configure(images::config)
-            .configure(moderation::config)
-            .configure(notifications::config)
-            .configure(organizations::config)
-            .configure(project_creation::config)
-            .configure(projects::config)
-            .configure(reports::config)
-            .configure(statistics::config)
-            .configure(tags::config)
-            .configure(teams::config)
-            .configure(threads::config)
-            .configure(users::config)
-            .configure(version_file::config)
-            .configure(payouts::config)
-            .configure(versions::config),
-    );
-}
+pub fn config() -> Router {
+    // TODO: cors
 
-pub async fn hello_world() -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().json(json!({
-        "hello": "world",
-    })))
+    Router::new().nest(
+        "/v3",
+        Router::new()
+            .merge(analytics_get::config())
+            .merge(collections::config())
+            .merge(images::config())
+            .merge(moderation::config())
+            .merge(notifications::config())
+            .merge(organizations::config())
+            .merge(project_creation::config())
+            .merge(projects::config())
+            .merge(reports::config())
+            .merge(statistics::config())
+            .merge(tags::config())
+            .merge(teams::config())
+            .merge(threads::config())
+            .merge(users::config())
+            .merge(version_file::config())
+            .merge(payouts::config())
+            .merge(versions::config())
+            .layer(default_cors()),
+    )
 }

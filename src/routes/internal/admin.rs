@@ -1,4 +1,5 @@
 use crate::auth::validate::get_user_record_from_bearer_token;
+use crate::auth::AuthenticationError;
 use crate::database::redis::RedisPool;
 use crate::models::analytics::Download;
 use crate::models::ids::ProjectId;
@@ -9,20 +10,23 @@ use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::search::SearchConfig;
 use crate::util::date::get_current_tenths_of_ms;
-use crate::util::guards::admin_key_guard;
-use actix_web::{patch, post, web, HttpRequest, HttpResponse};
+use axum::extract::ConnectInfo;
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{patch, post};
+use axum::{Extension, Json, Router};
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("admin")
-            .service(count_download)
-            .service(force_reindex),
-    );
+pub fn config() -> Router {
+    Router::new().nest(
+        "/admin",
+        Router::new()
+            .route("/_count-download", patch(count_download))
+            .route("/_force_reindex", post(force_reindex)),
+    )
 }
 
 #[derive(Deserialize)]
@@ -35,28 +39,45 @@ pub struct DownloadBody {
     pub headers: HashMap<String, String>,
 }
 
+pub const ADMIN_KEY_HEADER: &str = "Modrinth-Admin";
+fn check_admin_key(headers: &HeaderMap) -> Result<(), ApiError> {
+    let admin_key = dotenvy::var("LABRINTH_ADMIN_KEY")?;
+
+    if headers
+        .get(ADMIN_KEY_HEADER)
+        .map_or(false, |it| it.as_bytes() == admin_key.as_bytes())
+    {
+        Ok(())
+    } else {
+        Err(ApiError::Authentication(
+            AuthenticationError::InvalidCredentials,
+        ))
+    }
+}
+
 // This is an internal route, cannot be used without key
-#[patch("/_count-download", guard = "admin_key_guard")]
-#[allow(clippy::too_many_arguments)]
 pub async fn count_download(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    maxmind: web::Data<Arc<MaxMindIndexer>>,
-    analytics_queue: web::Data<Arc<AnalyticsQueue>>,
-    session_queue: web::Data<AuthQueue>,
-    download_body: web::Json<DownloadBody>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(maxmind): Extension<Arc<MaxMindIndexer>>,
+    Extension(analytics_queue): Extension<Arc<AnalyticsQueue>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(download_body): Json<DownloadBody>,
+) -> Result<StatusCode, ApiError> {
+    check_admin_key(&headers);
     let token = download_body
         .headers
         .iter()
         .find(|x| x.0.to_lowercase() == "authorization")
         .map(|x| &**x.1);
 
-    let user = get_user_record_from_bearer_token(&req, token, &**pool, &redis, &session_queue)
-        .await
-        .ok()
-        .flatten();
+    let user =
+        get_user_record_from_bearer_token(&addr, &headers, token, &**pool, &redis, &session_queue)
+            .await
+            .ok()
+            .flatten();
 
     let project_id: crate::database::models::ids::ProjectId = download_body.project_id.into();
 
@@ -131,17 +152,19 @@ pub async fn count_download(
             .collect(),
     });
 
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }
 
-#[post("/_force_reindex", guard = "admin_key_guard")]
 pub async fn force_reindex(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    config: web::Data<SearchConfig>,
-) -> Result<HttpResponse, ApiError> {
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(config): Extension<SearchConfig>,
+) -> Result<StatusCode, ApiError> {
+    check_admin_key(&headers);
     use crate::search::indexing::index_projects;
     let redis = redis.get_ref();
     index_projects(pool.as_ref().clone(), redis.clone(), &config).await?;
-    Ok(HttpResponse::NoContent().finish())
+
+    Ok(StatusCode::NO_CONTENT)
 }

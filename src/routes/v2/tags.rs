@@ -37,8 +37,8 @@ pub struct CategoryData {
 
 #[get("category")]
 pub async fn category_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::tags::category_list(pool, redis).await?;
 
@@ -69,8 +69,8 @@ pub struct LoaderData {
 
 #[get("loader")]
 pub async fn loader_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::tags::loader_list(pool, redis).await?;
 
@@ -126,9 +126,9 @@ pub struct GameVersionQuery {
 
 #[get("game_version")]
 pub async fn game_version_list(
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     query: web::Query<GameVersionQuery>,
-    redis: web::Data<RedisPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let mut filters = HashMap::new();
     if let Some(type_) = &query.type_ {
@@ -237,8 +237,8 @@ pub struct DonationPlatformQueryData {
 
 #[get("donation_platform")]
 pub async fn donation_platform_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::tags::link_platform_list(pool, redis).await?;
 
@@ -279,8 +279,8 @@ pub async fn donation_platform_list(
 
 #[get("report_type")]
 pub async fn report_type_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     // This returns a list of strings directly, so we don't need to convert to v2 format.
     v3::tags::report_type_list(pool, redis)
@@ -290,8 +290,8 @@ pub async fn report_type_list(
 
 #[get("project_type")]
 pub async fn project_type_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     // This returns a list of strings directly, so we don't need to convert to v2 format.
     v3::tags::project_type_list(pool, redis)

@@ -30,11 +30,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 // They can be differentiated by the "organization_permissions" field being null or not
 #[get("{id}/members")]
 pub async fn team_members_get_project(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::teams::team_members_get_project(req, info, pool, redis, session_queue)
         .await
@@ -55,11 +56,12 @@ pub async fn team_members_get_project(
 // Returns all members of a team, but not necessarily those of a project-team's organization (unlike team_members_get_project)
 #[get("{id}/members")]
 pub async fn team_members_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::teams::team_members_get(req, info, pool, redis, session_queue)
         .await
@@ -84,11 +86,12 @@ pub struct TeamIds {
 
 #[get("teams")]
 pub async fn teams_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<TeamIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::teams::teams_get(
         req,
@@ -119,11 +122,12 @@ pub async fn teams_get(
 
 #[post("{id}/join")]
 pub async fn join_team(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert the response
     v3::teams::join_team(req, info, pool, redis, session_queue)
@@ -157,12 +161,13 @@ pub struct NewTeamMember {
 
 #[post("{id}/members")]
 pub async fn add_team_member(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId,)>,
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     new_member: web::Json<NewTeamMember>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert the response
     v3::teams::add_team_member(
@@ -195,12 +200,13 @@ pub struct EditTeamMember {
 
 #[patch("{id}/members/{user_id}")]
 pub async fn edit_team_member(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId, UserId)>,
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     edit_member: web::Json<EditTeamMember>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert the response
     v3::teams::edit_team_member(
@@ -228,12 +234,13 @@ pub struct TransferOwnership {
 
 #[patch("{id}/owner")]
 pub async fn transfer_ownership(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId,)>,
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     new_owner: web::Json<TransferOwnership>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert the response
     v3::teams::transfer_ownership(
@@ -252,11 +259,12 @@ pub async fn transfer_ownership(
 
 #[delete("{id}/members/{user_id}")]
 pub async fn remove_team_member(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(TeamId, UserId)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert the response
     v3::teams::remove_team_member(req, info, pool, redis, session_queue)

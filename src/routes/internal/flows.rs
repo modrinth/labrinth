@@ -10,19 +10,24 @@ use crate::models::pats::Scopes;
 use crate::models::users::{Badges, Role};
 use crate::queue::session::AuthQueue;
 use crate::queue::socket::ActiveSockets;
-use crate::routes::internal::session::issue_session;
+use crate::routes::internal::pats::NewPersonalAccessToken;
+use crate::routes::internal::session::{delete_session, issue_session, list, refresh};
 use crate::routes::ApiError;
 use crate::util::captcha::check_turnstile_captcha;
 use crate::util::env::parse_strings_from_var;
 use crate::util::ext::{get_image_content_type, get_image_ext};
 use crate::util::validate::{validation_errors_to_string, RE_URL_SAFE};
-use actix_web::web::{scope, Data, Payload, Query, ServiceConfig};
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use actix_ws::Closed;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use axum::extract::ws::{Message, WebSocket};
+use axum::extract::{ConnectInfo, Query, WebSocketUpgrade};
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Redirect};
+use axum::routing::{delete, get, patch, post};
+use axum::{Extension, Json, Router};
 use base64::Engine;
 use chrono::{Duration, Utc};
+use hyper::StatusCode;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use reqwest::header::AUTHORIZATION;
@@ -30,30 +35,32 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use validator::Validate;
 
-pub fn config(cfg: &mut ServiceConfig) {
-    cfg.service(
-        scope("auth")
-            .service(ws_init)
-            .service(init)
-            .service(auth_callback)
-            .service(delete_auth_provider)
-            .service(create_account_with_password)
-            .service(login_password)
-            .service(login_2fa)
-            .service(begin_2fa_flow)
-            .service(finish_2fa_flow)
-            .service(remove_2fa)
-            .service(reset_password_begin)
-            .service(change_password)
-            .service(resend_verify_email)
-            .service(set_email)
-            .service(verify_email)
-            .service(subscribe_newsletter),
-    );
+pub fn config() -> Router {
+    Router::new().nest(
+        "/auth",
+        Router::new()
+            .route("/ws", get(ws_init))
+            .route("/init", get(init))
+            .route("/callback", get(auth_callback))
+            // above is todo
+            .route("/provider", delete(delete_auth_provider))
+            .route("/create", post(create_account_with_password))
+            .route("/login", post(login_password))
+            .route("/login/2fa", post(login_2fa))
+            .route("/2fa/get_secret", post(begin_2fa_flow))
+            .route("/2fa", post(finish_2fa_flow).delete(remove_2fa))
+            .route("/password/reset", post(reset_password_begin))
+            .route("/password", patch(change_password))
+            .route("/email/resend_verify", post(resend_verify_email))
+            .route("/email", patch(set_email))
+            .route("/email/verify", post(verify_email))
+            .route("email/subscribe", post(subscribe_newsletter)),
+    )
 }
 
 #[derive(Debug)]
@@ -1031,14 +1038,14 @@ pub struct Authorization {
 
 // Init link takes us to GitHub API and calls back to callback endpoint with a code and state
 // http://localhost:8000/auth/init?url=https://modrinth.com
-#[get("init")]
 pub async fn init(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(info): Query<AuthorizationInit>, // callback url
-    client: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, AuthenticationError> {
+    Extension(client): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<(Redirect, Json<serde_json::Value>), AuthenticationError> {
     let url = url::Url::parse(&info.url).map_err(|_| AuthenticationError::Url)?;
 
     let allowed_callback_urls = parse_strings_from_var("ALLOWED_CALLBACK_URLS").unwrap_or_default();
@@ -1049,7 +1056,8 @@ pub async fn init(
 
     let user_id = if let Some(token) = info.token {
         let (_, user) = get_user_record_from_bearer_token(
-            &req,
+            &addr,
+            &headers,
             Some(&token),
             &**client,
             &redis,
@@ -1072,9 +1080,11 @@ pub async fn init(
     .await?;
 
     let url = info.provider.get_redirect_url(state)?;
-    Ok(HttpResponse::TemporaryRedirect()
-        .append_header(("Location", &*url))
-        .json(serde_json::json!({ "url": url })))
+
+    Ok((
+        Redirect::temporary(&*url),
+        Json(serde_json::json!({ "url": url })),
+    ))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1082,66 +1092,62 @@ pub struct WsInit {
     pub provider: AuthProvider,
 }
 
-#[get("ws")]
 pub async fn ws_init(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(info): Query<WsInit>,
-    body: Payload,
-    db: Data<RwLock<ActiveSockets>>,
-    redis: Data<RedisPool>,
-) -> Result<HttpResponse, actix_web::Error> {
-    let (res, session, _msg_stream) = actix_ws::handle(&req, body)?;
-
+    ws: WebSocketUpgrade,
+    Extension(active_sockets): Extension<RwLock<ActiveSockets>>,
+    Extension(redis): Extension<RedisPool>,
+) -> impl IntoResponse {
     async fn sock(
-        mut ws_stream: actix_ws::Session,
-        info: WsInit,
-        db: Data<RwLock<ActiveSockets>>,
-        redis: Data<RedisPool>,
-    ) -> Result<(), Closed> {
+        mut socket: WebSocket,
+        who: SocketAddr,
+        provider: AuthProvider,
+        active_sockets: RwLock<ActiveSockets>,
+        redis: &RedisPool,
+    ) -> Result<(), ApiError> {
         let flow = Flow::OAuth {
             user_id: None,
             url: None,
-            provider: info.provider,
+            provider,
         }
         .insert(Duration::minutes(30), &redis)
-        .await;
+        .await?;
 
         if let Ok(state) = flow {
-            if let Ok(url) = info.provider.get_redirect_url(state.clone()) {
-                ws_stream
-                    .text(serde_json::json!({ "url": url }).to_string())
+            if let Ok(url) = provider.get_redirect_url(state.clone()) {
+                socket
+                    .send(Message::Text(serde_json::json!({ "url": url }).to_string()))
                     .await?;
 
-                let db = db.write().await;
-                db.auth_sockets.insert(state, ws_stream);
+                let db = active_sockets.write().await;
+                db.auth_sockets.insert(state, socket);
             }
         }
 
         Ok(())
     }
 
-    let _ = sock(session, info, db, redis).await;
-
-    Ok(res)
+    ws.on_upgrade(move |socket| sock(socket, addr, info.provider, active_sockets, &redis))
 }
 
-#[get("callback")]
 pub async fn auth_callback(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
-    active_sockets: Data<RwLock<ActiveSockets>>,
-    client: Data<PgPool>,
-    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    redis: Data<RedisPool>,
-) -> Result<HttpResponse, crate::auth::templates::ErrorPage> {
+    Extension(active_sockets): Extension<RwLock<ActiveSockets>>,
+    Extension(client): Extension<PgPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(redis): Extension<RedisPool>,
+) -> Result<impl IntoResponse, crate::auth::templates::ErrorPage> {
     let state_string = query
         .get("state")
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?
         .clone();
 
-    let sockets = active_sockets.clone();
     let state = state_string.clone();
-    let res: Result<HttpResponse, AuthenticationError> = async move {
+    let res: Result<impl IntoResponse, AuthenticationError> = async move {
 
         let flow = Flow::get(&state, &redis).await?;
 
@@ -1199,9 +1205,7 @@ pub async fn auth_callback(
                 crate::database::models::User::clear_caches(&[(id, None)], &redis).await?;
 
                 if let Some(url) = url {
-                    Ok(HttpResponse::TemporaryRedirect()
-                        .append_header(("Location", &*url))
-                        .json(serde_json::json!({ "url": url })))
+                    Ok((Redirect::temporary(&*url), Json(serde_json::json!({ "url": url }))))
                 } else {
                     Err(AuthenticationError::InvalidCredentials)
                 }
@@ -1224,12 +1228,10 @@ pub async fn auth_callback(
                                 flow
                             );
 
-                            return Ok(HttpResponse::TemporaryRedirect()
-                                .append_header(("Location", &*redirect_url))
-                                .json(serde_json::json!({ "url": redirect_url })));
+                            Ok((Redirect::temporary(&*redirect_url), Json(serde_json::json!({ "url": redirect_url }))))
                         } else {
                             let mut ws_conn = {
-                                let db = sockets.read().await;
+                                let db = active_sockets.read().await;
 
                                 let mut x = db
                                     .auth_sockets
@@ -1262,7 +1264,7 @@ pub async fn auth_callback(
                     oauth_user.create_account(provider, &mut transaction, &client, &file_host, &redis).await?
                 };
 
-                let session = issue_session(req, user_id, &mut transaction, &redis).await?;
+                let session = issue_session(&addr, &headers, user_id, &mut transaction, &redis).await?;
                 transaction.commit().await?;
 
                 if let Some(url) = url {
@@ -1278,9 +1280,7 @@ pub async fn auth_callback(
                         }
                     );
 
-                    Ok(HttpResponse::TemporaryRedirect()
-                        .append_header(("Location", &*redirect_url))
-                        .json(serde_json::json!({ "url": redirect_url })))
+                    Ok((Redirect::temporary(&*redirect_url), Json(serde_json::json!({ "url": redirect_url }))))
                 } else {
                     let user = crate::database::models::user_item::User::get_id(
                         user_id,
@@ -1290,24 +1290,27 @@ pub async fn auth_callback(
                         .await?.ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
                     let mut ws_conn = {
-                        let db = sockets.read().await;
+                        let db = active_sockets.read().await;
 
                         let mut x = db
                             .auth_sockets
                             .get_mut(&state)
                             .ok_or_else(|| AuthenticationError::SocketError)?;
 
-                        x.value_mut().clone()
+                        x.value_mut()
                     };
 
                     ws_conn
-                        .text(
-                            serde_json::json!({
+                        .send(
+                            Message::Text(
+                                serde_json::json!({
                                         "code": session.session,
                                     }).to_string()
+                            )
+
                         )
                         .await.map_err(|_| AuthenticationError::SocketError)?;
-                    let _ = ws_conn.close(None).await;
+                    let _ = ws_conn.close().await;
 
                     return Ok(crate::auth::templates::Success {
                         icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
@@ -1316,7 +1319,7 @@ pub async fn auth_callback(
                 }
             }
         } else {
-            Err::<HttpResponse, AuthenticationError>(AuthenticationError::InvalidCredentials)
+            Err::<impl IntoResponse, AuthenticationError>(AuthenticationError::InvalidCredentials)
         }
     }.await;
 
@@ -1326,19 +1329,20 @@ pub async fn auth_callback(
         let mut x = db.auth_sockets.get_mut(&state_string);
 
         if let Some(x) = x.as_mut() {
-            let mut ws_conn = x.value_mut().clone();
+            let mut ws_conn = x.value_mut();
 
             ws_conn
-                .text(
+                .send(Message::Text(
                     serde_json::json!({
-                                "error": &e.error_name(),
-                                "description": &e.to_string(),
-                            }        )
+                            "error": &e.error_name(),
+                            "description": &e.to_string(),
+                        }
+                    )
                     .to_string(),
-                )
+                ))
                 .await
                 .map_err(|_| AuthenticationError::SocketError)?;
-            let _ = ws_conn.close(None).await;
+            let _ = ws_conn.close().await;
         }
     }
 
@@ -1350,16 +1354,17 @@ pub struct DeleteAuthProvider {
     pub provider: AuthProvider,
 }
 
-#[delete("provider")]
 pub async fn delete_auth_provider(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    delete_provider: web::Json<DeleteAuthProvider>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(delete_provider): Json<DeleteAuthProvider>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -1398,7 +1403,7 @@ pub async fn delete_auth_provider(
     transaction.commit().await?;
     crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn sign_up_beehiiv(email: &str) -> Result<(), AuthenticationError> {
@@ -1439,19 +1444,18 @@ pub struct NewAccount {
     pub sign_up_newsletter: Option<bool>,
 }
 
-#[post("create")]
 pub async fn create_account_with_password(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    new_account: web::Json<NewAccount>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(new_account): Json<NewAccount>,
+) -> Result<Json<crate::models::sessions::Session>, ApiError> {
     new_account
-        .0
         .validate()
         .map_err(|err| ApiError::InvalidInput(validation_errors_to_string(err, None)))?;
 
-    if !check_turnstile_captcha(&req, &new_account.challenge).await? {
+    if !check_turnstile_captcha(&addr, &headers, &new_account.challenge).await? {
         return Err(ApiError::Turnstile);
     }
 
@@ -1464,8 +1468,6 @@ pub async fn create_account_with_password(
 
     let mut transaction = pool.begin().await?;
     let user_id = crate::database::models::generate_user_id(&mut transaction).await?;
-
-    let new_account = new_account.0;
 
     let score = zxcvbn::zxcvbn(
         &new_account.password,
@@ -1538,7 +1540,7 @@ pub async fn create_account_with_password(
     .insert(&mut transaction)
     .await?;
 
-    let session = issue_session(req, user_id, &mut transaction, &redis).await?;
+    let session = issue_session(&addr, &headers, user_id, &mut transaction, &redis).await?;
     let res = crate::models::sessions::Session::from(session, true, None);
 
     if new_account.sign_up_newsletter.unwrap_or(false) {
@@ -1547,7 +1549,7 @@ pub async fn create_account_with_password(
 
     transaction.commit().await?;
 
-    Ok(HttpResponse::Ok().json(res))
+    Ok(Json(res))
 }
 
 #[derive(Deserialize, Validate)]
@@ -1557,14 +1559,14 @@ pub struct Login {
     pub challenge: String,
 }
 
-#[post("login")]
 pub async fn login_password(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    login: web::Json<Login>,
-) -> Result<HttpResponse, ApiError> {
-    if !check_turnstile_captcha(&req, &login.challenge).await? {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(login): Json<Login>,
+) -> Result<impl IntoResponse, ApiError> {
+    if !check_turnstile_captcha(&addr, &headers, &login.challenge).await? {
         return Err(ApiError::Turnstile);
     }
 
@@ -1599,18 +1601,18 @@ pub async fn login_password(
             .insert(Duration::minutes(30), &redis)
             .await?;
 
-        Ok(HttpResponse::Ok().json(serde_json::json!({
+        Ok(Json(serde_json::json!({
             "error": "2fa_required",
             "description": "2FA is required to complete this operation.",
             "flow": flow,
         })))
     } else {
         let mut transaction = pool.begin().await?;
-        let session = issue_session(req, user.id, &mut transaction, &redis).await?;
+        let session = issue_session(&addr, &headers, user.id, &mut transaction, &redis).await?;
         let res = crate::models::sessions::Session::from(session, true, None);
         transaction.commit().await?;
 
-        Ok(HttpResponse::Ok().json(res))
+        Ok(Json(res))
     }
 }
 
@@ -1673,13 +1675,13 @@ async fn validate_2fa_code(
     }
 }
 
-#[post("login/2fa")]
 pub async fn login_2fa(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    login: web::Json<Login2FA>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(login): Json<Login2FA>,
+) -> Result<Json<crate::models::sessions::Session>, ApiError> {
     let flow = Flow::get(&login.flow, &redis)
         .await?
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
@@ -1708,11 +1710,11 @@ pub async fn login_2fa(
         }
         Flow::remove(&login.flow, &redis).await?;
 
-        let session = issue_session(req, user_id, &mut transaction, &redis).await?;
+        let session = issue_session(&addr, &headers, user_id, &mut transaction, &redis).await?;
         let res = crate::models::sessions::Session::from(session, true, None);
         transaction.commit().await?;
 
-        Ok(HttpResponse::Ok().json(res))
+        Ok(Json(res))
     } else {
         Err(ApiError::Authentication(
             AuthenticationError::InvalidCredentials,
@@ -1720,15 +1722,16 @@ pub async fn login_2fa(
     }
 }
 
-#[post("2fa/get_secret")]
 pub async fn begin_2fa_flow(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -1748,7 +1751,7 @@ pub async fn begin_2fa_flow(
         .insert(Duration::minutes(30), &redis)
         .await?;
 
-        Ok(HttpResponse::Ok().json(serde_json::json!({
+        Ok(Json(serde_json::json!({
             "secret": encoded.to_string(),
             "flow": flow,
         })))
@@ -1759,21 +1762,22 @@ pub async fn begin_2fa_flow(
     }
 }
 
-#[post("2fa")]
 pub async fn finish_2fa_flow(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    login: web::Json<Login2FA>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(login): Json<Login2FA>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let flow = Flow::get(&login.flow, &redis)
         .await?
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
     if let Flow::Initialize2FA { user_id, secret } = flow {
         let user = get_user_from_headers(
-            &req,
+            &addr,
+            &headers,
             &**pool,
             &redis,
             &session_queue,
@@ -1867,7 +1871,7 @@ pub async fn finish_2fa_flow(
         transaction.commit().await?;
         crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
 
-        Ok(HttpResponse::Ok().json(serde_json::json!({
+        Ok(Json(serde_json::json!({
             "backup_codes": codes,
         })))
     } else {
@@ -1882,16 +1886,16 @@ pub struct Remove2FA {
     pub code: String,
 }
 
-#[delete("2fa")]
 pub async fn remove_2fa(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    login: web::Json<Remove2FA>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(login): Json<Remove2FA>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let (scopes, user) =
-        get_user_record_from_bearer_token(&req, None, &**pool, &redis, &session_queue)
+        get_user_record_from_bearer_token(&addr, &headers, None, &**pool, &redis, &session_queue)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
@@ -1955,7 +1959,7 @@ pub async fn remove_2fa(
     transaction.commit().await?;
     crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -1964,14 +1968,14 @@ pub struct ResetPassword {
     pub challenge: String,
 }
 
-#[post("password/reset")]
 pub async fn reset_password_begin(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    reset_password: web::Json<ResetPassword>,
-) -> Result<HttpResponse, ApiError> {
-    if !check_turnstile_captcha(&req, &reset_password.challenge).await? {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(reset_password): Json<ResetPassword>,
+) -> Result<StatusCode, ApiError> {
+    if !check_turnstile_captcha(&addr, &headers, &reset_password.challenge).await? {
         return Err(ApiError::Turnstile);
     }
 
@@ -1999,7 +2003,7 @@ pub async fn reset_password_begin(
         }
     }
 
-    Ok(HttpResponse::Ok().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize, Validate)]
@@ -2009,14 +2013,14 @@ pub struct ChangePassword {
     pub new_password: Option<String>,
 }
 
-#[patch("password")]
 pub async fn change_password(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    change_password: web::Json<ChangePassword>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(change_password): Json<ChangePassword>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = if let Some(flow) = &change_password.flow {
         let flow = Flow::get(flow, &redis).await?;
 
@@ -2036,10 +2040,16 @@ pub async fn change_password(
     let user = if let Some(user) = user {
         user
     } else {
-        let (scopes, user) =
-            get_user_record_from_bearer_token(&req, None, &**pool, &redis, &session_queue)
-                .await?
-                .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
+        let (scopes, user) = get_user_record_from_bearer_token(
+            &addr,
+            &headers,
+            None,
+            &**pool,
+            &redis,
+            &session_queue,
+        )
+        .await?
+        .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
         if !scopes.contains(Scopes::USER_AUTH_WRITE) {
             return Err(ApiError::Authentication(
@@ -2141,7 +2151,7 @@ pub async fn change_password(
     transaction.commit().await?;
     crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
 
-    Ok(HttpResponse::Ok().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize, Validate)]
@@ -2150,21 +2160,21 @@ pub struct SetEmail {
     pub email: String,
 }
 
-#[patch("email")]
 pub async fn set_email(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    email: web::Json<SetEmail>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(email): Json<SetEmail>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     email
-        .0
         .validate()
         .map_err(|err| ApiError::InvalidInput(validation_errors_to_string(err, None)))?;
 
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -2213,18 +2223,19 @@ pub async fn set_email(
     transaction.commit().await?;
     crate::database::models::User::clear_caches(&[(user.id.into(), None)], &redis).await?;
 
-    Ok(HttpResponse::Ok().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
-#[post("email/resend_verify")]
 pub async fn resend_verify_email(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -2249,7 +2260,7 @@ pub async fn resend_verify_email(
 
         send_email_verify(email, flow, "We need to verify your email address.")?;
 
-        Ok(HttpResponse::NoContent().finish())
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::InvalidInput(
             "User does not have an email.".to_string(),
@@ -2262,12 +2273,11 @@ pub struct VerifyEmail {
     pub flow: String,
 }
 
-#[post("email/verify")]
 pub async fn verify_email(
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    email: web::Json<VerifyEmail>,
-) -> Result<HttpResponse, ApiError> {
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(email): Json<VerifyEmail>,
+) -> Result<StatusCode, ApiError> {
     let flow = Flow::get(&email.flow, &redis).await?;
 
     if let Some(Flow::ConfirmEmail {
@@ -2303,7 +2313,7 @@ pub async fn verify_email(
         transaction.commit().await?;
         crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
 
-        Ok(HttpResponse::NoContent().finish())
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::InvalidInput(
             "Flow does not exist. Try re-requesting the verification link.".to_string(),
@@ -2311,15 +2321,16 @@ pub async fn verify_email(
     }
 }
 
-#[post("email/subscribe")]
 pub async fn subscribe_newsletter(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -2331,7 +2342,7 @@ pub async fn subscribe_newsletter(
     if let Some(email) = user.email {
         sign_up_beehiiv(&email).await?;
 
-        Ok(HttpResponse::NoContent().finish())
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::InvalidInput(
             "User does not have an email.".to_string(),

@@ -11,14 +11,23 @@ name = "labrinth"
 path = "src/main.rs"
 
 [dependencies]
-actix = "0.13.1"
-actix-web = "4.4.1"
-actix-rt = "2.9.0"
-actix-multipart = "0.6.1"
-actix-cors = "0.7.0"
-actix-ws = "0.2.5"
-actix-files = "0.6.5"
-actix-web-prom = "0.7.0"
+# actix = "0.13.1"
+# actix-web = "4.4.1"
+# actix-rt = "2.9.0"
+# actix-multipart = "0.6.1"
+# actix-cors = "0.7.0"
+# actix-ws = "0.2.5"
+# actix-files = "0.6.5"
+# actix-web-prom = "0.7.0"
+axum = { version = "0.7.4", features = ["json", "form", "multipart", "query", "ws"] }
+axum-prometheus = "0.5.0"
+
+# middleware + utils
+tower-http = {  version = "0.5.0", features = ["cors", "compression-br", "sensitive-headers"] }
+
+# tracing
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
 
 tokio = { version = "1.35.1", features = ["sync"] }
 tokio-stream = "0.1.14"
@@ -96,21 +105,23 @@ flate2 = "1.0.25"
 tar = "0.4.38"
 
 sentry = { version = "0.32.1" }
-sentry-actix = "0.32.1"
+# sentry-actix = "0.32.1"
 
 image = "0.24.6"
 color-thief = "0.2.2"
 
+# UA parsing
 woothee = "0.13.0"
 
+# mail send
 lettre = "0.11.3"
 
+# todo: remove
 derive-new = "0.6.0"
+
+# country list
 rust_iso3166 = "0.1.11"
 
-[dev-dependencies]
-actix-http = "3.4.0"
-json-patch = "*"
 [profile.dev]
 opt-level = 0                # Minimal optimization, speeds up compilation
 lto = false                  # Disables Link Time Optimization

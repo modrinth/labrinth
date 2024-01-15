@@ -41,16 +41,18 @@ pub struct CreateReport {
 }
 
 pub async fn report_create(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
     mut body: web::Payload,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let mut transaction = pool.begin().await?;
 
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -232,14 +234,16 @@ fn default_all() -> bool {
 }
 
 pub async fn reports(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     count: web::Query<ReportsRequestOptions>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -305,11 +309,12 @@ pub struct ReportIds {
 }
 
 pub async fn reports_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<ReportIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let report_ids: Vec<crate::database::models::ids::ReportId> =
         serde_json::from_str::<Vec<crate::models::ids::ReportId>>(&ids.ids)?
@@ -321,7 +326,8 @@ pub async fn reports_get(
         crate::database::models::report_item::Report::get_many(&report_ids, &**pool).await?;
 
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -340,14 +346,16 @@ pub async fn reports_get(
 }
 
 pub async fn report_get(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -379,15 +387,17 @@ pub struct EditReport {
 }
 
 pub async fn report_edit(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
     edit_report: web::Json<EditReport>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -484,11 +494,12 @@ pub async fn report_edit(
 }
 
 pub async fn report_delete(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     check_is_moderator_from_headers(
         &req,

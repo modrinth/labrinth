@@ -1,19 +1,23 @@
 use crate::routes::ApiError;
 use crate::util::env::parse_var;
-use actix_web::HttpRequest;
+use axum::http::HeaderMap;
 use serde::Deserialize;
 use serde_json::json;
+use std::net::SocketAddr;
 
-pub async fn check_turnstile_captcha(req: &HttpRequest, challenge: &str) -> Result<bool, ApiError> {
-    let conn_info = req.connection_info().clone();
+pub async fn check_turnstile_captcha(
+    addr: &SocketAddr,
+    headers: &HeaderMap,
+    challenge: &str,
+) -> Result<bool, ApiError> {
     let ip_addr = if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
-        if let Some(header) = req.headers().get("CF-Connecting-IP") {
+        if let Some(header) = headers.get("CF-Connecting-IP") {
             header.to_str().ok()
         } else {
-            conn_info.peer_addr()
+            addr.ip()
         }
     } else {
-        conn_info.peer_addr()
+        addr.ip()
     };
 
     let client = reqwest::Client::new();

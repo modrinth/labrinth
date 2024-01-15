@@ -1,14 +1,15 @@
-use actix_web::{get, HttpResponse};
-use serde_json::json;
+use axum::http::StatusCode;
+use axum::Json;
+use serde_json::{json, Value};
 
-#[get("/")]
-pub async fn index_get() -> HttpResponse {
-    let data = json!({
-        "name": "modrinth-labrinth",
-        "version": env!("CARGO_PKG_VERSION"),
-        "documentation": "https://docs.modrinth.com",
-        "about": "Welcome traveler!"
-    });
-
-    HttpResponse::Ok().json(data)
+pub async fn index_get() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::OK,
+        Json(json!({
+            "name": "modrinth-labrinth",
+            "version": env!("CARGO_PKG_VERSION"),
+            "documentation": "https://docs.modrinth.com",
+            "about": "Welcome traveler!"
+        })),
+    )
 }

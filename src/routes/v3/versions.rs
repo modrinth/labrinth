@@ -50,26 +50,29 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 // Given a project ID/slug and a version slug
 pub async fn version_project_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String, String)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let info = info.into_inner();
     version_project_get_helper(req, info, pool, redis, session_queue).await
 }
 pub async fn version_project_get_helper(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     id: (String, String),
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let result = database::models::Project::get(&id.0, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -108,11 +111,12 @@ pub struct VersionIds {
 }
 
 pub async fn versions_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<VersionIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let version_ids = serde_json::from_str::<Vec<models::ids::VersionId>>(&ids.ids)?
         .into_iter()
@@ -121,7 +125,8 @@ pub async fn versions_get(
     let versions_data = database::models::Version::get_many(&version_ids, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -137,27 +142,30 @@ pub async fn versions_get(
 }
 
 pub async fn version_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(models::ids::VersionId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
     version_get_helper(req, id, pool, redis, session_queue).await
 }
 
 pub async fn version_get_helper(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     id: models::ids::VersionId,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let version_data = database::models::Version::get(id.into(), &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -225,12 +233,13 @@ pub struct EditVersionFileType {
 }
 
 pub async fn version_edit(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(VersionId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     new_version: web::Json<serde_json::Value>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let new_version: EditVersion = serde_json::from_value(new_version.into_inner())?;
     version_edit_helper(
@@ -244,15 +253,17 @@ pub async fn version_edit(
     .await
 }
 pub async fn version_edit_helper(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: (VersionId,),
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     new_version: EditVersion,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -701,19 +712,21 @@ pub struct VersionListFilters {
 }
 
 pub async fn version_list(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
     web::Query(filters): web::Query<VersionListFilters>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
     let result = database::models::Project::get(&string, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -837,15 +850,17 @@ pub async fn version_list(
 }
 
 pub async fn version_delete(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(VersionId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-    search_config: web::Data<SearchConfig>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(search_config): Extension<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

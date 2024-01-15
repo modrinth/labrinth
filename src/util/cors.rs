@@ -1,10 +1,10 @@
-use actix_cors::Cors;
+use tower_http::cors::{Any, CorsLayer};
 
-pub fn default_cors() -> Cors {
-    Cors::default()
-        .allow_any_origin()
-        .allow_any_header()
-        .allow_any_method()
-        .max_age(3600)
-        .send_wildcard()
+pub fn default_cors() -> CorsLayer {
+    CorsLayer::default()
+        .allow_headers(Any)
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_credentials(Any)
+        .allow_private_network(Any)
 }

@@ -54,17 +54,19 @@ pub struct CollectionCreateData {
 }
 
 pub async fn collection_create(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     collection_create_data: web::Json<CollectionCreateData>,
-    client: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
+    Extension(client): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, CreateError> {
     let collection_create_data = collection_create_data.into_inner();
 
     // The currently logged in user
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**client,
         &redis,
         &session_queue,
@@ -130,11 +132,12 @@ pub struct CollectionIds {
     pub ids: String,
 }
 pub async fn collections_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<CollectionIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
     let ids = ids
@@ -145,7 +148,8 @@ pub async fn collections_get(
     let collections_data = database::models::Collection::get_many(&ids, &**pool, &redis).await?;
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -161,18 +165,20 @@ pub async fn collections_get(
 }
 
 pub async fn collection_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
     let id = database::models::CollectionId(parse_base62(&string)? as i64);
     let collection_data = database::models::Collection::get(id, &**pool, &redis).await?;
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -210,15 +216,17 @@ pub struct EditCollection {
 }
 
 pub async fn collection_edit(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     new_collection: web::Json<EditCollection>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -356,25 +364,27 @@ pub async fn collection_edit(
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Extension {
+pub struct FileExt {
     pub ext: String,
 }
 
 #[allow(clippy::too_many_arguments)]
 pub async fn collection_icon_edit(
-    web::Query(ext): web::Query<Extension>,
-    req: HttpRequest,
+    web::Query(ext): web::Query<FileExt>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     mut payload: web::Payload,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(
-            &req,
+            &addr,
+            &headers,
             &**pool,
             &redis,
             &session_queue,
@@ -446,15 +456,17 @@ pub async fn collection_icon_edit(
 }
 
 pub async fn delete_collection_icon(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -503,14 +515,16 @@ pub async fn delete_collection_icon(
 }
 
 pub async fn collection_delete(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

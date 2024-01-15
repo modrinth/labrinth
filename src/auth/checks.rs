@@ -6,7 +6,6 @@ use crate::database::redis::RedisPool;
 use crate::database::{models, Project, Version};
 use crate::models::users::User;
 use crate::routes::ApiError;
-use actix_web::web;
 use itertools::Itertools;
 use sqlx::PgPool;
 
@@ -32,7 +31,7 @@ where
 pub async fn is_visible_project(
     project_data: &Project,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
 ) -> Result<bool, ApiError> {
     filter_visible_project_ids(vec![project_data], user_option, pool)
         .await
@@ -42,7 +41,7 @@ pub async fn is_visible_project(
 pub async fn is_team_member_project(
     project_data: &Project,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
 ) -> Result<bool, ApiError> {
     filter_enlisted_projects_ids(vec![project_data], user_option, pool)
         .await
@@ -52,7 +51,7 @@ pub async fn is_team_member_project(
 pub async fn filter_visible_projects(
     mut projects: Vec<QueryProject>,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
 ) -> Result<Vec<crate::models::projects::Project>, ApiError> {
     let filtered_project_ids = filter_visible_project_ids(
         projects.iter().map(|x| &x.inner).collect_vec(),
@@ -73,7 +72,7 @@ pub async fn filter_visible_projects(
 pub async fn filter_visible_project_ids(
     projects: Vec<&Project>,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
 ) -> Result<Vec<crate::database::models::ProjectId>, ApiError> {
     let mut return_projects = Vec::new();
     let mut check_projects = Vec::new();
@@ -107,7 +106,7 @@ pub async fn filter_visible_project_ids(
 pub async fn filter_enlisted_projects_ids(
     projects: Vec<&Project>,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
 ) -> Result<Vec<crate::database::models::ProjectId>, ApiError> {
     let mut return_projects = vec![];
 
@@ -156,7 +155,7 @@ pub async fn filter_enlisted_projects_ids(
 pub async fn is_visible_version(
     version_data: &Version,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
     redis: &RedisPool,
 ) -> Result<bool, ApiError> {
     filter_visible_version_ids(vec![version_data], user_option, pool, redis)
@@ -167,7 +166,7 @@ pub async fn is_visible_version(
 pub async fn is_team_member_version(
     version_data: &Version,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
     redis: &RedisPool,
 ) -> Result<bool, ApiError> {
     filter_enlisted_version_ids(vec![version_data], user_option, pool, redis)
@@ -178,7 +177,7 @@ pub async fn is_team_member_version(
 pub async fn filter_visible_versions(
     mut versions: Vec<QueryVersion>,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
     redis: &RedisPool,
 ) -> Result<Vec<crate::models::projects::Version>, ApiError> {
     let filtered_version_ids = filter_visible_version_ids(
@@ -213,7 +212,7 @@ impl ValidateAuthorized for models::OAuthClient {
 pub async fn filter_visible_version_ids(
     versions: Vec<&Version>,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
     redis: &RedisPool,
 ) -> Result<Vec<crate::database::models::VersionId>, ApiError> {
     let mut return_versions = Vec::new();
@@ -265,7 +264,7 @@ pub async fn filter_visible_version_ids(
 pub async fn filter_enlisted_version_ids(
     versions: Vec<&Version>,
     user_option: &Option<User>,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
     redis: &RedisPool,
 ) -> Result<Vec<crate::database::models::VersionId>, ApiError> {
     let mut return_versions = Vec::new();

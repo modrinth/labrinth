@@ -2,8 +2,6 @@ use super::ValidatedRedirectUri;
 use crate::auth::AuthenticationError;
 use crate::models::error::ApiError;
 use crate::models::ids::DecodingError;
-use actix_web::http::{header::LOCATION, StatusCode};
-use actix_web::HttpResponse;
 
 #[derive(thiserror::Error, Debug)]
 #[error("{}", .error_type)]

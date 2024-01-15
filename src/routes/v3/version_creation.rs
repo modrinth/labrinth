@@ -96,12 +96,13 @@ struct InitialFileData {
 
 // under `/api/v1/version`
 pub async fn version_create(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     mut payload: Multipart,
-    client: Data<PgPool>,
-    redis: Data<RedisPool>,
-    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    session_queue: Data<AuthQueue>,
+    Extension(client): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -136,7 +137,8 @@ pub async fn version_create(
 
 #[allow(clippy::too_many_arguments)]
 async fn version_create_inner(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     payload: &mut Multipart,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &RedisPool,
@@ -152,7 +154,8 @@ async fn version_create_inner(
     let mut selected_loaders = None;
 
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         pool,
         redis,
         session_queue,
@@ -502,13 +505,14 @@ async fn version_create_inner(
 }
 
 pub async fn upload_file_to_version(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     url_data: web::Path<(VersionId,)>,
     mut payload: Multipart,
-    client: Data<PgPool>,
-    redis: Data<RedisPool>,
-    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(client): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
@@ -546,11 +550,12 @@ pub async fn upload_file_to_version(
 
 #[allow(clippy::too_many_arguments)]
 async fn upload_file_to_version_inner(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     payload: &mut Multipart,
-    client: Data<PgPool>,
+    Extension(client): Extension<PgPool>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    redis: Data<RedisPool>,
+    Extension(redis): Extension<RedisPool>,
     file_host: &dyn FileHost,
     uploaded_files: &mut Vec<UploadedFile>,
     version_id: models::VersionId,
@@ -562,7 +567,8 @@ async fn upload_file_to_version_inner(
     let mut file_builders: Vec<VersionFileBuilder> = Vec::new();
 
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**client,
         &redis,
         session_queue,

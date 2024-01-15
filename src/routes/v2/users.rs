@@ -34,10 +34,11 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 #[get("user")]
 pub async fn user_auth_get(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::users::user_auth_get(req, pool, redis, session_queue)
         .await
@@ -61,8 +62,8 @@ pub struct UserIds {
 #[get("users")]
 pub async fn users_get(
     web::Query(ids): web::Query<UserIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let response =
         v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis)
@@ -82,8 +83,8 @@ pub async fn users_get(
 #[get("{id}")]
 pub async fn user_get(
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::users::user_get(info, pool, redis)
         .await
@@ -101,11 +102,12 @@ pub async fn user_get(
 
 #[get("{user_id}/projects")]
 pub async fn projects_list(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::users::projects_list(req, info, pool.clone(), redis.clone(), session_queue)
         .await
@@ -149,12 +151,13 @@ pub struct EditUser {
 
 #[patch("{id}")]
 pub async fn user_edit(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
     new_user: web::Json<EditUser>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let new_user = new_user.into_inner();
     // Returns NoContent, so we don't need to convert to V2
@@ -178,21 +181,22 @@ pub async fn user_edit(
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Extension {
+pub struct FileExt {
     pub ext: String,
 }
 
 #[patch("{id}/icon")]
 #[allow(clippy::too_many_arguments)]
 pub async fn user_icon_edit(
-    web::Query(ext): web::Query<Extension>,
-    req: HttpRequest,
+    web::Query(ext): web::Query<FileExt>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     payload: web::Payload,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert to V2
     v3::users::user_icon_edit(
@@ -211,11 +215,12 @@ pub async fn user_icon_edit(
 
 #[delete("{id}")]
 pub async fn user_delete(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert to V2
     v3::users::user_delete(req, info, pool, redis, session_queue)
@@ -225,11 +230,12 @@ pub async fn user_delete(
 
 #[get("{id}/follows")]
 pub async fn user_follows(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::users::user_follows(req, info, pool.clone(), redis.clone(), session_queue)
         .await
@@ -247,11 +253,12 @@ pub async fn user_follows(
 
 #[get("{id}/notifications")]
 pub async fn user_notifications(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::users::user_notifications(req, info, pool, redis, session_queue)
         .await

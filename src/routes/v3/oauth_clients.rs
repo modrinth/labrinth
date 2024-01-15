@@ -1,10 +1,11 @@
+use axum::extract::{ConnectInfo, Path, Query};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{get, patch, post};
+use axum::{Extension, Json, Router};
+use std::net::SocketAddr;
 use std::{collections::HashSet, fmt::Display, sync::Arc};
+use bytes::Bytes;
 
-use actix_web::{
-    delete, get, patch, post,
-    web::{self, scope},
-    HttpRequest, HttpResponse,
-};
 use chrono::Utc;
 use itertools::Itertools;
 use rand::{distributions::Alphanumeric, Rng, SeedableRng};
@@ -44,31 +45,30 @@ use crate::{
 use crate::database::models::oauth_client_item::OAuthClient as DBOAuthClient;
 use crate::models::ids::OAuthClientId as ApiOAuthClientId;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        scope("oauth")
-            .configure(crate::auth::oauth::config)
-            .service(revoke_oauth_authorization)
-            .service(oauth_client_create)
-            .service(oauth_client_edit)
-            .service(oauth_client_delete)
-            .service(oauth_client_icon_edit)
-            .service(oauth_client_icon_delete)
-            .service(get_client)
-            .service(get_clients)
-            .service(get_user_oauth_authorizations),
-    );
+pub fn config() -> Router {
+    Router::new().nest(
+        "/oauth",
+        Router::new()
+            .merge(crate::auth::oauth::config)
+            .route("/authorizations", get(get_user_oauth_authorizations).delete(revoke_oauth_authorization))
+            .route("/app", post(oauth_client_create))
+            .route("/app/{id}", get(get_client).patch(oauth_client_edit).delete(oauth_client_delete))
+            .route("app/{id}/icon", patch(oauth_client_icon_edit).delete(oauth_client_icon_delete))
+            .route("/apps", get(get_clients)),
+    )
 }
 
 pub async fn get_user_clients(
-    req: HttpRequest,
-    info: web::Path<String>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<String>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<models::oauth_clients::OAuthClient>>, ApiError> {
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -90,45 +90,45 @@ pub async fn get_user_clients(
             .map(models::oauth_clients::OAuthClient::from)
             .collect_vec();
 
-        Ok(HttpResponse::Ok().json(response))
+        Ok(Json(response))
     } else {
         Err(ApiError::NotFound)
     }
 }
 
-#[get("app/{id}")]
 pub async fn get_client(
-    req: HttpRequest,
-    id: web::Path<ApiOAuthClientId>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    let clients = get_clients_inner(&[id.into_inner()], req, pool, redis, session_queue).await?;
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<ApiOAuthClientId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<models::oauth_clients::OAuthClient>, ApiError> {
+    let clients = get_clients_inner(&[id.into_inner()], addr, headers, pool, redis, session_queue).await?;
     if let Some(client) = clients.into_iter().next() {
-        Ok(HttpResponse::Ok().json(client))
+        Ok(Json(client))
     } else {
         Err(ApiError::NotFound)
     }
 }
 
-#[get("apps")]
 pub async fn get_clients(
-    req: HttpRequest,
-    info: web::Query<GetOAuthClientsRequest>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(info): Query<GetOAuthClientsRequest>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<models::oauth_clients::OAuthClient>>, ApiError> {
     let ids: Vec<_> = info
         .ids
         .iter()
         .map(|id| parse_base62(id).map(ApiOAuthClientId))
         .collect::<Result<_, _>>()?;
 
-    let clients = get_clients_inner(&ids, req, pool, redis, session_queue).await?;
+    let clients = get_clients_inner(&ids, addr, headers, pool, redis, session_queue).await?;
 
-    Ok(HttpResponse::Ok().json(clients))
+    Ok(Json(clients))
 }
 
 #[derive(Deserialize, Validate)]
@@ -160,16 +160,17 @@ pub struct NewOAuthApp {
     pub description: Option<String>,
 }
 
-#[post("app")]
 pub async fn oauth_client_create<'a>(
-    req: HttpRequest,
-    new_oauth_app: web::Json<NewOAuthApp>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, CreateError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(new_oauth_app): Json<NewOAuthApp>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<OAuthClientCreationResult>, CreateError> {
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -210,22 +211,23 @@ pub async fn oauth_client_create<'a>(
 
     let client = models::oauth_clients::OAuthClient::from(client);
 
-    Ok(HttpResponse::Ok().json(OAuthClientCreationResult {
+    Ok(Json(OAuthClientCreationResult {
         client,
         client_secret,
     }))
 }
 
-#[delete("app/{id}")]
 pub async fn oauth_client_delete<'a>(
-    req: HttpRequest,
-    client_id: web::Path<ApiOAuthClientId>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(client_id): Path<ApiOAuthClientId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -239,7 +241,7 @@ pub async fn oauth_client_delete<'a>(
         client.validate_authorized(Some(&current_user))?;
         OAuthClient::remove(client.id, &**pool).await?;
 
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
@@ -274,17 +276,18 @@ pub struct OAuthClientEdit {
     pub description: Option<Option<String>>,
 }
 
-#[patch("app/{id}")]
 pub async fn oauth_client_edit(
-    req: HttpRequest,
-    client_id: web::Path<ApiOAuthClientId>,
-    client_updates: web::Json<OAuthClientEdit>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(client_id): Path<ApiOAuthClientId>,
+    Json(client_updates): Json<OAuthClientEdit>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -347,33 +350,34 @@ pub async fn oauth_client_edit(
 
         transaction.commit().await?;
 
-        Ok(HttpResponse::Ok().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Extension {
+pub struct FileExt {
     pub ext: String,
 }
 
-#[patch("app/{id}/icon")]
 #[allow(clippy::too_many_arguments)]
 pub async fn oauth_client_icon_edit(
-    web::Query(ext): web::Query<Extension>,
-    req: HttpRequest,
-    client_id: web::Path<ApiOAuthClientId>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
-    mut payload: web::Payload,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    Query(ext): Query<FileExt>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(client_id): Path<ApiOAuthClientId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    payload: Bytes,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(
-            &req,
+            &addr,
+            &headers,
             &**pool,
             &redis,
             &session_queue,
@@ -399,7 +403,7 @@ pub async fn oauth_client_icon_edit(
         }
 
         let bytes =
-            read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB").await?;
+            read_from_payload(payload, 262144, "Icons must be smaller than 256KiB").await?;
         let hash = sha1::Sha1::from(&bytes).hexdigest();
         let upload_data = file_host
             .upload_file(
@@ -420,7 +424,7 @@ pub async fn oauth_client_icon_edit(
 
         transaction.commit().await?;
 
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::InvalidInput(format!(
             "Invalid format for project icon: {}",
@@ -429,18 +433,19 @@ pub async fn oauth_client_icon_edit(
     }
 }
 
-#[delete("app/{id}/icon")]
 pub async fn oauth_client_icon_delete(
-    req: HttpRequest,
-    client_id: web::Path<ApiOAuthClientId>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(client_id): Path<ApiOAuthClientId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let cdn_url = dotenvy::var("CDN_URL")?;
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -474,18 +479,19 @@ pub async fn oauth_client_icon_delete(
         .await?;
     transaction.commit().await?;
 
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }
 
-#[get("authorizations")]
 pub async fn get_user_oauth_authorizations(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<models::oauth_clients::OAuthClientAuthorization>>, ApiError> {
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -500,19 +506,20 @@ pub async fn get_user_oauth_authorizations(
     let mapped: Vec<models::oauth_clients::OAuthClientAuthorization> =
         authorizations.into_iter().map(|a| a.into()).collect_vec();
 
-    Ok(HttpResponse::Ok().json(mapped))
+    Ok(Json(mapped))
 }
 
-#[delete("authorizations")]
 pub async fn revoke_oauth_authorization(
-    req: HttpRequest,
-    info: web::Query<DeleteOAuthClientQueryParam>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(info): Query<DeleteOAuthClientQueryParam>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -524,7 +531,7 @@ pub async fn revoke_oauth_authorization(
     OAuthClientAuthorization::remove(info.client_id.into(), current_user.id.into(), &**pool)
         .await?;
 
-    Ok(HttpResponse::Ok().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn generate_oauth_client_secret() -> String {
@@ -583,13 +590,15 @@ async fn edit_redirects(
 
 pub async fn get_clients_inner(
     ids: &[ApiOAuthClientId],
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    addr: SocketAddr,
+    headers: HeaderMap,
+    pool: PgPool,
+    redis: RedisPool,
+    session_queue: Arc<AuthQueue>,
 ) -> Result<Vec<models::oauth_clients::OAuthClient>, ApiError> {
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

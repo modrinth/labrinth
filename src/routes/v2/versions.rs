@@ -39,12 +39,13 @@ pub struct VersionListFilters {
 
 #[get("version")]
 pub async fn version_list(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
     web::Query(filters): web::Query<VersionListFilters>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let loaders = if let Some(loaders) = filters.loaders {
         if let Ok(mut loaders) = serde_json::from_str::<Vec<String>>(&loaders) {
@@ -115,11 +116,12 @@ pub async fn version_list(
 // Given a project ID/slug and a version slug
 #[get("version/{slug}")]
 pub async fn version_project_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String, String)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner();
     let response = v3::versions::version_project_get_helper(req, id, pool, redis, session_queue)
@@ -142,11 +144,12 @@ pub struct VersionIds {
 
 #[get("versions")]
 pub async fn versions_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     web::Query(ids): web::Query<VersionIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = v3::versions::VersionIds { ids: ids.ids };
     let response = v3::versions::versions_get(req, web::Query(ids), pool, redis, session_queue)
@@ -168,11 +171,12 @@ pub async fn versions_get(
 
 #[get("{version_id}")]
 pub async fn version_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(models::ids::VersionId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let id = info.into_inner().0;
     let response = v3::versions::version_get_helper(req, id, pool, redis, session_queue)
@@ -226,12 +230,13 @@ pub struct EditVersionFileType {
 
 #[patch("{id}")]
 pub async fn version_edit(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(VersionId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     new_version: web::Json<EditVersion>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let new_version = new_version.into_inner();
 
@@ -309,12 +314,13 @@ pub async fn version_edit(
 
 #[delete("{version_id}")]
 pub async fn version_delete(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(VersionId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-    search_config: web::Data<SearchConfig>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(search_config): Extension<SearchConfig>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert the response
     v3::versions::version_delete(req, info, pool, redis, session_queue, search_config)

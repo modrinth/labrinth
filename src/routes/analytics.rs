@@ -10,6 +10,7 @@ use crate::util::date::get_current_tenths_of_ms;
 use crate::util::env::parse_strings_from_var;
 use actix_web::{post, web};
 use actix_web::{HttpRequest, HttpResponse};
+use axum::Extension;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -57,15 +58,16 @@ pub struct UrlInput {
 //this route should be behind the cloudflare WAF to prevent non-browsers from calling it
 #[post("view")]
 pub async fn page_view_ingest(
-    req: HttpRequest,
-    maxmind: web::Data<Arc<MaxMindIndexer>>,
-    analytics_queue: web::Data<Arc<AnalyticsQueue>>,
-    session_queue: web::Data<AuthQueue>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(maxmind): Extension<Arc<MaxMindIndexer>>,
+    Extension(analytics_queue): Extension<Arc<AnalyticsQueue>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
     url_input: web::Json<UrlInput>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, None)
+    let user = get_user_from_headers(&addr, &headers, &**pool, &redis, &session_queue, None)
         .await
         .ok();
     let conn_info = req.connection_info().peer_addr().map(|x| x.to_string());
@@ -163,15 +165,17 @@ pub struct PlaytimeInput {
 
 #[post("playtime")]
 pub async fn playtime_ingest(
-    req: HttpRequest,
-    analytics_queue: web::Data<Arc<AnalyticsQueue>>,
-    session_queue: web::Data<AuthQueue>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(analytics_queue): Extension<Arc<AnalyticsQueue>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
     playtime_input: web::Json<HashMap<crate::models::ids::VersionId, PlaytimeInput>>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let (_, user) = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

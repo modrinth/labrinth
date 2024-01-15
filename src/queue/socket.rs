@@ -1,9 +1,9 @@
 //! "Database" for Hydra
-use actix_ws::Session;
+use axum::extract::ws::WebSocket;
 use dashmap::DashMap;
 
 pub struct ActiveSockets {
-    pub auth_sockets: DashMap<String, Session>,
+    pub auth_sockets: DashMap<String, WebSocket>,
 }
 
 impl Default for ActiveSockets {

@@ -5,7 +5,6 @@ pub mod cors;
 pub mod date;
 pub mod env;
 pub mod ext;
-pub mod guards;
 pub mod img;
 pub mod redis;
 pub mod routes;

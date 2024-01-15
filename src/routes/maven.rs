@@ -14,7 +14,7 @@ use sqlx::PgPool;
 use std::collections::HashSet;
 use yaserde_derive::YaSerialize;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
+pub fn config() -> Router {
     cfg.service(maven_metadata);
     cfg.service(version_file_sha512);
     cfg.service(version_file_sha1);
@@ -70,11 +70,12 @@ pub struct MavenPom {
 
 #[get("maven/modrinth/{id}/maven-metadata.xml")]
 pub async fn maven_metadata(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     params: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let project_id = params.into_inner().0;
     let Some(project) = database::models::Project::get(&project_id, &**pool, &redis).await? else {
@@ -82,7 +83,8 @@ pub async fn maven_metadata(
     };
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -264,11 +266,12 @@ fn find_file<'a>(
     method = "HEAD"
 )]
 pub async fn version_file(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     params: web::Path<(String, String, String)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
     let Some(project) = database::models::Project::get(&project_id, &**pool, &redis).await? else {
@@ -276,7 +279,8 @@ pub async fn version_file(
     };
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -325,11 +329,12 @@ pub async fn version_file(
 
 #[get("maven/modrinth/{id}/{versionnum}/{file}.sha1")]
 pub async fn version_file_sha1(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     params: web::Path<(String, String, String)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
     let Some(project) = database::models::Project::get(&project_id, &**pool, &redis).await? else {
@@ -337,7 +342,8 @@ pub async fn version_file_sha1(
     };
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -367,11 +373,12 @@ pub async fn version_file_sha1(
 
 #[get("maven/modrinth/{id}/{versionnum}/{file}.sha512")]
 pub async fn version_file_sha512(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     params: web::Path<(String, String, String)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let (project_id, vnum, file) = params.into_inner();
     let Some(project) = database::models::Project::get(&project_id, &**pool, &redis).await? else {
@@ -379,7 +386,8 @@ pub async fn version_file_sha512(
     };
 
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

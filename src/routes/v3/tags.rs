@@ -36,8 +36,8 @@ pub struct GameData {
 }
 
 pub async fn games_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let results = Game::list(&**pool, &redis)
         .await?
@@ -62,8 +62,8 @@ pub struct CategoryData {
 }
 
 pub async fn category_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let results = Category::list(&**pool, &redis)
         .await?
@@ -90,8 +90,8 @@ pub struct LoaderData {
 }
 
 pub async fn loader_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let loaders = Loader::list(&**pool, &redis).await?;
 
@@ -130,9 +130,9 @@ pub struct LoaderFieldsEnumQuery {
 
 // Provides the variants for any enumerable loader field.
 pub async fn loader_fields_list(
-    pool: web::Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     query: web::Query<LoaderFieldsEnumQuery>,
-    redis: web::Data<RedisPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let query = query.into_inner();
     let loader_field = LoaderField::get_fields_all(&**pool, &redis)
@@ -221,8 +221,8 @@ pub struct LinkPlatformQueryData {
 }
 
 pub async fn link_platform_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let results: Vec<LinkPlatformQueryData> = LinkPlatform::list(&**pool, &redis)
         .await?
@@ -236,16 +236,16 @@ pub async fn link_platform_list(
 }
 
 pub async fn report_type_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let results = ReportType::list(&**pool, &redis).await?;
     Ok(HttpResponse::Ok().json(results))
 }
 
 pub async fn project_type_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let results = ProjectType::list(&**pool, &redis).await?;
     Ok(HttpResponse::Ok().json(results))

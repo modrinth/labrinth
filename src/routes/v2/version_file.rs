@@ -31,12 +31,13 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 // under /api/v1/version_file/{hash}
 #[get("{version_id}")]
 pub async fn get_version_from_hash(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     hash_query: web::Query<HashQuery>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response =
         v3::version_file::get_version_from_hash(req, info, pool, redis, hash_query, session_queue)
@@ -56,12 +57,13 @@ pub async fn get_version_from_hash(
 // under /api/v1/version_file/{hash}/download
 #[get("{version_id}/download")]
 pub async fn download_version(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     hash_query: web::Query<HashQuery>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns TemporaryRedirect, so no need to convert to V2
     v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue)
@@ -72,12 +74,13 @@ pub async fn download_version(
 // under /api/v1/version_file/{hash}
 #[delete("{version_id}")]
 pub async fn delete_file(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     hash_query: web::Query<HashQuery>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so no need to convert to V2
     v3::version_file::delete_file(req, info, pool, redis, hash_query, session_queue)
@@ -94,13 +97,14 @@ pub struct UpdateData {
 
 #[post("{version_id}/update")]
 pub async fn get_update_from_hash(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     hash_query: web::Query<HashQuery>,
     update_data: web::Json<UpdateData>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let update_data = update_data.into_inner();
     let mut loader_fields = HashMap::new();
@@ -149,11 +153,12 @@ pub struct FileHashes {
 // under /api/v2/version_files
 #[post("")]
 pub async fn get_versions_from_hashes(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     file_data: web::Json<FileHashes>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let file_data = file_data.into_inner();
     let file_data = v3::version_file::FileHashes {
@@ -188,11 +193,12 @@ pub async fn get_versions_from_hashes(
 
 #[post("project")]
 pub async fn get_projects_from_hashes(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     file_data: web::Json<FileHashes>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let file_data = file_data.into_inner();
     let file_data = v3::version_file::FileHashes {
@@ -248,11 +254,12 @@ pub struct ManyUpdateData {
 
 #[post("update")]
 pub async fn update_files(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     update_data: web::Json<ManyUpdateData>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let update_data = update_data.into_inner();
     let mut loader_fields = HashMap::new();
@@ -308,11 +315,12 @@ pub struct ManyFileUpdateData {
 
 #[post("update_individual")]
 pub async fn update_individual_files(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
     update_data: web::Json<ManyFileUpdateData>,
-    session_queue: web::Data<AuthQueue>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let update_data = update_data.into_inner();
     let update_data = v3::version_file::ManyFileUpdateData {

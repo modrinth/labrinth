@@ -68,15 +68,17 @@ pub struct FetchedPlaytime {
     pub parent_seconds: HashMap<VersionId, u64>,
 }
 pub async fn playtimes_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     clickhouse: web::Data<clickhouse::Client>,
     data: web::Query<GetData>,
-    session_queue: web::Data<AuthQueue>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -134,15 +136,17 @@ pub async fn playtimes_get(
 ///}
 /// Either a list of project_ids or version_ids can be used, but not both. Unauthorized projects/versions will be filtered out.
 pub async fn views_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     clickhouse: web::Data<clickhouse::Client>,
     data: web::Query<GetData>,
-    session_queue: web::Data<AuthQueue>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -200,15 +204,17 @@ pub async fn views_get(
 ///}
 /// Either a list of project_ids or version_ids can be used, but not both. Unauthorized projects/versions will be filtered out.
 pub async fn downloads_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     clickhouse: web::Data<clickhouse::Client>,
     data: web::Query<GetData>,
-    session_queue: web::Data<AuthQueue>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user_option = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -266,14 +272,16 @@ pub async fn downloads_get(
 ///}
 /// ONLY project IDs can be used. Unauthorized projects will be filtered out.
 pub async fn revenue_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     data: web::Query<GetData>,
-    session_queue: web::Data<AuthQueue>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -395,15 +403,17 @@ pub async fn revenue_get(
 /// Either a list of project_ids or version_ids can be used, but not both. Unauthorized projects/versions will be filtered out.
 /// For this endpoint, provided dates are a range to aggregate over, not specific days to fetch
 pub async fn countries_downloads_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     clickhouse: web::Data<clickhouse::Client>,
     data: web::Query<GetData>,
-    session_queue: web::Data<AuthQueue>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -467,15 +477,17 @@ pub async fn countries_downloads_get(
 /// Either a list of project_ids or version_ids can be used, but not both. Unauthorized projects/versions will be filtered out.
 /// For this endpoint, provided dates are a range to aggregate over, not specific days to fetch
 pub async fn countries_views_get(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     clickhouse: web::Data<clickhouse::Client>,
     data: web::Query<GetData>,
-    session_queue: web::Data<AuthQueue>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,

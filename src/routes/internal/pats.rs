@@ -1,17 +1,22 @@
 use crate::database;
 use crate::database::models::generate_pat_id;
+use axum::extract::{ConnectInfo, Path};
+use axum::http::HeaderMap;
+use axum::routing::{get, patch, post};
+use axum::{Extension, Json, Router};
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use crate::auth::get_user_from_headers;
 use crate::routes::ApiError;
 
 use crate::database::redis::RedisPool;
-use actix_web::web::{self, Data};
-use actix_web::{delete, get, patch, post, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use reqwest::StatusCode;
 
 use crate::models::pats::{PersonalAccessToken, Scopes};
 use crate::queue::session::AuthQueue;
@@ -20,22 +25,23 @@ use serde::Deserialize;
 use sqlx::postgres::PgPool;
 use validator::Validate;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_pats);
-    cfg.service(create_pat);
-    cfg.service(edit_pat);
-    cfg.service(delete_pat);
+pub fn config() -> Router {
+    Router::new()
+        .route("/pat", get(get_pats))
+        .route("/pat", post(create_pat))
+        .route("/pat/:id", patch(edit_pat).delete(delete_pat))
 }
 
-#[get("pat")]
 pub async fn get_pats(
-    req: HttpRequest,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<PersonalAccessToken>>, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -54,7 +60,7 @@ pub async fn get_pats(
         database::models::pat_item::PersonalAccessToken::get_many_ids(&pat_ids, &**pool, &redis)
             .await?;
 
-    Ok(HttpResponse::Ok().json(
+    Ok(Json(
         pats.into_iter()
             .map(|x| PersonalAccessToken::from(x, false))
             .collect::<Vec<_>>(),
@@ -69,16 +75,15 @@ pub struct NewPersonalAccessToken {
     pub expires: DateTime<Utc>,
 }
 
-#[post("pat")]
 pub async fn create_pat(
-    req: HttpRequest,
-    info: web::Json<NewPersonalAccessToken>,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    info.0
-        .validate()
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(info): Json<NewPersonalAccessToken>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<PersonalAccessToken>, ApiError> {
+    info.validate()
         .map_err(|err| ApiError::InvalidInput(validation_errors_to_string(err, None)))?;
 
     if info.scopes.is_restricted() {
@@ -93,7 +98,8 @@ pub async fn create_pat(
     }
 
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -134,7 +140,7 @@ pub async fn create_pat(
     )
     .await?;
 
-    Ok(HttpResponse::Ok().json(PersonalAccessToken {
+    Ok(Json(PersonalAccessToken {
         id: id.into(),
         name,
         access_token: Some(token),
@@ -154,17 +160,18 @@ pub struct ModifyPersonalAccessToken {
     pub expires: Option<DateTime<Utc>>,
 }
 
-#[patch("pat/{id}")]
 pub async fn edit_pat(
-    req: HttpRequest,
-    id: web::Path<(String,)>,
-    info: web::Json<ModifyPersonalAccessToken>,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(info): Json<ModifyPersonalAccessToken>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -173,7 +180,6 @@ pub async fn edit_pat(
     .await?
     .1;
 
-    let id = id.into_inner().0;
     let pat = database::models::pat_item::PersonalAccessToken::get(&id, &**pool, &redis).await?;
 
     if let Some(pat) = pat {
@@ -241,19 +247,20 @@ pub async fn edit_pat(
         }
     }
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
-#[delete("pat/{id}")]
 pub async fn delete_pat(
-    req: HttpRequest,
-    id: web::Path<(String,)>,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         &**pool,
         &redis,
         &session_queue,
@@ -261,7 +268,6 @@ pub async fn delete_pat(
     )
     .await?
     .1;
-    let id = id.into_inner().0;
     let pat = database::models::pat_item::PersonalAccessToken::get(&id, &**pool, &redis).await?;
 
     if let Some(pat) = pat {
@@ -278,5 +284,5 @@ pub async fn delete_pat(
         }
     }
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
