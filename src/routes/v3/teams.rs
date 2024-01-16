@@ -112,7 +112,6 @@ pub async fn team_members_get_project(
     }
 }
 
-
 pub async fn team_members_get_organization(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -242,7 +241,6 @@ pub struct TeamIds {
     pub ids: String,
 }
 
-
 pub async fn teams_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -298,7 +296,7 @@ pub async fn teams_get(
             .is_some();
 
         let team_members = members
-            .into_iter()
+            .iter()
             .filter(|x| logged_in || x.accepted)
             .flat_map(|data| {
                 users.iter().find(|x| x.id == data.user_id).map(|user| {

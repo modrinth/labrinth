@@ -12,6 +12,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::future::Future;
 use std::iter;
 
 pub const VERSIONS_NAMESPACE: &str = "versions";
@@ -448,395 +449,407 @@ impl Version {
         Ok(Some(()))
     }
 
-    pub async fn get<'a, 'b, E>(
+    pub fn get<'a, 'c, E>(
         id: VersionId,
         executor: E,
-        redis: &RedisPool,
-    ) -> Result<Option<QueryVersion>, DatabaseError>
+        redis: &'a RedisPool,
+    ) -> impl Future<Output = Result<Option<QueryVersion>, DatabaseError>> + Send + 'a
     where
-        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
+        E: sqlx::Acquire<'c, Database = sqlx::Postgres> + Send + 'a,
     {
-        Self::get_many(&[id], executor, redis)
-            .await
-            .map(|x| x.into_iter().next())
+        async move {
+            Self::get_many(&[id], executor, redis)
+                .await
+                .map(|x| x.into_iter().next())
+        }
     }
 
-    pub async fn get_many<'a, E>(
-        version_ids: &[VersionId],
+    pub fn get_many<'a, 'c, E>(
+        version_ids: &'a [VersionId],
         exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<QueryVersion>, DatabaseError>
+        redis: &'a RedisPool,
+    ) -> impl Future<Output = Result<Vec<QueryVersion>, DatabaseError>> + Send + 'a
     where
-        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
+        E: sqlx::Acquire<'c, Database = sqlx::Postgres> + Send + 'a,
     {
-        let version_ids = version_ids
-            .iter()
-            .unique()
-            .copied()
-            .collect::<Vec<VersionId>>();
+        async move {
+            let version_ids = version_ids
+                .iter()
+                .unique()
+                .copied()
+                .collect::<Vec<VersionId>>();
 
-        use futures::stream::TryStreamExt;
+            use futures::stream::TryStreamExt;
 
-        if version_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let mut exec = exec.acquire().await?;
-        let mut redis = redis.connect().await?;
-
-        let mut version_ids_parsed: Vec<i64> = version_ids.iter().map(|x| x.0).collect();
-
-        let mut found_versions = Vec::new();
-
-        let versions = redis
-            .multi_get::<String>(
-                VERSIONS_NAMESPACE,
-                version_ids_parsed
-                    .clone()
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>(),
-            )
-            .await?;
-
-        for version in versions {
-            if let Some(version) =
-                version.and_then(|x| serde_json::from_str::<QueryVersion>(&x).ok())
-            {
-                version_ids_parsed.retain(|x| &version.inner.id.0 != x);
-                found_versions.push(version);
-                continue;
-            }
-        }
-
-        if !version_ids_parsed.is_empty() {
-            let loader_field_enum_value_ids = DashSet::new();
-            let version_fields: DashMap<VersionId, Vec<QueryVersionField>> = sqlx::query!(
-                "
-                SELECT version_id, field_id, int_value, enum_value, string_value
-                FROM version_fields
-                WHERE version_id = ANY($1)
-                ",
-                &version_ids_parsed
-            )
-            .fetch(&mut *exec)
-            .try_fold(
-                DashMap::new(),
-                |acc: DashMap<VersionId, Vec<QueryVersionField>>, m| {
-                    let qvf = QueryVersionField {
-                        version_id: VersionId(m.version_id),
-                        field_id: LoaderFieldId(m.field_id),
-                        int_value: m.int_value,
-                        enum_value: m.enum_value.map(LoaderFieldEnumValueId),
-                        string_value: m.string_value,
-                    };
-
-                    if let Some(enum_value) = m.enum_value {
-                        loader_field_enum_value_ids.insert(LoaderFieldEnumValueId(enum_value));
-                    }
-
-                    acc.entry(VersionId(m.version_id)).or_default().push(qvf);
-                    async move { Ok(acc) }
-                },
-            )
-            .await?;
-
-            #[derive(Default)]
-            struct VersionLoaderData {
-                loaders: Vec<String>,
-                project_types: Vec<String>,
-                games: Vec<String>,
-                loader_loader_field_ids: Vec<LoaderFieldId>,
+            if version_ids.is_empty() {
+                return Ok(Vec::new());
             }
 
-            let loader_field_ids = DashSet::new();
-            let loaders_ptypes_games: DashMap<VersionId, VersionLoaderData> = sqlx::query!(
-                "
-                SELECT DISTINCT version_id,
-                    ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
-                    ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
-                    ARRAY_AGG(DISTINCT g.slug) filter (where g.slug is not null) games,
-                    ARRAY_AGG(DISTINCT lfl.loader_field_id) filter (where lfl.loader_field_id is not null) loader_fields
-                FROM versions v
-                INNER JOIN loaders_versions lv ON v.id = lv.version_id
-                INNER JOIN loaders l ON lv.loader_id = l.id
-                INNER JOIN loaders_project_types lpt ON lpt.joining_loader_id = l.id
-                INNER JOIN project_types pt ON pt.id = lpt.joining_project_type_id
-                INNER JOIN loaders_project_types_games lptg ON lptg.loader_id = l.id AND lptg.project_type_id = pt.id
-                INNER JOIN games g ON lptg.game_id = g.id
-                LEFT JOIN loader_fields_loaders lfl ON lfl.loader_id = l.id
-                WHERE v.id = ANY($1)
-                GROUP BY version_id
-                ",
-                &version_ids_parsed
-            ).fetch(&mut *exec)
-            .map_ok(|m| {
-                let version_id = VersionId(m.version_id);
+            let mut exec = exec.acquire().await?;
+            let mut redis = redis.connect().await?;
 
-                // Add loader fields to the set we need to fetch
-                let loader_loader_field_ids = m.loader_fields.unwrap_or_default().into_iter().map(LoaderFieldId).collect::<Vec<_>>();
-                for loader_field_id in loader_loader_field_ids.iter() {
-                    loader_field_ids.insert(*loader_field_id);
-                }
+            let mut version_ids_parsed: Vec<i64> = version_ids.iter().map(|x| x.0).collect();
 
-                // Add loader + loader associated data to the map
-                let version_loader_data = VersionLoaderData {
-                    loaders: m.loaders.unwrap_or_default(),
-                    project_types: m.project_types.unwrap_or_default(),
-                    games: m.games.unwrap_or_default(),
-                    loader_loader_field_ids,
-                };
-                (version_id,version_loader_data)
+            let mut found_versions = Vec::new();
 
-                }
-            ).try_collect().await?;
-
-            // Fetch all loader fields from any version
-            let loader_fields: Vec<QueryLoaderField> = sqlx::query!(
-                "
-                SELECT DISTINCT id, field, field_type, enum_type, min_val, max_val, optional
-                FROM loader_fields lf
-                WHERE id = ANY($1)  
-                ",
-                &loader_field_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-            )
-            .fetch(&mut *exec)
-            .map_ok(|m| QueryLoaderField {
-                id: LoaderFieldId(m.id),
-                field: m.field,
-                field_type: m.field_type,
-                enum_type: m.enum_type.map(LoaderFieldEnumId),
-                min_val: m.min_val,
-                max_val: m.max_val,
-                optional: m.optional,
-            })
-            .try_collect()
-            .await?;
-
-            let loader_field_enum_values: Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
-                "
-                SELECT DISTINCT id, enum_id, value, ordering, created, metadata
-                FROM loader_field_enum_values lfev
-                WHERE id = ANY($1)  
-                ORDER BY enum_id, ordering, created ASC
-                ",
-                &loader_field_enum_value_ids
-                    .iter()
-                    .map(|x| x.0)
-                    .collect::<Vec<_>>()
-            )
-            .fetch(&mut *exec)
-            .map_ok(|m| QueryLoaderFieldEnumValue {
-                id: LoaderFieldEnumValueId(m.id),
-                enum_id: LoaderFieldEnumId(m.enum_id),
-                value: m.value,
-                ordering: m.ordering,
-                created: m.created,
-                metadata: m.metadata,
-            })
-            .try_collect()
-            .await?;
-
-            #[derive(Deserialize)]
-            struct Hash {
-                pub file_id: FileId,
-                pub algorithm: String,
-                pub hash: String,
-            }
-
-            #[derive(Deserialize)]
-            struct File {
-                pub id: FileId,
-                pub url: String,
-                pub filename: String,
-                pub primary: bool,
-                pub size: u32,
-                pub file_type: Option<FileType>,
-            }
-
-            let file_ids = DashSet::new();
-            let reverse_file_map = DashMap::new();
-            let files : DashMap<VersionId, Vec<File>> = sqlx::query!(
-                "
-                SELECT DISTINCT version_id, f.id, f.url, f.filename, f.is_primary, f.size, f.file_type
-                FROM files f
-                WHERE f.version_id = ANY($1)
-                ",
-                &version_ids_parsed
-            ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc : DashMap<VersionId, Vec<File>>, m| {
-                    let file = File {
-                        id: FileId(m.id),
-                        url: m.url,
-                        filename: m.filename,
-                        primary: m.is_primary,
-                        size: m.size as u32,
-                        file_type: m.file_type.map(|x| FileType::from_string(&x)),
-                    };
-
-                    file_ids.insert(FileId(m.id));
-                    reverse_file_map.insert(FileId(m.id), VersionId(m.version_id));
-
-                    acc.entry(VersionId(m.version_id))
-                    .or_default()
-                    .push(file);
-                    async move { Ok(acc) }
-                }
-            ).await?;
-
-            let hashes: DashMap<VersionId, Vec<Hash>> = sqlx::query!(
-                "
-                SELECT DISTINCT file_id, algorithm, encode(hash, 'escape') hash
-                FROM hashes
-                WHERE file_id = ANY($1)
-                ",
-                &file_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-            )
-            .fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc: DashMap<VersionId, Vec<Hash>>, m| {
-                if let Some(found_hash) = m.hash {
-                    let hash = Hash {
-                        file_id: FileId(m.file_id),
-                        algorithm: m.algorithm,
-                        hash: found_hash,
-                    };
-
-                    if let Some(version_id) = reverse_file_map.get(&FileId(m.file_id)) {
-                        acc.entry(*version_id).or_default().push(hash);
-                    }
-                }
-                async move { Ok(acc) }
-            })
-            .await?;
-
-            let dependencies : DashMap<VersionId, Vec<QueryDependency>> = sqlx::query!(
-                "
-                SELECT DISTINCT dependent_id as version_id, d.mod_dependency_id as dependency_project_id, d.dependency_id as dependency_version_id, d.dependency_file_name as file_name, d.dependency_type as dependency_type
-                FROM dependencies d
-                WHERE dependent_id = ANY($1)
-                ",
-                &version_ids_parsed
-            ).fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc : DashMap<_,Vec<QueryDependency>>, m| {
-                    let dependency = QueryDependency {
-                        project_id: m.dependency_project_id.map(ProjectId),
-                        version_id: m.dependency_version_id.map(VersionId),
-                        file_name: m.file_name,
-                        dependency_type: m.dependency_type,
-                    };
-
-                    acc.entry(VersionId(m.version_id))
-                    .or_default()
-                    .push(dependency);
-                    async move { Ok(acc) }
-                }
-            ).await?;
-
-            let db_versions: Vec<QueryVersion> = sqlx::query!(
-                "
-                SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
-                v.changelog changelog, v.date_published date_published, v.downloads downloads,
-                v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, v.ordering ordering
-                FROM versions v
-                WHERE v.id = ANY($1)
-                ORDER BY v.ordering ASC NULLS LAST, v.date_published ASC;
-                ",
-                &version_ids_parsed
-            )
-                .fetch_many(&mut *exec)
-                .try_filter_map(|e| async {
-                    Ok(e.right().map(|v|
-                        {
-                        let version_id = VersionId(v.id);
-                        let VersionLoaderData {
-                            loaders,
-                            project_types,
-                            games,
-                            loader_loader_field_ids,
-                         } = loaders_ptypes_games.remove(&version_id).map(|x|x.1).unwrap_or_default();
-                        let files = files.remove(&version_id).map(|x|x.1).unwrap_or_default();
-                        let hashes = hashes.remove(&version_id).map(|x|x.1).unwrap_or_default();
-                        let version_fields = version_fields.remove(&version_id).map(|x|x.1).unwrap_or_default();
-                        let dependencies = dependencies.remove(&version_id).map(|x|x.1).unwrap_or_default();
-
-                        let loader_fields = loader_fields.iter()
-                        .filter(|x| loader_loader_field_ids.contains(&x.id))
-                        .collect::<Vec<_>>();
-
-                        QueryVersion {
-                            inner: Version {
-                                id: VersionId(v.id),
-                                project_id: ProjectId(v.mod_id),
-                                author_id: UserId(v.author_id),
-                                name: v.version_name,
-                                version_number: v.version_number,
-                                changelog: v.changelog,
-                                date_published: v.date_published,
-                                downloads: v.downloads,
-                                version_type: v.version_type,
-                                featured: v.featured,
-                                status: VersionStatus::from_string(&v.status),
-                                requested_status: v.requested_status
-                                    .map(|x| VersionStatus::from_string(&x)),
-                                ordering: v.ordering,
-                            },
-                            files: {
-                                let mut files = files.into_iter().map(|x| {
-                                    let mut file_hashes = HashMap::new();
-
-                                    for hash in hashes.iter() {
-                                        if hash.file_id == x.id {
-                                            file_hashes.insert(
-                                                hash.algorithm.clone(),
-                                                hash.hash.clone(),
-                                            );
-                                        }
-                                    }
-
-                                    QueryFile {
-                                        id: x.id,
-                                        url: x.url.clone(),
-                                        filename: x.filename.clone(),
-                                        hashes: file_hashes,
-                                        primary: x.primary,
-                                        size: x.size,
-                                        file_type: x.file_type,
-                                    }
-                                }).collect::<Vec<_>>();
-
-                                files.sort_by(|a, b| {
-                                    if a.primary {
-                                        Ordering::Less
-                                    } else if b.primary {
-                                        Ordering::Greater
-                                    } else {
-                                        a.filename.cmp(&b.filename)
-                                    }
-                                });
-
-                                files
-                            },
-                            version_fields: VersionField::from_query_json(version_fields, &loader_fields, &loader_field_enum_values, false),
-                            loaders,
-                            project_types,
-                            games,
-                            dependencies,
-                        }
-                }))
-                })
-                .try_collect::<Vec<QueryVersion>>()
+            let versions = redis
+                .multi_get::<String>(
+                    VERSIONS_NAMESPACE,
+                    version_ids_parsed
+                        .clone()
+                        .iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>(),
+                )
                 .await?;
 
-            for version in db_versions {
-                redis
-                    .set_serialized_to_json(VERSIONS_NAMESPACE, version.inner.id.0, &version, None)
-                    .await?;
-
-                found_versions.push(version);
+            for version in versions {
+                if let Some(version) =
+                    version.and_then(|x| serde_json::from_str::<QueryVersion>(&x).ok())
+                {
+                    version_ids_parsed.retain(|x| &version.inner.id.0 != x);
+                    found_versions.push(version);
+                    continue;
+                }
             }
-        }
 
-        Ok(found_versions)
+            if !version_ids_parsed.is_empty() {
+                let loader_field_enum_value_ids = DashSet::new();
+                let version_fields: DashMap<VersionId, Vec<QueryVersionField>> = sqlx::query!(
+                    "
+                    SELECT version_id, field_id, int_value, enum_value, string_value
+                    FROM version_fields
+                    WHERE version_id = ANY($1)
+                    ",
+                    &version_ids_parsed
+                )
+                .fetch(&mut *exec)
+                .try_fold(
+                    DashMap::new(),
+                    |acc: DashMap<VersionId, Vec<QueryVersionField>>, m| {
+                        let qvf = QueryVersionField {
+                            version_id: VersionId(m.version_id),
+                            field_id: LoaderFieldId(m.field_id),
+                            int_value: m.int_value,
+                            enum_value: m.enum_value.map(LoaderFieldEnumValueId),
+                            string_value: m.string_value,
+                        };
+
+                        if let Some(enum_value) = m.enum_value {
+                            loader_field_enum_value_ids.insert(LoaderFieldEnumValueId(enum_value));
+                        }
+
+                        acc.entry(VersionId(m.version_id)).or_default().push(qvf);
+                        async move { Ok(acc) }
+                    },
+                )
+                .await?;
+
+                #[derive(Default)]
+                struct VersionLoaderData {
+                    loaders: Vec<String>,
+                    project_types: Vec<String>,
+                    games: Vec<String>,
+                    loader_loader_field_ids: Vec<LoaderFieldId>,
+                }
+
+                let loader_field_ids = DashSet::new();
+                let loaders_ptypes_games: DashMap<VersionId, VersionLoaderData> = sqlx::query!(
+                    "
+                    SELECT DISTINCT version_id,
+                        ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
+                        ARRAY_AGG(DISTINCT pt.name) filter (where pt.name is not null) project_types,
+                        ARRAY_AGG(DISTINCT g.slug) filter (where g.slug is not null) games,
+                        ARRAY_AGG(DISTINCT lfl.loader_field_id) filter (where lfl.loader_field_id is not null) loader_fields
+                    FROM versions v
+                    INNER JOIN loaders_versions lv ON v.id = lv.version_id
+                    INNER JOIN loaders l ON lv.loader_id = l.id
+                    INNER JOIN loaders_project_types lpt ON lpt.joining_loader_id = l.id
+                    INNER JOIN project_types pt ON pt.id = lpt.joining_project_type_id
+                    INNER JOIN loaders_project_types_games lptg ON lptg.loader_id = l.id AND lptg.project_type_id = pt.id
+                    INNER JOIN games g ON lptg.game_id = g.id
+                    LEFT JOIN loader_fields_loaders lfl ON lfl.loader_id = l.id
+                    WHERE v.id = ANY($1)
+                    GROUP BY version_id
+                    ",
+                    &version_ids_parsed
+                )
+                    .fetch(&mut *exec)
+                    .map_ok(|m| {
+                        let version_id = VersionId(m.version_id);
+
+                        // Add loader fields to the set we need to fetch
+                        let loader_loader_field_ids = m.loader_fields.unwrap_or_default().into_iter().map(LoaderFieldId).collect::<Vec<_>>();
+                        for loader_field_id in loader_loader_field_ids.iter() {
+                            loader_field_ids.insert(*loader_field_id);
+                        }
+
+                        // Add loader + loader associated data to the map
+                        let version_loader_data = VersionLoaderData {
+                            loaders: m.loaders.unwrap_or_default(),
+                            project_types: m.project_types.unwrap_or_default(),
+                            games: m.games.unwrap_or_default(),
+                            loader_loader_field_ids,
+                        };
+                        (version_id,version_loader_data)
+
+                    }
+                    ).try_collect().await?;
+
+                // Fetch all loader fields from any version
+                let loader_fields: Vec<QueryLoaderField> = sqlx::query!(
+                    "
+                    SELECT DISTINCT id, field, field_type, enum_type, min_val, max_val, optional
+                    FROM loader_fields lf
+                    WHERE id = ANY($1)
+                    ",
+                    &loader_field_ids.iter().map(|x| x.0).collect::<Vec<_>>()
+                )
+                .fetch(&mut *exec)
+                .map_ok(|m| QueryLoaderField {
+                    id: LoaderFieldId(m.id),
+                    field: m.field,
+                    field_type: m.field_type,
+                    enum_type: m.enum_type.map(LoaderFieldEnumId),
+                    min_val: m.min_val,
+                    max_val: m.max_val,
+                    optional: m.optional,
+                })
+                .try_collect()
+                .await?;
+
+                let loader_field_enum_values: Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
+                    "
+                    SELECT DISTINCT id, enum_id, value, ordering, created, metadata
+                    FROM loader_field_enum_values lfev
+                    WHERE id = ANY($1)
+                    ORDER BY enum_id, ordering, created ASC
+                    ",
+                    &loader_field_enum_value_ids
+                        .iter()
+                        .map(|x| x.0)
+                        .collect::<Vec<_>>()
+                )
+                .fetch(&mut *exec)
+                .map_ok(|m| QueryLoaderFieldEnumValue {
+                    id: LoaderFieldEnumValueId(m.id),
+                    enum_id: LoaderFieldEnumId(m.enum_id),
+                    value: m.value,
+                    ordering: m.ordering,
+                    created: m.created,
+                    metadata: m.metadata,
+                })
+                .try_collect()
+                .await?;
+
+                #[derive(Deserialize)]
+                struct Hash {
+                    pub file_id: FileId,
+                    pub algorithm: String,
+                    pub hash: String,
+                }
+
+                #[derive(Deserialize)]
+                struct File {
+                    pub id: FileId,
+                    pub url: String,
+                    pub filename: String,
+                    pub primary: bool,
+                    pub size: u32,
+                    pub file_type: Option<FileType>,
+                }
+
+                let file_ids = DashSet::new();
+                let reverse_file_map = DashMap::new();
+                let files : DashMap<VersionId, Vec<File>> = sqlx::query!(
+                    "
+                    SELECT DISTINCT version_id, f.id, f.url, f.filename, f.is_primary, f.size, f.file_type
+                    FROM files f
+                    WHERE f.version_id = ANY($1)
+                    ",
+                    &version_ids_parsed
+                )
+                    .fetch(&mut *exec)
+                    .try_fold(DashMap::new(), |acc : DashMap<VersionId, Vec<File>>, m| {
+                        let file = File {
+                            id: FileId(m.id),
+                            url: m.url,
+                            filename: m.filename,
+                            primary: m.is_primary,
+                            size: m.size as u32,
+                            file_type: m.file_type.map(|x| FileType::from_string(&x)),
+                        };
+
+                        file_ids.insert(FileId(m.id));
+                        reverse_file_map.insert(FileId(m.id), VersionId(m.version_id));
+
+                        acc.entry(VersionId(m.version_id))
+                            .or_default()
+                            .push(file);
+                        async move { Ok(acc) }
+                    }
+                    ).await?;
+
+                let hashes: DashMap<VersionId, Vec<Hash>> = sqlx::query!(
+                    "
+                    SELECT DISTINCT file_id, algorithm, encode(hash, 'escape') hash
+                    FROM hashes
+                    WHERE file_id = ANY($1)
+                    ",
+                    &file_ids.iter().map(|x| x.0).collect::<Vec<_>>()
+                )
+                .fetch(&mut *exec)
+                .try_fold(DashMap::new(), |acc: DashMap<VersionId, Vec<Hash>>, m| {
+                    if let Some(found_hash) = m.hash {
+                        let hash = Hash {
+                            file_id: FileId(m.file_id),
+                            algorithm: m.algorithm,
+                            hash: found_hash,
+                        };
+
+                        if let Some(version_id) = reverse_file_map.get(&FileId(m.file_id)) {
+                            acc.entry(*version_id).or_default().push(hash);
+                        }
+                    }
+                    async move { Ok(acc) }
+                })
+                .await?;
+
+                let dependencies : DashMap<VersionId, Vec<QueryDependency>> = sqlx::query!(
+                    "
+                    SELECT DISTINCT dependent_id as version_id, d.mod_dependency_id as dependency_project_id, d.dependency_id as dependency_version_id, d.dependency_file_name as file_name, d.dependency_type as dependency_type
+                    FROM dependencies d
+                    WHERE dependent_id = ANY($1)
+                    ",
+                    &version_ids_parsed
+                )
+                    .fetch(&mut *exec)
+                    .try_fold(DashMap::new(), |acc : DashMap<_,Vec<QueryDependency>>, m| {
+                        let dependency = QueryDependency {
+                            project_id: m.dependency_project_id.map(ProjectId),
+                            version_id: m.dependency_version_id.map(VersionId),
+                            file_name: m.file_name,
+                            dependency_type: m.dependency_type,
+                        };
+
+                        acc.entry(VersionId(m.version_id))
+                            .or_default()
+                            .push(dependency);
+                        async move { Ok(acc) }
+                    }
+                    ).await?;
+
+                let db_versions: Vec<QueryVersion> = sqlx::query!(
+                    "
+                    SELECT v.id id, v.mod_id mod_id, v.author_id author_id, v.name version_name, v.version_number version_number,
+                    v.changelog changelog, v.date_published date_published, v.downloads downloads,
+                    v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, v.ordering ordering
+                    FROM versions v
+                    WHERE v.id = ANY($1)
+                    ORDER BY v.ordering ASC NULLS LAST, v.date_published ASC;
+                    ",
+                    &version_ids_parsed
+                )
+                        .fetch_many(&mut *exec)
+                        .try_filter_map(|e| async {
+                            Ok(e.right().map(|v|
+                                {
+                                    let version_id = VersionId(v.id);
+                                    let VersionLoaderData {
+                                        loaders,
+                                        project_types,
+                                        games,
+                                        loader_loader_field_ids,
+                                    } = loaders_ptypes_games.remove(&version_id).map(|x|x.1).unwrap_or_default();
+                                    let files = files.remove(&version_id).map(|x|x.1).unwrap_or_default();
+                                    let hashes = hashes.remove(&version_id).map(|x|x.1).unwrap_or_default();
+                                    let version_fields = version_fields.remove(&version_id).map(|x|x.1).unwrap_or_default();
+                                    let dependencies = dependencies.remove(&version_id).map(|x|x.1).unwrap_or_default();
+
+                                    let loader_fields = loader_fields.iter()
+                                        .filter(|x| loader_loader_field_ids.contains(&x.id))
+                                        .collect::<Vec<_>>();
+
+                                    QueryVersion {
+                                        inner: Version {
+                                            id: VersionId(v.id),
+                                            project_id: ProjectId(v.mod_id),
+                                            author_id: UserId(v.author_id),
+                                            name: v.version_name,
+                                            version_number: v.version_number,
+                                            changelog: v.changelog,
+                                            date_published: v.date_published,
+                                            downloads: v.downloads,
+                                            version_type: v.version_type,
+                                            featured: v.featured,
+                                            status: VersionStatus::from_string(&v.status),
+                                            requested_status: v.requested_status
+                                                .map(|x| VersionStatus::from_string(&x)),
+                                            ordering: v.ordering,
+                                        },
+                                        files: {
+                                            let mut files = files.into_iter().map(|x| {
+                                                let mut file_hashes = HashMap::new();
+
+                                                for hash in hashes.iter() {
+                                                    if hash.file_id == x.id {
+                                                        file_hashes.insert(
+                                                            hash.algorithm.clone(),
+                                                            hash.hash.clone(),
+                                                        );
+                                                    }
+                                                }
+
+                                                QueryFile {
+                                                    id: x.id,
+                                                    url: x.url.clone(),
+                                                    filename: x.filename.clone(),
+                                                    hashes: file_hashes,
+                                                    primary: x.primary,
+                                                    size: x.size,
+                                                    file_type: x.file_type,
+                                                }
+                                            }).collect::<Vec<_>>();
+
+                                            files.sort_by(|a, b| {
+                                                if a.primary {
+                                                    Ordering::Less
+                                                } else if b.primary {
+                                                    Ordering::Greater
+                                                } else {
+                                                    a.filename.cmp(&b.filename)
+                                                }
+                                            });
+
+                                            files
+                                        },
+                                        version_fields: VersionField::from_query_json(version_fields, &loader_fields, &loader_field_enum_values, false),
+                                        loaders,
+                                        project_types,
+                                        games,
+                                        dependencies,
+                                    }
+                                }))
+                        })
+                        .try_collect::<Vec<QueryVersion>>()
+                        .await?;
+
+                for version in db_versions {
+                    redis
+                        .set_serialized_to_json(
+                            VERSIONS_NAMESPACE,
+                            version.inner.id.0,
+                            &version,
+                            None,
+                        )
+                        .await?;
+
+                    found_versions.push(version);
+                }
+            }
+
+            Ok(found_versions)
+        }
     }
 
     pub async fn get_file_from_hash<'a, 'b, E>(
@@ -980,13 +993,25 @@ impl Version {
 
         redis
             .delete_many(
-                iter::once((VERSIONS_NAMESPACE, Some(version.inner.id.0.to_string()))).chain(
-                    version.files.iter().flat_map(|file| {
-                        file.hashes.iter().map(|(algo, hash)| {
-                            (VERSION_FILES_NAMESPACE, Some(format!("{}_{}", algo, hash)))
-                        })
-                    }),
-                ),
+                iter::once((VERSIONS_NAMESPACE, Some(version.inner.id.0.to_string())))
+                    .chain(
+                        version
+                            .files
+                            .iter()
+                            .flat_map(|file| {
+                                file.hashes
+                                    .iter()
+                                    .map(|(algo, hash)| {
+                                        (
+                                            VERSION_FILES_NAMESPACE,
+                                            Some(format!("{}_{}", algo, hash)),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .collect::<Vec<_>>(),
             )
             .await?;
         Ok(())

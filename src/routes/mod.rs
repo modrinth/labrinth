@@ -147,7 +147,7 @@ impl IntoResponse for ApiError {
                 ApiError::Reroute(..) => "reroute_error",
                 ApiError::NotFound => "not_found",
             },
-            description: &*self.to_string(),
+            description: &self.to_string(),
         };
 
         (status_code, Json(error_message)).into_response()

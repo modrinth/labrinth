@@ -1,4 +1,3 @@
-use futures::StreamExt;
 use std::time::Duration;
 
 pub fn schedule<F, R>(interval: Duration, mut task: F)
@@ -51,7 +50,6 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use tokio_stream::wrappers::IntervalStream;
 
 #[derive(Deserialize)]
 struct InputFormat<'a> {

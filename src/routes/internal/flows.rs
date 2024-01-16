@@ -1091,7 +1091,6 @@ pub struct WsInit {
     pub provider: AuthProvider,
 }
 
-
 pub async fn ws_init(
     Query(info): Query<WsInit>,
     Extension(active_sockets): Extension<Arc<ActiveSockets>>,
@@ -1140,7 +1139,6 @@ pub async fn ws_init(
 
     ws.on_upgrade(move |socket| sock(socket, info.provider, active_sockets, redis))
 }
-
 
 pub async fn auth_callback(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -2217,7 +2215,6 @@ pub async fn set_email(
     Ok(StatusCode::NO_CONTENT)
 }
 
-
 pub async fn resend_verify_email(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -2264,7 +2261,6 @@ pub async fn resend_verify_email(
 pub struct VerifyEmail {
     pub flow: String,
 }
-
 
 pub async fn verify_email(
     Extension(pool): Extension<PgPool>,
@@ -2313,7 +2309,6 @@ pub async fn verify_email(
         ))
     }
 }
-
 
 pub async fn subscribe_newsletter(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

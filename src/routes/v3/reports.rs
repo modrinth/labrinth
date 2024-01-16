@@ -45,7 +45,6 @@ pub struct CreateReport {
     pub uploaded_images: Vec<ImageId>,
 }
 
-
 pub async fn report_create(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -343,7 +342,6 @@ pub async fn reports_get(
     Ok(Json(all_reports))
 }
 
-
 pub async fn report_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -383,7 +381,6 @@ pub struct EditReport {
     pub body: Option<String>,
     pub closed: Option<bool>,
 }
-
 
 pub async fn report_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

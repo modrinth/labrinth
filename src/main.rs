@@ -1,15 +1,13 @@
 use axum::routing::get;
-use axum::Router;
+use axum_prometheus::PrometheusMetricLayer;
 use env_logger::Env;
 use labrinth::database::redis::RedisPool;
 use labrinth::file_hosting::S3Host;
 use labrinth::search;
-use labrinth::util::env::parse_var;
 use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
 use log::{error, info};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use axum_prometheus::PrometheusMetricLayer;
 use tower_http::compression::CompressionLayer;
 
 #[derive(Clone)]

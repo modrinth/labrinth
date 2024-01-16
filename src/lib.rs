@@ -1,7 +1,5 @@
-use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 use axum::routing::any;
 use axum::{Extension, Router};
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use database::redis::RedisPool;
@@ -13,7 +11,6 @@ use sqlx::Postgres;
 
 extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;
-use tower_http::compression::CompressionLayer;
 
 use crate::routes::not_found;
 use crate::scheduler::schedule;

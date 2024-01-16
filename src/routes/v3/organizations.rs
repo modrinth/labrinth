@@ -269,7 +269,6 @@ pub struct OrganizationIds {
     pub ids: String,
 }
 
-
 pub async fn organizations_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

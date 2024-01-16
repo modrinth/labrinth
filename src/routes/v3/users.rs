@@ -189,7 +189,6 @@ pub async fn collections_list(
     }
 }
 
-
 pub async fn orgs_list(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
