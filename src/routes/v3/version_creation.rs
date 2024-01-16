@@ -501,7 +501,7 @@ async fn version_create_inner(
 
     models::Project::clear_cache(project_id, None, Some(true), redis).await?;
 
-    Ok(HttpResponse::Ok().json(response))
+    Ok(Json(response))
 }
 
 pub async fn upload_file_to_version(
@@ -743,7 +743,7 @@ async fn upload_file_to_version_inner(
     // Clear version cache
     models::Version::clear_cache(&version, &redis).await?;
 
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // This function is used for adding a file to a version, uploading the initial

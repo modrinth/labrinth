@@ -33,10 +33,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 pub async fn get_version_from_hash(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: web::Query<HashQuery>,
+    hash_query: Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response =
@@ -48,7 +48,7 @@ pub async fn get_version_from_hash(
     match v2_reroute::extract_ok_json::<Version>(response).await {
         Ok(version) => {
             let v2_version = LegacyVersion::from(version);
-            Ok(HttpResponse::Ok().json(v2_version))
+            Ok(Json(v2_version))
         }
         Err(response) => Ok(response),
     }
@@ -59,10 +59,10 @@ pub async fn get_version_from_hash(
 pub async fn download_version(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: web::Query<HashQuery>,
+    hash_query: Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns TemporaryRedirect, so no need to convert to V2
@@ -76,10 +76,10 @@ pub async fn download_version(
 pub async fn delete_file(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: web::Query<HashQuery>,
+    hash_query: Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so no need to convert to V2
@@ -99,11 +99,11 @@ pub struct UpdateData {
 pub async fn get_update_from_hash(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: web::Query<HashQuery>,
-    update_data: web::Json<UpdateData>,
+    hash_query: Query<HashQuery>,
+    update_data: Json<UpdateData>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let update_data = update_data.into_inner();
@@ -127,7 +127,7 @@ pub async fn get_update_from_hash(
         pool,
         redis,
         hash_query,
-        web::Json(update_data),
+        Json(update_data),
         session_queue,
     )
     .await
@@ -137,7 +137,7 @@ pub async fn get_update_from_hash(
     match v2_reroute::extract_ok_json::<Version>(response).await {
         Ok(version) => {
             let v2_version = LegacyVersion::from(version);
-            Ok(HttpResponse::Ok().json(v2_version))
+            Ok(Json(v2_version))
         }
         Err(response) => Ok(response),
     }
@@ -157,7 +157,7 @@ pub async fn get_versions_from_hashes(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    file_data: web::Json<FileHashes>,
+    file_data: Json<FileHashes>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let file_data = file_data.into_inner();
@@ -169,7 +169,7 @@ pub async fn get_versions_from_hashes(
         req,
         pool,
         redis,
-        web::Json(file_data),
+        Json(file_data),
         session_queue,
     )
     .await
@@ -185,7 +185,7 @@ pub async fn get_versions_from_hashes(
                     (hash, v2_version)
                 })
                 .collect::<HashMap<_, _>>();
-            Ok(HttpResponse::Ok().json(v2_versions))
+            Ok(Json(v2_versions))
         }
         Err(response) => Ok(response),
     }
@@ -197,7 +197,7 @@ pub async fn get_projects_from_hashes(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    file_data: web::Json<FileHashes>,
+    file_data: Json<FileHashes>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let file_data = file_data.into_inner();
@@ -209,7 +209,7 @@ pub async fn get_projects_from_hashes(
         req,
         pool.clone(),
         redis.clone(),
-        web::Json(file_data),
+        Json(file_data),
         session_queue,
     )
     .await
@@ -226,7 +226,7 @@ pub async fn get_projects_from_hashes(
                 })
                 .collect::<HashMap<_, _>>();
             let legacy_projects =
-                LegacyProject::from_many(projects_hashes.into_values().collect(), &**pool, &redis)
+                LegacyProject::from_many(projects_hashes.into_values().collect(), &pool, &redis)
                     .await?;
             let legacy_projects_hashes = hash_to_project_id
                 .into_iter()
@@ -237,7 +237,7 @@ pub async fn get_projects_from_hashes(
                 })
                 .collect::<HashMap<_, _>>();
 
-            Ok(HttpResponse::Ok().json(legacy_projects_hashes))
+            Ok(Json(legacy_projects_hashes))
         }
         Err(response) => Ok(response),
     }
@@ -258,7 +258,7 @@ pub async fn update_files(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    update_data: web::Json<ManyUpdateData>,
+    update_data: Json<ManyUpdateData>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let update_data = update_data.into_inner();
@@ -279,7 +279,7 @@ pub async fn update_files(
     };
 
     let response =
-        v3::version_file::update_files(req, pool, redis, web::Json(update_data), session_queue)
+        v3::version_file::update_files(req, pool, redis, Json(update_data), session_queue)
             .await
             .or_else(v2_reroute::flatten_404_error)?;
 
@@ -293,7 +293,7 @@ pub async fn update_files(
                     (hash, v2_version)
                 })
                 .collect::<HashMap<_, _>>();
-            Ok(HttpResponse::Ok().json(v3_versions))
+            Ok(Json(v3_versions))
         }
         Err(response) => Ok(response),
     }
@@ -319,7 +319,7 @@ pub async fn update_individual_files(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    update_data: web::Json<ManyFileUpdateData>,
+    update_data: Json<ManyFileUpdateData>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let update_data = update_data.into_inner();
@@ -351,7 +351,7 @@ pub async fn update_individual_files(
         req,
         pool,
         redis,
-        web::Json(update_data),
+        Json(update_data),
         session_queue,
     )
     .await
@@ -367,7 +367,7 @@ pub async fn update_individual_files(
                     (hash, v2_version)
                 })
                 .collect::<HashMap<_, _>>();
-            Ok(HttpResponse::Ok().json(v3_versions))
+            Ok(Json(v3_versions))
         }
         Err(response) => Ok(response),
     }

@@ -48,7 +48,7 @@ pub async fn user_auth_get(
     match v2_reroute::extract_ok_json::<User>(response).await {
         Ok(user) => {
             let user = LegacyUser::from(user);
-            Ok(HttpResponse::Ok().json(user))
+            Ok(Json(user))
         }
         Err(response) => Ok(response),
     }
@@ -61,20 +61,19 @@ pub struct UserIds {
 
 #[get("users")]
 pub async fn users_get(
-    web::Query(ids): web::Query<UserIds>,
+    Query(ids): Query<UserIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
-    let response =
-        v3::users::users_get(web::Query(v3::users::UserIds { ids: ids.ids }), pool, redis)
-            .await
-            .or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::users::users_get(Query(v3::users::UserIds { ids: ids.ids }), pool, redis)
+        .await
+        .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<User>>(response).await {
         Ok(users) => {
             let legacy_users: Vec<LegacyUser> = users.into_iter().map(LegacyUser::from).collect();
-            Ok(HttpResponse::Ok().json(legacy_users))
+            Ok(Json(legacy_users))
         }
         Err(response) => Ok(response),
     }
@@ -82,7 +81,7 @@ pub async fn users_get(
 
 #[get("{id}")]
 pub async fn user_get(
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -94,7 +93,7 @@ pub async fn user_get(
     match v2_reroute::extract_ok_json::<User>(response).await {
         Ok(user) => {
             let user = LegacyUser::from(user);
-            Ok(HttpResponse::Ok().json(user))
+            Ok(Json(user))
         }
         Err(response) => Ok(response),
     }
@@ -104,7 +103,7 @@ pub async fn user_get(
 pub async fn projects_list(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -116,8 +115,8 @@ pub async fn projects_list(
     // Convert to V2 projects
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
         Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
-            Ok(HttpResponse::Ok().json(legacy_projects))
+            let legacy_projects = LegacyProject::from_many(project, &pool, &redis).await?;
+            Ok(Json(legacy_projects))
         }
         Err(response) => Ok(response),
     }
@@ -153,8 +152,8 @@ pub struct EditUser {
 pub async fn user_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
-    new_user: web::Json<EditUser>,
+    Path(info): Path<String>,
+    new_user: Json<EditUser>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -164,7 +163,7 @@ pub async fn user_edit(
     v3::users::user_edit(
         req,
         info,
-        web::Json(v3::users::EditUser {
+        Json(v3::users::EditUser {
             username: new_user.username,
             name: new_user.name,
             bio: new_user.bio,
@@ -188,10 +187,10 @@ pub struct FileExt {
 #[patch("{id}/icon")]
 #[allow(clippy::too_many_arguments)]
 pub async fn user_icon_edit(
-    web::Query(ext): web::Query<FileExt>,
+    Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
@@ -200,7 +199,7 @@ pub async fn user_icon_edit(
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so we don't need to convert to V2
     v3::users::user_icon_edit(
-        web::Query(v3::users::Extension { ext: ext.ext }),
+        Query(v3::users::Extension { ext: ext.ext }),
         req,
         info,
         pool,
@@ -217,7 +216,7 @@ pub async fn user_icon_edit(
 pub async fn user_delete(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -232,7 +231,7 @@ pub async fn user_delete(
 pub async fn user_follows(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -244,8 +243,8 @@ pub async fn user_follows(
     // Convert to V2 projects
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
         Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
-            Ok(HttpResponse::Ok().json(legacy_projects))
+            let legacy_projects = LegacyProject::from_many(project, &pool, &redis).await?;
+            Ok(Json(legacy_projects))
         }
         Err(response) => Ok(response),
     }
@@ -255,7 +254,7 @@ pub async fn user_follows(
 pub async fn user_notifications(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -270,7 +269,7 @@ pub async fn user_notifications(
                 .into_iter()
                 .map(LegacyNotification::from)
                 .collect();
-            Ok(HttpResponse::Ok().json(legacy_notifications))
+            Ok(Json(legacy_notifications))
         }
         Err(response) => Ok(response),
     }

@@ -1,7 +1,6 @@
 pub use super::ApiError;
 use crate::util::cors::default_cors;
 use axum::Router;
-use serde_json::json;
 
 pub mod analytics_get;
 pub mod collections;
@@ -18,15 +17,13 @@ pub mod tags;
 pub mod teams;
 pub mod threads;
 pub mod users;
-pub mod version_creation;
+//pub mod version_creation;
 pub mod version_file;
 pub mod versions;
 
 pub mod oauth_clients;
 
 pub fn config() -> Router {
-    // TODO: cors
-
     Router::new().nest(
         "/v3",
         Router::new()
@@ -36,7 +33,7 @@ pub fn config() -> Router {
             .merge(moderation::config())
             .merge(notifications::config())
             .merge(organizations::config())
-            .merge(project_creation::config())
+            //todo: .merge(project_creation::config())
             .merge(projects::config())
             .merge(reports::config())
             .merge(statistics::config())

@@ -49,7 +49,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 #[get("search")]
 pub async fn project_search(
-    web::Query(info): web::Query<SearchRequest>,
+    Query(info): Query<SearchRequest>,
     Extension(config): Extension<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
     // Search now uses loader_fields instead of explicit 'client_side' and 'server_side' fields
@@ -103,7 +103,7 @@ pub async fn project_search(
 
     let results = LegacySearchResults::from(results);
 
-    Ok(HttpResponse::Ok().json(results))
+    Ok(Json(results))
 }
 
 /// Parses a facet into a key, operator, and value
@@ -148,22 +148,21 @@ pub struct RandomProjects {
 
 #[get("projects_random")]
 pub async fn random_projects_get(
-    web::Query(count): web::Query<RandomProjects>,
+    Query(count): Query<RandomProjects>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let count = v3::projects::RandomProjects { count: count.count };
 
-    let response =
-        v3::projects::random_projects_get(web::Query(count), pool.clone(), redis.clone())
-            .await
-            .or_else(v2_reroute::flatten_404_error)
-            .or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::projects::random_projects_get(Query(count), pool.clone(), redis.clone())
+        .await
+        .or_else(v2_reroute::flatten_404_error)
+        .or_else(v2_reroute::flatten_404_error)?;
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
         Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
-            Ok(HttpResponse::Ok().json(legacy_projects))
+            let legacy_projects = LegacyProject::from_many(project, &pool, &redis).await?;
+            Ok(Json(legacy_projects))
         }
         Err(response) => Ok(response),
     }
@@ -173,28 +172,23 @@ pub async fn random_projects_get(
 pub async fn projects_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<ProjectIds>,
+    Query(ids): Query<ProjectIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     // Call V3 project creation
-    let response = v3::projects::projects_get(
-        req,
-        web::Query(ids),
-        pool.clone(),
-        redis.clone(),
-        session_queue,
-    )
-    .await
-    .or_else(v2_reroute::flatten_404_error)
-    .or_else(v2_reroute::flatten_404_error)?;
+    let response =
+        v3::projects::projects_get(req, Query(ids), pool.clone(), redis.clone(), session_queue)
+            .await
+            .or_else(v2_reroute::flatten_404_error)
+            .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
         Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
-            Ok(HttpResponse::Ok().json(legacy_projects))
+            let legacy_projects = LegacyProject::from_many(project, &pool, &redis).await?;
+            Ok(Json(legacy_projects))
         }
         Err(response) => Ok(response),
     }
@@ -204,7 +198,7 @@ pub async fn projects_get(
 pub async fn project_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -219,11 +213,11 @@ pub async fn project_get(
     match v2_reroute::extract_ok_json::<Project>(response).await {
         Ok(project) => {
             let version_item = match project.versions.first() {
-                Some(vid) => version_item::Version::get((*vid).into(), &**pool, &redis).await?,
+                Some(vid) => version_item::Version::get((*vid).into(), &pool, &redis).await?,
                 None => None,
             };
             let project = LegacyProject::from(project, version_item);
-            Ok(HttpResponse::Ok().json(project))
+            Ok(Json(project))
         }
         Err(response) => Ok(response),
     }
@@ -232,7 +226,7 @@ pub async fn project_get(
 //checks the validity of a project id or slug
 #[get("{id}/check")]
 pub async fn project_get_check(
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
@@ -252,7 +246,7 @@ struct DependencyInfo {
 pub async fn dependency_list(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -267,14 +261,14 @@ pub async fn dependency_list(
     {
         Ok(dependency_info) => {
             let converted_projects =
-                LegacyProject::from_many(dependency_info.projects, &**pool, &redis).await?;
+                LegacyProject::from_many(dependency_info.projects, &pool, &redis).await?;
             let converted_versions = dependency_info
                 .versions
                 .into_iter()
                 .map(LegacyVersion::from)
                 .collect();
 
-            Ok(HttpResponse::Ok().json(DependencyInfo {
+            Ok(Json(DependencyInfo {
                 projects: converted_projects,
                 versions: converted_versions,
             }))
@@ -386,10 +380,10 @@ pub struct EditProject {
 pub async fn project_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(search_config): Extension<SearchConfig>,
-    new_project: web::Json<EditProject>,
+    new_project: Json<EditProject>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
@@ -444,7 +438,7 @@ pub async fn project_edit(
     // (resetting to the new ones)
     if let Some(donation_urls) = v2_new_project.donation_urls {
         // Fetch current donation links from project so we know what to delete
-        let fetched_example_project = project_item::Project::get(&info.0, &**pool, &redis).await?;
+        let fetched_example_project = project_item::Project::get(&info.0, &pool, &redis).await?;
         let donation_links = fetched_example_project
             .map(|x| {
                 x.urls
@@ -495,7 +489,7 @@ pub async fn project_edit(
         info,
         pool.clone(),
         search_config,
-        web::Json(new_project),
+        Json(new_project),
         redis.clone(),
         session_queue.clone(),
     )
@@ -506,9 +500,9 @@ pub async fn project_edit(
     // the version setting route for each version to set the side types for each of them.
     if response.status().is_success() && (client_side.is_some() || server_side.is_some()) {
         let project_item =
-            project_item::Project::get(&new_slug.unwrap_or(project_id), &**pool, &redis).await?;
+            project_item::Project::get(&new_slug.unwrap_or(project_id), &pool, &redis).await?;
         let version_ids = project_item.map(|x| x.versions).unwrap_or_default();
-        let versions = version_item::Version::get_many(&version_ids, &**pool, &redis).await?;
+        let versions = version_item::Version::get_many(&version_ids, &pool, &redis).await?;
         for version in versions {
             let version = Version::from(version);
             let mut fields = version.fields;
@@ -602,9 +596,9 @@ pub struct BulkEditProject {
 pub async fn projects_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<ProjectIds>,
+    Query(ids): Query<ProjectIds>,
     Extension(pool): Extension<PgPool>,
-    bulk_edit_project: web::Json<BulkEditProject>,
+    bulk_edit_project: Json<BulkEditProject>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
@@ -615,7 +609,7 @@ pub async fn projects_edit(
     // If we are *setting* donation links, we will set every possible donation link to None, as
     // setting will delete all of them then 're-add' the ones we want to keep
     if let Some(donation_url) = bulk_edit_project.donation_urls {
-        let link_platforms = LinkPlatform::list(&**pool, &redis).await?;
+        let link_platforms = LinkPlatform::list(&pool, &redis).await?;
         for link in link_platforms {
             if link.donation {
                 link_urls.insert(link.name, None);
@@ -676,9 +670,9 @@ pub async fn projects_edit(
     // This returns NoContent or failure so we don't need to do anything with it
     v3::projects::projects_edit(
         req,
-        web::Query(ids),
+        Query(ids),
         pool.clone(),
-        web::Json(v3::projects::BulkEditProject {
+        Json(v3::projects::BulkEditProject {
             categories: bulk_edit_project.categories,
             add_categories: bulk_edit_project.add_categories,
             remove_categories: bulk_edit_project.remove_categories,
@@ -702,10 +696,10 @@ pub struct FileExt {
 #[patch("{id}/icon")]
 #[allow(clippy::too_many_arguments)]
 pub async fn project_icon_edit(
-    web::Query(ext): web::Query<FileExt>,
+    Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
@@ -714,7 +708,7 @@ pub async fn project_icon_edit(
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so no need to convert
     v3::projects::project_icon_edit(
-        web::Query(v3::projects::Extension { ext: ext.ext }),
+        Query(v3::projects::Extension { ext: ext.ext }),
         req,
         info,
         pool,
@@ -731,7 +725,7 @@ pub async fn project_icon_edit(
 pub async fn delete_project_icon(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
@@ -756,11 +750,11 @@ pub struct GalleryCreateQuery {
 #[post("{id}/gallery")]
 #[allow(clippy::too_many_arguments)]
 pub async fn add_gallery_item(
-    web::Query(ext): web::Query<Extension>,
+    Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(item): web::Query<GalleryCreateQuery>,
-    info: web::Path<(String,)>,
+    Query(item): Query<GalleryCreateQuery>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
@@ -769,9 +763,9 @@ pub async fn add_gallery_item(
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so no need to convert
     v3::projects::add_gallery_item(
-        web::Query(v3::projects::Extension { ext: ext.ext }),
+        Query(v3::projects::Extension { ext: ext.ext }),
         req,
-        web::Query(v3::projects::GalleryCreateQuery {
+        Query(v3::projects::GalleryCreateQuery {
             featured: item.featured,
             name: item.title,
             description: item.description,
@@ -814,8 +808,8 @@ pub struct GalleryEditQuery {
 pub async fn edit_gallery_item(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(item): web::Query<GalleryEditQuery>,
-    info: web::Path<(String,)>,
+    Query(item): Query<GalleryEditQuery>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -823,7 +817,7 @@ pub async fn edit_gallery_item(
     // Returns NoContent, so no need to convert
     v3::projects::edit_gallery_item(
         req,
-        web::Query(v3::projects::GalleryEditQuery {
+        Query(v3::projects::GalleryEditQuery {
             url: item.url,
             featured: item.featured,
             name: item.title,
@@ -848,8 +842,8 @@ pub struct GalleryDeleteQuery {
 pub async fn delete_gallery_item(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(item): web::Query<GalleryDeleteQuery>,
-    info: web::Path<(String,)>,
+    Query(item): Query<GalleryDeleteQuery>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
@@ -858,7 +852,7 @@ pub async fn delete_gallery_item(
     // Returns NoContent, so no need to convert
     v3::projects::delete_gallery_item(
         req,
-        web::Query(v3::projects::GalleryDeleteQuery { url: item.url }),
+        Query(v3::projects::GalleryDeleteQuery { url: item.url }),
         info,
         pool,
         redis,
@@ -873,7 +867,7 @@ pub async fn delete_gallery_item(
 pub async fn project_delete(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(search_config): Extension<SearchConfig>,
@@ -889,7 +883,7 @@ pub async fn project_delete(
 pub async fn project_follow(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -904,7 +898,7 @@ pub async fn project_follow(
 pub async fn project_unfollow(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,

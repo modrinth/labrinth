@@ -1,3 +1,5 @@
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
 
 pub use super::collections::CollectionId;
@@ -27,7 +29,7 @@ pub use super::users::UserId;
 /// can only represent up to 11 character base62 strings
 #[inline]
 pub fn random_base62(n: usize) -> u64 {
-    random_base62_rng(&mut rand::thread_rng(), n)
+    random_base62_rng(&mut ChaCha20Rng::from_entropy(), n)
 }
 
 /// Generates a random 64 bit integer that is exactly `n` characters

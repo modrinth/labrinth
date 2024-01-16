@@ -253,7 +253,7 @@ pub async fn project_create(
                 None => None,
             };
             let project = LegacyProject::from(project, version_item);
-            Ok(HttpResponse::Ok().json(project))
+            Ok(Json(project))
         }
         Err(response) => Ok(response),
     }

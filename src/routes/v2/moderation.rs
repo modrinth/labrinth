@@ -28,14 +28,14 @@ pub async fn get_projects(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    count: web::Query<ResultCount>,
+    count: Query<ResultCount>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::moderation::get_projects(
         req,
         pool.clone(),
         redis.clone(),
-        web::Query(v3::moderation::ResultCount { count: count.count }),
+        Query(v3::moderation::ResultCount { count: count.count }),
         session_queue,
     )
     .await
@@ -44,8 +44,8 @@ pub async fn get_projects(
     // Convert to V2 projects
     match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
         Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
-            Ok(HttpResponse::Ok().json(legacy_projects))
+            let legacy_projects = LegacyProject::from_many(project, &pool, &redis).await?;
+            Ok(Json(legacy_projects))
         }
         Err(response) => Ok(response),
     }

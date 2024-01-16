@@ -1,6 +1,6 @@
-use axum::extract::multipart::Field;
 use crate::routes::v3::project_creation::CreateError;
 use crate::routes::ApiError;
+use axum::extract::multipart::Field;
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
 
@@ -17,7 +17,7 @@ pub async fn read_from_payload(
 }
 
 pub async fn read_from_field(
-    field: &mut Field,
+    field: &mut Field<'_>,
     cap: usize,
     err_msg: &'static str,
 ) -> Result<BytesMut, CreateError> {

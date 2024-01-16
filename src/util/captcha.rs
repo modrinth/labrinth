@@ -12,12 +12,12 @@ pub async fn check_turnstile_captcha(
 ) -> Result<bool, ApiError> {
     let ip_addr = if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
         if let Some(header) = headers.get("CF-Connecting-IP") {
-            header.to_str().ok()
+            header.to_str().ok().map(|x| x.to_string())
         } else {
-            addr.ip()
+            Some(addr.ip().to_string())
         }
     } else {
-        addr.ip()
+        Some(addr.ip().to_string())
     };
 
     let client = reqwest::Client::new();

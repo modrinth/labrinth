@@ -74,7 +74,7 @@ pub async fn count_download(
         .map(|x| &**x.1);
 
     let user =
-        get_user_record_from_bearer_token(&addr, &headers, token, &**pool, &redis, &session_queue)
+        get_user_record_from_bearer_token(&addr, &headers, token, &pool, &redis, &session_queue)
             .await
             .ok()
             .flatten();
@@ -93,7 +93,7 @@ pub async fn count_download(
             ",
         download_body.url,
     )
-    .fetch_optional(pool.as_ref())
+    .fetch_optional(&pool)
     .await?
     {
         (version.id, version.mod_id)
@@ -106,7 +106,7 @@ pub async fn count_download(
         project_id as crate::database::models::ids::ProjectId,
         id_option
     )
-    .fetch_optional(pool.as_ref())
+    .fetch_optional(&pool)
     .await?
     {
         (version.id, version.mod_id)
@@ -163,8 +163,7 @@ pub async fn force_reindex(
 ) -> Result<StatusCode, ApiError> {
     check_admin_key(&headers);
     use crate::search::indexing::index_projects;
-    let redis = redis.get_ref();
-    index_projects(pool.as_ref().clone(), redis.clone(), &config).await?;
+    index_projects(pool.clone(), redis.clone(), &config).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

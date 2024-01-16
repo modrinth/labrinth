@@ -1,42 +1,27 @@
 use crate::file_hosting::FileHostingError;
-use crate::routes::analytics::{page_view_ingest, playtime_ingest};
-use crate::util::cors::default_cors;
-use crate::util::env::parse_strings_from_var;
+use crate::routes::not_found::api_v1_gone;
+use crate::util::cors::{analytics_cors, default_cors};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
-use futures::FutureExt;
-use serde_json::json;
-use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
 
 pub mod internal;
 // pub mod v2;
-// pub mod v3;
+pub mod v3;
 
 pub mod v2_reroute;
 
 mod analytics;
 mod index;
-// mod maven;
+mod maven;
 mod not_found;
-// mod updates;
+mod updates;
 
 pub use self::not_found::not_found;
 
 pub fn root_config() -> Router {
-    // TODO: analytics cors
-    // let analytics_cors_layer = CorsLayer::new()
-    //     .allow_origin_fn(|origin, _req_head| {
-    //         let allowed_origins = parse_strings_from_var("ANALYTICS_ALLOWED_ORIGINS").unwrap_or_default();
-    //
-    //         allowed_origins.contains(&"*".to_string())
-    //             || allowed_origins.contains(&origin.to_string())
-    //     })
-    //     .allow_methods(vec!["GET", "POST"])
-    //     .allow_headers(vec!["Authorization", "Accept", "Content-Type"])
-    //     .max_age(3600);
-
     Router::new()
         .nest("/maven", maven::config().layer(default_cors()))
         .nest("/updates", updates::config().layer(default_cors()))
@@ -45,31 +30,17 @@ pub fn root_config() -> Router {
             Router::new()
                 .route("/view", post(analytics::page_view_ingest))
                 .route("/playtime", post(analytics::playtime_ingest))
-                .layer(analytics_cors_layer),
+                .layer(analytics_cors()),
         )
         .nest(
             "/api/v1/",
-            Router::new()
-                .route("*path", any(|| {
-                    (
-                        StatusCode::GONE,
-                        Json( crate::models::error::ApiError {error:"api_deprecated",description:"You are using an application that uses an outdated version of Modrinth's API. Please either update it or switch to another application. For developers: https://docs.modrinth.com/docs/migrations/v1-to-v2/"})
-                    )
-                }).layer(default_cors()))
-            ,
+            Router::new().route("*path", any(api_v1_gone).layer(default_cors())),
         )
         .nest(
             "/",
             Router::new()
                 .route("/", get(index::index_get))
-                .merge(axum::service::get(ServeDir::new("assets/")).handle_error(
-                    |error| async move {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Unhandled internal error: {}", error),
-                        )
-                    },
-                ))
+                .nest_service("/", ServeDir::new("assets/"))
                 .layer(default_cors()),
         )
 }

@@ -46,14 +46,14 @@ pub struct ThreadIds {
 pub async fn threads_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<ThreadIds>,
+    Query(ids): Query<ThreadIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::threads::threads_get(
         req,
-        web::Query(v3::threads::ThreadIds { ids: ids.ids }),
+        Query(v3::threads::ThreadIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
@@ -68,7 +68,7 @@ pub async fn threads_get(
                 .into_iter()
                 .map(LegacyThread::from)
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(threads))
+            Ok(Json(threads))
         }
         Err(response) => Ok(response),
     }
@@ -85,7 +85,7 @@ pub async fn thread_send_message(
     headers: HeaderMap,
     info: web::Path<(ThreadId,)>,
     Extension(pool): Extension<PgPool>,
-    new_message: web::Json<NewThreadMessage>,
+    new_message: Json<NewThreadMessage>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
@@ -95,7 +95,7 @@ pub async fn thread_send_message(
         req,
         info,
         pool,
-        web::Json(v3::threads::NewThreadMessage {
+        Json(v3::threads::NewThreadMessage {
             body: new_message.body,
         }),
         redis,
@@ -124,7 +124,7 @@ pub async fn moderation_inbox(
                 .into_iter()
                 .map(LegacyThread::from)
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(threads))
+            Ok(Json(threads))
         }
         Err(response) => Ok(response),
     }

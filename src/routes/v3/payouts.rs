@@ -8,7 +8,11 @@ use crate::models::payouts::{PayoutMethodType, PayoutStatus};
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
+use axum::extract::{ConnectInfo, Path, Query};
+use axum::http::HeaderMap;
+use axum::http::StatusCode;
+use axum::routing::{delete, get, post};
+use axum::{Extension, Json, Router};
 use chrono::Utc;
 use hex::ToHex;
 use hmac::{Hmac, Mac, NewMac};
@@ -18,50 +22,46 @@ use serde::Deserialize;
 use serde_json::json;
 use sha2::Sha256;
 use sqlx::PgPool;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("payout")
-            .service(paypal_webhook)
-            .service(tremendous_webhook)
-            .service(user_payouts)
-            .service(create_payout)
-            .service(cancel_payout)
-            .service(payment_methods),
-    );
+pub fn config() -> Router {
+    Router::new()
+        .route("/payout", get(user_payouts).post(create_payout))
+        .nest(
+            "/payout",
+            Router::new()
+                .route("/_paypal", post(paypal_webhook))
+                .route("/_tremendous", post(tremendous_webhook))
+                .route("/:id", delete(cancel_payout))
+                .route("/methods", get(payment_methods)),
+        )
 }
 
-#[post("_paypal")]
 pub async fn paypal_webhook(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    payouts: web::Data<PayoutsQueue>,
+    Extension(payouts): Extension<Arc<PayoutsQueue>>,
     body: String,
-) -> Result<HttpResponse, ApiError> {
-    let auth_algo = req
-        .headers()
+) -> Result<StatusCode, ApiError> {
+    let auth_algo = headers
         .get("PAYPAL-AUTH-ALGO")
         .and_then(|x| x.to_str().ok())
         .ok_or_else(|| ApiError::InvalidInput("missing auth algo".to_string()))?;
-    let cert_url = req
-        .headers()
+    let cert_url = headers
         .get("PAYPAL-CERT-URL")
         .and_then(|x| x.to_str().ok())
         .ok_or_else(|| ApiError::InvalidInput("missing cert url".to_string()))?;
-    let transmission_id = req
-        .headers()
+    let transmission_id = headers
         .get("PAYPAL-TRANSMISSION-ID")
         .and_then(|x| x.to_str().ok())
         .ok_or_else(|| ApiError::InvalidInput("missing transmission ID".to_string()))?;
-    let transmission_sig = req
-        .headers()
+    let transmission_sig = headers
         .get("PAYPAL-TRANSMISSION-SIG")
         .and_then(|x| x.to_str().ok())
         .ok_or_else(|| ApiError::InvalidInput("missing transmission sig".to_string()))?;
-    let transmission_time = req
-        .headers()
+    let transmission_time = headers
         .get("PAYPAL-TRANSMISSION-TIME")
         .and_then(|x| x.to_str().ok())
         .ok_or_else(|| ApiError::InvalidInput("missing transmission time".to_string()))?;
@@ -189,20 +189,17 @@ pub async fn paypal_webhook(
         _ => {}
     }
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
-#[post("_tremendous")]
 pub async fn tremendous_webhook(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    payouts: web::Data<PayoutsQueue>,
+    Extension(payouts): Extension<Arc<PayoutsQueue>>,
     body: String,
-) -> Result<HttpResponse, ApiError> {
-    let signature = req
-        .headers()
+) -> Result<StatusCode, ApiError> {
+    let signature = headers
         .get("Tremendous-Webhook-Signature")
         .and_then(|x| x.to_str().ok())
         .and_then(|x| x.split('=').next_back())
@@ -311,21 +308,20 @@ pub async fn tremendous_webhook(
         _ => {}
     }
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
-#[get("")]
 pub async fn user_payouts(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<Json<Vec<crate::models::payouts::Payout>>, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PAYOUTS_READ]),
@@ -334,12 +330,12 @@ pub async fn user_payouts(
     .1;
 
     let payout_ids =
-        crate::database::models::payout_item::Payout::get_all_for_user(user.id.into(), &**pool)
+        crate::database::models::payout_item::Payout::get_all_for_user(user.id.into(), &pool)
             .await?;
     let payouts =
-        crate::database::models::payout_item::Payout::get_many(&payout_ids, &**pool).await?;
+        crate::database::models::payout_item::Payout::get_many(&payout_ids, &pool).await?;
 
-    Ok(HttpResponse::Ok().json(
+    Ok(Json(
         payouts
             .into_iter()
             .map(crate::models::payouts::Payout::from)
@@ -355,18 +351,17 @@ pub struct Withdrawal {
     method_id: String,
 }
 
-#[post("")]
 pub async fn create_payout(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    body: web::Json<Withdrawal>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    payouts_queue: web::Data<PayoutsQueue>,
-) -> Result<HttpResponse, ApiError> {
+    Extension(payouts_queue): Extension<Arc<PayoutsQueue>>,
+    body: Json<Withdrawal>,
+) -> Result<StatusCode, ApiError> {
     let (scopes, user) =
-        get_user_record_from_bearer_token(&addr, &headers, None, &**pool, &redis, &session_queue)
+        get_user_record_from_bearer_token(&addr, &headers, None, &pool, &redis, &session_queue)
             .await?
             .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidCredentials))?;
 
@@ -625,23 +620,22 @@ pub async fn create_payout(
     transaction.commit().await?;
     crate::database::models::User::clear_caches(&[(user.id, None)], &redis).await?;
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(StatusCode::NO_CONTENT)
 }
 
-#[delete("{id}")]
 pub async fn cancel_payout(
-    info: web::Path<(PayoutId,)>,
+    Path(id): Path<PayoutId>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    payouts: web::Data<PayoutsQueue>,
+    Extension(payouts): Extension<Arc<PayoutsQueue>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PAYOUTS_WRITE]),
@@ -649,12 +643,11 @@ pub async fn cancel_payout(
     .await?
     .1;
 
-    let id = info.into_inner().0;
-    let payout = crate::database::models::payout_item::Payout::get(id.into(), &**pool).await?;
+    let payout = crate::database::models::payout_item::Payout::get(id.into(), &pool).await?;
 
     if let Some(payout) = payout {
         if payout.user_id != user.id.into() && !user.role.is_admin() {
-            return Ok(HttpResponse::NotFound().finish());
+            return Err(ApiError::NotFound);
         }
 
         if let Some(platform_id) = payout.platform_id {
@@ -707,7 +700,7 @@ pub async fn cancel_payout(
                 .await?;
                 transaction.commit().await?;
 
-                Ok(HttpResponse::NoContent().finish())
+                Ok(StatusCode::NO_CONTENT)
             } else {
                 Err(ApiError::InvalidInput(
                     "Payout cannot be cancelled!".to_string(),
@@ -719,7 +712,7 @@ pub async fn cancel_payout(
             ))
         }
     } else {
-        Ok(HttpResponse::NotFound().finish())
+        Err(ApiError::NotFound)
     }
 }
 
@@ -728,11 +721,10 @@ pub struct MethodFilter {
     pub country: Option<String>,
 }
 
-#[get("methods")]
 pub async fn payment_methods(
-    payouts_queue: web::Data<PayoutsQueue>,
-    filter: web::Query<MethodFilter>,
-) -> Result<HttpResponse, ApiError> {
+    Extension(payouts_queue): Extension<Arc<PayoutsQueue>>,
+    Query(filter): Query<MethodFilter>,
+) -> Result<Json<Vec<crate::models::payouts::PayoutMethod>>, ApiError> {
     let methods = payouts_queue
         .get_payout_methods()
         .await?
@@ -748,5 +740,5 @@ pub async fn payment_methods(
         })
         .collect::<Vec<_>>();
 
-    Ok(HttpResponse::Ok().json(methods))
+    Ok(Json(methods))
 }

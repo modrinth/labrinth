@@ -9,7 +9,7 @@ use crate::models::ids::random_base62_rng;
 use crate::models::pats::Scopes;
 use crate::models::users::{Badges, Role};
 use crate::queue::session::AuthQueue;
-use crate::queue::socket::ActiveSockets;
+use crate::queue::socket::{ActiveSockets, WebSocketMessage};
 use crate::routes::internal::session::issue_session;
 use crate::routes::ApiError;
 use crate::util::captcha::check_turnstile_captcha;
@@ -20,13 +20,14 @@ use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{ConnectInfo, Query, WebSocketUpgrade};
+use axum::http::header::LOCATION;
 use axum::http::HeaderMap;
-use axum::response::{IntoResponse, Redirect};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::{delete, get, patch, post};
 use axum::{Extension, Json, Router};
 use base64::Engine;
 use chrono::{Duration, Utc};
-use hyper::StatusCode;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use reqwest::header::AUTHORIZATION;
@@ -36,7 +37,6 @@ use sqlx::postgres::PgPool;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use validator::Validate;
 
 pub fn config() -> Router {
@@ -1044,7 +1044,7 @@ pub async fn init(
     Extension(client): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<(Redirect, Json<serde_json::Value>), AuthenticationError> {
+) -> Result<impl IntoResponse, AuthenticationError> {
     let url = url::Url::parse(&info.url).map_err(|_| AuthenticationError::Url)?;
 
     let allowed_callback_urls = parse_strings_from_var("ALLOWED_CALLBACK_URLS").unwrap_or_default();
@@ -1058,7 +1058,7 @@ pub async fn init(
             &addr,
             &headers,
             Some(&token),
-            &**client,
+            &client,
             &redis,
             &session_queue,
         )
@@ -1081,7 +1081,8 @@ pub async fn init(
     let url = info.provider.get_redirect_url(state)?;
 
     Ok((
-        Redirect::temporary(&*url),
+        StatusCode::TEMPORARY_REDIRECT,
+        [(LOCATION, url.clone())],
         Json(serde_json::json!({ "url": url })),
     ))
 }
@@ -1091,93 +1092,106 @@ pub struct WsInit {
     pub provider: AuthProvider,
 }
 
+#[axum::debug_handler]
 pub async fn ws_init(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
     Query(info): Query<WsInit>,
-    ws: WebSocketUpgrade,
-    Extension(active_sockets): Extension<RwLock<ActiveSockets>>,
+    Extension(active_sockets): Extension<Arc<ActiveSockets>>,
     Extension(redis): Extension<RedisPool>,
+    ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     async fn sock(
         mut socket: WebSocket,
-        who: SocketAddr,
         provider: AuthProvider,
-        active_sockets: RwLock<ActiveSockets>,
-        redis: &RedisPool,
-    ) -> Result<(), ApiError> {
+        active_sockets: Arc<ActiveSockets>,
+        redis: RedisPool,
+    ) {
         let flow = Flow::OAuth {
             user_id: None,
             url: None,
             provider,
         }
         .insert(Duration::minutes(30), &redis)
-        .await?;
+        .await;
 
         if let Ok(state) = flow {
             if let Ok(url) = provider.get_redirect_url(state.clone()) {
-                socket
-                    .send(Message::Text(serde_json::json!({ "url": url }).to_string()))
-                    .await?;
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
-                let db = active_sockets.write().await;
-                db.auth_sockets.insert(state, socket);
+                let _ = tx.send(WebSocketMessage::Text(
+                    serde_json::json!({ "url": url }).to_string(),
+                ));
+
+                active_sockets.auth_sockets.insert(state.clone(), tx);
+                tokio::spawn(async move {
+                    while let Some(message) = rx.recv().await {
+                        match message {
+                            WebSocketMessage::Text(text) => {
+                                let _ = socket.send(Message::Text(text)).await;
+                            }
+                            WebSocketMessage::Close => {
+                                let _ = socket.close().await;
+                                break;
+                            }
+                        };
+                    }
+                });
             }
         }
-
-        Ok(())
     }
 
-    ws.on_upgrade(move |socket| sock(socket, addr, info.provider, active_sockets, &redis))
+    ws.on_upgrade(move |socket| sock(socket, info.provider, active_sockets, redis))
 }
 
+#[axum::debug_handler]
 pub async fn auth_callback(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
-    Extension(active_sockets): Extension<RwLock<ActiveSockets>>,
+    Extension(active_sockets): Extension<Arc<ActiveSockets>>,
     Extension(client): Extension<PgPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(redis): Extension<RedisPool>,
 ) -> Result<axum::response::Response, crate::auth::templates::ErrorPage> {
-    let state_string = query
+    let state = query
         .get("state")
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?
         .clone();
 
-    let state = state_string.clone();
-    let res: Result<axum::response::Response, AuthenticationError> = async move {
+    let res: Result<axum::response::Response, AuthenticationError> = async {
+        let state = state.clone();
+        let active_sockets = active_sockets.clone();
 
-        let flow = Flow::get(&state, &redis).await?;
+        async move {
+            let flow = Flow::get(&state, &redis).await?;
 
-        // Extract cookie header from request
-        if let Some(Flow::OAuth {
-                        user_id,
-                        provider,
-                        url,
-                    }) = flow
-        {
-            Flow::remove(&state, &redis).await?;
+            // Extract cookie header from request
+            if let Some(Flow::OAuth {
+                            user_id,
+                            provider,
+                            url,
+                        }) = flow
+            {
+                Flow::remove(&state, &redis).await?;
 
-            let token = provider.get_token(query).await?;
-            let oauth_user = provider.get_user(&token).await?;
+                let token = provider.get_token(query).await?;
+                let oauth_user = provider.get_user(&token).await?;
 
-            let user_id_opt = provider.get_user_id(&oauth_user.id, &**client).await?;
+                let user_id_opt = provider.get_user_id(&oauth_user.id, &client).await?;
 
-            let mut transaction = client.begin().await?;
-            if let Some(id) = user_id {
-                if user_id_opt.is_some() {
-                    return Err(AuthenticationError::DuplicateUser);
-                }
+                let mut transaction = client.begin().await?;
+                if let Some(id) = user_id {
+                    if user_id_opt.is_some() {
+                        return Err(AuthenticationError::DuplicateUser);
+                    }
 
-                provider
-                    .update_user_id(id, Some(&oauth_user.id), &mut transaction)
-                    .await?;
+                    provider
+                        .update_user_id(id, Some(&oauth_user.id), &mut transaction)
+                        .await?;
 
-                let user = crate::database::models::User::get_id(id, &**client, &redis).await?;
+                    let user = crate::database::models::User::get_id(id, &client, &redis).await?;
 
-                if provider == AuthProvider::PayPal  {
-                    sqlx::query!(
+                    if provider == AuthProvider::PayPal  {
+                        sqlx::query!(
                         "
                         UPDATE users
                         SET paypal_country = $1, paypal_email = $2, paypal_id = $3
@@ -1188,150 +1202,136 @@ pub async fn auth_callback(
                         oauth_user.id,
                         id as crate::database::models::ids::UserId,
                     )
-                        .execute(&mut *transaction)
-                        .await?;
-                } else if let Some(email) = user.and_then(|x| x.email) {
-                    send_email(
-                        email,
-                        "Authentication method added",
-                        &format!("When logging into Modrinth, you can now log in using the {} authentication provider.", provider.as_str()),
-                        "If you did not make this change, please contact us immediately through our support channels on Discord or via email (support@modrinth.com).",
-                        None,
-                    )?;
-                }
-
-                transaction.commit().await?;
-                crate::database::models::User::clear_caches(&[(id, None)], &redis).await?;
-
-                if let Some(url) = url {
-                    Ok((Redirect::temporary(&*url), Json(serde_json::json!({ "url": url }))).into_response())
-                } else {
-                    Err(AuthenticationError::InvalidCredentials)
-                }
-            } else {
-                let user_id = if let Some(user_id) = user_id_opt {
-                    let user = crate::database::models::User::get_id(user_id, &**client, &redis)
-                        .await?
-                        .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
-
-                    if user.totp_secret.is_some() {
-                        let flow = Flow::Login2FA { user_id: user.id }
-                            .insert(Duration::minutes(30), &redis)
+                            .execute(&mut *transaction)
                             .await?;
-
-                        if let Some(url) = url {
-                            let redirect_url = format!(
-                                "{}{}error=2fa_required&flow={}",
-                                url,
-                                if url.contains('?') { "&" } else { "?" },
-                                flow
-                            );
-
-                            Ok((Redirect::temporary(&*redirect_url), Json(serde_json::json!({ "url": redirect_url }))).into_response())
-                        } else {
-                            let mut ws_conn = {
-                                let db = active_sockets.read().await;
-
-                                let mut x = db
-                                    .auth_sockets
-                                    .get_mut(&state)
-                                    .ok_or_else(|| AuthenticationError::SocketError)?;
-
-                                x.value_mut().clone()
-                            };
-
-                            ws_conn
-                                .text(
-                                    serde_json::json!({
-                                        "error": "2fa_required",
-                                        "flow": flow,
-                                    }).to_string()
-                                )
-                                .await.map_err(|_| AuthenticationError::SocketError)?;
-
-                            let _ = ws_conn.close(None).await;
-
-                            return Ok(crate::auth::templates::Success {
-                                icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
-                                name: &user.username,
-                            }.render());
-                        }
+                    } else if let Some(email) = user.and_then(|x| x.email) {
+                        send_email(
+                            email,
+                            "Authentication method added",
+                            &format!("When logging into Modrinth, you can now log in using the {} authentication provider.", provider.as_str()),
+                            "If you did not make this change, please contact us immediately through our support channels on Discord or via email (support@modrinth.com).",
+                            None,
+                        )?;
                     }
 
-                    user_id
+                    transaction.commit().await?;
+                    crate::database::models::User::clear_caches(&[(id, None)], &redis).await?;
+
+                    if let Some(url) = url {
+                        Ok((StatusCode::TEMPORARY_REDIRECT, [(LOCATION, url.clone())], Json(serde_json::json!({ "url": url }))).into_response())
+                    } else {
+                        Err(AuthenticationError::InvalidCredentials)
+                    }
                 } else {
-                    oauth_user.create_account(provider, &mut transaction, &client, &file_host, &redis).await?
-                };
+                    let user_id = if let Some(user_id) = user_id_opt {
+                        let user = crate::database::models::User::get_id(user_id, &client, &redis)
+                            .await?
+                            .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
-                let session = issue_session(&addr, &headers, user_id, &mut transaction, &redis).await?;
-                transaction.commit().await?;
+                        if user.totp_secret.is_some() {
+                            let flow = Flow::Login2FA { user_id: user.id }
+                                .insert(Duration::minutes(30), &redis)
+                                .await?;
 
-                if let Some(url) = url {
-                    let redirect_url = format!(
-                        "{}{}code={}{}",
-                        url,
-                        if url.contains('?') { '&' } else { '?' },
-                        session.session,
-                        if user_id_opt.is_none() {
-                            "&new_account=true"
-                        } else {
-                            ""
+                            if let Some(url) = url {
+                                let redirect_url = format!(
+                                    "{}{}error=2fa_required&flow={}",
+                                    url,
+                                    if url.contains('?') { "&" } else { "?" },
+                                    flow
+                                );
+
+                                return Ok((StatusCode::TEMPORARY_REDIRECT, [(LOCATION, redirect_url.clone())], Json(serde_json::json!({ "url": redirect_url }))).into_response())
+                            } else {
+                                let (_, ws_conn) = active_sockets
+                                    .clone()
+                                    .auth_sockets
+                                    .remove(&state)
+                                    .ok_or_else(|| AuthenticationError::SocketError)?;
+
+                                ws_conn
+                                    .send(
+                                        WebSocketMessage::Text(
+                                            serde_json::json!({
+                                        "error": "2fa_required",
+                                        "flow": flow,
+                                    }).to_string())
+                                    )
+                                    .map_err(|_| AuthenticationError::SocketError)?;
+                                let _ = ws_conn.send(WebSocketMessage::Close);
+
+                                return Ok(crate::auth::templates::Success {
+                                    icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
+                                    name: &user.username,
+                                }.render().into_response());
+                            }
                         }
-                    );
 
-                    Ok((Redirect::temporary(&*redirect_url), Json(serde_json::json!({ "url": redirect_url }))).into_response())
-                } else {
-                    let user = crate::database::models::user_item::User::get_id(
-                        user_id,
-                        &**client,
-                        &redis,
-                    )
-                        .await?.ok_or_else(|| AuthenticationError::InvalidCredentials)?;
-
-                    let mut ws_conn = {
-                        let db = active_sockets.read().await;
-
-                        let mut x = db
-                            .auth_sockets
-                            .get_mut(&state)
-                            .ok_or_else(|| AuthenticationError::SocketError)?;
-
-                        x.value_mut()
+                        user_id
+                    } else {
+                        oauth_user.create_account(provider, &mut transaction, &client, &file_host, &redis).await?
                     };
 
-                    ws_conn
-                        .send(
-                            Message::Text(
-                                serde_json::json!({
+                    let session = issue_session(&addr, &headers, user_id, &mut transaction, &redis).await?;
+                    transaction.commit().await?;
+
+                    if let Some(url) = url {
+                        let redirect_url = format!(
+                            "{}{}code={}{}",
+                            url,
+                            if url.contains('?') { '&' } else { '?' },
+                            session.session,
+                            if user_id_opt.is_none() {
+                                "&new_account=true"
+                            } else {
+                                ""
+                            }
+                        );
+
+
+                        Ok((StatusCode::TEMPORARY_REDIRECT, [(LOCATION, redirect_url.clone())], Json(serde_json::json!({ "url": redirect_url }))).into_response())
+                    } else {
+                        let user = crate::database::models::user_item::User::get_id(
+                            user_id,
+                            &client,
+                            &redis,
+                        )
+                            .await?.ok_or_else(|| AuthenticationError::InvalidCredentials)?;
+
+                        let (_, ws_conn) = active_sockets
+                            .clone()
+                            .auth_sockets
+                            .remove(&state)
+                            .ok_or_else(|| AuthenticationError::SocketError)?;
+
+                        ws_conn
+                            .send(
+                                WebSocketMessage::Text(
+                                    serde_json::json!({
                                         "code": session.session,
                                     }).to_string()
+                                )
                             )
+                            .map_err(|_| AuthenticationError::SocketError)?;
+                        let _ = ws_conn.send(WebSocketMessage::Close);
 
-                        )
-                        .await.map_err(|_| AuthenticationError::SocketError)?;
-                    let _ = ws_conn.close().await;
-
-                    return Ok(crate::auth::templates::Success {
-                        icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
-                        name: &user.username,
-                    }.render().into_response());
+                        return Ok(crate::auth::templates::Success {
+                            icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
+                            name: &user.username,
+                        }.render().into_response());
+                    }
                 }
+            } else {
+                Err::<axum::response::Response, AuthenticationError>(AuthenticationError::InvalidCredentials)
             }
-        } else {
-            Err::<impl IntoResponse, AuthenticationError>(AuthenticationError::InvalidCredentials)
-        }
+        }.await
     }.await;
 
     // Because this is callback route, if we have an error, we need to ensure we close the original socket if it exists
     if let Err(ref e) = res {
-        let db = active_sockets.read().await;
-        let mut x = db.auth_sockets.get_mut(&state_string);
-
-        if let Some(x) = x.as_mut() {
-            let mut ws_conn = x.value_mut();
-
+        if let Some((_, ws_conn)) = active_sockets.auth_sockets.remove(&state) {
             ws_conn
-                .send(Message::Text(
+                .send(WebSocketMessage::Text(
                     serde_json::json!({
                             "error": &e.error_name(),
                             "description": &e.to_string(),
@@ -1339,9 +1339,8 @@ pub async fn auth_callback(
                     )
                     .to_string(),
                 ))
-                .await
                 .map_err(|_| AuthenticationError::SocketError)?;
-            let _ = ws_conn.close().await;
+            let _ = ws_conn.send(WebSocketMessage::Close);
         }
     }
 
@@ -1358,13 +1357,13 @@ pub async fn delete_auth_provider(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    Json(delete_provider): Json<DeleteAuthProvider>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(delete_provider): Json<DeleteAuthProvider>,
 ) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::USER_AUTH_WRITE]),
@@ -1458,7 +1457,7 @@ pub async fn create_account_with_password(
         return Err(ApiError::Turnstile);
     }
 
-    if crate::database::models::User::get(&new_account.username, &**pool, &redis)
+    if crate::database::models::User::get(&new_account.username, &pool, &redis)
         .await?
         .is_some()
     {
@@ -1489,7 +1488,7 @@ pub async fn create_account_with_password(
         .hash_password(new_account.password.as_bytes(), &salt)?
         .to_string();
 
-    if crate::database::models::User::get_email(&new_account.email, &**pool)
+    if crate::database::models::User::get_email(&new_account.email, &pool)
         .await?
         .is_some()
     {
@@ -1570,15 +1569,15 @@ pub async fn login_password(
     }
 
     let user = if let Some(user) =
-        crate::database::models::User::get(&login.username, &**pool, &redis).await?
+        crate::database::models::User::get(&login.username, &pool, &redis).await?
     {
         user
     } else {
-        let user = crate::database::models::User::get_email(&login.username, &**pool)
+        let user = crate::database::models::User::get_email(&login.username, &pool)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
-        crate::database::models::User::get_id(user, &**pool, &redis)
+        crate::database::models::User::get_id(user, &pool, &redis)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?
     };
@@ -1611,7 +1610,7 @@ pub async fn login_password(
         let res = crate::models::sessions::Session::from(session, true, None);
         transaction.commit().await?;
 
-        Ok(Json(res))
+        Ok(Json(serde_json::to_value(res)?))
     }
 }
 
@@ -1686,7 +1685,7 @@ pub async fn login_2fa(
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
     if let Flow::Login2FA { user_id } = flow {
-        let user = crate::database::models::User::get_id(user_id, &**pool, &redis)
+        let user = crate::database::models::User::get_id(user_id, &pool, &redis)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
@@ -1731,7 +1730,7 @@ pub async fn begin_2fa_flow(
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::USER_AUTH_WRITE]),
@@ -1766,8 +1765,8 @@ pub async fn finish_2fa_flow(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    Json(login): Json<Login2FA>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(login): Json<Login2FA>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let flow = Flow::get(&login.flow, &redis)
         .await?
@@ -1777,7 +1776,7 @@ pub async fn finish_2fa_flow(
         let user = get_user_from_headers(
             &addr,
             &headers,
-            &**pool,
+            &pool,
             &redis,
             &session_queue,
             Some(&[Scopes::USER_AUTH_WRITE]),
@@ -1890,11 +1889,11 @@ pub async fn remove_2fa(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    Json(login): Json<Remove2FA>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(login): Json<Remove2FA>,
 ) -> Result<StatusCode, ApiError> {
     let (scopes, user) =
-        get_user_record_from_bearer_token(&addr, &headers, None, &**pool, &redis, &session_queue)
+        get_user_record_from_bearer_token(&addr, &headers, None, &pool, &redis, &session_queue)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
@@ -1979,11 +1978,11 @@ pub async fn reset_password_begin(
     }
 
     let user = if let Some(user_id) =
-        crate::database::models::User::get_email(&reset_password.username, &**pool).await?
+        crate::database::models::User::get_email(&reset_password.username, &pool).await?
     {
-        crate::database::models::User::get_id(user_id, &**pool, &redis).await?
+        crate::database::models::User::get_id(user_id, &pool, &redis).await?
     } else {
-        crate::database::models::User::get(&reset_password.username, &**pool, &redis).await?
+        crate::database::models::User::get(&reset_password.username, &pool, &redis).await?
     };
 
     if let Some(user) = user {
@@ -2017,14 +2016,14 @@ pub async fn change_password(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    Json(change_password): Json<ChangePassword>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(change_password): Json<ChangePassword>,
 ) -> Result<StatusCode, ApiError> {
     let user = if let Some(flow) = &change_password.flow {
         let flow = Flow::get(flow, &redis).await?;
 
         if let Some(Flow::ForgotPassword { user_id }) = flow {
-            let user = crate::database::models::User::get_id(user_id, &**pool, &redis)
+            let user = crate::database::models::User::get_id(user_id, &pool, &redis)
                 .await?
                 .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
@@ -2039,16 +2038,10 @@ pub async fn change_password(
     let user = if let Some(user) = user {
         user
     } else {
-        let (scopes, user) = get_user_record_from_bearer_token(
-            &addr,
-            &headers,
-            None,
-            &**pool,
-            &redis,
-            &session_queue,
-        )
-        .await?
-        .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
+        let (scopes, user) =
+            get_user_record_from_bearer_token(&addr, &headers, None, &pool, &redis, &session_queue)
+                .await?
+                .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
         if !scopes.contains(Scopes::USER_AUTH_WRITE) {
             return Err(ApiError::Authentication(
@@ -2164,8 +2157,8 @@ pub async fn set_email(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    Json(email): Json<SetEmail>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(email): Json<SetEmail>,
 ) -> Result<StatusCode, ApiError> {
     email
         .validate()
@@ -2174,7 +2167,7 @@ pub async fn set_email(
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::USER_AUTH_WRITE]),
@@ -2225,6 +2218,7 @@ pub async fn set_email(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[axum::debug_handler]
 pub async fn resend_verify_email(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -2235,7 +2229,7 @@ pub async fn resend_verify_email(
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::USER_AUTH_WRITE]),
@@ -2272,6 +2266,7 @@ pub struct VerifyEmail {
     pub flow: String,
 }
 
+#[axum::debug_handler]
 pub async fn verify_email(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
@@ -2284,7 +2279,7 @@ pub async fn verify_email(
         confirm_email,
     }) = flow
     {
-        let user = crate::database::models::User::get_id(user_id, &**pool, &redis)
+        let user = crate::database::models::User::get_id(user_id, &pool, &redis)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
@@ -2320,6 +2315,7 @@ pub async fn verify_email(
     }
 }
 
+#[axum::debug_handler]
 pub async fn subscribe_newsletter(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -2330,7 +2326,7 @@ pub async fn subscribe_newsletter(
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::USER_AUTH_WRITE]),

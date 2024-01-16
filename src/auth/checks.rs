@@ -134,7 +134,7 @@ pub async fn filter_enlisted_projects_ids(
                 .collect::<Vec<_>>(),
             user_id as database::models::ids::UserId,
         )
-        .fetch_many(&***pool)
+        .fetch_many(pool)
         .try_for_each(|e| {
             if let Some(row) = e.right() {
                 for x in projects.iter() {
@@ -225,7 +225,7 @@ pub async fn filter_visible_version_ids(
 
     // Get visible projects- ones we are allowed to see public versions for.
     let visible_project_ids = filter_visible_project_ids(
-        Project::get_many_ids(&project_ids, &***pool, redis)
+        Project::get_many_ids(&project_ids, pool, redis)
             .await?
             .iter()
             .map(|x| &x.inner)
@@ -274,7 +274,7 @@ pub async fn filter_enlisted_version_ids(
 
     // Get enlisted projects- ones we are allowed to see hidden versions for.
     let authorized_project_ids = filter_enlisted_projects_ids(
-        Project::get_many_ids(&project_ids, &***pool, redis)
+        Project::get_many_ids(&project_ids, pool, redis)
             .await?
             .iter()
             .map(|x| &x.inner)

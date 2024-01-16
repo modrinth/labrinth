@@ -241,7 +241,7 @@ pub async fn version_create(
     match v2_reroute::extract_ok_json::<Version>(response).await {
         Ok(version) => {
             let v2_version = LegacyVersion::from(version);
-            Ok(HttpResponse::Ok().json(v2_version))
+            Ok(Json(v2_version))
         }
         Err(response) => Ok(response),
     }
@@ -258,7 +258,7 @@ async fn get_example_version_fields(
         None => return Ok(None),
     };
 
-    let vid = match project_item::Project::get_id(project_id.into(), &**pool, redis)
+    let vid = match project_item::Project::get_id(project_id.into(), &pool, redis)
         .await?
         .and_then(|p| p.versions.first().cloned())
     {
@@ -266,7 +266,7 @@ async fn get_example_version_fields(
         None => return Ok(None),
     };
 
-    let example_version = match version_item::Version::get(vid, &**pool, redis).await? {
+    let example_version = match version_item::Version::get(vid, &pool, redis).await? {
         Some(version) => version,
         None => return Ok(None),
     };

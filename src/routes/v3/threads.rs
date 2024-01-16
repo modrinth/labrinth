@@ -1,3 +1,8 @@
+use axum::extract::{ConnectInfo, Path, Query};
+use axum::http::HeaderMap;
+use axum::routing::{delete, get, post};
+use axum::{Extension, Json, Router};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::auth::{check_is_moderator_from_headers, get_user_from_headers};
@@ -16,21 +21,18 @@ use crate::models::threads::{MessageBody, Thread, ThreadId, ThreadType};
 use crate::models::users::User;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use actix_web::{web, HttpRequest, HttpResponse};
+use axum::http::StatusCode;
 use futures::TryStreamExt;
 use serde::Deserialize;
 use sqlx::PgPool;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("thread")
-            .route("inbox", web::get().to(moderation_inbox))
-            .route("{id}", web::get().to(thread_get))
-            .route("{id}", web::post().to(thread_send_message))
-            .route("{id}/read", web::post().to(thread_read)),
-    );
-    cfg.service(web::scope("message").route("{id}", web::delete().to(message_delete)));
-    cfg.route("threads", web::get().to(threads_get));
+pub fn config() -> Router {
+    Router::new()
+        .route("/threads", get(threads_get))
+        .route("/message/:id", delete(message_delete))
+        .route("/thread/inbox", get(moderation_inbox))
+        .route("/thread/:id", get(thread_get).post(thread_send_message))
+        .route("/thread/:id/read", post(thread_read))
 }
 
 pub async fn is_authorized_thread(
@@ -96,7 +98,7 @@ pub async fn is_authorized_thread(
 pub async fn filter_authorized_threads(
     threads: Vec<database::models::Thread>,
     user: &User,
-    pool: &web::Data<PgPool>,
+    pool: &PgPool,
     redis: &RedisPool,
 ) -> Result<Vec<Thread>, ApiError> {
     let user_id: database::models::UserId = user.id.into();
@@ -131,7 +133,7 @@ pub async fn filter_authorized_threads(
                 &*project_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(&***pool)
+            .fetch_many(&*pool)
             .try_for_each(|e| {
                 if let Some(row) = e.right() {
                     check_threads.retain(|x| {
@@ -167,7 +169,7 @@ pub async fn filter_authorized_threads(
                 &*project_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(&***pool)
+            .fetch_many(&*pool)
             .try_for_each(|e| {
                 if let Some(row) = e.right() {
                     check_threads.retain(|x| {
@@ -201,7 +203,7 @@ pub async fn filter_authorized_threads(
                 &*report_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(&***pool)
+            .fetch_many(&*pool)
             .try_for_each(|e| {
                 if let Some(row) = e.right() {
                     check_threads.retain(|x| {
@@ -237,7 +239,7 @@ pub async fn filter_authorized_threads(
             .collect::<Vec<database::models::UserId>>(),
     );
 
-    let users: Vec<User> = database::models::User::get_many_ids(&user_ids, &***pool, redis)
+    let users: Vec<User> = database::models::User::get_many_ids(&user_ids, &*pool, redis)
         .await?
         .into_iter()
         .map(From::from)
@@ -273,19 +275,19 @@ pub async fn filter_authorized_threads(
 pub async fn thread_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(ThreadId,)>,
+    Path(info): Path<ThreadId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let string = info.into_inner().0.into();
+) -> Result<Json<Thread>, ApiError> {
+    let string = info.into();
 
-    let thread_data = database::models::Thread::get(string, &**pool).await?;
+    let thread_data = database::models::Thread::get(string, &pool).await?;
 
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::THREAD_READ]),
@@ -305,13 +307,13 @@ pub async fn thread_get(
                     .collect::<Vec<_>>(),
             );
 
-            let users: Vec<User> = database::models::User::get_many_ids(authors, &**pool, &redis)
+            let users: Vec<User> = database::models::User::get_many_ids(authors, &pool, &redis)
                 .await?
                 .into_iter()
                 .map(From::from)
                 .collect();
 
-            return Ok(HttpResponse::Ok().json(Thread::from(data, users, &user)));
+            return Ok(Json(Thread::from(data, users, &user)));
         }
     }
     Err(ApiError::NotFound)
@@ -325,15 +327,15 @@ pub struct ThreadIds {
 pub async fn threads_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<ThreadIds>,
+    Query(ids): Query<ThreadIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<Json<Vec<Thread>>, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::THREAD_READ]),
@@ -347,11 +349,11 @@ pub async fn threads_get(
             .map(|x| x.into())
             .collect();
 
-    let threads_data = database::models::Thread::get_many(&thread_ids, &**pool).await?;
+    let threads_data = database::models::Thread::get_many(&thread_ids, &pool).await?;
 
     let threads = filter_authorized_threads(threads_data, &user, &pool, &redis).await?;
 
-    Ok(HttpResponse::Ok().json(threads))
+    Ok(Json(threads))
 }
 
 #[derive(Deserialize)]
@@ -359,19 +361,20 @@ pub struct NewThreadMessage {
     pub body: MessageBody,
 }
 
+#[axum::debug_handler]
 pub async fn thread_send_message(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(ThreadId,)>,
+    Path(info): Path<ThreadId>,
     Extension(pool): Extension<PgPool>,
-    new_message: web::Json<NewThreadMessage>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+    Json(new_message): Json<NewThreadMessage>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::THREAD_WRITE]),
@@ -379,7 +382,7 @@ pub async fn thread_send_message(
     .await?
     .1;
 
-    let string: database::models::ThreadId = info.into_inner().0.into();
+    let string: database::models::ThreadId = info.into();
 
     if let MessageBody::Text {
         body,
@@ -402,7 +405,7 @@ pub async fn thread_send_message(
 
         if let Some(replying_to) = replying_to {
             let thread_message =
-                database::models::ThreadMessage::get((*replying_to).into(), &**pool).await?;
+                database::models::ThreadMessage::get((*replying_to).into(), &pool).await?;
 
             if let Some(thread_message) = thread_message {
                 if thread_message.thread_id != string {
@@ -422,7 +425,7 @@ pub async fn thread_send_message(
         ));
     }
 
-    let result = database::models::Thread::get(string, &**pool).await?;
+    let result = database::models::Thread::get(string, &pool).await?;
 
     if let Some(thread) = result {
         if !is_authorized_thread(&thread, &user, &pool).await? {
@@ -440,13 +443,13 @@ pub async fn thread_send_message(
         .await?;
 
         let mod_notif = if let Some(project_id) = thread.project_id {
-            let project = database::models::Project::get_id(project_id, &**pool, &redis).await?;
+            let project = database::models::Project::get_id(project_id, &pool, &redis).await?;
 
             if let Some(project) = project {
                 if project.inner.status != ProjectStatus::Processing && user.role.is_mod() {
                     let members = database::models::TeamMember::get_from_team_full(
                         project.inner.team_id,
-                        &**pool,
+                        &pool,
                         &redis,
                     )
                     .await?;
@@ -470,7 +473,7 @@ pub async fn thread_send_message(
 
             !user.role.is_mod()
         } else if let Some(report_id) = thread.report_id {
-            let report = database::models::report_item::Report::get(report_id, &**pool).await?;
+            let report = database::models::report_item::Report::get(report_id, &pool).await?;
 
             if let Some(report) = report {
                 if report.closed && !user.role.is_mod() {
@@ -552,7 +555,7 @@ pub async fn thread_send_message(
 
         transaction.commit().await?;
 
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
@@ -564,10 +567,11 @@ pub async fn moderation_inbox(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<Json<Vec<Thread>>, ApiError> {
     let user = check_is_moderator_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::THREAD_READ]),
@@ -580,34 +584,34 @@ pub async fn moderation_inbox(
         WHERE show_in_mod_inbox = TRUE
         "
     )
-    .fetch_many(&**pool)
+    .fetch_many(&pool)
     .try_filter_map(|e| async { Ok(e.right().map(|m| database::models::ThreadId(m.id))) })
     .try_collect::<Vec<database::models::ThreadId>>()
     .await?;
 
-    let threads_data = database::models::Thread::get_many(&ids, &**pool).await?;
+    let threads_data = database::models::Thread::get_many(&ids, &pool).await?;
     let threads = filter_authorized_threads(threads_data, &user, &pool, &redis).await?;
-    Ok(HttpResponse::Ok().json(threads))
+    Ok(Json(threads))
 }
 
 pub async fn thread_read(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(ThreadId,)>,
+    Path(info): Path<ThreadId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<StatusCode, ApiError> {
     check_is_moderator_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::THREAD_READ]),
     )
     .await?;
 
-    let id = info.into_inner().0;
     let mut transaction = pool.begin().await?;
 
     sqlx::query!(
@@ -616,29 +620,29 @@ pub async fn thread_read(
         SET show_in_mod_inbox = FALSE
         WHERE id = $1
         ",
-        id.0 as i64,
+        info.0 as i64,
     )
     .execute(&mut *transaction)
     .await?;
 
     transaction.commit().await?;
 
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn message_delete(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(ThreadMessageId,)>,
+    Path(info): Path<ThreadMessageId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::THREAD_WRITE]),
@@ -646,7 +650,7 @@ pub async fn message_delete(
     .await?
     .1;
 
-    let result = database::models::ThreadMessage::get(info.into_inner().0.into(), &**pool).await?;
+    let result = database::models::ThreadMessage::get(info.into(), &pool).await?;
 
     if let Some(thread) = result {
         if !user.role.is_mod() && thread.author_id != Some(user.id.into()) {
@@ -681,7 +685,7 @@ pub async fn message_delete(
         database::models::ThreadMessage::remove_full(thread.id, private, &mut transaction).await?;
         transaction.commit().await?;
 
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }

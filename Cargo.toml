@@ -19,11 +19,14 @@ path = "src/main.rs"
 # actix-ws = "0.2.5"
 # actix-files = "0.6.5"
 # actix-web-prom = "0.7.0"
-axum = { version = "0.7.4", features = ["json", "form", "multipart", "query", "ws"] }
+axum = { version = "0.7.4", features = ["json", "form", "multipart", "query", "ws", "macros"] }
 axum-prometheus = "0.5.0"
 
 # middleware + utils
-tower-http = {  version = "0.5.0", features = ["cors", "compression-br", "sensitive-headers"] }
+sentry = { version = "0.32.1", features = ["tracing"] }
+sentry-tower = "0.32.1"
+tower-http = {  version = "0.5.0", features = ["cors", "compression-br", "sensitive-headers", "fs"] }
+tower = "0.4.13"
 
 # tracing
 tracing = "0.1.40"
@@ -103,9 +106,6 @@ uuid = { version = "1.2.2", features = ["v4", "fast-rng", "serde"] }
 maxminddb = "0.24.0"
 flate2 = "1.0.25"
 tar = "0.4.38"
-
-sentry = { version = "0.32.1" }
-# sentry-actix = "0.32.1"
 
 image = "0.24.6"
 color-thief = "0.2.2"

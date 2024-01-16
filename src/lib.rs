@@ -1,4 +1,4 @@
-use axum::Router;
+use axum::{Extension, Router};
 use std::sync::Arc;
 
 use database::redis::RedisPool;
@@ -6,9 +6,7 @@ use log::{info, warn};
 use queue::{
     analytics::AnalyticsQueue, payouts::PayoutsQueue, session::AuthQueue, socket::ActiveSockets,
 };
-use scheduler::Scheduler;
 use sqlx::Postgres;
-use tokio::sync::RwLock;
 
 extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;
@@ -18,6 +16,7 @@ use crate::{
     search::indexing::index_projects,
     util::env::{parse_strings_from_var, parse_var},
 };
+use crate::scheduler::schedule;
 
 pub mod auth;
 pub mod clickhouse;
@@ -43,20 +42,19 @@ pub struct LabrinthConfig {
     pub clickhouse: Client,
     pub file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
     pub maxmind: Arc<queue::maxmind::MaxMindIndexer>,
-    pub scheduler: Arc<Scheduler>,
     pub ip_salt: Pepper,
     pub search_config: search::SearchConfig,
     pub session_queue: Arc<AuthQueue>,
     pub payouts_queue: Arc<PayoutsQueue>,
     pub analytics_queue: Arc<AnalyticsQueue>,
-    pub active_sockets: Arc<RwLock<ActiveSockets>>,
+    pub active_sockets: Arc<ActiveSockets>,
 }
 
 pub fn app_setup(
     pool: sqlx::Pool<Postgres>,
     redis_pool: RedisPool,
     search_config: search::SearchConfig,
-    clickhouse: &mut Client,
+    clickhouse: Client,
     file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
     maxmind: Arc<queue::maxmind::MaxMindIndexer>,
 ) -> LabrinthConfig {
@@ -64,8 +62,6 @@ pub fn app_setup(
         "Starting Labrinth on {}",
         dotenvy::var("BIND_ADDR").unwrap()
     );
-
-    let mut scheduler = scheduler::Scheduler::new();
 
     // The interval in seconds at which the local database is indexed
     // for searching.  Defaults to 1 hour if unset.
@@ -75,7 +71,7 @@ pub fn app_setup(
     let pool_ref = pool.clone();
     let search_config_ref = search_config.clone();
     let redis_pool_ref = redis_pool.clone();
-    scheduler.run(local_index_interval, move || {
+    schedule(local_index_interval, move || {
         let pool_ref = pool_ref.clone();
         let redis_pool_ref = redis_pool_ref.clone();
         let search_config_ref = search_config_ref.clone();
@@ -92,7 +88,7 @@ pub fn app_setup(
     // Changes statuses of scheduled projects/versions
     let pool_ref = pool.clone();
     // TODO: Clear cache when these are run
-    scheduler.run(std::time::Duration::from_secs(60 * 5), move || {
+    schedule(std::time::Duration::from_secs(60 * 5), move || {
         let pool_ref = pool_ref.clone();
         info!("Releasing scheduled versions/projects!");
 
@@ -131,14 +127,14 @@ pub fn app_setup(
         }
     });
 
-    scheduler::schedule_versions(&mut scheduler, pool.clone(), redis_pool.clone());
+    scheduler::schedule_versions(pool.clone(), redis_pool.clone());
 
     let session_queue = Arc::new(AuthQueue::new());
 
     let pool_ref = pool.clone();
     let redis_ref = redis_pool.clone();
     let session_queue_ref = session_queue.clone();
-    scheduler.run(std::time::Duration::from_secs(60 * 30), move || {
+    schedule(std::time::Duration::from_secs(60 * 30), move || {
         let pool_ref = pool_ref.clone();
         let redis_ref = redis_ref.clone();
         let session_queue_ref = session_queue_ref.clone();
@@ -156,7 +152,7 @@ pub fn app_setup(
     let reader = maxmind.clone();
     {
         let reader_ref = reader;
-        scheduler.run(std::time::Duration::from_secs(60 * 60 * 24), move || {
+        schedule(std::time::Duration::from_secs(60 * 60 * 24), move || {
             let reader_ref = reader_ref.clone();
 
             async move {
@@ -180,7 +176,7 @@ pub fn app_setup(
         let analytics_queue_ref = analytics_queue.clone();
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
-        scheduler.run(std::time::Duration::from_secs(15), move || {
+        schedule(std::time::Duration::from_secs(15), move || {
             let client_ref = client_ref.clone();
             let analytics_queue_ref = analytics_queue_ref.clone();
             let pool_ref = pool_ref.clone();
@@ -203,7 +199,7 @@ pub fn app_setup(
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
         let client_ref = clickhouse.clone();
-        scheduler.run(std::time::Duration::from_secs(60 * 60 * 6), move || {
+        schedule(std::time::Duration::from_secs(60 * 60 * 6), move || {
             let pool_ref = pool_ref.clone();
             let redis_ref = redis_ref.clone();
             let client_ref = client_ref.clone();
@@ -224,7 +220,7 @@ pub fn app_setup(
     };
 
     let payouts_queue = Arc::new(PayoutsQueue::new());
-    let active_sockets = Arc::new(RwLock::new(ActiveSockets::default()));
+    let active_sockets = Arc::new(ActiveSockets::default());
 
     LabrinthConfig {
         pool,
@@ -232,7 +228,6 @@ pub fn app_setup(
         clickhouse: clickhouse.clone(),
         file_host,
         maxmind,
-        scheduler: Arc::new(scheduler),
         ip_salt,
         search_config,
         session_queue,
@@ -243,24 +238,24 @@ pub fn app_setup(
 }
 
 pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
-    // TODO: fix form, path, json, query error handling
+    // TODO: fix form, path, json, query error handling and FILE errors (see servedir)
 
     Router::new()
-        .layer(labrinth_config.redis_pool.clone())
-        .layer(labrinth_config.pool.clone())
-        .layer(labrinth_config.file_host.clone())
-        .layer(labrinth_config.search_config.clone())
-        .layer(labrinth_config.session_queue.clone())
-        .layer(labrinth_config.payouts_queue.clone())
-        .layer(labrinth_config.ip_salt.clone())
-        .layer(labrinth_config.analytics_queue.clone())
-        .layer(labrinth_config.clickhouse.clone())
-        .layer(labrinth_config.maxmind.clone())
-        .layer(labrinth_config.active_sockets.clone())
         // .merge(routes::v2::config())
         // .merge(routes::v3::config())
         .merge(routes::internal::config())
         .merge(routes::root_config())
+        .layer(Extension(labrinth_config.redis_pool.clone()))
+        .layer(Extension(labrinth_config.pool.clone()))
+        .layer(Extension(labrinth_config.file_host.clone()))
+        .layer(Extension(labrinth_config.search_config.clone()))
+        .layer(Extension(labrinth_config.session_queue.clone()))
+        .layer(Extension(labrinth_config.payouts_queue.clone()))
+        .layer(Extension(labrinth_config.ip_salt.clone()))
+        .layer(Extension(labrinth_config.analytics_queue.clone()))
+        .layer(Extension(labrinth_config.clickhouse.clone()))
+        .layer(Extension(labrinth_config.maxmind.clone()))
+        .layer(Extension(labrinth_config.active_sockets.clone()))
     // .default_service(web::get().wrap(default_cors()).to(routes::not_found))
 }
 

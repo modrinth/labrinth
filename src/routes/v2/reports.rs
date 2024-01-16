@@ -47,7 +47,7 @@ pub async fn report_create(
     match v2_reroute::extract_ok_json::<Report>(response).await {
         Ok(report) => {
             let report = LegacyReport::from(report);
-            Ok(HttpResponse::Ok().json(report))
+            Ok(Json(report))
         }
         Err(response) => Ok(response),
     }
@@ -74,14 +74,14 @@ pub async fn reports(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    count: web::Query<ReportsRequestOptions>,
+    count: Query<ReportsRequestOptions>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::reports::reports(
         req,
         pool,
         redis,
-        web::Query(v3::reports::ReportsRequestOptions {
+        Query(v3::reports::ReportsRequestOptions {
             count: count.count,
             all: count.all,
         }),
@@ -94,7 +94,7 @@ pub async fn reports(
     match v2_reroute::extract_ok_json::<Vec<Report>>(response).await {
         Ok(reports) => {
             let reports: Vec<_> = reports.into_iter().map(LegacyReport::from).collect();
-            Ok(HttpResponse::Ok().json(reports))
+            Ok(Json(reports))
         }
         Err(response) => Ok(response),
     }
@@ -109,14 +109,14 @@ pub struct ReportIds {
 pub async fn reports_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<ReportIds>,
+    Query(ids): Query<ReportIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::reports::reports_get(
         req,
-        web::Query(v3::reports::ReportIds { ids: ids.ids }),
+        Query(v3::reports::ReportIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
@@ -128,7 +128,7 @@ pub async fn reports_get(
     match v2_reroute::extract_ok_json::<Vec<Report>>(response).await {
         Ok(report_list) => {
             let report_list: Vec<_> = report_list.into_iter().map(LegacyReport::from).collect();
-            Ok(HttpResponse::Ok().json(report_list))
+            Ok(Json(report_list))
         }
         Err(response) => Ok(response),
     }
@@ -151,7 +151,7 @@ pub async fn report_get(
     match v2_reroute::extract_ok_json::<Report>(response).await {
         Ok(report) => {
             let report = LegacyReport::from(report);
-            Ok(HttpResponse::Ok().json(report))
+            Ok(Json(report))
         }
         Err(response) => Ok(response),
     }
@@ -172,7 +172,7 @@ pub async fn report_edit(
     Extension(redis): Extension<RedisPool>,
     info: web::Path<(crate::models::reports::ReportId,)>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    edit_report: web::Json<EditReport>,
+    edit_report: Json<EditReport>,
 ) -> Result<HttpResponse, ApiError> {
     let edit_report = edit_report.into_inner();
     // Returns NoContent, so no need to convert
@@ -182,7 +182,7 @@ pub async fn report_edit(
         redis,
         info,
         session_queue,
-        web::Json(v3::reports::EditReport {
+        Json(v3::reports::EditReport {
             body: edit_report.body,
             closed: edit_report.closed,
         }),

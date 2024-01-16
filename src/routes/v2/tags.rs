@@ -54,7 +54,7 @@ pub async fn category_list(
                     header: c.header,
                 })
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(categories))
+            Ok(Json(categories))
         }
         Err(response) => Ok(response),
     }
@@ -103,7 +103,7 @@ pub async fn loader_list(
                     }
                 })
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(loaders))
+            Ok(Json(loaders))
         }
         Err(response) => Ok(response),
     }
@@ -127,7 +127,7 @@ pub struct GameVersionQuery {
 #[get("game_version")]
 pub async fn game_version_list(
     Extension(pool): Extension<PgPool>,
-    query: web::Query<GameVersionQuery>,
+    query: Query<GameVersionQuery>,
     Extension(redis): Extension<RedisPool>,
 ) -> Result<HttpResponse, ApiError> {
     let mut filters = HashMap::new();
@@ -139,7 +139,7 @@ pub async fn game_version_list(
     }
     let response = v3::tags::loader_fields_list(
         pool,
-        web::Query(LoaderFieldsEnumQuery {
+        Query(LoaderFieldsEnumQuery {
             loader_field: "game_versions".to_string(),
             filters: Some(filters),
         }),
@@ -169,7 +169,7 @@ pub async fn game_version_list(
                             .unwrap_or_default(),
                     })
                     .collect::<Vec<_>>();
-                HttpResponse::Ok().json(fields)
+                Json(fields)
             }
             Err(response) => response,
         },
@@ -196,7 +196,7 @@ pub async fn license_list() -> HttpResponse {
                     name: l.name,
                 })
                 .collect::<Vec<_>>();
-            HttpResponse::Ok().json(licenses)
+            Json(licenses)
         }
         Err(response) => response,
     }
@@ -217,7 +217,7 @@ pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, 
     // Convert to V2 format
     Ok(
         match v2_reroute::extract_ok_json::<v3::tags::LicenseText>(license).await {
-            Ok(license) => HttpResponse::Ok().json(LicenseText {
+            Ok(license) => Json(LicenseText {
                 title: license.title,
                 body: license.body,
             }),
@@ -269,7 +269,7 @@ pub async fn donation_platform_list(
                         }
                     })
                     .collect::<Vec<_>>();
-                HttpResponse::Ok().json(platforms)
+                Json(platforms)
             }
             Err(response) => response,
         },
@@ -310,5 +310,5 @@ pub async fn side_type_list() -> Result<HttpResponse, ApiError> {
         LegacySideType::Unknown,
     ];
     let side_types = side_types.iter().map(|s| s.to_string()).collect_vec();
-    Ok(HttpResponse::Ok().json(side_types))
+    Ok(Json(side_types))
 }

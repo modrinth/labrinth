@@ -11,12 +11,12 @@ use crate::auth::get_user_from_headers;
 use crate::routes::ApiError;
 
 use crate::database::redis::RedisPool;
+use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use reqwest::StatusCode;
 
 use crate::models::pats::{PersonalAccessToken, Scopes};
 use crate::queue::session::AuthQueue;
@@ -32,6 +32,7 @@ pub fn config() -> Router {
         .route("/pat/:id", patch(edit_pat).delete(delete_pat))
 }
 
+#[axum::debug_handler]
 pub async fn get_pats(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -42,7 +43,7 @@ pub async fn get_pats(
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PAT_READ]),
@@ -52,12 +53,12 @@ pub async fn get_pats(
 
     let pat_ids = database::models::pat_item::PersonalAccessToken::get_user_pats(
         user.id.into(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
     let pats =
-        database::models::pat_item::PersonalAccessToken::get_many_ids(&pat_ids, &**pool, &redis)
+        database::models::pat_item::PersonalAccessToken::get_many_ids(&pat_ids, &pool, &redis)
             .await?;
 
     Ok(Json(
@@ -75,13 +76,14 @@ pub struct NewPersonalAccessToken {
     pub expires: DateTime<Utc>,
 }
 
+#[axum::debug_handler]
 pub async fn create_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Json(info): Json<NewPersonalAccessToken>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(info): Json<NewPersonalAccessToken>,
 ) -> Result<Json<PersonalAccessToken>, ApiError> {
     info.validate()
         .map_err(|err| ApiError::InvalidInput(validation_errors_to_string(err, None)))?;
@@ -100,7 +102,7 @@ pub async fn create_pat(
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PAT_CREATE]),
@@ -160,19 +162,20 @@ pub struct ModifyPersonalAccessToken {
     pub expires: Option<DateTime<Utc>>,
 }
 
+#[axum::debug_handler]
 pub async fn edit_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<String>,
-    Json(info): Json<ModifyPersonalAccessToken>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(info): Json<ModifyPersonalAccessToken>,
 ) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PAT_WRITE]),
@@ -180,7 +183,7 @@ pub async fn edit_pat(
     .await?
     .1;
 
-    let pat = database::models::pat_item::PersonalAccessToken::get(&id, &**pool, &redis).await?;
+    let pat = database::models::pat_item::PersonalAccessToken::get(&id, &pool, &redis).await?;
 
     if let Some(pat) = pat {
         if pat.user_id == user.id.into() {
@@ -250,6 +253,7 @@ pub async fn edit_pat(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[axum::debug_handler]
 pub async fn delete_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -261,14 +265,14 @@ pub async fn delete_pat(
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PAT_DELETE]),
     )
     .await?
     .1;
-    let pat = database::models::pat_item::PersonalAccessToken::get(&id, &**pool, &redis).await?;
+    let pat = database::models::pat_item::PersonalAccessToken::get(&id, &pool, &redis).await?;
 
     if let Some(pat) = pat {
         if pat.user_id == user.id.into() {

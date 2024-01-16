@@ -5,8 +5,8 @@ pub mod templates;
 pub mod validate;
 
 use axum::http::StatusCode;
-use axum::Json;
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 pub use checks::{
     filter_enlisted_projects_ids, filter_enlisted_version_ids, filter_visible_collections,
     filter_visible_project_ids, filter_visible_projects,
@@ -51,10 +51,20 @@ pub enum AuthenticationError {
     Url,
 }
 
-
 impl IntoResponse for AuthenticationError {
     fn into_response(self) -> Response {
-        let status_code = match &self {
+        let error_message = ApiError {
+            error: self.error_name(),
+            description: &*self.to_string(),
+        };
+
+        (self.status_code(), Json(error_message)).into_response()
+    }
+}
+
+impl AuthenticationError {
+    pub fn status_code(&self) -> StatusCode {
+        match self {
             AuthenticationError::Env(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::Sqlx(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::Database(..) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -69,18 +79,9 @@ impl IntoResponse for AuthenticationError {
             AuthenticationError::FileHosting(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::DuplicateUser => StatusCode::BAD_REQUEST,
             AuthenticationError::SocketError => StatusCode::BAD_REQUEST,
-        };
-
-        let error_message = ApiError {
-            error: self.error_name(),
-            description: &*self.to_string(),
-        };
-
-        (status_code, Json(error_message)).into_response()
+        }
     }
-}
 
-impl AuthenticationError {
     pub fn error_name(&self) -> &'static str {
         match self {
             AuthenticationError::Env(..) => "environment_error",

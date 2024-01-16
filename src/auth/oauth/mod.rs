@@ -38,9 +38,9 @@ pub mod uris;
 pub fn config() -> Router {
     Router::new()
         .route("/authorize", get(init_oauth))
-        .service("/accept", post(accept_client_scopes))
-        .service("/reject", post(reject_client_scopes))
-        .service("/token", post(request_token))
+        .route("/accept", post(accept_client_scopes))
+        .route("/reject", post(reject_client_scopes))
+        .route("/token", post(request_token))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -67,11 +67,11 @@ pub async fn init_oauth(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<OAuthClientAccessRequest>, OAuthError> {
+) -> Result<axum::response::Response, OAuthError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::USER_AUTH_WRITE]),
@@ -80,7 +80,7 @@ pub async fn init_oauth(
     .1;
 
     let client_id = oauth_info.client_id.into();
-    let client = DBOAuthClient::get(client_id, &**pool).await?;
+    let client = DBOAuthClient::get(client_id, &pool).await?;
 
     if let Some(client) = client {
         let redirect_uri = ValidatedRedirectUri::validate(
@@ -111,7 +111,7 @@ pub async fn init_oauth(
         }
 
         let existing_authorization =
-            OAuthClientAuthorization::get(client.id, user.id.into(), &**pool)
+            OAuthClientAuthorization::get(client.id, user.id.into(), &pool)
                 .await
                 .map_err(|e| OAuthError::redirect(e, &oauth_info.state, &redirect_uri))?;
         let redirect_uris =
@@ -120,7 +120,7 @@ pub async fn init_oauth(
             Some(existing_authorization)
                 if existing_authorization.scopes.contains(requested_scopes) =>
             {
-                init_oauth_code_flow(
+                Ok(init_oauth_code_flow(
                     user.id.into(),
                     client.id.into(),
                     existing_authorization.id,
@@ -129,7 +129,8 @@ pub async fn init_oauth(
                     oauth_info.state,
                     &redis,
                 )
-                .await
+                .await?
+                .into_response())
             }
             _ => {
                 let flow_id = Flow::InitOAuthAppApproval {
@@ -151,7 +152,7 @@ pub async fn init_oauth(
                     flow_id,
                     requested_scopes,
                 };
-                Ok(Json(access_request))
+                Ok(Json(access_request).into_response())
             }
         }
     } else {
@@ -169,10 +170,10 @@ pub struct RespondToOAuthClientScopes {
 pub async fn accept_client_scopes(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Json(accept_body): Json<RespondToOAuthClientScopes>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(accept_body): Json<RespondToOAuthClientScopes>,
 ) -> Result<impl IntoResponse, OAuthError> {
     accept_or_reject_client_scopes(true, addr, headers, accept_body, pool, redis, session_queue)
         .await
@@ -181,10 +182,10 @@ pub async fn accept_client_scopes(
 pub async fn reject_client_scopes(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Json(body): Json<RespondToOAuthClientScopes>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(body): Json<RespondToOAuthClientScopes>,
 ) -> Result<impl IntoResponse, OAuthError> {
     accept_or_reject_client_scopes(false, addr, headers, body, pool, redis, session_queue).await
 }
@@ -209,12 +210,12 @@ pub struct TokenResponse {
 /// Per IETF RFC6749 Section 4.1.3 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3)
 pub async fn request_token(
     headers: HeaderMap,
-    Form(req_params): Form<TokenRequest>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
+    Form(req_params): Form<TokenRequest>,
 ) -> Result<impl IntoResponse, OAuthError> {
     let req_client_id = req_params.client_id;
-    let client = DBOAuthClient::get(req_client_id.into(), &**pool).await?;
+    let client = DBOAuthClient::get(req_client_id.into(), &pool).await?;
     if let Some(client) = client {
         authenticate_client_token_request(&headers, &client)?;
 
@@ -307,7 +308,7 @@ pub async fn accept_or_reject_client_scopes(
     let current_user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::SESSION_ACCESS]),
@@ -419,7 +420,7 @@ async fn init_oauth_code_flow(
 
     let redirect_uri = append_params_to_uri(&redirect_uris.validated.0, &redirect_params);
 
-    Ok(([(LOCATION, &*redirect_uri)], redirect_uri))
+    Ok(([(LOCATION, redirect_uri.clone())], redirect_uri))
 }
 
 fn append_params_to_uri(uri: &str, params: &[impl AsRef<str>]) -> String {

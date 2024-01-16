@@ -32,14 +32,14 @@ pub struct NotificationIds {
 pub async fn notifications_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<NotificationIds>,
+    Query(ids): Query<NotificationIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let resp = v3::notifications::notifications_get(
         req,
-        web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
+        Query(v3::notifications::NotificationIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
@@ -52,7 +52,7 @@ pub async fn notifications_get(
                 .into_iter()
                 .map(LegacyNotification::from)
                 .collect();
-            Ok(HttpResponse::Ok().json(notifications))
+            Ok(Json(notifications))
         }
         Err(response) => Ok(response),
     }
@@ -73,7 +73,7 @@ pub async fn notification_get(
     match v2_reroute::extract_ok_json::<Notification>(response).await {
         Ok(notification) => {
             let notification = LegacyNotification::from(notification);
-            Ok(HttpResponse::Ok().json(notification))
+            Ok(Json(notification))
         }
         Err(response) => Ok(response),
     }
@@ -113,7 +113,7 @@ pub async fn notification_delete(
 pub async fn notifications_read(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<NotificationIds>,
+    Query(ids): Query<NotificationIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -121,7 +121,7 @@ pub async fn notifications_read(
     // Returns NoContent, so no need to convert
     v3::notifications::notifications_read(
         req,
-        web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
+        Query(v3::notifications::NotificationIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
@@ -134,7 +134,7 @@ pub async fn notifications_read(
 pub async fn notifications_delete(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<NotificationIds>,
+    Query(ids): Query<NotificationIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -142,7 +142,7 @@ pub async fn notifications_delete(
     // Returns NoContent, so no need to convert
     v3::notifications::notifications_delete(
         req,
-        web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
+        Query(v3::notifications::NotificationIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,

@@ -8,14 +8,14 @@ use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::date::get_current_tenths_of_ms;
 use crate::util::env::parse_strings_from_var;
+use axum::extract::ConnectInfo;
+use axum::http::{HeaderMap, StatusCode};
 use axum::{Extension, Json};
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
-use axum::extract::ConnectInfo;
-use axum::http::{HeaderMap, StatusCode};
 use url::Url;
 
 pub const FILTERED_HEADERS: &[&str] = &[
@@ -62,11 +62,11 @@ pub async fn page_view_ingest(
     Extension(maxmind): Extension<Arc<MaxMindIndexer>>,
     Extension(analytics_queue): Extension<Arc<AnalyticsQueue>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    Json(url_input): Json<UrlInput>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
+    Json(url_input): Json<UrlInput>,
 ) -> Result<StatusCode, ApiError> {
-    let user = get_user_from_headers(&addr, &headers, &**pool, &redis, &session_queue, None)
+    let user = get_user_from_headers(&addr, &headers, &pool, &redis, &session_queue, None)
         .await
         .ok();
     let conn_info = addr.ip();
@@ -90,18 +90,22 @@ pub async fn page_view_ingest(
 
     let headers = headers
         .into_iter()
-        .map(|(key, val)| {
-            (
-                key.to_string().to_lowercase(),
-                val.to_str().unwrap_or_default().to_string(),
-            )
+        .flat_map(|(key, val)| {
+            if let Some(key) = key {
+                Some((
+                    key.to_string().to_lowercase(),
+                    val.to_str().unwrap_or_default().to_string(),
+                ))
+            } else {
+                None
+            }
         })
         .collect::<HashMap<String, String>>();
 
-    let ip = convert_to_ip_v6(if let Some(header) = headers.get("cf-connecting-ip") {
-        header
+    let ip = convert_to_ip_v6(&if let Some(header) = headers.get("cf-connecting-ip") {
+        header.clone()
     } else {
-        conn_info.into()
+        conn_info.to_string()
     })
     .unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped());
 
@@ -135,7 +139,7 @@ pub async fn page_view_ingest(
 
             if PROJECT_TYPES.contains(&segments_vec[0]) {
                 let project =
-                    crate::database::models::Project::get(segments_vec[1], &**pool, &redis).await?;
+                    crate::database::models::Project::get(segments_vec[1], &pool, &redis).await?;
 
                 if let Some(project) = project {
                     view.project_id = project.inner.id.0 as u64;
@@ -166,14 +170,14 @@ pub async fn playtime_ingest(
     headers: HeaderMap,
     Extension(analytics_queue): Extension<Arc<AnalyticsQueue>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    Json(playtimes): Json<HashMap<crate::models::ids::VersionId, PlaytimeInput>>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
+    Json(playtimes): Json<HashMap<crate::models::ids::VersionId, PlaytimeInput>>,
 ) -> Result<StatusCode, ApiError> {
     let (_, user) = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PERFORM_ANALYTICS]),
@@ -188,7 +192,7 @@ pub async fn playtime_ingest(
 
     let versions = crate::database::models::Version::get_many(
         &playtimes.iter().map(|x| (*x.0).into()).collect::<Vec<_>>(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;

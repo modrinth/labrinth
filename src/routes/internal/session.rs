@@ -48,12 +48,12 @@ pub async fn get_session_metadata(
 ) -> Result<SessionMetadata, AuthenticationError> {
     let ip_addr = if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
         if let Some(header) = headers.get("CF-Connecting-IP") {
-            header.to_str().ok()
+            header.to_str().ok().map(|x| x.to_string())
         } else {
-            addr.ip()
+            Some(addr.ip().to_string())
         }
     } else {
-        addr.ip()
+        Some(addr.ip().to_string())
     };
 
     let country = headers.get("cf-ipcountry").and_then(|x| x.to_str().ok());
@@ -141,7 +141,7 @@ pub async fn list(
     let current_user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::SESSION_READ]),
@@ -154,8 +154,8 @@ pub async fn list(
         .and_then(|x| x.to_str().ok())
         .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
 
-    let session_ids = DBSession::get_user_sessions(current_user.id.into(), &**pool, &redis).await?;
-    let sessions = DBSession::get_many_ids(&session_ids, &**pool, &redis)
+    let session_ids = DBSession::get_user_sessions(current_user.id.into(), &pool, &redis).await?;
+    let sessions = DBSession::get_many_ids(&session_ids, &pool, &redis)
         .await?
         .into_iter()
         .filter(|x| x.expires > Utc::now())
@@ -176,7 +176,7 @@ pub async fn delete_session(
     let current_user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::SESSION_DELETE]),
@@ -184,7 +184,7 @@ pub async fn delete_session(
     .await?
     .1;
 
-    let session = DBSession::get(info, &**pool, &redis).await?;
+    let session = DBSession::get(info, &pool, &redis).await?;
 
     if let Some(session) = session {
         if session.user_id == current_user.id.into() {
@@ -213,16 +213,15 @@ pub async fn refresh(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<Json<Session>, ApiError> {
-    let current_user =
-        get_user_from_headers(&addr, &headers, &**pool, &redis, &session_queue, None)
-            .await?
-            .1;
+    let current_user = get_user_from_headers(&addr, &headers, &pool, &redis, &session_queue, None)
+        .await?
+        .1;
     let session = headers
         .get(AUTHORIZATION)
         .and_then(|x| x.to_str().ok())
         .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidCredentials))?;
 
-    let session = DBSession::get(session, &**pool, &redis).await?;
+    let session = DBSession::get(session, &pool, &redis).await?;
 
     if let Some(session) = session {
         if current_user.id != session.user_id.into() || session.refresh_expires < Utc::now() {

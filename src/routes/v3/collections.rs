@@ -13,27 +13,33 @@ use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
-use actix_web::web::Data;
-use actix_web::{web, HttpRequest, HttpResponse};
+use axum::extract::{ConnectInfo, Path, Query};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{get, patch, post};
+use axum::{Extension, Json, Router};
+use bytes::Bytes;
 use chrono::Utc;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use validator::Validate;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("collections", web::get().to(collections_get));
-    cfg.route("collection", web::post().to(collection_create));
-
-    cfg.service(
-        web::scope("collection")
-            .route("{id}", web::get().to(collection_get))
-            .route("{id}", web::delete().to(collection_delete))
-            .route("{id}", web::patch().to(collection_edit))
-            .route("{id}/icon", web::patch().to(collection_icon_edit))
-            .route("{id}/icon", web::delete().to(delete_collection_icon)),
-    );
+pub fn config() -> Router {
+    Router::new()
+        .route("/collections", get(collections_get))
+        .route("/collection", post(collection_create))
+        .route(
+            "/collection/:id",
+            get(collection_get)
+                .delete(collection_delete)
+                .patch(collection_edit),
+        )
+        .route(
+            "/collection/:id/icon",
+            patch(collection_icon_edit).delete(delete_collection_icon),
+        )
 }
 
 #[derive(Serialize, Deserialize, Validate, Clone)]
@@ -56,18 +62,16 @@ pub struct CollectionCreateData {
 pub async fn collection_create(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    collection_create_data: web::Json<CollectionCreateData>,
     Extension(client): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, CreateError> {
-    let collection_create_data = collection_create_data.into_inner();
-
+    Json(collection_create_data): Json<CollectionCreateData>,
+) -> Result<Json<Collection>, CreateError> {
     // The currently logged in user
     let current_user = get_user_from_headers(
         &addr,
         &headers,
-        &**client,
+        &client,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_CREATE]),
@@ -110,7 +114,7 @@ pub async fn collection_create(
     let now = Utc::now();
     collection_builder_actual.insert(&mut transaction).await?;
 
-    let response = crate::models::collections::Collection {
+    let response = Collection {
         id: collection_id,
         user: collection_builder.user_id.into(),
         name: collection_builder.name.clone(),
@@ -124,7 +128,7 @@ pub async fn collection_create(
     };
     transaction.commit().await?;
 
-    Ok(HttpResponse::Ok().json(response))
+    Ok(Json(response))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -134,23 +138,23 @@ pub struct CollectionIds {
 pub async fn collections_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<CollectionIds>,
+    Query(ids): Query<CollectionIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<Json<Vec<Collection>>, ApiError> {
     let ids = serde_json::from_str::<Vec<&str>>(&ids.ids)?;
     let ids = ids
         .into_iter()
         .map(|x| parse_base62(x).map(|x| database::models::CollectionId(x as i64)))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let collections_data = database::models::Collection::get_many(&ids, &**pool, &redis).await?;
+    let collections_data = database::models::Collection::get_many(&ids, &pool, &redis).await?;
 
     let user_option = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_READ]),
@@ -161,25 +165,23 @@ pub async fn collections_get(
 
     let collections = filter_visible_collections(collections_data, &user_option).await?;
 
-    Ok(HttpResponse::Ok().json(collections))
+    Ok(Json(collections))
 }
 
 pub async fn collection_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let string = info.into_inner().0;
-
-    let id = database::models::CollectionId(parse_base62(&string)? as i64);
-    let collection_data = database::models::Collection::get(id, &**pool, &redis).await?;
+) -> Result<Json<Collection>, ApiError> {
+    let id = database::models::CollectionId(parse_base62(&info)? as i64);
+    let collection_data = database::models::Collection::get(id, &pool, &redis).await?;
     let user_option = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_READ]),
@@ -190,7 +192,7 @@ pub async fn collection_get(
 
     if let Some(data) = collection_data {
         if is_visible_collection(&data, &user_option).await? {
-            return Ok(HttpResponse::Ok().json(Collection::from(data)));
+            return Ok(Json(Collection::from(data)));
         }
     }
     Err(ApiError::NotFound)
@@ -218,16 +220,16 @@ pub struct EditCollection {
 pub async fn collection_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
-    new_collection: web::Json<EditCollection>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+    Json(new_collection): Json<EditCollection>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_WRITE]),
@@ -239,13 +241,14 @@ pub async fn collection_edit(
         .validate()
         .map_err(|err| ApiError::Validation(validation_errors_to_string(err, None)))?;
 
-    let string = info.into_inner().0;
-    let id = database::models::CollectionId(parse_base62(&string)? as i64);
-    let result = database::models::Collection::get(id, &**pool, &redis).await?;
+    let id = database::models::CollectionId(parse_base62(&info)? as i64);
+    let result = database::models::Collection::get(id, &pool, &redis).await?;
 
     if let Some(collection_item) = result {
         if !can_modify_collection(&collection_item, &user) {
-            return Ok(HttpResponse::Unauthorized().body(""));
+            return Err(ApiError::CustomAuthentication(
+                "You do not have permissions to modify this collection!".to_string(),
+            ));
         }
 
         let id = collection_item.id;
@@ -320,7 +323,7 @@ pub async fn collection_edit(
                 .collect_vec();
             let mut validated_project_ids = Vec::new();
             for project_id in new_project_ids {
-                let project = database::models::Project::get(project_id, &**pool, &redis)
+                let project = database::models::Project::get(project_id, &pool, &redis)
                     .await?
                     .ok_or_else(|| {
                         ApiError::InvalidInput(format!(
@@ -332,10 +335,10 @@ pub async fn collection_edit(
             // Insert- don't throw an error if it already exists
             sqlx::query!(
                 "
-                        INSERT INTO collections_mods (collection_id, mod_id)
-                        SELECT * FROM UNNEST ($1::int8[], $2::int8[])
-                        ON CONFLICT DO NOTHING
-                        ",
+                INSERT INTO collections_mods (collection_id, mod_id)
+                SELECT * FROM UNNEST ($1::int8[], $2::int8[])
+                ON CONFLICT DO NOTHING
+                ",
                 &collection_item_ids[..],
                 &validated_project_ids[..],
             )
@@ -357,7 +360,7 @@ pub async fn collection_edit(
         transaction.commit().await?;
         database::models::Collection::clear_cache(collection_item.id, &redis).await?;
 
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
@@ -370,22 +373,22 @@ pub struct FileExt {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn collection_icon_edit(
-    web::Query(ext): web::Query<FileExt>,
+    Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
-    mut payload: web::Payload,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+    payload: Bytes,
+) -> Result<StatusCode, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         let cdn_url = dotenvy::var("CDN_URL")?;
         let user = get_user_from_headers(
             &addr,
             &headers,
-            &**pool,
+            &pool,
             &redis,
             &session_queue,
             Some(&[Scopes::COLLECTION_WRITE]),
@@ -393,16 +396,17 @@ pub async fn collection_icon_edit(
         .await?
         .1;
 
-        let string = info.into_inner().0;
-        let id = database::models::CollectionId(parse_base62(&string)? as i64);
-        let collection_item = database::models::Collection::get(id, &**pool, &redis)
+        let id = database::models::CollectionId(parse_base62(&info)? as i64);
+        let collection_item = database::models::Collection::get(id, &pool, &redis)
             .await?
             .ok_or_else(|| {
                 ApiError::InvalidInput("The specified collection does not exist!".to_string())
             })?;
 
         if !can_modify_collection(&collection_item, &user) {
-            return Ok(HttpResponse::Unauthorized().body(""));
+            return Err(ApiError::CustomAuthentication(
+                "You do not have permissions to modify this collection!".to_string(),
+            ));
         }
 
         if let Some(icon) = collection_item.icon_url {
@@ -413,8 +417,7 @@ pub async fn collection_icon_edit(
             }
         }
 
-        let bytes =
-            read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB").await?;
+        let bytes = read_from_payload(payload, 262144, "Icons must be smaller than 256KiB").await?;
 
         let color = crate::util::img::get_color_from_img(&bytes)?;
 
@@ -424,7 +427,7 @@ pub async fn collection_icon_edit(
             .upload_file(
                 content_type,
                 &format!("data/{}/{}.{}", collection_id, hash, ext.ext),
-                bytes.freeze(),
+                bytes,
             )
             .await?;
 
@@ -446,7 +449,7 @@ pub async fn collection_icon_edit(
         transaction.commit().await?;
         database::models::Collection::clear_cache(collection_item.id, &redis).await?;
 
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::InvalidInput(format!(
             "Invalid format for collection icon: {}",
@@ -458,16 +461,16 @@ pub async fn collection_icon_edit(
 pub async fn delete_collection_icon(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(string): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_WRITE]),
@@ -475,15 +478,16 @@ pub async fn delete_collection_icon(
     .await?
     .1;
 
-    let string = info.into_inner().0;
     let id = database::models::CollectionId(parse_base62(&string)? as i64);
-    let collection_item = database::models::Collection::get(id, &**pool, &redis)
+    let collection_item = database::models::Collection::get(id, &pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified collection does not exist!".to_string())
         })?;
     if !can_modify_collection(&collection_item, &user) {
-        return Ok(HttpResponse::Unauthorized().body(""));
+        return Err(ApiError::CustomAuthentication(
+            "You do not have permissions to modify this collection!".to_string(),
+        ));
     }
 
     let cdn_url = dotenvy::var("CDN_URL")?;
@@ -511,21 +515,21 @@ pub async fn delete_collection_icon(
     transaction.commit().await?;
     database::models::Collection::clear_cache(collection_item.id, &redis).await?;
 
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn collection_delete(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(string): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**pool,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::COLLECTION_DELETE]),
@@ -533,15 +537,16 @@ pub async fn collection_delete(
     .await?
     .1;
 
-    let string = info.into_inner().0;
     let id = database::models::CollectionId(parse_base62(&string)? as i64);
-    let collection = database::models::Collection::get(id, &**pool, &redis)
+    let collection = database::models::Collection::get(id, &pool, &redis)
         .await?
         .ok_or_else(|| {
             ApiError::InvalidInput("The specified collection does not exist!".to_string())
         })?;
     if !can_modify_collection(&collection, &user) {
-        return Ok(HttpResponse::Unauthorized().body(""));
+        return Err(ApiError::CustomAuthentication(
+            "You do not have permissions to modify this collection!".to_string(),
+        ));
     }
     let mut transaction = pool.begin().await?;
 
@@ -552,7 +557,7 @@ pub async fn collection_delete(
     database::models::Collection::clear_cache(collection.id, &redis).await?;
 
     if result.is_some() {
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }

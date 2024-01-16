@@ -39,7 +39,7 @@ pub enum ValidationError {
     #[error("Invalid Input: {0}")]
     InvalidInput(std::borrow::Cow<'static, str>),
     #[error("Error while managing threads")]
-    Blocking(#[from] actix_web::error::BlockingError),
+    Blocking(#[from] tokio::task::JoinError),
     #[error("Error while querying database")]
     Database(#[from] DatabaseError),
 }
@@ -157,7 +157,7 @@ async fn validate_minecraft_file(
     all_game_versions: Vec<MinecraftGameVersion>,
     file_type: Option<FileType>,
 ) -> Result<ValidationResult, ValidationError> {
-    actix_web::web::block(move || {
+    tokio::task::spawn_blocking(move || {
         let reader = Cursor::new(data);
         let mut zip = ZipArchive::new(reader)?;
 

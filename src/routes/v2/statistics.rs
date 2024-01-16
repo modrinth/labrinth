@@ -32,7 +32,7 @@ pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError
                 authors: stats.authors,
                 files: stats.files,
             };
-            Ok(HttpResponse::Ok().json(stats))
+            Ok(Json(stats))
         }
         Err(response) => Ok(response),
     }

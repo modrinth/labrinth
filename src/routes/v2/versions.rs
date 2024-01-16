@@ -41,8 +41,8 @@ pub struct VersionListFilters {
 pub async fn version_list(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
-    web::Query(filters): web::Query<VersionListFilters>,
+    Path(info): Path<String>,
+    Query(filters): Query<VersionListFilters>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -96,7 +96,7 @@ pub async fn version_list(
     };
 
     let response =
-        v3::versions::version_list(req, info, web::Query(filters), pool, redis, session_queue)
+        v3::versions::version_list(req, info, Query(filters), pool, redis, session_queue)
             .await
             .or_else(v2_reroute::flatten_404_error)?;
 
@@ -107,7 +107,7 @@ pub async fn version_list(
                 .into_iter()
                 .map(LegacyVersion::from)
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(v2_versions))
+            Ok(Json(v2_versions))
         }
         Err(response) => Ok(response),
     }
@@ -131,7 +131,7 @@ pub async fn version_project_get(
     match v2_reroute::extract_ok_json::<Version>(response).await {
         Ok(version) => {
             let v2_version = LegacyVersion::from(version);
-            Ok(HttpResponse::Ok().json(v2_version))
+            Ok(Json(v2_version))
         }
         Err(response) => Ok(response),
     }
@@ -146,13 +146,13 @@ pub struct VersionIds {
 pub async fn versions_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<VersionIds>,
+    Query(ids): Query<VersionIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let ids = v3::versions::VersionIds { ids: ids.ids };
-    let response = v3::versions::versions_get(req, web::Query(ids), pool, redis, session_queue)
+    let response = v3::versions::versions_get(req, Query(ids), pool, redis, session_queue)
         .await
         .or_else(v2_reroute::flatten_404_error)?;
 
@@ -163,7 +163,7 @@ pub async fn versions_get(
                 .into_iter()
                 .map(LegacyVersion::from)
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(v2_versions))
+            Ok(Json(v2_versions))
         }
         Err(response) => Ok(response),
     }
@@ -186,7 +186,7 @@ pub async fn version_get(
     match v2_reroute::extract_ok_json::<Version>(response).await {
         Ok(version) => {
             let v2_version = LegacyVersion::from(version);
-            Ok(HttpResponse::Ok().json(v2_version))
+            Ok(Json(v2_version))
         }
         Err(response) => Ok(response),
     }
@@ -235,7 +235,7 @@ pub async fn version_edit(
     info: web::Path<(VersionId,)>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    new_version: web::Json<EditVersion>,
+    new_version: Json<EditVersion>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let new_version = new_version.into_inner();
@@ -304,7 +304,7 @@ pub async fn version_edit(
         info,
         pool,
         redis,
-        web::Json(serde_json::to_value(new_version)?),
+        Json(serde_json::to_value(new_version)?),
         session_queue,
     )
     .await

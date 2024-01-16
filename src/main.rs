@@ -99,7 +99,7 @@ async fn main() -> std::io::Result<()> {
         pool.clone(),
         redis_pool.clone(),
         search_config.clone(),
-        &mut clickhouse,
+        clickhouse,
         file_host.clone(),
         maxmind_reader.clone(),
     );

@@ -1,4 +1,7 @@
 use crate::models::projects::SearchRequest;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use meilisearch_sdk::client::Client;
@@ -7,9 +10,6 @@ use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write;
-use axum::http::StatusCode;
-use axum::Json;
-use axum::response::{IntoResponse, Response};
 use thiserror::Error;
 
 pub mod indexing;

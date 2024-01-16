@@ -32,7 +32,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 pub async fn team_members_get_project(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String,)>,
+    Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
@@ -47,7 +47,7 @@ pub async fn team_members_get_project(
                 .into_iter()
                 .map(LegacyTeamMember::from)
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(members))
+            Ok(Json(members))
         }
         Err(response) => Ok(response),
     }
@@ -73,7 +73,7 @@ pub async fn team_members_get(
                 .into_iter()
                 .map(LegacyTeamMember::from)
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(members))
+            Ok(Json(members))
         }
         Err(response) => Ok(response),
     }
@@ -88,14 +88,14 @@ pub struct TeamIds {
 pub async fn teams_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    web::Query(ids): web::Query<TeamIds>,
+    Query(ids): Query<TeamIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
     let response = v3::teams::teams_get(
         req,
-        web::Query(v3::teams::TeamIds { ids: ids.ids }),
+        Query(v3::teams::TeamIds { ids: ids.ids }),
         pool,
         redis,
         session_queue,
@@ -114,7 +114,7 @@ pub async fn teams_get(
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            Ok(HttpResponse::Ok().json(members))
+            Ok(Json(members))
         }
         Err(response) => Ok(response),
     }
@@ -165,7 +165,7 @@ pub async fn add_team_member(
     headers: HeaderMap,
     info: web::Path<(TeamId,)>,
     Extension(pool): Extension<PgPool>,
-    new_member: web::Json<NewTeamMember>,
+    new_member: Json<NewTeamMember>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
@@ -174,7 +174,7 @@ pub async fn add_team_member(
         req,
         info,
         pool,
-        web::Json(v3::teams::NewTeamMember {
+        Json(v3::teams::NewTeamMember {
             user_id: new_member.user_id,
             role: new_member.role.clone(),
             permissions: new_member.permissions,
@@ -204,7 +204,7 @@ pub async fn edit_team_member(
     headers: HeaderMap,
     info: web::Path<(TeamId, UserId)>,
     Extension(pool): Extension<PgPool>,
-    edit_member: web::Json<EditTeamMember>,
+    edit_member: Json<EditTeamMember>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
@@ -213,7 +213,7 @@ pub async fn edit_team_member(
         req,
         info,
         pool,
-        web::Json(v3::teams::EditTeamMember {
+        Json(v3::teams::EditTeamMember {
             permissions: edit_member.permissions,
             organization_permissions: edit_member.organization_permissions,
             role: edit_member.role.clone(),
@@ -238,7 +238,7 @@ pub async fn transfer_ownership(
     headers: HeaderMap,
     info: web::Path<(TeamId,)>,
     Extension(pool): Extension<PgPool>,
-    new_owner: web::Json<TransferOwnership>,
+    new_owner: Json<TransferOwnership>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<HttpResponse, ApiError> {
@@ -247,7 +247,7 @@ pub async fn transfer_ownership(
         req,
         info,
         pool,
-        web::Json(v3::teams::TransferOwnership {
+        Json(v3::teams::TransferOwnership {
             user_id: new_owner.user_id,
         }),
         redis,
