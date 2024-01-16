@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::net::SocketAddr;
 use super::api_common::{Api, ApiBuildable};
 use async_trait::async_trait;
 use axum::http::{HeaderValue, HeaderName};
@@ -22,7 +23,7 @@ pub struct ApiV2 {
 #[async_trait(?Send)]
 impl ApiBuildable for ApiV2 {
     async fn build(labrinth_config: LabrinthConfig) -> Self {        
-        let app = labrinth::app_config(labrinth_config);
+        let app = labrinth::app_config(labrinth_config).into_make_service_with_connect_info::<SocketAddr>();;
         let test_server = Arc::new(TestServer::new(app).unwrap());
 
         Self { test_server }

@@ -241,7 +241,7 @@ pub fn app_setup(
 }
 
 pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
-    // TODO: fix form, path, json, query error handling and FILE errors (see servedir)
+    // TODO: fix form, path, json, query error handling and FILE errors
 
     Router::new()
         // .merge(routes::v2::config())

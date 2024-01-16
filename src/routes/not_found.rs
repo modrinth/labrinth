@@ -3,11 +3,12 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 
-pub async fn not_found() -> Json<ApiError<'static>> {
+pub async fn not_found() -> (StatusCode, Json<ApiError<'static>>) {
+    (StatusCode::NOT_FOUND,
     Json(ApiError {
         error: "not_found",
         description: "the requested route does not exist",
-    })
+    }))
 }
 
 pub async fn api_v1_gone() -> impl IntoResponse {
