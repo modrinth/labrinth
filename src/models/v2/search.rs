@@ -1,9 +1,10 @@
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 use crate::{routes::v2_reroute, search::ResultSearchProject};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Validate)]
 pub struct LegacySearchResults {
     pub hits: Vec<LegacyResultSearchProject>,
     pub offset: usize,
