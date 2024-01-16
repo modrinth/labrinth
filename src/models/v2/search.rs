@@ -7,6 +7,7 @@ use crate::{routes::v2_reroute, search::ResultSearchProject};
 pub struct LegacySearchResults {
     pub hits: Vec<LegacyResultSearchProject>,
     pub offset: usize,
+    #[validate(range(max = 100))]
     pub limit: usize,
     pub total_hits: usize,
 }
