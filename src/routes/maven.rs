@@ -337,7 +337,7 @@ pub async fn version_file(
                 return Ok(hash.clone().into_response());
             }
         } else {
-            return Ok(Redirect::temporary(&*selected_file.url).into_response());
+            return Ok(Redirect::temporary(&selected_file.url).into_response());
         }
     }
 

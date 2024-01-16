@@ -31,10 +31,7 @@ pub fn config() -> Router {
         .route("/threads", get(threads_get))
         .route("/message/:id", delete(message_delete))
         .route("/thread/inbox", get(moderation_inbox))
-        .route(
-            "/thread/:id",
-            get(thread_get), /*.post(thread_send_message)*/
-        )
+        .route("/thread/:id", get(thread_get).post(thread_send_message))
         .route("/thread/:id/read", post(thread_read))
 }
 
@@ -136,7 +133,7 @@ pub async fn filter_authorized_threads(
                 &*project_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(&*pool)
+            .fetch_many(pool)
             .try_for_each(|e| {
                 if let Some(row) = e.right() {
                     check_threads.retain(|x| {
@@ -172,7 +169,7 @@ pub async fn filter_authorized_threads(
                 &*project_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(&*pool)
+            .fetch_many(pool)
             .try_for_each(|e| {
                 if let Some(row) = e.right() {
                     check_threads.retain(|x| {
@@ -206,7 +203,7 @@ pub async fn filter_authorized_threads(
                 &*report_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(&*pool)
+            .fetch_many(pool)
             .try_for_each(|e| {
                 if let Some(row) = e.right() {
                     check_threads.retain(|x| {
@@ -242,7 +239,7 @@ pub async fn filter_authorized_threads(
             .collect::<Vec<database::models::UserId>>(),
     );
 
-    let users: Vec<User> = database::models::User::get_many_ids(&user_ids, &*pool, redis)
+    let users: Vec<User> = database::models::User::get_many_ids(&user_ids, pool, redis)
         .await?
         .into_iter()
         .map(From::from)
@@ -363,7 +360,6 @@ pub async fn threads_get(
 pub struct NewThreadMessage {
     pub body: MessageBody,
 }
-
 
 pub async fn thread_send_message(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

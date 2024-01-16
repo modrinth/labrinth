@@ -55,7 +55,7 @@ impl IntoResponse for AuthenticationError {
     fn into_response(self) -> Response {
         let error_message = ApiError {
             error: self.error_name(),
-            description: &*self.to_string(),
+            description: &self.to_string(),
         };
 
         (self.status_code(), Json(error_message)).into_response()

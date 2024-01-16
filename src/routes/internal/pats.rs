@@ -32,7 +32,6 @@ pub fn config() -> Router {
         .route("/pat/:id", patch(edit_pat).delete(delete_pat))
 }
 
-
 pub async fn get_pats(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -75,7 +74,6 @@ pub struct NewPersonalAccessToken {
     pub name: String,
     pub expires: DateTime<Utc>,
 }
-
 
 pub async fn create_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -161,7 +159,6 @@ pub struct ModifyPersonalAccessToken {
     pub name: Option<String>,
     pub expires: Option<DateTime<Utc>>,
 }
-
 
 pub async fn edit_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -252,7 +249,6 @@ pub async fn edit_pat(
 
     Ok(StatusCode::NO_CONTENT)
 }
-
 
 pub async fn delete_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

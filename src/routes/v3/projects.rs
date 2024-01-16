@@ -50,7 +50,7 @@ pub fn config() -> Router {
             Router::new()
                 .route(
                     "/:id",
-                    get(project_get), /*.delete(project_delete).patch(project_edit)*/
+                    get(project_get).patch(project_edit).delete(project_delete),
                 )
                 .route("/:id/check", get(project_get_check))
                 .route(
@@ -1054,7 +1054,6 @@ pub struct BulkEditProject {
     pub link_urls: Option<HashMap<String, Option<String>>>,
 }
 
-
 pub async fn projects_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -2007,6 +2006,7 @@ pub async fn project_delete(
         }
     }
 
+    //
     let mut transaction = pool.begin().await?;
     let context = ImageContext::Project {
         project_id: Some(project.inner.id.into()),
@@ -2200,7 +2200,6 @@ pub async fn project_unfollow(
         ))
     }
 }
-
 
 pub async fn project_get_organization(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
