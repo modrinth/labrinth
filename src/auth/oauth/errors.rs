@@ -5,7 +5,7 @@ use crate::models::ids::DecodingError;
 use axum::http::header::LOCATION;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use crate::util::extract::Json;
 
 #[derive(thiserror::Error, Debug)]
 #[error("{}", .error_type)]

@@ -1,11 +1,10 @@
-use axum::extract::{ConnectInfo, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch, post};
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-
+use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 use super::ApiError;
 use crate::auth::{filter_visible_projects, get_user_from_headers};
 use crate::database::models::team_item::TeamMember;
@@ -779,7 +778,7 @@ pub async fn organization_projects_remove(
     headers: HeaderMap,
     Path((organization_id, project_id)): Path<(String, String)>,
     Extension(pool): Extension<PgPool>,
-    data: Json<OrganizationProjectRemoval>,
+    Json(data): Json<OrganizationProjectRemoval>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {

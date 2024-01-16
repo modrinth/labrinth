@@ -4,14 +4,14 @@ use crate::database::redis::RedisPool;
 use crate::models::projects::ProjectStatus;
 use crate::queue::session::AuthQueue;
 use crate::{auth::check_is_moderator_from_headers, models::pats::Scopes};
-use axum::extract::{ConnectInfo, Query};
 use axum::http::HeaderMap;
 use axum::routing::get;
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use crate::util::extract::{Json, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new().route("/moderation/projects", get(get_projects))

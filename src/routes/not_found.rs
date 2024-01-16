@@ -1,7 +1,7 @@
 use crate::models::error::ApiError;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
+use crate::util::extract::Json;
 
 pub async fn not_found() -> (StatusCode, Json<ApiError<'static>>) {
     (StatusCode::NOT_FOUND,

@@ -19,13 +19,13 @@ use crate::util::validate::{validation_errors_to_string, RE_URL_SAFE};
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::extract::ws::{Message, WebSocket};
-use axum::extract::{ConnectInfo, Query, WebSocketUpgrade};
 use axum::http::header::LOCATION;
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, patch, post};
-use axum::{Extension, Json, Router};
+use axum::Router;
+use crate::util::extract::{Json, Query, Extension, ConnectInfo, WebSocketUpgrade};
 use base64::Engine;
 use chrono::{Duration, Utc};
 use rand_chacha::rand_core::SeedableRng;
@@ -1137,7 +1137,7 @@ pub async fn ws_init(
         }
     }
 
-    ws.on_upgrade(move |socket| sock(socket, info.provider, active_sockets, redis))
+    ws.0.on_upgrade(move |socket| sock(socket, info.provider, active_sockets, redis))
 }
 
 pub async fn auth_callback(

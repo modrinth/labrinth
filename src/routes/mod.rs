@@ -5,6 +5,9 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
+use axum::extract::multipart::MultipartRejection;
+use axum::extract::rejection::{ExtensionRejection, FormRejection, JsonRejection, PathRejection, QueryRejection, BytesRejection, StringRejection};
+use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
@@ -91,6 +94,24 @@ pub enum ApiError {
     Reroute(#[from] reqwest::Error),
     #[error("Resource not found")]
     NotFound,
+    #[error("Could not read JSON body: {0}")]
+    JsonBody(#[from] JsonRejection),
+    #[error("Could not read form: {0}")]
+    Form(#[from] FormRejection),
+    #[error("Could not read query: {0}")]
+    Query(#[from] QueryRejection),
+    #[error("Bad path params: {0}")]
+    Path(#[from] PathRejection),
+    #[error("Internal extension error: {0}")]
+    Extension(#[from] ExtensionRejection),
+    #[error("Unable to parse body: {0}")]
+    String(#[from] StringRejection),
+    #[error("Unable to parse body: {0}")]
+    Bytes(#[from] BytesRejection),
+    #[error("Unable to upgrade connection: {0}")]
+    WebSocket(#[from] WebSocketUpgradeRejection),
+    #[error("Unable to parse multipart body: {0}")]
+    Multipart(#[from] MultipartRejection),
 }
 
 impl IntoResponse for ApiError {
@@ -119,6 +140,15 @@ impl IntoResponse for ApiError {
             ApiError::Mail(..) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Reroute(..) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::NotFound => StatusCode::NOT_FOUND,
+            ApiError::JsonBody(..) => StatusCode::BAD_REQUEST,
+            ApiError::Form(..) => StatusCode::BAD_REQUEST,
+            ApiError::Query(..) => StatusCode::BAD_REQUEST,
+            ApiError::Path(..) => StatusCode::BAD_REQUEST,
+            ApiError::Extension(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::String(..) => StatusCode::BAD_REQUEST,
+            ApiError::Bytes(..) => StatusCode::BAD_REQUEST,
+            ApiError::WebSocket(..) => StatusCode::BAD_REQUEST,
+            ApiError::Multipart(..) => StatusCode::BAD_REQUEST,
         };
 
         let error_message = crate::models::error::ApiError {
@@ -146,6 +176,15 @@ impl IntoResponse for ApiError {
                 ApiError::Clickhouse(..) => "clickhouse_error",
                 ApiError::Reroute(..) => "reroute_error",
                 ApiError::NotFound => "not_found",
+                ApiError::JsonBody(..) => "invalid_json_body",
+                ApiError::Form(..) => "invalid_form_body",
+                ApiError::Query(..) => "invalid_query",
+                ApiError::Path(..) => "invalid_path",
+                ApiError::Extension(..) => "extension_error",
+                ApiError::String(..) => "invalid_body",
+                ApiError::Bytes(..) => "invalid_body",
+                ApiError::WebSocket(..) => "websocket_error",
+                ApiError::Multipart(..) => "invalid_multipart_body",
             },
             description: &self.to_string(),
         };

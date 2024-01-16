@@ -26,7 +26,7 @@ use crate::util::validate::validation_errors_to_string;
 use axum::extract::multipart::MultipartError;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use crate::util::extract::Json;
 use chrono::Utc;
 use futures::stream::StreamExt;
 use image::ImageError;

@@ -8,11 +8,10 @@ use crate::models::sessions::Session;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::env::parse_var;
-use axum::extract::{ConnectInfo, Path};
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, post};
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use chrono::Utc;
 use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
@@ -21,6 +20,7 @@ use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use woothee::parser::Parser;
+use crate::util::extract::{Json, Path, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new().nest(

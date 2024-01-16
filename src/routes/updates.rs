@@ -1,7 +1,6 @@
-use axum::extract::{ConnectInfo, Path, Query};
 use axum::http::HeaderMap;
 use axum::routing::get;
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -17,6 +16,7 @@ use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
 use crate::queue::session::AuthQueue;
+use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 
 use super::ApiError;
 

@@ -8,19 +8,19 @@ use crate::models::projects::VersionType;
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::{database, models};
-use axum::extract::{ConnectInfo, Path, Query};
 use axum::http::header::LOCATION;
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new()
@@ -45,7 +45,7 @@ pub async fn get_version_from_hash(
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: Query<HashQuery>,
+    Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<Json<models::projects::Version>, ApiError> {
     let user_option = get_user_from_headers(
@@ -554,7 +554,7 @@ pub async fn delete_file(
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: Query<HashQuery>,
+    Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
@@ -680,7 +680,7 @@ pub async fn download_version(
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: Query<HashQuery>,
+    Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<impl IntoResponse, ApiError> {
     let user_option = get_user_from_headers(

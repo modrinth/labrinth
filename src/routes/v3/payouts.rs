@@ -8,11 +8,10 @@ use crate::models::payouts::{PayoutMethodType, PayoutStatus};
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use axum::extract::{ConnectInfo, Path, Query};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use chrono::Utc;
 use hex::ToHex;
 use hmac::{Hmac, Mac, NewMac};
@@ -24,6 +23,7 @@ use sha2::Sha256;
 use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new()
@@ -358,7 +358,7 @@ pub async fn create_payout(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(payouts_queue): Extension<Arc<PayoutsQueue>>,
-    body: Json<Withdrawal>,
+    Json(body): Json<Withdrawal>,
 ) -> Result<StatusCode, ApiError> {
     let (scopes, user) =
         get_user_record_from_bearer_token(&addr, &headers, None, &pool, &redis, &session_queue)

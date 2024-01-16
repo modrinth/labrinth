@@ -1,7 +1,6 @@
-use axum::extract::{ConnectInfo, Path, Query};
 use axum::http::HeaderMap;
 use axum::routing::get;
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -34,6 +33,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
+use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new()

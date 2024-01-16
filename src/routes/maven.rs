@@ -9,17 +9,17 @@ use crate::models::projects::{ProjectId, VersionId};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::{auth::get_user_from_headers, database};
-use axum::extract::{ConnectInfo, Path};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::get;
-use axum::{Extension, Router};
+use axum::{Router};
 use sqlx::PgPool;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use yaserde_derive::YaSerialize;
+use crate::util::extract::{Path, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new()

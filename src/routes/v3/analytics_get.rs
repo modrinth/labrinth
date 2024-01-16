@@ -11,10 +11,9 @@ use crate::{
     },
     queue::session::AuthQueue,
 };
-use axum::extract::{ConnectInfo, Query};
 use axum::http::HeaderMap;
 use axum::routing::get;
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::types::PgInterval;
@@ -23,6 +22,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use crate::util::extract::{Json, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new().nest(

@@ -1,7 +1,6 @@
-use axum::extract::{ConnectInfo, Query};
 use axum::http::HeaderMap;
 use axum::routing::post;
-use axum::{Extension, Json, Router};
+use axum::{Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -19,6 +18,7 @@ use crate::routes::ApiError;
 use crate::util::routes::read_from_payload;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use crate::util::extract::{Json, Query, Extension, ConnectInfo};
 
 use super::threads::is_authorized_thread;
 

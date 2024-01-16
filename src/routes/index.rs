@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use axum::Json;
+use crate::util::extract::Json;
 use serde_json::{json, Value};
 
 pub async fn index_get() -> (StatusCode, Json<Value>) {
