@@ -5,6 +5,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
+use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
 pub mod internal;
@@ -32,17 +33,14 @@ pub fn root_config() -> Router {
                 .route("/playtime", post(analytics::playtime_ingest))
                 .layer(analytics_cors()),
         )
-        .nest(
-            "/api/v1/",
-            Router::new().route("*path", any(api_v1_gone).layer(default_cors())),
-        )
-        .nest(
-            "/",
-            Router::new()
-                .route("/", get(index::index_get))
-                .nest_service("/", ServeDir::new("assets/"))
-                .layer(default_cors()),
-        )
+        .route("/api/v1/*path", any(api_v1_gone).layer(default_cors()))
+        .route("/", get(index::index_get))
+        .fallback_service(any(|req| async move {
+            ServeDir::new("assets/")
+                .not_found_service(any(not_found))
+                .oneshot(req)
+                .await
+        }))
 }
 
 #[derive(thiserror::Error, Debug)]

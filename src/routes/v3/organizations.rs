@@ -31,10 +31,10 @@ use validator::Validate;
 pub fn config() -> Router {
     Router::new()
         .route("/organizations", get(organizations_get))
+        .route("/organization", post(organization_create))
         .nest(
             "/organization",
             Router::new()
-                .route("", post(organization_create))
                 .route(
                     "/:id/projects",
                     get(organization_projects_get).post(organization_projects_add),
@@ -269,7 +269,7 @@ pub struct OrganizationIds {
     pub ids: String,
 }
 
-#[axum::debug_handler]
+
 pub async fn organizations_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

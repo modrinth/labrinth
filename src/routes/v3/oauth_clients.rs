@@ -62,7 +62,7 @@ pub fn config() -> Router {
                     .delete(oauth_client_delete),
             )
             .route(
-                "app/{id}/icon",
+                "/app/{id}/icon",
                 patch(oauth_client_icon_edit).delete(oauth_client_icon_delete),
             )
             .route("/apps", get(get_clients)),

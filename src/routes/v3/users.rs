@@ -189,7 +189,7 @@ pub async fn collections_list(
     }
 }
 
-#[axum::debug_handler]
+
 pub async fn orgs_list(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

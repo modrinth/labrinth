@@ -31,7 +31,10 @@ pub fn config() -> Router {
         .route("/threads", get(threads_get))
         .route("/message/:id", delete(message_delete))
         .route("/thread/inbox", get(moderation_inbox))
-        .route("/thread/:id", get(thread_get).post(thread_send_message))
+        .route(
+            "/thread/:id",
+            get(thread_get), /*.post(thread_send_message)*/
+        )
         .route("/thread/:id/read", post(thread_read))
 }
 
@@ -361,7 +364,7 @@ pub struct NewThreadMessage {
     pub body: MessageBody,
 }
 
-#[axum::debug_handler]
+
 pub async fn thread_send_message(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

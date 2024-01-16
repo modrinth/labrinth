@@ -32,7 +32,7 @@ pub fn config() -> Router {
         .route("/pat/:id", patch(edit_pat).delete(delete_pat))
 }
 
-#[axum::debug_handler]
+
 pub async fn get_pats(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -76,7 +76,7 @@ pub struct NewPersonalAccessToken {
     pub expires: DateTime<Utc>,
 }
 
-#[axum::debug_handler]
+
 pub async fn create_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -162,7 +162,7 @@ pub struct ModifyPersonalAccessToken {
     pub expires: Option<DateTime<Utc>>,
 }
 
-#[axum::debug_handler]
+
 pub async fn edit_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -253,7 +253,7 @@ pub async fn edit_pat(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[axum::debug_handler]
+
 pub async fn delete_pat(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

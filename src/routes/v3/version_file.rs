@@ -26,7 +26,7 @@ pub fn config() -> Router {
     Router::new()
         .route(
             "/version_file/:id",
-            get(get_version_from_hash).delete(delete_file),
+            get(get_version_from_hash), /*.delete(delete_file),*/
         )
         .route("/version_file/:id/update", post(get_update_from_hash))
         .route("/version_file/project", post(get_projects_from_hashes))

@@ -23,7 +23,7 @@ use sqlx::PgPool;
 use super::threads::is_authorized_thread;
 
 pub fn config() -> Router {
-    Router::new().route("image", post(images_add))
+    Router::new().route("/image", post(images_add))
 }
 
 #[derive(Serialize, Deserialize)]

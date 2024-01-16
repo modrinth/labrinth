@@ -1,4 +1,7 @@
+use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
+use axum::routing::any;
 use axum::{Extension, Router};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use database::redis::RedisPool;
@@ -10,13 +13,16 @@ use sqlx::Postgres;
 
 extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;
+use tower_http::compression::CompressionLayer;
 
+use crate::routes::not_found;
+use crate::scheduler::schedule;
+use crate::util::cors::default_cors;
 use crate::{
     queue::payouts::process_payout,
     search::indexing::index_projects,
     util::env::{parse_strings_from_var, parse_var},
 };
-use crate::scheduler::schedule;
 
 pub mod auth;
 pub mod clickhouse;
@@ -242,9 +248,10 @@ pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
 
     Router::new()
         // .merge(routes::v2::config())
-        // .merge(routes::v3::config())
+        .merge(routes::v3::config())
         .merge(routes::internal::config())
         .merge(routes::root_config())
+        .fallback_service(any(not_found).layer(default_cors()))
         .layer(Extension(labrinth_config.redis_pool.clone()))
         .layer(Extension(labrinth_config.pool.clone()))
         .layer(Extension(labrinth_config.file_host.clone()))
@@ -256,7 +263,6 @@ pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
         .layer(Extension(labrinth_config.clickhouse.clone()))
         .layer(Extension(labrinth_config.maxmind.clone()))
         .layer(Extension(labrinth_config.active_sockets.clone()))
-    // .default_service(web::get().wrap(default_cors()).to(routes::not_found))
 }
 
 // This is so that env vars not used immediately don't panic at runtime

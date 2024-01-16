@@ -1,10 +1,10 @@
-use std::time::Duration;
 use futures::StreamExt;
+use std::time::Duration;
 
 pub fn schedule<F, R>(interval: Duration, mut task: F)
-    where
-        F: FnMut() -> R + Send + 'static,
-        R: std::future::Future<Output = ()> + Send + 'static,
+where
+    F: FnMut() -> R + Send + 'static,
+    R: std::future::Future<Output = ()> + Send + 'static,
 {
     tokio::task::spawn(async move {
         let mut interval_stream = tokio::time::interval(interval);
@@ -17,10 +17,7 @@ pub fn schedule<F, R>(interval: Duration, mut task: F)
 
 use log::{info, warn};
 
-pub fn schedule_versions(
-    pool: sqlx::Pool<sqlx::Postgres>,
-    redis: RedisPool,
-) {
+pub fn schedule_versions(pool: sqlx::Pool<sqlx::Postgres>, redis: RedisPool) {
     let version_index_interval =
         std::time::Duration::from_secs(parse_var("VERSION_INDEX_INTERVAL").unwrap_or(1800));
 

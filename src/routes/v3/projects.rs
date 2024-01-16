@@ -50,7 +50,7 @@ pub fn config() -> Router {
             Router::new()
                 .route(
                     "/:id",
-                    get(project_get).delete(project_delete).patch(project_edit),
+                    get(project_get), /*.delete(project_delete).patch(project_edit)*/
                 )
                 .route("/:id/check", get(project_get_check))
                 .route(
@@ -1054,7 +1054,7 @@ pub struct BulkEditProject {
     pub link_urls: Option<HashMap<String, Option<String>>>,
 }
 
-#[axum::debug_handler]
+
 pub async fn projects_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -2201,7 +2201,7 @@ pub async fn project_unfollow(
     }
 }
 
-#[axum::debug_handler]
+
 pub async fn project_get_organization(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

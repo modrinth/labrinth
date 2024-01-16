@@ -23,10 +23,13 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 pub fn config() -> Router {
-    Router::new().route("teams", get(teams_get)).nest(
+    Router::new().route("/teams", get(teams_get)).nest(
         "/team/:id",
         Router::new()
-            .route("/members", get(team_members_get).post(add_team_member))
+            .route(
+                "/members",
+                get(team_members_get), /*.post(add_team_member)*/
+            )
             .route(
                 "/members/:user_id",
                 patch(edit_team_member).delete(remove_team_member),
@@ -41,7 +44,7 @@ pub fn config() -> Router {
 // also the members of the organization's team if the project is associated with an organization
 // (Unlike team_members_get_project, which only returns the members of the project's team)
 // They can be differentiated by the "organization_permissions" field being null or not
-#[axum::debug_handler]
+
 pub async fn team_members_get_project(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -109,7 +112,7 @@ pub async fn team_members_get_project(
     }
 }
 
-#[axum::debug_handler]
+
 pub async fn team_members_get_organization(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -176,7 +179,7 @@ pub async fn team_members_get_organization(
 }
 
 // Returns all members of a team, but not necessarily those of a project-team's organization (unlike team_members_get_project)
-#[axum::debug_handler]
+
 pub async fn team_members_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -239,7 +242,7 @@ pub struct TeamIds {
     pub ids: String,
 }
 
-#[axum::debug_handler]
+
 pub async fn teams_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

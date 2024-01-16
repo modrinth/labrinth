@@ -71,7 +71,7 @@ pub struct FetchedPlaytime {
     pub parent_seconds: HashMap<VersionId, u64>,
 }
 
-#[axum::debug_handler]
+
 pub async fn playtimes_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -276,7 +276,7 @@ pub async fn downloads_get(
 ///    }
 ///}
 /// ONLY project IDs can be used. Unauthorized projects will be filtered out.
-#[axum::debug_handler]
+
 pub async fn revenue_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

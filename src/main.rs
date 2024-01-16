@@ -7,11 +7,10 @@ use labrinth::search;
 use labrinth::util::env::parse_var;
 use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
 use log::{error, info};
+use std::net::SocketAddr;
 use std::sync::Arc;
-
-// TODO: AXUM TODO
-// - ratelimit - find replacement
-// - testing lib
+use axum_prometheus::PrometheusMetricLayer;
+use tower_http::compression::CompressionLayer;
 
 #[derive(Clone)]
 pub struct Pepper {
@@ -83,14 +82,9 @@ async fn main() -> std::io::Result<()> {
     };
 
     info!("Initializing clickhouse connection");
-    let mut clickhouse = clickhouse::init_client().await.unwrap();
+    let clickhouse = clickhouse::init_client().await.unwrap();
 
     let maxmind_reader = Arc::new(queue::maxmind::MaxMindIndexer::new().await.unwrap());
-
-    // let prometheus = PrometheusMetricsBuilder::new("labrinth")
-    //     .endpoint("/metrics")
-    //     .build()
-    //     .expect("Failed to create prometheus metrics middleware");
 
     let search_config = search::SearchConfig::new(None);
     info!("Starting Actix HTTP server!");
@@ -104,13 +98,23 @@ async fn main() -> std::io::Result<()> {
         maxmind_reader.clone(),
     );
 
-    let app = labrinth::app_config(labrinth_config);
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
-    // TODO: wrap prometheus, compression, sentry here
+    let app = labrinth::app_config(labrinth_config)
+        .route("/metrics", get(|| async move { metric_handle.render() }))
+        .layer(prometheus_layer)
+        .layer(
+            CompressionLayer::new()
+                .br(true)
+                .deflate(true)
+                .gzip(true)
+                .zstd(true),
+        )
+        .into_make_service_with_connect_info::<SocketAddr>();
+    // TODO: wrap sentry here
+    // TODO: ratelimiter
 
     // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
+    axum::serve(listener, app).await
 }

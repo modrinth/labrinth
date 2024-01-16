@@ -45,7 +45,7 @@ pub struct CreateReport {
     pub uploaded_images: Vec<ImageId>,
 }
 
-#[axum::debug_handler]
+
 pub async fn report_create(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -343,7 +343,7 @@ pub async fn reports_get(
     Ok(Json(all_reports))
 }
 
-#[axum::debug_handler]
+
 pub async fn report_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -384,7 +384,7 @@ pub struct EditReport {
     pub closed: Option<bool>,
 }
 
-#[axum::debug_handler]
+
 pub async fn report_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

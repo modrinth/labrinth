@@ -66,7 +66,7 @@ pub async fn count_download(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(download_body): Json<DownloadBody>,
 ) -> Result<StatusCode, ApiError> {
-    check_admin_key(&headers);
+    check_admin_key(&headers)?;
     let token = download_body
         .headers
         .iter()
@@ -161,7 +161,7 @@ pub async fn force_reindex(
     Extension(redis): Extension<RedisPool>,
     Extension(config): Extension<SearchConfig>,
 ) -> Result<StatusCode, ApiError> {
-    check_admin_key(&headers);
+    check_admin_key(&headers)?;
     use crate::search::indexing::index_projects;
     index_projects(pool.clone(), redis.clone(), &config).await?;
 

@@ -28,7 +28,7 @@ pub fn config() -> Router {
             get(maven_metadata),
         )
         .route(
-            "maven/modrinth/:id/:versionnum/:file",
+            "/maven/modrinth/:id/:versionnum/:file",
             get(version_file).head(version_file),
         )
 }

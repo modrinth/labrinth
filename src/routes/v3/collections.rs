@@ -29,7 +29,7 @@ use validator::Validate;
 pub fn config() -> Router {
     Router::new()
         .route("/collections", get(collections_get))
-        .route("/collection", post(collection_create))
+        // .route("/collection", post(collection_create))
         .route(
             "/collection/:id",
             get(collection_get)

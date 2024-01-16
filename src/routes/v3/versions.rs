@@ -38,10 +38,10 @@ use validator::Validate;
 pub fn config() -> Router {
     Router::new()
         // TODO: .route("version", post(super::version_creation::version_create))
-        .route("versions", get(versions_get))
+        .route("/versions", get(versions_get))
         .route(
             "/version/:id",
-            get(version_get).patch(version_edit).delete(version_delete),
+            get(version_get), /*.patch(version_edit).delete(version_delete),*/
         )
     // TODO: .route("/version/:id/file", post(super::version_creation::upload_file_to_version))
 }

@@ -46,7 +46,6 @@ pub fn config() -> Router {
             .route("/ws", get(ws_init))
             .route("/init", get(init))
             .route("/callback", get(auth_callback))
-            // above is todo
             .route("/provider", delete(delete_auth_provider))
             .route("/create", post(create_account_with_password))
             .route("/login", post(login_password))
@@ -58,7 +57,7 @@ pub fn config() -> Router {
             .route("/email/resend_verify", post(resend_verify_email))
             .route("/email", patch(set_email))
             .route("/email/verify", post(verify_email))
-            .route("email/subscribe", post(subscribe_newsletter)),
+            .route("/email/subscribe", post(subscribe_newsletter)),
     )
 }
 
@@ -1092,7 +1091,7 @@ pub struct WsInit {
     pub provider: AuthProvider,
 }
 
-#[axum::debug_handler]
+
 pub async fn ws_init(
     Query(info): Query<WsInit>,
     Extension(active_sockets): Extension<Arc<ActiveSockets>>,
@@ -1142,7 +1141,7 @@ pub async fn ws_init(
     ws.on_upgrade(move |socket| sock(socket, info.provider, active_sockets, redis))
 }
 
-#[axum::debug_handler]
+
 pub async fn auth_callback(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -2218,7 +2217,7 @@ pub async fn set_email(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[axum::debug_handler]
+
 pub async fn resend_verify_email(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -2266,7 +2265,7 @@ pub struct VerifyEmail {
     pub flow: String,
 }
 
-#[axum::debug_handler]
+
 pub async fn verify_email(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
@@ -2315,7 +2314,7 @@ pub async fn verify_email(
     }
 }
 
-#[axum::debug_handler]
+
 pub async fn subscribe_newsletter(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
