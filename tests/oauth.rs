@@ -1,5 +1,5 @@
-use actix_http::StatusCode;
-use actix_web::test;
+use axum_test::http::StatusCode;
+
 use common::{
     api_v3::oauth::get_redirect_location_query_params,
     api_v3::{
@@ -12,11 +12,11 @@ use common::{
     environment::{with_test_environment, TestEnvironment},
 };
 use labrinth::auth::oauth::TokenResponse;
-use reqwest::header::{CACHE_CONTROL, PRAGMA};
+use axum_test::http::header::{CACHE_CONTROL, PRAGMA};
 
 mod common;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn oauth_flow_happy_path() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {
@@ -65,8 +65,8 @@ async fn oauth_flow_happy_path() {
         assert_status!(&resp, StatusCode::OK);
         assert_eq!(resp.headers().get(CACHE_CONTROL).unwrap(), "no-store");
         assert_eq!(resp.headers().get(PRAGMA).unwrap(), "no-cache");
-        let token_resp: TokenResponse = test::read_body_json(resp).await;
-
+        let token_resp: TokenResponse = resp.json();
+        
         // Validate the token works
         env.assert_read_notifications_status(
             FRIEND_USER_ID,
@@ -78,7 +78,7 @@ async fn oauth_flow_happy_path() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn oauth_authorize_for_already_authorized_scopes_returns_auth_code() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha { client_id, .. } = env.dummy.oauth_client_alpha;
@@ -111,7 +111,7 @@ async fn oauth_authorize_for_already_authorized_scopes_returns_auth_code() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_oauth_token_with_already_used_auth_code_fails() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {
@@ -144,7 +144,7 @@ async fn get_oauth_token_with_already_used_auth_code_fails() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn authorize_with_broader_scopes_can_complete_flow() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {
@@ -205,7 +205,7 @@ async fn authorize_with_broader_scopes_can_complete_flow() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn oauth_authorize_with_broader_scopes_requires_user_accept() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let client_id = env.dummy.oauth_client_alpha.client_id;
@@ -233,7 +233,7 @@ async fn oauth_authorize_with_broader_scopes_requires_user_accept() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn reject_authorize_ends_authorize_flow() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let client_id = env.dummy.oauth_client_alpha.client_id;
@@ -252,7 +252,7 @@ async fn reject_authorize_ends_authorize_flow() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn accept_authorize_after_already_accepting_fails() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let client_id = env.dummy.oauth_client_alpha.client_id;
@@ -270,7 +270,7 @@ async fn accept_authorize_after_already_accepting_fails() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn revoke_authorization_after_issuing_token_revokes_token() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {

@@ -6,7 +6,7 @@ use crate::common::{
     },
     dummy_data::{DummyImage, DummyOrganizationZeta, DummyProjectAlpha, DummyProjectBeta},
 };
-use actix_http::StatusCode;
+use axum_test::http::StatusCode;
 use common::{
     api_v3::ApiV3,
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT},
@@ -21,7 +21,7 @@ use serde_json::json;
 
 mod common;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn create_organization() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -101,7 +101,7 @@ async fn create_organization() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_project_organization() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -123,7 +123,7 @@ async fn get_project_organization() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn patch_organization() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -218,7 +218,7 @@ async fn patch_organization() {
 }
 
 // add/remove icon
-#[actix_rt::test]
+#[tokio::test]
 async fn add_remove_icon() {
     with_test_environment(Some(10), |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -265,7 +265,7 @@ async fn add_remove_icon() {
 }
 
 // delete org
-#[actix_rt::test]
+#[tokio::test]
 async fn delete_org() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -286,7 +286,7 @@ async fn delete_org() {
 }
 
 // add/remove organization projects
-#[actix_rt::test]
+#[tokio::test]
 async fn add_remove_organization_projects() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id: &str = &test_env.dummy.project_alpha.project_id;
@@ -364,7 +364,7 @@ async fn add_remove_organization_projects() {
 }
 
 // Like above, but specifically regarding ownership transferring
-#[actix_rt::test]
+#[tokio::test]
 async fn add_remove_organization_project_ownership_to_user() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let DummyProjectAlpha {
@@ -604,7 +604,7 @@ async fn add_remove_organization_project_ownership_to_user() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn delete_organization_means_all_projects_to_org_owner() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let DummyProjectAlpha {
@@ -742,7 +742,7 @@ async fn delete_organization_means_all_projects_to_org_owner() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_patch_organization() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         // For each permission covered by EDIT_DETAILS, ensure the permission is required
@@ -781,7 +781,7 @@ async fn permissions_patch_organization() {
 }
 
 // Not covered by PATCH /organization
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_edit_details() {
     with_test_environment(Some(12), |test_env: TestEnvironment<ApiV3>| async move {
         let zeta_organization_id = &test_env.dummy.organization_zeta.organization_id;
@@ -823,7 +823,7 @@ async fn permissions_edit_details() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_manage_invites() {
     // Add member, remove member, edit member
     with_test_environment_all(None, |test_env| async move {
@@ -910,7 +910,7 @@ async fn permissions_manage_invites() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_add_remove_project() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -973,7 +973,7 @@ async fn permissions_add_remove_project() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_delete_organization() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -993,7 +993,7 @@ async fn permissions_delete_organization() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_add_default_project_permissions() {
     with_test_environment_all(None, |test_env| async move {
         let zeta_organization_id = &test_env.dummy.organization_zeta.organization_id;
@@ -1061,7 +1061,7 @@ async fn permissions_add_default_project_permissions() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_organization_permissions_consistency_test() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;

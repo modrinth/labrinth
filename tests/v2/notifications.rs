@@ -5,7 +5,7 @@ use crate::common::{
     environment::{with_test_environment, TestEnvironment},
 };
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn get_user_notifications_after_team_invitation_returns_notification() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let alpha_team_id = test_env.dummy.project_alpha.team_id.clone();

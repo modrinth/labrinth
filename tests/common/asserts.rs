@@ -10,10 +10,10 @@ use super::api_common::models::CommonVersion;
 macro_rules! assert_status {
     ($response:expr, $status:expr) => {
         assert_eq!(
-            $response.status(),
+            $response.status_code(),
             $status,
             "{:#?}",
-            $response.response().body()
+            $response.text()
         );
     };
 }
@@ -22,10 +22,10 @@ macro_rules! assert_status {
 macro_rules! assert_any_status_except {
     ($response:expr, $status:expr) => {
         assert_ne!(
-            $response.status(),
+            $response.status_code(),
             $status,
             "{:#?}",
-            $response.response().body()
+            $response.text()
         );
     };
 }

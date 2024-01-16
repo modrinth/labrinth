@@ -9,14 +9,14 @@ use crate::common::dummy_data::TestFile;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
 use crate::common::environment::with_test_environment;
 use crate::common::environment::TestEnvironment;
-use actix_http::StatusCode;
+use axum_test::http::StatusCode;
 use futures::stream::StreamExt;
 use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn search_projects() {
     // Test setup and dummy data
     with_test_environment(Some(10), |test_env: TestEnvironment<ApiV2>| async move {

@@ -1,4 +1,4 @@
-use actix_http::StatusCode;
+use axum_test::http::StatusCode;
 use labrinth::models::teams::ProjectPermissions;
 use serde_json::json;
 
@@ -16,7 +16,7 @@ use crate::{
 };
 
 // trasnfer ownership (requires being owner, etc)
-#[actix_rt::test]
+#[tokio::test]
 async fn transfer_ownership_v2() {
     // Test setup and dummy data
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {

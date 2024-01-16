@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use actix_http::StatusCode;
-use actix_web::test;
+use axum_test::http::StatusCode;
+
 use common::api_v3::ApiV3;
 use common::environment::{with_test_environment, TestEnvironment};
 use itertools::Itertools;
@@ -18,7 +18,7 @@ use crate::common::dummy_data::{DummyProjectAlpha, DummyProjectBeta, TestFile};
 // importing common module.
 mod common;
 
-#[actix_rt::test]
+#[tokio::test]
 
 async fn creating_loader_fields() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
@@ -148,7 +148,7 @@ async fn creating_loader_fields() {
         // Cannot create a version with a loader field array that has fewer than the minimum elements
         // TODO: - Create project
         // - Create version
-        let resp: actix_web::dev::ServiceResponse = api
+        let resp: axum_test::TestResponse = api
             .add_public_version(
                 *alpha_project_id_parsed,
                 "1.0.0",
@@ -373,7 +373,7 @@ async fn creating_loader_fields() {
     .await
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_loader_fields_variants() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -409,7 +409,7 @@ async fn get_loader_fields_variants() {
     .await
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_available_loader_fields() {
     // Get available loader fields for a given loader
     // (ie: which fields are relevant for 'fabric', etc)
@@ -467,7 +467,7 @@ async fn get_available_loader_fields() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_multi_get_redis_cache() {
     // Ensures a multi-project get including both modpacks and mods ddoes not
     // incorrectly cache loader fields
@@ -509,7 +509,7 @@ async fn test_multi_get_redis_cache() {
             .collect_vec();
         let resp = api.get_projects(&project_slugs, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
-        let projects: Vec<v3::projects::Project> = test::read_body_json(resp).await;
+        let projects: Vec<v3::projects::Project> = resp.json();
         assert_eq!(projects.len(), 10);
 
         // Ensure all 5 modpacks have 'mrpack_loaders', and all 5 mods do not
@@ -541,7 +541,7 @@ async fn test_multi_get_redis_cache() {
             .collect_vec();
         let resp = api.get_versions(version_ids, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
-        let versions: Vec<v3::projects::Version> = test::read_body_json(resp).await;
+        let versions: Vec<v3::projects::Version> = resp.json();
         assert_eq!(versions.len(), 10);
 
         // Ensure all 5 versions from modpacks have 'mrpack_loaders', and all 5 versions from mods do not
@@ -558,7 +558,7 @@ async fn test_multi_get_redis_cache() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn minecraft_game_version_update() {
     // We simulate adding a Minecraft game version, to ensure other data doesn't get overwritten
     // This is basically a test for the insertion/concatenation query

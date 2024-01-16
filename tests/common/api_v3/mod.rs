@@ -1,13 +1,11 @@
 #![allow(dead_code)]
 
-use super::{
-    api_common::{Api, ApiBuildable},
-    environment::LocalService,
-};
-use actix_web::{dev::ServiceResponse, test, App};
+use super::api_common::{Api, ApiBuildable};
 use async_trait::async_trait;
+use axum::http::{HeaderName, HeaderValue};
+use axum_test::{TestServer, TestResponse};
 use labrinth::LabrinthConfig;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub mod collections;
 pub mod oauth;
@@ -22,33 +20,31 @@ pub mod version;
 
 #[derive(Clone)]
 pub struct ApiV3 {
-    pub test_app: Rc<dyn LocalService>,
+    pub test_server: Arc<TestServer>,
 }
 
 #[async_trait(?Send)]
 impl ApiBuildable for ApiV3 {
     async fn build(labrinth_config: LabrinthConfig) -> Self {
-        let app = App::new().configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()));
-        let test_app: Rc<dyn LocalService> = Rc::new(test::init_service(app).await);
-
-        Self { test_app }
+        let app = labrinth::app_config(labrinth_config);
+        let test_server = Arc::new(TestServer::new(app).unwrap());
+        Self { test_server }
     }
 }
 
 #[async_trait(?Send)]
 impl Api for ApiV3 {
-    async fn call(&self, req: actix_http::Request) -> ServiceResponse {
-        self.test_app.call(req).await.unwrap()
+    async fn reset_search_index(&self) -> TestResponse {
+        self.test_server
+            .post(&"/v3/admin/_force_reindex")
+            .add_header(
+                HeaderName::from_static("Modrinth-Admin"),
+                HeaderValue::from_str(&dotenvy::var("LABRINTH_ADMIN_KEY").unwrap()).unwrap(),
+            )
+            .await
     }
 
-    async fn reset_search_index(&self) -> ServiceResponse {
-        let req = actix_web::test::TestRequest::post()
-            .uri("/_internal/admin/_force_reindex")
-            .append_header((
-                "Modrinth-Admin",
-                dotenvy::var("LABRINTH_ADMIN_KEY").unwrap(),
-            ))
-            .to_request();
-        self.call(req).await
+    fn get_test_server(&self) -> Arc<TestServer> {
+        self.test_server.clone()
     }
 }

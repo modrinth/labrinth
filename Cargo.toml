@@ -122,6 +122,11 @@ derive-new = "0.6.0"
 # country list
 rust_iso3166 = "0.1.11"
 
+[dev-dependencies]
+axum-test = "14.2.2"
+json-patch = "*"
+serde_urlencoded = "0.7.1"
+
 [profile.dev]
 opt-level = 0                # Minimal optimization, speeds up compilation
 lto = false                  # Disables Link Time Optimization

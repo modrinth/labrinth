@@ -1,4 +1,4 @@
-use actix_http::StatusCode;
+use axum_test::http::StatusCode;
 use common::api_v3::ApiV3;
 use common::database::*;
 
@@ -19,7 +19,7 @@ mod common;
 // TODO: Revisit this wit   h the new modify_json in the version maker
 // That change here should be able to simplify it vastly
 
-#[actix_rt::test]
+#[tokio::test]
 async fn search_projects() {
     // Test setup and dummy data
     with_test_environment(Some(10), |test_env: TestEnvironment<ApiV3>| async move {
@@ -119,7 +119,7 @@ async fn search_projects() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn index_swaps() {
     with_test_environment(Some(10), |test_env: TestEnvironment<ApiV3>| async move {
         // Reindex

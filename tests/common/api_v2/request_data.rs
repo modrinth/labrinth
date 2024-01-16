@@ -2,13 +2,10 @@
 use serde_json::json;
 
 use crate::common::{
-    api_common::request_data::{ProjectCreationRequestData, VersionCreationRequestData},
+    api_common::request_data::{ProjectCreationRequestData, VersionCreationRequestData, get_public_creation_data_multipart},
     dummy_data::TestFile,
 };
-use labrinth::{
-    models::projects::ProjectId,
-    util::actix::{MultipartSegment, MultipartSegmentData},
-};
+use labrinth::models::projects::ProjectId;
 
 pub fn get_public_project_creation_data(
     slug: &str,
@@ -23,7 +20,7 @@ pub fn get_public_project_creation_data(
     ProjectCreationRequestData {
         slug: slug.to_string(),
         jar: version_jar,
-        segment_data: multipart_data,
+        multipart_data,
     }
 }
 
@@ -44,7 +41,7 @@ pub fn get_public_version_creation_data(
     VersionCreationRequestData {
         version: version_number.to_string(),
         jar: Some(version_jar),
-        segment_data: multipart_data,
+        multipart_data,
     }
 }
 
@@ -95,31 +92,4 @@ pub fn get_public_project_creation_data_json(
             "license_id": "MIT",
         }
     )
-}
-
-pub fn get_public_creation_data_multipart(
-    json_data: &serde_json::Value,
-    version_jar: Option<&TestFile>,
-) -> Vec<MultipartSegment> {
-    // Basic json
-    let json_segment = MultipartSegment {
-        name: "data".to_string(),
-        filename: None,
-        content_type: Some("application/json".to_string()),
-        data: MultipartSegmentData::Text(serde_json::to_string(json_data).unwrap()),
-    };
-
-    if let Some(jar) = version_jar {
-        // Basic file
-        let file_segment = MultipartSegment {
-            name: jar.filename(),
-            filename: Some(jar.filename()),
-            content_type: Some("application/java-archive".to_string()),
-            data: MultipartSegmentData::Binary(jar.bytes()),
-        };
-
-        vec![json_segment, file_segment]
-    } else {
-        vec![json_segment]
-    }
 }

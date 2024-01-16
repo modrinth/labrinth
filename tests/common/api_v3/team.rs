@@ -1,5 +1,5 @@
-use actix_http::StatusCode;
-use actix_web::{dev::ServiceResponse, test};
+use axum_test::http::StatusCode;
+use axum_test::TestResponse;
 use async_trait::async_trait;
 use labrinth::models::{
     notifications::Notification,
@@ -11,7 +11,7 @@ use crate::{
     assert_status,
     common::api_common::{
         models::{CommonNotification, CommonTeamMember},
-        Api, ApiTeams, AppendsOptionalPat,
+        ApiTeams, AppendsOptionalPat,
     },
 };
 
@@ -25,7 +25,7 @@ impl ApiV3 {
     ) -> Vec<TeamMember> {
         let resp = self.get_organization_members(id_or_title, pat).await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 
     pub async fn get_team_members_deserialized(
@@ -35,7 +35,7 @@ impl ApiV3 {
     ) -> Vec<TeamMember> {
         let resp = self.get_team_members(team_id, pat).await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 
     pub async fn get_project_members_deserialized(
@@ -45,18 +45,17 @@ impl ApiV3 {
     ) -> Vec<TeamMember> {
         let resp = self.get_project_members(project_id, pat).await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 }
 
 #[async_trait(?Send)]
 impl ApiTeams for ApiV3 {
-    async fn get_team_members(&self, id_or_title: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/team/{id_or_title}/members"))
+    async fn get_team_members(&self, id_or_title: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/team/{id_or_title}/members"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_team_members_deserialized_common(
@@ -67,7 +66,7 @@ impl ApiTeams for ApiV3 {
         let resp = self.get_team_members(id_or_title, pat).await;
         assert_status!(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
-        let v: Vec<TeamMember> = test::read_body_json(resp).await;
+        let v: Vec<TeamMember> = resp.json();
         // Then, deserialize to the common format
         let value = serde_json::to_value(v).unwrap();
         serde_json::from_value(value).unwrap()
@@ -77,24 +76,22 @@ impl ApiTeams for ApiV3 {
         &self,
         ids_or_titles: &[&str],
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
-        let req = test::TestRequest::get()
-            .uri(&format!(
-                "/v3/teams?ids={}",
+        self.test_server
+            .get(&format!(
+                "/v3/teams/members?ids={}",
                 urlencoding::encode(&ids_or_titles)
             ))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
-    async fn get_project_members(&self, id_or_title: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/project/{id_or_title}/members"))
+    async fn get_project_members(&self, id_or_title: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/project/{id_or_title}/members"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_project_members_deserialized_common(
@@ -105,7 +102,7 @@ impl ApiTeams for ApiV3 {
         let resp = self.get_project_members(id_or_title, pat).await;
         assert_status!(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
-        let v: Vec<TeamMember> = test::read_body_json(resp).await;
+        let v: Vec<TeamMember> = resp.json();
         // Then, deserialize to the common format
         let value = serde_json::to_value(v).unwrap();
         serde_json::from_value(value).unwrap()
@@ -115,12 +112,11 @@ impl ApiTeams for ApiV3 {
         &self,
         id_or_title: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/organization/{id_or_title}/members"))
+    ) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/organization/{id_or_title}/members"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_organization_members_deserialized_common(
@@ -131,18 +127,17 @@ impl ApiTeams for ApiV3 {
         let resp = self.get_organization_members(id_or_title, pat).await;
         assert_status!(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
-        let v: Vec<TeamMember> = test::read_body_json(resp).await;
+        let v: Vec<TeamMember> = resp.json();
         // Then, deserialize to the common format
         let value = serde_json::to_value(v).unwrap();
         serde_json::from_value(value).unwrap()
     }
 
-    async fn join_team(&self, team_id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::post()
-            .uri(&format!("/v3/team/{team_id}/join"))
+    async fn join_team(&self, team_id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .post(&format!("/v3/team/{team_id}/join"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn remove_from_team(
@@ -150,12 +145,11 @@ impl ApiTeams for ApiV3 {
         team_id: &str,
         user_id: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!("/v3/team/{team_id}/members/{user_id}"))
+    ) -> TestResponse {
+        self.test_server
+            .delete(&format!("/v3/team/{team_id}/members/{user_id}"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn edit_team_member(
@@ -164,13 +158,12 @@ impl ApiTeams for ApiV3 {
         user_id: &str,
         patch: serde_json::Value,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v3/team/{team_id}/members/{user_id}"))
+    ) -> TestResponse {
+        self.test_server
+            .patch(&format!("/v3/team/{team_id}/members/{user_id}"))
             .append_pat(pat)
-            .set_json(patch)
-            .to_request();
-        self.call(req).await
+            .json(&patch)
+            .await
     }
 
     async fn transfer_team_ownership(
@@ -178,23 +171,21 @@ impl ApiTeams for ApiV3 {
         team_id: &str,
         user_id: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v3/team/{team_id}/owner"))
+    ) -> TestResponse {
+        self.test_server
+            .patch(&format!("/v3/team/{team_id}/owner"))
             .append_pat(pat)
-            .set_json(json!({
+            .json(&json!({
                 "user_id": user_id,
             }))
-            .to_request();
-        self.call(req).await
+            .await
     }
 
-    async fn get_user_notifications(&self, user_id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/user/{user_id}/notifications"))
+    async fn get_user_notifications(&self, user_id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/user/{user_id}/notifications"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_user_notifications_deserialized_common(
@@ -205,62 +196,58 @@ impl ApiTeams for ApiV3 {
         let resp = self.get_user_notifications(user_id, pat).await;
         assert_status!(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
-        let v: Vec<Notification> = test::read_body_json(resp).await;
+        let v: Vec<Notification> = resp.json();
         // Then, deserialize to the common format
         let value = serde_json::to_value(v).unwrap();
         serde_json::from_value(value).unwrap()
     }
 
-    async fn get_notification(&self, notification_id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/notification/{notification_id}"))
+    async fn get_notification(&self, notification_id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/notification/{notification_id}"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_notifications(
         &self,
         notification_ids: &[&str],
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
-        let req = test::TestRequest::get()
-            .uri(&format!(
+        self.test_server
+            .get(&format!(
                 "/v3/notifications?ids={}",
                 urlencoding::encode(&notification_ids)
             ))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn mark_notification_read(
         &self,
         notification_id: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v3/notification/{notification_id}"))
+    ) -> TestResponse {
+        self.test_server
+            .patch(&format!("/v3/notification/{notification_id}"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn mark_notifications_read(
         &self,
         notification_ids: &[&str],
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
-        let req = test::TestRequest::patch()
-            .uri(&format!(
+        self.test_server
+            .patch(&format!(
                 "/v3/notifications?ids={}",
                 urlencoding::encode(&notification_ids)
             ))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn add_user_to_team(
@@ -270,44 +257,41 @@ impl ApiTeams for ApiV3 {
         project_permissions: Option<ProjectPermissions>,
         organization_permissions: Option<OrganizationPermissions>,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::post()
-            .uri(&format!("/v3/team/{team_id}/members"))
+    ) -> TestResponse {
+        self.test_server
+            .post(&format!("/v3/team/{team_id}/members"))
             .append_pat(pat)
-            .set_json(json!( {
+            .json(&json!({
                 "user_id": user_id,
                 "permissions" : project_permissions.map(|p| p.bits()).unwrap_or_default(),
                 "organization_permissions" : organization_permissions.map(|p| p.bits()),
             }))
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn delete_notification(
         &self,
         notification_id: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!("/v3/notification/{notification_id}"))
+    ) -> TestResponse {
+        self.test_server
+            .delete(&format!("/v3/notification/{notification_id}"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn delete_notifications(
         &self,
         notification_ids: &[&str],
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
-        let req = test::TestRequest::delete()
-            .uri(&format!(
+        self.test_server
+            .delete(&format!(
                 "/v3/notifications?ids={}",
                 urlencoding::encode(&notification_ids)
             ))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 }

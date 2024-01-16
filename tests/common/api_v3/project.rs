@@ -1,17 +1,12 @@
 use std::collections::HashMap;
 
-use actix_http::StatusCode;
-use actix_web::{
-    dev::ServiceResponse,
-    test::{self, TestRequest},
-};
+use axum_test::{http::StatusCode, TestResponse};
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
     models::{organizations::Organization, projects::Project},
     search::SearchResults,
-    util::actix::AppendsMultipart,
 };
 use rust_decimal::Decimal;
 use serde_json::json;
@@ -22,7 +17,7 @@ use crate::{
         api_common::{
             models::{CommonItemType, CommonProject, CommonVersion},
             request_data::{ImageData, ProjectCreationRequestData},
-            Api, ApiProject, AppendsOptionalPat,
+            ApiProject, AppendsOptionalPat,
         },
         database::MOD_USER_PAT,
         dummy_data::TestFile,
@@ -51,28 +46,24 @@ impl ApiProject for ApiV3 {
         assert_status!(&resp, StatusCode::OK);
 
         // Approve as a moderator.
-        let req = TestRequest::patch()
-            .uri(&format!("/v3/project/{}", slug))
+        // TODO: de-hardcode
+        let resp = self.test_server.patch(&format!("/v3/project/{}", slug))
             .append_pat(MOD_USER_PAT)
-            .set_json(json!(
-                {
-                    "status": "approved"
-                }
-            ))
-            .to_request();
-        let resp = self.call(req).await;
+            .json(&json!({
+                "status": "approved"
+            }))
+            .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
-        let project = self.get_project(&slug, pat).await;
-        let project = test::read_body_json(project).await;
+        let resp = self.get_project(&slug, pat).await;
+        let project = resp.json();
 
         // Get project's versions
-        let req = TestRequest::get()
-            .uri(&format!("/v3/project/{}/version", slug))
+        // TODO: de-hardcode
+        let resp = self.test_server.get(&format!("/v3/project/{}/version", slug))
             .append_pat(pat)
-            .to_request();
-        let resp = self.call(req).await;
-        let versions: Vec<CommonVersion> = test::read_body_json(resp).await;
+            .await;
+        let versions: Vec<CommonVersion> = resp.json();
 
         (project, versions)
     }
@@ -89,30 +80,26 @@ impl ApiProject for ApiV3 {
         &self,
         creation_data: ProjectCreationRequestData,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = TestRequest::post()
-            .uri("/v3/project")
+    ) -> TestResponse {
+        self.test_server
+            .post(&"/v3/project")
             .append_pat(pat)
-            .set_multipart(creation_data.segment_data)
-            .to_request();
-        self.call(req).await
+            .multipart(creation_data.multipart_data)
+            .await
     }
 
-    async fn remove_project(&self, project_slug_or_id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!("/v3/project/{project_slug_or_id}"))
+    async fn remove_project(&self, project_slug_or_id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .delete(&format!("/v3/project/{project_slug_or_id}"))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
-    async fn get_project(&self, id_or_slug: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = TestRequest::get()
-            .uri(&format!("/v3/project/{id_or_slug}"))
+    async fn get_project(&self, id_or_slug: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/project/{id_or_slug}"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_project_deserialized_common(
@@ -123,46 +110,40 @@ impl ApiProject for ApiV3 {
         let resp = self.get_project(id_or_slug, pat).await;
         assert_status!(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
-        let project: Project = test::read_body_json(resp).await;
+        let project: Project = resp.json();
         // Then, deserialize to the common format
         let value = serde_json::to_value(project).unwrap();
         serde_json::from_value(value).unwrap()
     }
 
-    async fn get_projects(&self, ids_or_slugs: &[&str], pat: Option<&str>) -> ServiceResponse {
+    async fn get_projects(&self, ids_or_slugs: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_slugs = serde_json::to_string(ids_or_slugs).unwrap();
-        let req = test::TestRequest::get()
-            .uri(&format!(
-                "/v3/projects?ids={encoded}",
-                encoded = urlencoding::encode(&ids_or_slugs)
-            ))
+        self.test_server
+            .get(&format!("/v3/projects?ids={encoded}", encoded = urlencoding::encode(&ids_or_slugs)))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_project_dependencies(
         &self,
         id_or_slug: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = TestRequest::get()
-            .uri(&format!("/v3/project/{id_or_slug}/dependencies"))
+    ) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/project/{id_or_slug}/dependencies"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_user_projects(
         &self,
         user_id_or_username: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/user/{}/projects", user_id_or_username))
+    ) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/user/{}/projects", user_id_or_username))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     async fn get_user_projects_deserialized_common(
@@ -173,7 +154,7 @@ impl ApiProject for ApiV3 {
         let resp = self.get_user_projects(user_id_or_username, pat).await;
         assert_status!(&resp, StatusCode::OK);
         // First, deserialize to the non-common format (to test the response is valid for this api version)
-        let projects: Vec<Project> = test::read_body_json(resp).await;
+        let projects: Vec<Project> = resp.json();
         // Then, deserialize to the common format
         let value = serde_json::to_value(projects).unwrap();
         serde_json::from_value(value).unwrap()
@@ -184,14 +165,12 @@ impl ApiProject for ApiV3 {
         id_or_slug: &str,
         patch: serde_json::Value,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v3/project/{id_or_slug}"))
+    ) -> TestResponse {
+        self.test_server
+            .patch(&format!("/v3/project/{id_or_slug}"))
             .append_pat(pat)
-            .set_json(patch)
-            .to_request();
-
-        self.call(req).await
+            .json(&patch)
+            .await
     }
 
     async fn edit_project_bulk(
@@ -199,22 +178,20 @@ impl ApiProject for ApiV3 {
         ids_or_slugs: &[&str],
         patch: serde_json::Value,
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let projects_str = ids_or_slugs
             .iter()
             .map(|s| format!("\"{}\"", s))
             .collect::<Vec<_>>()
             .join(",");
-        let req = test::TestRequest::patch()
-            .uri(&format!(
+        self.test_server
+            .patch(&format!(
                 "/v3/projects?ids={encoded}",
                 encoded = urlencoding::encode(&format!("[{projects_str}]"))
             ))
             .append_pat(pat)
-            .set_json(patch)
-            .to_request();
-
-        self.call(req).await
+            .json(&patch)
+            .await
     }
 
     async fn edit_project_icon(
@@ -222,27 +199,23 @@ impl ApiProject for ApiV3 {
         id_or_slug: &str,
         icon: Option<ImageData>,
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         if let Some(icon) = icon {
             // If an icon is provided, upload it
-            let req = test::TestRequest::patch()
-                .uri(&format!(
+            self.test_server
+                .patch(&format!(
                     "/v3/project/{id_or_slug}/icon?ext={ext}",
                     ext = icon.extension
                 ))
                 .append_pat(pat)
-                .set_payload(Bytes::from(icon.icon))
-                .to_request();
-
-            self.call(req).await
+                .bytes(Bytes::from(icon.icon))
+                .await
         } else {
             // If no icon is provided, delete the icon
-            let req = test::TestRequest::delete()
-                .uri(&format!("/v3/project/{id_or_slug}/icon"))
+            self.test_server
+                .delete(&format!("/v3/project/{id_or_slug}/icon"))
                 .append_pat(pat)
-                .to_request();
-
-            self.call(req).await
+                .await
         }
     }
 
@@ -253,52 +226,39 @@ impl ApiProject for ApiV3 {
         item_type: CommonItemType,
         body: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::post()
-            .uri("/v3/report")
+    ) -> TestResponse {
+        self.test_server
+            .post(&"/v3/report")
             .append_pat(pat)
-            .set_json(json!(
-                {
-                    "report_type": report_type,
-                    "item_id": id,
-                    "item_type": item_type.as_str(),
-                    "body": body,
-                }
-            ))
-            .to_request();
-
-        self.call(req).await
+            .json(&json!({
+                "report_type": report_type,
+                "item_id": id,
+                "item_type": item_type.as_str(),
+                "body": body,
+            }))
+            .await
     }
 
-    async fn get_report(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/report/{id}"))
+    async fn get_report(&self, id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/report/{id}"))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
-    async fn get_reports(&self, ids: &[&str], pat: Option<&str>) -> ServiceResponse {
+    async fn get_reports(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
-        let req = test::TestRequest::get()
-            .uri(&format!(
-                "/v3/reports?ids={encoded}",
-                encoded = urlencoding::encode(&ids_str)
-            ))
+        self.test_server
+            .get(&format!("/v3/reports?ids={encoded}", encoded = urlencoding::encode(&ids_str)))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
-    async fn get_user_reports(&self, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri("/v3/report")
+    async fn get_user_reports(&self, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&"/v3/report")
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     async fn edit_report(
@@ -306,23 +266,19 @@ impl ApiProject for ApiV3 {
         id: &str,
         patch: serde_json::Value,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v3/report/{id}"))
+    ) -> TestResponse {
+        self.test_server
+            .patch(&format!("/v3/report/{id}"))
             .append_pat(pat)
-            .set_json(patch)
-            .to_request();
-
-        self.call(req).await
+            .json(&patch)
+            .await
     }
 
-    async fn delete_report(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!("/v3/report/{id}"))
+    async fn delete_report(&self, id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .delete(&format!("/v3/report/{id}"))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -335,7 +291,7 @@ impl ApiProject for ApiV3 {
         description: Option<String>,
         ordering: Option<i32>,
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let mut url = format!(
             "/v3/project/{id_or_slug}/gallery?ext={ext}&featured={featured}",
             ext = image.extension,
@@ -351,13 +307,11 @@ impl ApiProject for ApiV3 {
             url.push_str(&format!("&ordering={}", ordering));
         }
 
-        let req = test::TestRequest::post()
-            .uri(&url)
+        self.test_server
+            .post(&url)
             .append_pat(pat)
-            .set_payload(Bytes::from(image.icon))
-            .to_request();
-
-        self.call(req).await
+            .bytes(Bytes::from(image.icon))
+            .await
     }
 
     async fn edit_gallery_item(
@@ -366,7 +320,7 @@ impl ApiProject for ApiV3 {
         image_url: &str,
         patch: HashMap<String, String>,
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let mut url = format!(
             "/v3/project/{id_or_slug}/gallery?url={image_url}",
             image_url = urlencoding::encode(image_url)
@@ -380,12 +334,10 @@ impl ApiProject for ApiV3 {
             ));
         }
 
-        let req = test::TestRequest::patch()
-            .uri(&url)
+        self.test_server
+            .patch(&url)
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     async fn remove_gallery_item(
@@ -393,38 +345,28 @@ impl ApiProject for ApiV3 {
         id_or_slug: &str,
         url: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!(
+    ) -> TestResponse {
+        self.test_server
+            .delete(&format!(
                 "/v3/project/{id_or_slug}/gallery?url={url}",
-                url = url
             ))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
-    async fn get_thread(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/thread/{id}"))
+    async fn get_thread(&self, id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/thread/{id}"))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
-    async fn get_threads(&self, ids: &[&str], pat: Option<&str>) -> ServiceResponse {
+    async fn get_threads(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
-        let req = test::TestRequest::get()
-            .uri(&format!(
-                "/v3/threads?ids={encoded}",
-                encoded = urlencoding::encode(&ids_str)
-            ))
+        self.test_server
+            .get(&format!("/v3/threads?ids={encoded}", encoded = urlencoding::encode(&ids_str)))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     async fn write_to_thread(
@@ -433,46 +375,38 @@ impl ApiProject for ApiV3 {
         r#type: &str,
         content: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::post()
-            .uri(&format!("/v3/thread/{id}"))
+    ) -> TestResponse {
+        self.test_server
+            .post(&format!("/v3/thread/{id}"))
             .append_pat(pat)
-            .set_json(json!({
+            .json(&json!({
                 "body": {
                     "type": r#type,
                     "body": content
                 }
             }))
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
-    async fn get_moderation_inbox(&self, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri("/v3/thread/inbox")
+    async fn get_moderation_inbox(&self, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&"/v3/thread/inbox")
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
-    async fn read_thread(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::post()
-            .uri(&format!("/v3/thread/{id}/read"))
+    async fn read_thread(&self, id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .post(&format!("/v3/thread/{id}/read"))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
-    async fn delete_thread_message(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!("/v3/message/{id}"))
+    async fn delete_thread_message(&self, id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .delete(&format!("/v3/message/{id}"))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 }
 
@@ -480,20 +414,18 @@ impl ApiV3 {
     pub async fn get_project_deserialized(&self, id_or_slug: &str, pat: Option<&str>) -> Project {
         let resp = self.get_project(id_or_slug, pat).await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 
     pub async fn get_project_organization(
         &self,
         id_or_slug: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/project/{id_or_slug}/organization"))
+    ) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/project/{id_or_slug}/organization"))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     pub async fn get_project_organization_deserialized(
@@ -503,7 +435,7 @@ impl ApiV3 {
     ) -> Organization {
         let resp = self.get_project_organization(id_or_slug, pat).await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 
     pub async fn search_deserialized(
@@ -524,13 +456,13 @@ impl ApiV3 {
             "".to_string()
         };
 
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/search?{}{}", query_field, facets_field))
+        let resp = self
+            .test_server
+            .get(&format!("/v3/search?{}{}", query_field, facets_field))
             .append_pat(pat)
-            .to_request();
-        let resp = self.call(req).await;
+            .await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 
     pub async fn get_analytics_revenue(
@@ -541,7 +473,7 @@ impl ApiV3 {
         end_date: Option<DateTime<Utc>>,
         resolution_minutes: Option<u32>,
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let pv_string = if ids_are_version_ids {
             let version_string: String = serde_json::to_string(&id_or_slugs).unwrap();
             let version_string = urlencoding::encode(&version_string);
@@ -569,12 +501,11 @@ impl ApiV3 {
             extra_args.push_str(&format!("&resolution_minutes={}", resolution_minutes));
         }
 
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/analytics/revenue?{pv_string}{extra_args}",))
+        self
+            .test_server
+            .get(&format!("/v3/analytics/revenue?{pv_string}{extra_args}",))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     pub async fn get_analytics_revenue_deserialized(
@@ -597,6 +528,6 @@ impl ApiV3 {
             )
             .await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 }

@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 use std::io::{Cursor, Write};
 
-use actix_http::StatusCode;
-use actix_web::test::{self, TestRequest};
+use axum_test::http::StatusCode;
 use labrinth::models::{
     oauth_clients::OAuthClient,
     organizations::Organization,
@@ -15,7 +14,7 @@ use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 use crate::{
     assert_status,
-    common::{api_common::Api, api_v3, database::USER_USER_PAT},
+    common::{api_v3, database::USER_USER_PAT},
 };
 
 use super::{
@@ -363,17 +362,15 @@ pub async fn add_project_beta(api: &ApiV3) -> (Project, Version) {
 
 pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
     // Add an organzation.
-    let req = TestRequest::post()
-        .uri("/v3/organization")
+    let resp = api.test_server
+        .post("/v3/organization")
         .append_pat(USER_USER_PAT)
-        .set_json(json!({
+        .json(&json!({
             "name": "Zeta",
             "slug": "zeta",
             "description": "A dummy organization for testing with."
         }))
-        .to_request();
-    let resp = api.call(req).await;
-
+        .await;
     assert_status!(&resp, StatusCode::OK);
 
     get_organization_zeta(api).await
@@ -381,20 +378,18 @@ pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
 
 pub async fn get_project_alpha(api: &ApiV3) -> (Project, Version) {
     // Get project
-    let req = TestRequest::get()
-        .uri("/v3/project/alpha")
+    let resp =api.test_server
+        .get("/v3/project/alpha")
         .append_pat(USER_USER_PAT)
-        .to_request();
-    let resp = api.call(req).await;
-    let project: Project = test::read_body_json(resp).await;
+        .await;
+    let project: Project = resp.json();
 
     // Get project's versions
-    let req = TestRequest::get()
-        .uri("/v3/project/alpha/version")
+    let resp = api.test_server
+        .get("/v3/project/alpha/version")
         .append_pat(USER_USER_PAT)
-        .to_request();
-    let resp = api.call(req).await;
-    let versions: Vec<Version> = test::read_body_json(resp).await;
+        .await;
+    let versions: Vec<Version> = resp.json();
     let version = versions.into_iter().next().unwrap();
 
     (project, version)
@@ -402,23 +397,21 @@ pub async fn get_project_alpha(api: &ApiV3) -> (Project, Version) {
 
 pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
     // Get project
-    let req = TestRequest::get()
-        .uri("/v3/project/beta")
+    let resp = api.test_server
+        .get("/v3/project/beta")
         .append_pat(USER_USER_PAT)
-        .to_request();
-    let resp = api.call(req).await;
+        .await;
     assert_status!(&resp, StatusCode::OK);
-    let project: serde_json::Value = test::read_body_json(resp).await;
+    let project: serde_json::Value = resp.json();
     let project: Project = serde_json::from_value(project).unwrap();
 
     // Get project's versions
-    let req = TestRequest::get()
-        .uri("/v3/project/beta/version")
+    let resp = api.test_server
+        .get("/v3/project/beta/version")
         .append_pat(USER_USER_PAT)
-        .to_request();
-    let resp = api.call(req).await;
+        .await;
     assert_status!(&resp, StatusCode::OK);
-    let versions: Vec<Version> = test::read_body_json(resp).await;
+    let versions: Vec<Version> = resp.json();
     let version = versions.into_iter().next().unwrap();
 
     (project, version)
@@ -426,12 +419,11 @@ pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
 
 pub async fn get_organization_zeta(api: &ApiV3) -> Organization {
     // Get organization
-    let req = TestRequest::get()
-        .uri("/v3/organization/zeta")
+    let resp = api.test_server
+        .get("/v3/organization/zeta")
         .append_pat(USER_USER_PAT)
-        .to_request();
-    let resp = api.call(req).await;
-    let organization: Organization = test::read_body_json(resp).await;
+        .await;
+    let organization: Organization = resp.json();
 
     organization
 }

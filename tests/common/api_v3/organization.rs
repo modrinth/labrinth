@@ -1,15 +1,11 @@
-use actix_http::StatusCode;
-use actix_web::{
-    dev::ServiceResponse,
-    test::{self, TestRequest},
-};
+use axum_test::{http::StatusCode, TestResponse};
 use bytes::Bytes;
 use labrinth::models::{organizations::Organization, users::UserId, v3::projects::Project};
 use serde_json::json;
 
 use crate::{
     assert_status,
-    common::api_common::{request_data::ImageData, Api, AppendsOptionalPat},
+    common::api_common::{request_data::ImageData, AppendsOptionalPat},
 };
 
 use super::ApiV3;
@@ -21,25 +17,23 @@ impl ApiV3 {
         organization_slug: &str,
         description: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::post()
-            .uri("/v3/organization")
+    ) -> TestResponse {
+        self.test_server
+            .post(&"/v3/organization")
             .append_pat(pat)
-            .set_json(json!({
+            .json(&json!({
                 "name": organization_title,
                 "slug": organization_slug,
                 "description": description,
             }))
-            .to_request();
-        self.call(req).await
+            .await
     }
 
-    pub async fn get_organization(&self, id_or_title: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = TestRequest::get()
-            .uri(&format!("/v3/organization/{id_or_title}"))
+    pub async fn get_organization(&self, id_or_title: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/organization/{id_or_title}"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     pub async fn get_organization_deserialized(
@@ -49,35 +43,30 @@ impl ApiV3 {
     ) -> Organization {
         let resp = self.get_organization(id_or_title, pat).await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 
     pub async fn get_organizations(
         &self,
         ids_or_titles: &[&str],
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
-        let req = test::TestRequest::get()
-            .uri(&format!(
-                "/v3/organizations?ids={}",
-                urlencoding::encode(&ids_or_titles)
-            ))
+        self.test_server
+            .get(&format!("/v3/organizations?ids={}", urlencoding::encode(&ids_or_titles)))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     pub async fn get_organization_projects(
         &self,
         id_or_title: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::get()
-            .uri(&format!("/v3/organization/{id_or_title}/projects"))
+    ) -> TestResponse {
+        self.test_server
+            .get(&format!("/v3/organization/{id_or_title}/projects"))
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     pub async fn get_organization_projects_deserialized(
@@ -87,7 +76,7 @@ impl ApiV3 {
     ) -> Vec<Project> {
         let resp = self.get_organization_projects(id_or_title, pat).await;
         assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
+        resp.json()
     }
 
     pub async fn edit_organization(
@@ -95,14 +84,12 @@ impl ApiV3 {
         id_or_title: &str,
         patch: serde_json::Value,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::patch()
-            .uri(&format!("/v3/organization/{id_or_title}"))
+    ) -> TestResponse {
+        self.test_server
+            .patch(&format!("/v3/organization/{id_or_title}"))
             .append_pat(pat)
-            .set_json(patch)
-            .to_request();
-
-        self.call(req).await
+            .json(&patch)
+            .await
     }
 
     pub async fn edit_organization_icon(
@@ -110,27 +97,23 @@ impl ApiV3 {
         id_or_title: &str,
         icon: Option<ImageData>,
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         if let Some(icon) = icon {
             // If an icon is provided, upload it
-            let req = test::TestRequest::patch()
-                .uri(&format!(
+            self.test_server
+                .patch(&format!(
                     "/v3/organization/{id_or_title}/icon?ext={ext}",
                     ext = icon.extension
                 ))
                 .append_pat(pat)
-                .set_payload(Bytes::from(icon.icon))
-                .to_request();
-
-            self.call(req).await
+                .bytes(Bytes::from(icon.icon))
+                .await
         } else {
             // If no icon is provided, delete the icon
-            let req = test::TestRequest::delete()
-                .uri(&format!("/v3/organization/{id_or_title}/icon"))
+            self.test_server
+                .delete(&format!("/v3/organization/{id_or_title}/icon"))
                 .append_pat(pat)
-                .to_request();
-
-            self.call(req).await
+                .await
         }
     }
 
@@ -138,13 +121,11 @@ impl ApiV3 {
         &self,
         id_or_title: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!("/v3/organization/{id_or_title}"))
+    ) -> TestResponse {
+        self.test_server
+            .delete(&format!("/v3/organization/{id_or_title}"))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     pub async fn organization_add_project(
@@ -152,16 +133,14 @@ impl ApiV3 {
         id_or_title: &str,
         project_id_or_slug: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::post()
-            .uri(&format!("/v3/organization/{id_or_title}/projects"))
+    ) -> TestResponse {
+        self.test_server
+            .post(&format!("/v3/organization/{id_or_title}/projects"))
             .append_pat(pat)
-            .set_json(json!({
+            .json(&json!({
                 "project_id": project_id_or_slug,
             }))
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     pub async fn organization_remove_project(
@@ -170,17 +149,15 @@ impl ApiV3 {
         project_id_or_slug: &str,
         new_owner_user_id: UserId,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = test::TestRequest::delete()
-            .uri(&format!(
+    ) -> TestResponse {
+        self.test_server
+            .delete(&format!(
                 "/v3/organization/{id_or_title}/projects/{project_id_or_slug}"
             ))
-            .set_json(json!({
+            .append_pat(pat)
+            .json(&json!({
                 "new_owner": new_owner_user_id,
             }))
-            .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 }

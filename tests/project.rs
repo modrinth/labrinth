@@ -1,5 +1,6 @@
-use actix_http::StatusCode;
-use actix_web::test;
+use axum_test::http::StatusCode;
+
+use axum_test::multipart::{Part, MultipartForm};
 use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
@@ -11,7 +12,6 @@ use labrinth::database::models::project_item::{PROJECTS_NAMESPACE, PROJECTS_SLUG
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::projects::ProjectId;
 use labrinth::models::teams::ProjectPermissions;
-use labrinth::util::actix::{MultipartSegment, MultipartSegmentData};
 use serde_json::json;
 
 use crate::common::api_common::models::{CommonItemType, CommonProject};
@@ -22,7 +22,7 @@ use crate::common::dummy_data::{
 };
 mod common;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_get_project() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
@@ -42,7 +42,7 @@ async fn test_get_project() {
         // Perform request on dummy data
         let resp = api.get_project(alpha_project_id, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
-        let body: serde_json::Value = test::read_body_json(resp).await;
+        let body: serde_json::Value = resp.json();
 
         assert_eq!(body["id"], json!(alpha_project_id));
         assert_eq!(body["slug"], json!(alpha_project_slug));
@@ -75,7 +75,7 @@ async fn test_get_project() {
         let resp = api.get_project(alpha_project_id, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
 
-        let body: serde_json::Value = test::read_body_json(resp).await;
+        let body: serde_json::Value = resp.json();
         assert_eq!(body["id"], json!(alpha_project_id));
         assert_eq!(body["slug"], json!(alpha_project_slug));
 
@@ -90,7 +90,7 @@ async fn test_get_project() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_add_remove_project() {
     // Test setup and dummy data
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
@@ -101,78 +101,47 @@ async fn test_add_remove_project() {
             .get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod))
             .await;
 
-        // Basic json
-        let json_segment = MultipartSegment {
-            name: "data".to_string(),
-            filename: None,
-            content_type: Some("application/json".to_string()),
-            data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
-        };
+        // Basic json - called 'data'
+        let json_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
 
-        // Basic json, with a different file
+        // Basic json, with a different file - called 'data'
         json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
-        let json_diff_file_segment = MultipartSegment {
-            data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
-            ..json_segment.clone()
-        };
-
-        // Basic json, with a different file, and a different slug
+        let json_diff_file_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
+        
+        // Basic json, with a different file, and a different slug - called 'data'
+        // As 'Part' is not clonable, we have to make a second one.
         json_data["slug"] = json!("new_demo");
         json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
-        let json_diff_slug_file_segment = MultipartSegment {
-            data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
-            ..json_segment.clone()
-        };
+        let json_diff_slug_file_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
+        let json_diff_slug_file_part_2 = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
 
         let basic_mod_file = TestFile::BasicMod;
         let basic_mod_different_file = TestFile::BasicModDifferent;
 
-        // Basic file
-        let file_segment = MultipartSegment {
-            // 'Basic'
-            name: basic_mod_file.filename(),
-            filename: Some(basic_mod_file.filename()),
-            content_type: basic_mod_file.content_type(),
-            data: MultipartSegmentData::Binary(basic_mod_file.bytes()),
-        };
+        // Basic file - 'Basic'
+        let file_part = (basic_mod_file.filename(), Part::bytes(basic_mod_file.bytes()).file_name(basic_mod_file.filename()).mime_type(basic_mod_file.content_type().unwrap()));
 
-        // Differently named file, with the SAME content (for hash testing)
-        let file_diff_name_segment = MultipartSegment {
-            // 'Different'
-            name: basic_mod_different_file.filename(),
-            filename: Some(basic_mod_different_file.filename()),
-            content_type: basic_mod_different_file.content_type(),
-            // 'Basic'
-            data: MultipartSegmentData::Binary(basic_mod_file.bytes()),
-        };
+        // Differently named file, with the SAME byte content (for hash testing)
+        let file_diff_name_part = (basic_mod_different_file.filename(), Part::bytes(basic_mod_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
 
-        // Differently named file, with different content
-        let file_diff_name_content_segment = MultipartSegment {
-            // 'Different'
-            name: basic_mod_different_file.filename(),
-            filename: Some(basic_mod_different_file.filename()),
-            content_type: basic_mod_different_file.content_type(),
-            data: MultipartSegmentData::Binary(basic_mod_different_file.bytes()),
-        };
-
+        // Differently named file, with entirely different content
+        // As 'Part' is not clonable, we have to make a second one.
+        let file_diff_name_content_part = (basic_mod_different_file.filename(), Part::bytes(basic_mod_different_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
+        let file_diff_name_content_part_2 = (basic_mod_different_file.filename(), Part::bytes(basic_mod_different_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
+        
         // Add a project- simple, should work.
-        let resp = api
-            .create_project(
-                ProjectCreationRequestData {
-                    slug: "demo".to_string(),
-                    segment_data: vec![json_segment.clone(), file_segment.clone()],
-                    jar: None, // File not needed at this point
-                },
-                USER_USER_PAT,
-            )
-            .await;
-
+        let mut form = MultipartForm::new();
+        form = form.add_part("data", json_part);
+        form = form.add_part(file_part.0, file_part.1);
+        let resp = api.create_project(ProjectCreationRequestData {
+            slug: "demo".to_string(),
+            jar: None, // File not needed at this point, as it is in the multipart form
+            multipart_data: form,
+        }, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
 
         // Get the project we just made, and confirm that it's correct
-        let project = api
-            .get_project_deserialized_common("demo", USER_USER_PAT)
-            .await;
+        let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
         assert!(project.versions.len() == 1);
         let uploaded_version_id = project.versions[0];
 
@@ -187,51 +156,36 @@ async fn test_add_remove_project() {
 
         // Reusing with a different slug and the same file should fail
         // Even if that file is named differently
-        let resp = api
-            .create_project(
-                ProjectCreationRequestData {
-                    slug: "demo".to_string(),
-                    segment_data: vec![
-                        json_diff_slug_file_segment.clone(),
-                        file_diff_name_segment.clone(),
-                    ],
-                    jar: None, // File not needed at this point
-                },
-                USER_USER_PAT,
-            )
-            .await;
+        let mut form = MultipartForm::new();
+        form = form.add_part("data", json_diff_slug_file_part); // Different slug, different file name
+        form = form.add_part(file_diff_name_part.0, file_diff_name_part.1); // Different file name, same content
+        let resp = api.create_project(ProjectCreationRequestData {
+            slug: "demo".to_string(),
+            jar: None, // File not needed at this point, as it is in the multipart form
+            multipart_data: form,
+        }, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Reusing with the same slug and a different file should fail
-        let resp = api
-            .create_project(
-                ProjectCreationRequestData {
-                    slug: "demo".to_string(),
-                    segment_data: vec![
-                        json_diff_file_segment.clone(),
-                        file_diff_name_content_segment.clone(),
-                    ],
-                    jar: None, // File not needed at this point
-                },
-                USER_USER_PAT,
-            )
-            .await;
+        let mut form = MultipartForm::new();
+        form = form.add_part("data", json_diff_file_part); // Same slug, different file name
+        form = form.add_part(file_diff_name_content_part.0, file_diff_name_content_part.1); // Different file name, different content
+        let resp = api.create_project(ProjectCreationRequestData {
+            slug: "demo".to_string(),
+            jar: None, // File not needed at this point, as it is in the multipart form
+            multipart_data: form,
+        }, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Different slug, different file should succeed
-        let resp = api
-            .create_project(
-                ProjectCreationRequestData {
-                    slug: "demo".to_string(),
-                    segment_data: vec![
-                        json_diff_slug_file_segment.clone(),
-                        file_diff_name_content_segment.clone(),
-                    ],
-                    jar: None, // File not needed at this point
-                },
-                USER_USER_PAT,
-            )
-            .await;
+        let mut form = MultipartForm::new();
+        form = form.add_part("data", json_diff_slug_file_part_2); // Different slug, different file name
+        form = form.add_part(file_diff_name_content_part_2.0, file_diff_name_content_part_2.1); // Different file name, different content
+        let resp = api.create_project(ProjectCreationRequestData {
+            slug: "new_demo".to_string(),
+            jar: None, // File not needed at this point, as it is in the multipart form
+            multipart_data: form,
+        }, USER_USER_PAT).await;
         assert_status!(&resp, StatusCode::OK);
 
         // Get
@@ -270,7 +224,7 @@ async fn test_add_remove_project() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_patch_project() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -451,7 +405,7 @@ pub async fn test_patch_project() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_patch_v3() {
     // Hits V3-specific patchable fields
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
@@ -484,7 +438,7 @@ pub async fn test_patch_v3() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_bulk_edit_categories() {
     with_test_environment_all(None, |test_env| async move {
         let api = &test_env.api;
@@ -525,7 +479,7 @@ pub async fn test_bulk_edit_categories() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_bulk_edit_links() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -576,7 +530,7 @@ pub async fn test_bulk_edit_links() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn delete_project_with_report() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -594,7 +548,7 @@ async fn delete_project_with_report() {
             )
             .await;
         assert_status!(&resp, StatusCode::OK);
-        let value = test::read_body_json::<serde_json::Value, _>(resp).await;
+        let value = resp.json::<serde_json::Value>();
         let alpha_report_id = value["id"].as_str().unwrap();
 
         // Confirm existence
@@ -617,7 +571,7 @@ async fn delete_project_with_report() {
             )
             .await;
         assert_status!(&resp, StatusCode::OK);
-        let value = test::read_body_json::<serde_json::Value, _>(resp).await;
+        let value = resp.json::<serde_json::Value>();
         let beta_report_id = value["id"].as_str().unwrap();
 
         // Delete the project
@@ -664,7 +618,7 @@ async fn delete_project_with_report() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_patch_project_v3() {
     with_test_environment(Some(8), |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id = &test_env.dummy.project_alpha.project_id;
@@ -783,7 +737,7 @@ async fn permissions_patch_project_v3() {
 }
 
 // TODO: Project scheduling has been temporarily disabled, so this test is disabled as well
-// #[actix_rt::test]
+// #[tokio::test]
 // async fn permissions_schedule() {
 //     with_test_environment(None, |test_env : TestEnvironment<ApiV3>| async move {
 //         let DummyProjectAlpha {
@@ -833,7 +787,7 @@ async fn permissions_patch_project_v3() {
 // }
 
 // Not covered by PATCH /project
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_edit_details() {
     with_test_environment_all(Some(10), |test_env| async move {
         let DummyProjectAlpha {
@@ -897,7 +851,7 @@ async fn permissions_edit_details() {
             .unwrap();
         // Get project, as we need the gallery image url
         let resp = api.get_project(alpha_project_id, USER_USER_PAT).await;
-        let project: serde_json::Value = test::read_body_json(resp).await;
+        let project: serde_json::Value = resp.json();
         let gallery_url = project["gallery"][0]["url"].as_str().unwrap();
 
         // Edit gallery item
@@ -940,7 +894,7 @@ async fn permissions_edit_details() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_upload_version() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let alpha_project_id = &test_env.dummy.project_alpha.project_id;
@@ -1037,7 +991,7 @@ async fn permissions_upload_version() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_manage_invites() {
     // Add member, remove member, edit member
     with_test_environment_all(None, |test_env| async move {
@@ -1131,7 +1085,7 @@ async fn permissions_manage_invites() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_delete_project() {
     // Add member, remove member, edit member
     with_test_environment_all(None, |test_env| async move {
@@ -1152,7 +1106,7 @@ async fn permissions_delete_project() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn project_permissions_consistency_test() {
     with_test_environment_all(Some(10), |test_env| async move {
         // Test that the permissions are consistent with each other
@@ -1199,7 +1153,7 @@ async fn project_permissions_consistency_test() {
 }
 
 // TODO: Re-add this if we want to match v3 Projects structure to v3 Search Result structure, otherwise, delete
-// #[actix_rt::test]
+// #[tokio::test]
 // async fn align_search_projects() {
 //     // Test setup and dummy data
 //     with_test_environment(Some(10), |test_env: TestEnvironment<ApiV3>| async move {
@@ -1235,7 +1189,7 @@ async fn project_permissions_consistency_test() {
 //     .await
 // }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn projects_various_visibility() {
     // For testing the filter_visible_projects and is_visible_project
     with_test_environment(
@@ -1351,7 +1305,7 @@ async fn projects_various_visibility() {
                     .api
                     .get_projects(&[&alpha_project_id, &beta_project_id], pat)
                     .await;
-                let projects: Vec<CommonProject> = test::read_body_json(projects).await;
+                let projects: Vec<CommonProject> = projects.json();
                 assert_eq!(projects.len(), expected_count);
             }
         },

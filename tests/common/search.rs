@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use actix_http::StatusCode;
+use axum_test::http::StatusCode;
 use serde_json::json;
 
 use crate::{

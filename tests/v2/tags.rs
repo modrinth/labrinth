@@ -8,7 +8,7 @@ use crate::common::{
     environment::{with_test_environment, TestEnvironment},
 };
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_tags() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
@@ -64,7 +64,7 @@ async fn get_tags() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_donation_platforms() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;

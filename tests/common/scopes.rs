@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use actix_web::{dev::ServiceResponse, test};
+use axum_test::TestResponse;
 use futures::Future;
 use labrinth::models::pats::Scopes;
 
@@ -67,7 +67,7 @@ impl<'a, A: Api> ScopeTest<'a, A> {
     ) -> Result<(serde_json::Value, serde_json::Value), String>
     where
         T: Fn(Option<String>) -> Fut,
-        Fut: Future<Output = ServiceResponse>, // Ensure Fut is Send and 'static
+        Fut: Future<Output = TestResponse>, // Ensure Fut is Send and 'static
     {
         // First, create a PAT with failure scopes
         let failure_scopes = self
@@ -82,39 +82,39 @@ impl<'a, A: Api> ScopeTest<'a, A> {
         // Perform test twice, once with each PAT
         // the first time, we expect a 401 (or known failure code)
         let resp = req_gen(Some(access_token_all_others.clone())).await;
-        if resp.status().as_u16() != self.expected_failure_code {
+        if resp.status_code().as_u16() != self.expected_failure_code {
             return Err(format!(
                 "Expected failure code {}, got {} ({:#?})",
                 self.expected_failure_code,
-                resp.status().as_u16(),
-                resp.response()
+                resp.status_code().as_u16(),
+                resp.text()
             ));
         }
 
-        let failure_body = if resp.status() == 200
+        let failure_body = if resp.status_code() == 200
             && resp.headers().contains_key("Content-Type")
             && resp.headers().get("Content-Type").unwrap() == "application/json"
         {
-            test::read_body_json(resp).await
+            resp.json()
         } else {
             serde_json::Value::Null
         };
 
         // The second time, we expect a success code
         let resp = req_gen(Some(access_token.clone())).await;
-        if !(resp.status().is_success() || resp.status().is_redirection()) {
+        if !(resp.status_code().is_success() || resp.status_code().is_redirection()) {
             return Err(format!(
                 "Expected success code, got {} ({:#?})",
-                resp.status().as_u16(),
-                resp.response()
+                resp.status_code().as_u16(),
+                resp.text()
             ));
         }
 
-        let success_body = if resp.status() == 200
+        let success_body = if resp.status_code() == 200
             && resp.headers().contains_key("Content-Type")
             && resp.headers().get("Content-Type").unwrap() == "application/json"
         {
-            test::read_body_json(resp).await
+            resp.json()
         } else {
             serde_json::Value::Null
         };

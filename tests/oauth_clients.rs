@@ -1,5 +1,5 @@
-use actix_http::StatusCode;
-use actix_web::test;
+use axum_test::http::StatusCode;
+
 use common::{
     api_v3::ApiV3,
     database::{FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_ID, USER_USER_PAT},
@@ -19,7 +19,7 @@ use common::database::USER_USER_ID_PARSED;
 
 mod common;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn can_create_edit_get_oauth_client() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let client_name = "test_client".to_string();
@@ -37,7 +37,7 @@ async fn can_create_edit_get_oauth_client() {
             )
             .await;
         assert_status!(&resp, StatusCode::OK);
-        let creation_result: OAuthClientCreationResult = test::read_body_json(resp).await;
+        let creation_result: OAuthClientCreationResult = resp.json();
         let client_id = get_json_val_str(creation_result.client.id);
 
         let icon_url = Some("https://modrinth.com/icon".to_string());
@@ -77,7 +77,7 @@ async fn can_create_edit_get_oauth_client() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn create_oauth_client_with_restricted_scopes_fails() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let resp = env
@@ -95,7 +95,7 @@ async fn create_oauth_client_with_restricted_scopes_fails() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_oauth_client_for_client_creator_succeeds() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha { client_id, .. } = env.dummy.oauth_client_alpha.clone();
@@ -106,13 +106,13 @@ async fn get_oauth_client_for_client_creator_succeeds() {
             .await;
 
         assert_status!(&resp, StatusCode::OK);
-        let client: OAuthClient = test::read_body_json(resp).await;
+        let client: OAuthClient = resp.json();
         assert_eq!(get_json_val_str(client.id), client_id);
     })
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_oauth_client_for_unrelated_user_fails() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha { client_id, .. } = env.dummy.oauth_client_alpha.clone();
@@ -127,7 +127,7 @@ async fn get_oauth_client_for_unrelated_user_fails() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn can_delete_oauth_client() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let client_id = env.dummy.oauth_client_alpha.client_id.clone();
@@ -143,7 +143,7 @@ async fn can_delete_oauth_client() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn delete_oauth_client_after_issuing_access_tokens_revokes_tokens() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {
@@ -175,7 +175,7 @@ async fn delete_oauth_client_after_issuing_access_tokens_revokes_tokens() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn can_list_user_oauth_authorizations() {
     with_test_environment(None, |env: TestEnvironment<ApiV3>| async move {
         let DummyOAuthClientAlpha {

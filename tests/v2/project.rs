@@ -13,18 +13,17 @@ use crate::{
         permissions::{PermissionsTest, PermissionsTestContext},
     },
 };
-use actix_http::StatusCode;
-use actix_web::test;
+use axum_test::{http::StatusCode, multipart::{MultipartForm, Part}};
+
 use futures::StreamExt;
 use itertools::Itertools;
 use labrinth::{
     database::models::project_item::PROJECTS_SLUGS_NAMESPACE,
     models::{ids::base62_impl::parse_base62, projects::ProjectId, teams::ProjectPermissions},
-    util::actix::{AppendsMultipart, MultipartSegment, MultipartSegmentData},
 };
 use serde_json::json;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_project_type_sanity() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
@@ -96,7 +95,7 @@ async fn test_project_type_sanity() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_add_remove_project() {
     // Test setup and dummy data
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
@@ -106,67 +105,39 @@ async fn test_add_remove_project() {
         let mut json_data =
             get_public_project_creation_data_json("demo", Some(&TestFile::BasicMod));
 
-        // Basic json
-        let json_segment = MultipartSegment {
-            name: "data".to_string(),
-            filename: None,
-            content_type: Some("application/json".to_string()),
-            data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
-        };
+        // Basic json - called 'data'
+        let json_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
 
-        // Basic json, with a different file
+        // Basic json, with a different file - called 'data'
         json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
-        let json_diff_file_segment = MultipartSegment {
-            data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
-            ..json_segment.clone()
-        };
-
-        // Basic json, with a different file, and a different slug
+        let json_diff_file_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
+        
+        // Basic json, with a different file, and a different slug - called 'data'
+        // As 'Part' is not clonable, we have to make a second one.
         json_data["slug"] = json!("new_demo");
         json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
-        let json_diff_slug_file_segment = MultipartSegment {
-            data: MultipartSegmentData::Text(serde_json::to_string(&json_data).unwrap()),
-            ..json_segment.clone()
-        };
+        let json_diff_slug_file_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
+        let json_diff_slug_file_part_2 = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
 
         let basic_mod_file = TestFile::BasicMod;
         let basic_mod_different_file = TestFile::BasicModDifferent;
 
-        // Basic file
-        let file_segment = MultipartSegment {
-            // 'Basic'
-            name: basic_mod_file.filename(),
-            filename: Some(basic_mod_file.filename()),
-            content_type: basic_mod_file.content_type(),
-            data: MultipartSegmentData::Binary(basic_mod_file.bytes()),
-        };
+        // Basic file - 'Basic'
+        let file_part = (basic_mod_file.filename(), Part::bytes(basic_mod_file.bytes()).file_name(basic_mod_file.filename()).mime_type(basic_mod_file.content_type().unwrap()));
 
-        // Differently named file, with the SAME content (for hash testing)
-        let file_diff_name_segment = MultipartSegment {
-            // 'Different'
-            name: basic_mod_different_file.filename(),
-            filename: Some(basic_mod_different_file.filename()),
-            content_type: basic_mod_different_file.content_type(),
-            // 'Basic'
-            data: MultipartSegmentData::Binary(basic_mod_file.bytes()),
-        };
+        // Differently named file, with the SAME byte content (for hash testing)
+        let file_diff_name_part = (basic_mod_different_file.filename(), Part::bytes(basic_mod_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
 
-        // Differently named file, with different content
-        let file_diff_name_content_segment = MultipartSegment {
-            // 'Different'
-            name: basic_mod_different_file.filename(),
-            filename: Some(basic_mod_different_file.filename()),
-            content_type: basic_mod_different_file.content_type(),
-            data: MultipartSegmentData::Binary(basic_mod_different_file.bytes()),
-        };
+        // Differently named file, with entirely different content
+        // As 'Part' is not clonable, we have to make a second one.
+        let file_diff_name_content_part = (basic_mod_different_file.filename(), Part::bytes(basic_mod_different_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
+        let file_diff_name_content_part_2 = (basic_mod_different_file.filename(), Part::bytes(basic_mod_different_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
 
         // Add a project- simple, should work.
-        let req = test::TestRequest::post()
-            .uri("/v2/project")
-            .append_pat(USER_USER_PAT)
-            .set_multipart(vec![json_segment.clone(), file_segment.clone()])
-            .to_request();
-        let resp: actix_web::dev::ServiceResponse = test_env.call(req).await;
+        let mut form = MultipartForm::new();
+        form = form.add_part("data", json_part);
+        form = form.add_part(file_part.0, file_part.1);
+        let resp = api.test_server.post("/v2/project").append_pat(USER_USER_PAT).multipart(form).await;
         assert_status!(&resp, StatusCode::OK);
 
         // Get the project we just made, and confirm that it's correct
@@ -185,42 +156,24 @@ async fn test_add_remove_project() {
 
         // Reusing with a different slug and the same file should fail
         // Even if that file is named differently
-        let req = test::TestRequest::post()
-            .uri("/v2/project")
-            .append_pat(USER_USER_PAT)
-            .set_multipart(vec![
-                json_diff_slug_file_segment.clone(), // Different slug, different file name
-                file_diff_name_segment.clone(),      // Different file name, same content
-            ])
-            .to_request();
-
-        let resp = test_env.call(req).await;
+        let mut form = MultipartForm::new();
+        form = form.add_part("data", json_diff_slug_file_part); // Different slug, different file name
+        form = form.add_part(file_diff_name_part.0, file_diff_name_part.1); // Different file name, same content
+        let resp = api.test_server.post("/v2/project").append_pat(USER_USER_PAT).multipart(form).await;
         assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Reusing with the same slug and a different file should fail
-        let req = test::TestRequest::post()
-            .uri("/v2/project")
-            .append_pat(USER_USER_PAT)
-            .set_multipart(vec![
-                json_diff_file_segment.clone(), // Same slug, different file name
-                file_diff_name_content_segment.clone(), // Different file name, different content
-            ])
-            .to_request();
-
-        let resp = test_env.call(req).await;
+        let mut form = MultipartForm::new();
+        form = form.add_part("data", json_diff_file_part); // Same slug, different file name
+        form = form.add_part(file_diff_name_content_part.0, file_diff_name_content_part.1); // Different file name, different content
+        let resp = api.test_server.post("/v2/project").append_pat(USER_USER_PAT).multipart(form).await;
         assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Different slug, different file should succeed
-        let req = test::TestRequest::post()
-            .uri("/v2/project")
-            .append_pat(USER_USER_PAT)
-            .set_multipart(vec![
-                json_diff_slug_file_segment.clone(), // Different slug, different file name
-                file_diff_name_content_segment.clone(), // Different file name, same content
-            ])
-            .to_request();
-
-        let resp = test_env.call(req).await;
+        let mut form = MultipartForm::new();
+        form = form.add_part("data", json_diff_slug_file_part_2); // Different slug, different file name
+        form = form.add_part(file_diff_name_content_part_2.0, file_diff_name_content_part_2.1); // Different file name, different content
+        let resp = api.test_server.post("/v2/project").append_pat(USER_USER_PAT).multipart(form).await;
         assert_status!(&resp, StatusCode::OK);
 
         // Get
@@ -257,7 +210,7 @@ async fn test_add_remove_project() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_upload_version() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let alpha_project_id = &test_env.dummy.project_alpha.project_id;
@@ -356,7 +309,7 @@ async fn permissions_upload_version() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_patch_v2() {
     // Hits V3-specific patchable fields
     // Other fields are tested in test_patch_project (the v2 version of that test)
@@ -392,7 +345,7 @@ pub async fn test_patch_v2() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn permissions_patch_project_v2() {
     with_test_environment(Some(8), |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
@@ -464,7 +417,7 @@ async fn permissions_patch_project_v2() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_bulk_edit_links() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;

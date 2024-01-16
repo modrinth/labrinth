@@ -1,5 +1,5 @@
-use actix_http::StatusCode;
-use actix_web::test;
+use axum_test::http::StatusCode;
+
 use futures::StreamExt;
 use labrinth::models::projects::VersionId;
 use labrinth::{
@@ -20,7 +20,7 @@ use crate::common::{
     dummy_data::TestFile,
 };
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_patch_version() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         let api = &test_env.api;
@@ -132,7 +132,7 @@ pub async fn test_patch_version() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn version_updates() {
     // Test setup and dummy data
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
@@ -265,7 +265,7 @@ async fn version_updates() {
                 .await;
             if success {
                 assert_status!(&resp, StatusCode::OK);
-                let body: serde_json::Value = test::read_body_json(resp).await;
+                let body: serde_json::Value = resp.json();
                 let id = body["id"].as_str().unwrap();
                 assert_eq!(id, &result_id.to_string());
             } else {
@@ -415,7 +415,7 @@ async fn version_updates() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn add_version_project_types_v2() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV2>| async move {
         // Since v2 no longer keeps project_type at the project level but the version level,
@@ -471,7 +471,7 @@ async fn add_version_project_types_v2() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_incorrect_file_parts() {
     // Ensures that a version get that 'should' have mrpack_loaders does still display them
     //   if the file is 'mrpack' but the file_parts are incorrect

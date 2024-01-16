@@ -7,7 +7,7 @@ use crate::common::api_common::ApiTeams;
 
 mod common;
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn get_user_notifications_after_team_invitation_returns_notification() {
     with_test_environment_all(None, |test_env| async move {
         let alpha_team_id = test_env.dummy.project_alpha.team_id.clone();
@@ -26,7 +26,7 @@ pub async fn get_user_notifications_after_team_invitation_returns_notification()
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn get_user_notifications_after_reading_indicates_notification_read() {
     with_test_environment_all(None, |test_env| async move {
         test_env.generate_friend_user_notification().await;
@@ -49,7 +49,7 @@ pub async fn get_user_notifications_after_reading_indicates_notification_read() 
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn get_user_notifications_after_deleting_does_not_show_notification() {
     with_test_environment_all(None, |test_env| async move {
         test_env.generate_friend_user_notification().await;
