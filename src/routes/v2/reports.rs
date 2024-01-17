@@ -7,8 +7,8 @@ use crate::models::reports::ItemType;
 use crate::models::v2::reports::LegacyReport;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v3, ApiError};
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
-use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
 use axum::routing::get;
 use axum::Router;
 use serde::Deserialize;
@@ -19,7 +19,10 @@ pub fn config() -> Router {
     Router::new()
         .route("/report", get(reports).post(report_create))
         .route("/reports", get(reports_get))
-        .route("/report/:id", get(report_get).patch(report_edit).delete(report_delete))
+        .route(
+            "/report/:id",
+            get(report_get).patch(report_edit).delete(report_delete),
+        )
 }
 #[derive(Deserialize, Validate)]
 pub struct CreateReport {
@@ -55,7 +58,7 @@ pub async fn report_create(
             uploaded_images: create_report.uploaded_images,
         }),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let report = LegacyReport::from(report);
@@ -147,7 +150,7 @@ pub async fn report_get(
         Path(info),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let report = LegacyReport::from(report);
@@ -166,12 +169,11 @@ pub async fn report_edit(
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    Path(info) : Path<crate::models::reports::ReportId>,
+    Path(info): Path<crate::models::reports::ReportId>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(edit_report): Json<EditReport>,
 ) -> Result<StatusCode, ApiError> {
-    
-   Ok( v3::reports::report_edit(
+    v3::reports::report_edit(
         ConnectInfo(addr),
         headers,
         Extension(pool),
@@ -181,9 +183,9 @@ pub async fn report_edit(
         Json(v3::reports::EditReport {
             body: edit_report.body,
             closed: edit_report.closed,
-        })
+        }),
     )
-    .await?)
+    .await
 }
 
 pub async fn report_delete(
@@ -194,14 +196,13 @@ pub async fn report_delete(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-    
-   Ok( v3::reports::report_delete(
+    v3::reports::report_delete(
         ConnectInfo(addr),
         headers,
         Extension(pool),
         Path(info),
         Extension(redis),
         Extension(session_queue),
-   )
-        .await?)
+    )
+    .await
 }

@@ -1,21 +1,20 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use crate::database::redis::RedisPool;
 use crate::models::v2::projects::LegacyProject;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v3, ApiErrorV2};
-use crate::database::redis::RedisPool;
 use crate::util::extract::{ConnectInfo, Extension, Json, Query};
-use axum::Router;
 use axum::http::HeaderMap;
 use axum::routing::get;
+use axum::Router;
 use serde::Deserialize;
 use sqlx::PgPool;
 use v3::ApiError;
 
 pub fn config() -> Router {
-    Router::new()
-        .route("/moderation/projects", get(get_projects))
+    Router::new().route("/moderation/projects", get(get_projects))
 }
 
 #[derive(Deserialize)]
@@ -46,6 +45,8 @@ pub async fn get_projects(
     )
     .await?;
 
-    let legacy_projects = LegacyProject::from_many(response, &pool, &redis).await.map_err(ApiError::from)?;
+    let legacy_projects = LegacyProject::from_many(response, &pool, &redis)
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(legacy_projects))
 }

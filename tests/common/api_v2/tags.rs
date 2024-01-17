@@ -1,5 +1,5 @@
-use axum_test::{http::StatusCode, TestResponse};
 use async_trait::async_trait;
+use axum_test::{http::StatusCode, TestResponse};
 use labrinth::routes::v2::tags::{
     CategoryData, DonationPlatformQueryData, GameVersionQueryData, LoaderData,
 };

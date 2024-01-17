@@ -203,7 +203,6 @@ impl IntoResponse for ApiError {
     }
 }
 
-
 #[derive(Debug)]
 pub struct ApiErrorV2(pub ApiError);
 

@@ -365,7 +365,7 @@ impl ApiVersion for ApiV3 {
     }
 
     // TODO: Not all fields are tested currently in the v3 tests, only the v2-v3 relevant ones are
-    #[allow(clippy::too_many_arguments)]
+
     async fn get_project_versions(
         &self,
         project_id_slug: &str,
@@ -411,7 +411,6 @@ impl ApiVersion for ApiV3 {
             .await
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn get_project_versions_deserialized_common(
         &self,
         slug: &str,

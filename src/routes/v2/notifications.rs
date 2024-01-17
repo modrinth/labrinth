@@ -1,20 +1,20 @@
-use std::net::SocketAddr;
-use std::sync::Arc;
 use crate::database::redis::RedisPool;
 use crate::models::ids::NotificationId;
 use crate::models::v2::notifications::LegacyNotification;
 use crate::queue::session::AuthQueue;
-use crate::routes::ApiErrorV2;
 use crate::routes::v3;
-use axum::Router;
-use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
+use crate::routes::ApiErrorV2;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::routing::delete;
 use axum::routing::get;
 use axum::routing::patch;
+use axum::Router;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 pub fn config() -> Router {
     Router::new()
@@ -23,8 +23,12 @@ pub fn config() -> Router {
         .route("/notifications_read", patch(notifications_read))
         .nest(
             "/notification",
-            Router::new()
-                .route("/:id", get(notification_get).patch(notification_read).delete(notification_delete))
+            Router::new().route(
+                "/:id",
+                get(notification_get)
+                    .patch(notification_read)
+                    .delete(notification_delete),
+            ),
         )
 }
 
@@ -51,7 +55,10 @@ pub async fn notifications_get(
     )
     .await?;
 
-    let legacy_notifications = notifications.into_iter().map(LegacyNotification::from).collect();
+    let legacy_notifications = notifications
+        .into_iter()
+        .map(LegacyNotification::from)
+        .collect();
     Ok(Json(legacy_notifications))
 }
 
@@ -71,7 +78,7 @@ pub async fn notification_get(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     Ok(Json(LegacyNotification::from(notification)))
 }
@@ -84,16 +91,15 @@ pub async fn notification_read(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::notifications::notification_read(
         ConnectInfo(addr),
         headers,
         Path(info),
         Extension(pool),
         Extension(redis),
-        Extension(session_queue)
+        Extension(session_queue),
     )
-        .await?)
+    .await?)
 }
 
 pub async fn notification_delete(
@@ -104,16 +110,15 @@ pub async fn notification_delete(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::notifications::notification_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
         Extension(pool),
         Extension(redis),
-        Extension(session_queue)
+        Extension(session_queue),
     )
-        .await?)
+    .await?)
 }
 
 pub async fn notifications_read(
@@ -124,7 +129,6 @@ pub async fn notifications_read(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::notifications::notifications_read(
         ConnectInfo(addr),
         headers,
@@ -132,7 +136,8 @@ pub async fn notifications_read(
         Extension(pool),
         Extension(redis),
         Extension(session_queue),
-    ).await?)
+    )
+    .await?)
 }
 
 pub async fn notifications_delete(
@@ -143,7 +148,6 @@ pub async fn notifications_delete(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::notifications::notifications_delete(
         ConnectInfo(addr),
         headers,

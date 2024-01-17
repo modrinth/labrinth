@@ -93,14 +93,12 @@ pub async fn page_view_ingest(
     let headers = headers
         .into_iter()
         .flat_map(|(key, val)| {
-            if let Some(key) = key {
-                Some((
+            key.map(|key| {
+                (
                     key.to_string().to_lowercase(),
                     val.to_str().unwrap_or_default().to_string(),
-                ))
-            } else {
-                None
-            }
+                )
+            })
         })
         .collect::<HashMap<String, String>>();
 

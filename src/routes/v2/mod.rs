@@ -39,4 +39,3 @@ pub fn config() -> Router {
             .layer(default_cors()),
     )
 }
-

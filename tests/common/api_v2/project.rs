@@ -11,8 +11,8 @@ use crate::{
         dummy_data::TestFile,
     },
 };
-use axum_test::{http::StatusCode, TestResponse};
 use async_trait::async_trait;
+use axum_test::{http::StatusCode, TestResponse};
 use bytes::Bytes;
 use labrinth::models::v2::{projects::LegacyProject, search::LegacySearchResults};
 use serde_json::json;
@@ -88,7 +88,9 @@ impl ApiProject for ApiV2 {
         assert_status!(&resp, StatusCode::OK);
 
         // Approve as a moderator.
-        let resp = self.test_server.patch(&format!("/v2/project/{slug}"))
+        let resp = self
+            .test_server
+            .patch(&format!("/v2/project/{slug}"))
             .append_pat(MOD_USER_PAT)
             .json(&json!({
                 "status": "approved"
@@ -99,7 +101,9 @@ impl ApiProject for ApiV2 {
         let project = self.get_project_deserialized_common(&slug, pat).await;
 
         // Get project's versions
-        let resp = self.test_server.get(&format!("/v2/project/{slug}/version"))
+        let resp = self
+            .test_server
+            .get(&format!("/v2/project/{slug}/version"))
             .append_pat(pat)
             .await;
         let versions: Vec<CommonVersion> = resp.json();
@@ -119,20 +123,25 @@ impl ApiProject for ApiV2 {
         creation_data: ProjectCreationRequestData,
         pat: Option<&str>,
     ) -> TestResponse {
-        self.test_server.post("/v2/project")
+        self.test_server
+            .post("/v2/project")
             .append_pat(pat)
             .multipart(creation_data.multipart_data)
             .await
     }
 
     async fn remove_project(&self, project_slug_or_id: &str, pat: Option<&str>) -> TestResponse {
-        self.test_server.delete(&format!("/v2/project/{project_slug_or_id}"))
-        .append_pat(pat).await
+        self.test_server
+            .delete(&format!("/v2/project/{project_slug_or_id}"))
+            .append_pat(pat)
+            .await
     }
 
     async fn get_project(&self, id_or_slug: &str, pat: Option<&str>) -> TestResponse {
-        self.test_server.get(&format!("/v2/project/{id_or_slug}"))
-        .append_pat(pat).await
+        self.test_server
+            .get(&format!("/v2/project/{id_or_slug}"))
+            .append_pat(pat)
+            .await
     }
 
     async fn get_project_deserialized_common(
@@ -151,18 +160,21 @@ impl ApiProject for ApiV2 {
 
     async fn get_projects(&self, ids_or_slugs: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_slugs = serde_json::to_string(ids_or_slugs).unwrap();
-        self.test_server.get("/v2/projects")
-        .add_query_param("ids", &ids_or_slugs)
-        .append_pat(pat).await
+        self.test_server
+            .get(
+                "/v2/projects")
+        .add_query_param("ids",
+                &ids_or_slugs)
+            
+            .append_pat(pat)
+            .await
     }
 
-    async fn get_project_dependencies(
-        &self,
-        id_or_slug: &str,
-        pat: Option<&str>,
-    ) -> TestResponse {
-        self.test_server.get(&format!("/v2/project/{id_or_slug}/dependencies"))
-        .append_pat(pat).await
+    async fn get_project_dependencies(&self, id_or_slug: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/v2/project/{id_or_slug}/dependencies"))
+            .append_pat(pat)
+            .await
     }
 
     async fn get_user_projects(
@@ -170,8 +182,10 @@ impl ApiProject for ApiV2 {
         user_id_or_username: &str,
         pat: Option<&str>,
     ) -> TestResponse {
-        self.test_server.get(&format!("/v2/user/{}/projects", user_id_or_username))
-        .append_pat(pat).await
+        self.test_server
+            .get(&format!("/v2/user/{}/projects", user_id_or_username))
+            .append_pat(pat)
+            .await
     }
 
     async fn get_user_projects_deserialized_common(
@@ -194,9 +208,11 @@ impl ApiProject for ApiV2 {
         patch: serde_json::Value,
         pat: Option<&str>,
     ) -> TestResponse {
-        self.test_server.patch(&format!("/v2/project/{id_or_slug}"))
-        .json(&patch)
-        .append_pat(pat).await
+        self.test_server
+            .patch(&format!("/v2/project/{id_or_slug}"))
+            .json(&patch)
+            .append_pat(pat)
+            .await
     }
 
     async fn edit_project_bulk(
@@ -210,10 +226,15 @@ impl ApiProject for ApiV2 {
             .map(|s| format!("\"{}\"", s))
             .collect::<Vec<_>>()
             .join(",");
-        self.test_server.patch("/v2/projects")
-        .add_query_param("ids", &format!("[{projects_str}]"))
-        .json(&patch)
-        .append_pat(pat).await
+        self.test_server
+            .patch(
+                "/v2/projects")
+        .add_query_param("ids",
+                &format!("[{projects_str}]"))
+            
+            .json(&patch)
+            .append_pat(pat)
+            .await
     }
 
     async fn edit_project_icon(
@@ -224,14 +245,21 @@ impl ApiProject for ApiV2 {
     ) -> TestResponse {
         if let Some(icon) = icon {
             // If an icon is provided, upload it
-            self.test_server.patch(&format!("/v2/project/{id_or_slug}/icon"))
-            .add_query_param("ext", &icon.extension)
-            .bytes(icon.icon.into())
-            .append_pat(pat).await
+            self.test_server
+                .patch(&format!(
+                    "/v2/project/{id_or_slug}/icon"))
+            .add_query_param("ext",
+                    &icon.extension
+                )
+                .bytes(icon.icon.into())
+                .append_pat(pat)
+                .await
         } else {
             // If no icon is provided, delete the icon
-            self.test_server.delete(&format!("/v2/project/{id_or_slug}/icon"))
-            .append_pat(pat).await
+            self.test_server
+                .delete(&format!("/v2/project/{id_or_slug}/icon"))
+                .append_pat(pat)
+                .await
         }
     }
 
@@ -243,21 +271,25 @@ impl ApiProject for ApiV2 {
         body: &str,
         pat: Option<&str>,
     ) -> TestResponse {
-        self.test_server.post("/v2/report")
-        .json(&json!(
-            {
-                "report_type": report_type,
-                "item_id": id,
-                "item_type": item_type.as_str(),
-                "body": body,
-            }
-        ))
-        .append_pat(pat).await
+        self.test_server
+            .post("/v2/report")
+            .json(&json!(
+                {
+                    "report_type": report_type,
+                    "item_id": id,
+                    "item_type": item_type.as_str(),
+                    "body": body,
+                }
+            ))
+            .append_pat(pat)
+            .await
     }
 
     async fn get_report(&self, id: &str, pat: Option<&str>) -> TestResponse {
-        self.test_server.get(&format!("/v2/report/{id}"))
-        .append_pat(pat).await
+        self.test_server
+            .get(&format!("/v2/report/{id}"))
+            .append_pat(pat)
+            .await
     }
 
     async fn get_reports(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
@@ -268,13 +300,14 @@ impl ApiProject for ApiV2 {
     }
 
     async fn get_user_reports(&self, pat: Option<&str>) -> TestResponse {
-        self.test_server.get("/v2/report")
-        .append_pat(pat).await
+        self.test_server.get("/v2/report").append_pat(pat).await
     }
 
     async fn delete_report(&self, id: &str, pat: Option<&str>) -> TestResponse {
-        self.test_server.delete(&format!("/v2/report/{id}"))
-        .append_pat(pat).await
+        self.test_server
+            .delete(&format!("/v2/report/{id}"))
+            .append_pat(pat)
+            .await
     }
 
     async fn edit_report(
@@ -283,22 +316,31 @@ impl ApiProject for ApiV2 {
         patch: serde_json::Value,
         pat: Option<&str>,
     ) -> TestResponse {
-        self.test_server.patch(&format!("/v2/report/{id}"))
-        .json(&patch)
-        .append_pat(pat).await
+        self.test_server
+            .patch(&format!("/v2/report/{id}"))
+            .json(&patch)
+            .append_pat(pat)
+            .await
     }
 
     async fn get_thread(&self, id: &str, pat: Option<&str>) -> TestResponse {
-        self.test_server.get(&format!("/v2/thread/{id}"))
-        .append_pat(pat).await
+        self.test_server
+            .get(&format!("/v2/thread/{id}"))
+            .append_pat(pat)
+            .await
     }
 
     async fn get_threads(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
         self.test_server
-        .get("/v2/threads")
-        .add_query_param("ids", &ids_str)
-        .append_pat(pat).await
+        
+            .get(
+                "/v2/threads")
+        .add_query_param("ids",
+                &ids_str)
+            
+            .append_pat(pat)
+            .await
     }
 
     async fn write_to_thread(
@@ -308,34 +350,41 @@ impl ApiProject for ApiV2 {
         content: &str,
         pat: Option<&str>,
     ) -> TestResponse {
-        self.test_server.post(&format!("/v2/thread/{id}"))
-        .json(&json!(
-            {
-                "body": {
-                    "type": r#type,
-                    "body": content,
+        self.test_server
+            .post(&format!("/v2/thread/{id}"))
+            .json(&json!(
+                {
+                    "body": {
+                        "type": r#type,
+                        "body": content,
+                    }
                 }
-            }
-        ))
-        .append_pat(pat).await
+            ))
+            .append_pat(pat)
+            .await
     }
 
     async fn get_moderation_inbox(&self, pat: Option<&str>) -> TestResponse {
-        self.test_server.get("/v2/thread/inbox")
-        .append_pat(pat).await
+        self.test_server
+            .get("/v2/thread/inbox")
+            .append_pat(pat)
+            .await
     }
 
     async fn read_thread(&self, id: &str, pat: Option<&str>) -> TestResponse {
-        self.test_server.post(&format!("/v2/thread/{id}/read"))
-        .append_pat(pat).await
+        self.test_server
+            .post(&format!("/v2/thread/{id}/read"))
+            .append_pat(pat)
+            .await
     }
 
     async fn delete_thread_message(&self, id: &str, pat: Option<&str>) -> TestResponse {
-        self.test_server.delete(&format!("/v2/message/{id}"))
-        .append_pat(pat).await
+        self.test_server
+            .delete(&format!("/v2/message/{id}"))
+            .append_pat(pat)
+            .await
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn add_gallery_item(
         &self,
         id_or_slug: &str,
@@ -395,10 +444,12 @@ impl ApiProject for ApiV2 {
         url: &str,
         pat: Option<&str>,
     ) -> TestResponse {
-        self.test_server.delete(
-            &format!("/v2/project/{id_or_slug}/gallery")
-        )
-        .add_query_param("url", url)
-        .append_pat(pat).await
+        self.test_server
+            .delete(
+                &format!("/v2/project/{id_or_slug}/gallery")
+            )
+            .add_query_param("url", url)
+            .append_pat(pat)
+            .await
     }
 }

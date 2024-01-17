@@ -934,7 +934,6 @@ pub struct FileExt {
     pub ext: String,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn organization_icon_edit(
     Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

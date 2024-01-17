@@ -108,7 +108,7 @@ static VALIDATORS: &[&dyn Validator] = &[
 ];
 
 /// The return value is whether this file should be marked as primary or not, based on the analysis of the file
-#[allow(clippy::too_many_arguments)]
+
 pub async fn validate_file(
     data: bytes::Bytes,
     file_extension: String,

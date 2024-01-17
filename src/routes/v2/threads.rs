@@ -8,13 +8,12 @@ use crate::models::threads::{MessageBody, ThreadId};
 use crate::models::v2::threads::LegacyThread;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v3, ApiError};
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
-use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
-use axum::routing::{get, delete, post};
+use axum::routing::{delete, get, post};
+use axum::Router;
 use serde::Deserialize;
 use sqlx::PgPool;
-use axum::Router;
-
 
 pub fn config() -> Router {
     Router::new()
@@ -23,12 +22,11 @@ pub fn config() -> Router {
             Router::new()
                 .route("/inbox", get(moderation_inbox))
                 .route("/:id", get(thread_get).post(thread_send_message))
-                .route("/:id/read", post(thread_read))
+                .route("/:id/read", post(thread_read)),
         )
         .nest(
             "/message",
-            Router::new()
-                .route("/:id", delete(message_delete))
+            Router::new().route("/:id", delete(message_delete)),
         )
         .route("/threads", get(threads_get))
 }
@@ -49,7 +47,7 @@ pub async fn thread_get(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let thread = LegacyThread::from(thread);
@@ -75,7 +73,7 @@ pub async fn threads_get(
         Query(v3::threads::ThreadIds { ids: ids.ids }),
         Extension(pool),
         Extension(redis),
-        Extension(session_queue)
+        Extension(session_queue),
     )
     .await?;
 
@@ -101,8 +99,7 @@ pub async fn thread_send_message(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_message): Json<NewThreadMessage>,
 ) -> Result<StatusCode, ApiError> {
-
-    Ok(v3::threads::thread_send_message(
+    v3::threads::thread_send_message(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -113,7 +110,7 @@ pub async fn thread_send_message(
             body: new_message.body,
         }),
     )
-    .await?)
+    .await
 }
 
 pub async fn moderation_inbox(
@@ -130,7 +127,7 @@ pub async fn moderation_inbox(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let threads = threads
@@ -143,13 +140,12 @@ pub async fn moderation_inbox(
 pub async fn thread_read(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Path(info) : Path<ThreadId>,
+    Path(info): Path<ThreadId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-
-    Ok(v3::threads::thread_read(
+    v3::threads::thread_read(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -157,7 +153,7 @@ pub async fn thread_read(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?)
+    .await
 }
 
 pub async fn message_delete(
@@ -169,8 +165,7 @@ pub async fn message_delete(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<StatusCode, ApiError> {
-
-    Ok(v3::threads::message_delete(
+    v3::threads::message_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -179,5 +174,5 @@ pub async fn message_delete(
         Extension(session_queue),
         Extension(file_host),
     )
-        .await?)
+    .await
 }

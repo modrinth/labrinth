@@ -6,10 +6,10 @@ use crate::models::v2::projects::LegacyProject;
 use crate::models::v2::user::LegacyUser;
 use crate::queue::session::AuthQueue;
 use crate::routes::{v3, ApiError};
-use axum::Router;
-use axum::routing::{get, patch};
-use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{get, patch};
+use axum::Router;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,7 @@ pub fn config() -> Router {
                 .route("/:id", get(user_get).patch(user_edit).delete(user_delete))
                 .route("/:id/icon", patch(user_icon_edit))
                 .route("/:id/follows", get(user_follows))
-                .route("/:id/notifications", get(user_notifications))
+                .route("/:id/notifications", get(user_notifications)),
         )
 }
 
@@ -47,7 +47,7 @@ pub async fn user_auth_get(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let user = LegacyUser::from(user);
@@ -69,7 +69,7 @@ pub async fn users_get(
         Extension(pool),
         Extension(redis),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let users = users.into_iter().map(LegacyUser::from).collect();
@@ -81,12 +81,7 @@ pub async fn user_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
 ) -> Result<Json<LegacyUser>, ApiError> {
-    let Json(user) = v3::users::user_get(
-        Path(info),
-        Extension(pool),
-        Extension(redis),
-    )
-        .await?;
+    let Json(user) = v3::users::user_get(Path(info), Extension(pool), Extension(redis)).await?;
 
     // Convert response to V2 format
     let user = LegacyUser::from(user);
@@ -109,7 +104,7 @@ pub async fn projects_list(
         Extension(redis.clone()),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert to V2 projects
     let projects = LegacyProject::from_many(projects, &pool, &redis).await?;
@@ -151,7 +146,6 @@ pub async fn user_edit(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_user): Json<EditUser>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(
     v3::users::user_edit(
         ConnectInfo(addr),
         headers,
@@ -168,7 +162,7 @@ pub async fn user_edit(
             venmo_handle: None,
         }),
     )
-    .await?)
+    .await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -176,7 +170,6 @@ pub struct FileExt {
     pub ext: String,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn user_icon_edit(
     Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -188,7 +181,7 @@ pub async fn user_icon_edit(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     payload: bytes::Bytes,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::users::user_icon_edit(
+    v3::users::user_icon_edit(
         Query(v3::users::FileExt { ext: ext.ext }),
         ConnectInfo(addr),
         headers,
@@ -199,7 +192,7 @@ pub async fn user_icon_edit(
         Extension(session_queue),
         payload,
     )
-    .await?)
+    .await
 }
 
 pub async fn user_delete(
@@ -210,8 +203,7 @@ pub async fn user_delete(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-
-    Ok(v3::users::user_delete(
+    v3::users::user_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -219,7 +211,7 @@ pub async fn user_delete(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?)
+    .await
 }
 
 pub async fn user_follows(
@@ -238,7 +230,7 @@ pub async fn user_follows(
         Extension(redis.clone()),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert to V2 projects
     let projects = LegacyProject::from_many(projects, &pool, &redis).await?;
@@ -261,7 +253,7 @@ pub async fn user_notifications(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let notifications = notifications
