@@ -53,10 +53,10 @@ impl ApiV3 {
     ) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
         self.test_server
-            .get(&format!(
-                "/v3/organizations?ids={}",
-                urlencoding::encode(&ids_or_titles)
-            ))
+            .get(
+                "/v3/organizations",
+            )
+            .add_query_param("ids", &ids_or_titles)
             .append_pat(pat)
             .await
     }
@@ -105,9 +105,9 @@ impl ApiV3 {
             // If an icon is provided, upload it
             self.test_server
                 .patch(&format!(
-                    "/v3/organization/{id_or_title}/icon?ext={ext}",
-                    ext = icon.extension
+                    "/v3/organization/{id_or_title}/icon",
                 ))
+                .add_query_param("ext", icon.extension)
                 .append_pat(pat)
                 .bytes(Bytes::from(icon.icon))
                 .await

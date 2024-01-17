@@ -296,7 +296,7 @@ async fn revoke_authorization_after_issuing_token_revokes_token() {
             .api
             .revoke_oauth_authorization(client_id, USER_USER_PAT)
             .await;
-        assert_status!(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         env.assert_read_notifications_status(
             USER_USER_ID,

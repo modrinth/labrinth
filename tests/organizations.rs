@@ -112,7 +112,7 @@ async fn get_project_organization() {
         let resp = api
             .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
             .await;
-        assert_status!(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get project organization
         let zeta = api
@@ -309,7 +309,7 @@ async fn add_remove_organization_projects() {
                 .api
                 .organization_add_project(zeta_organization_id, alpha, USER_USER_PAT)
                 .await;
-            assert_status!(&resp, StatusCode::OK);
+            assert_status!(&resp, StatusCode::NO_CONTENT);
 
             // Get organization projects
             let projects = test_env
@@ -654,7 +654,7 @@ async fn delete_organization_means_all_projects_to_org_owner() {
             .api
             .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
             .await;
-        assert_status!(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Add beta to zeta organization
         test_env

@@ -17,15 +17,14 @@ use axum::Router;
 
 
 pub fn config() -> Router {
-    Router::new()
+    Router::new().route("/teams", get(teams_get))
         .nest(
             "/team",
             Router::new()
-                .route("/teams", get(teams_get))
-                .route("/team/:id/join", post(join_team))
-                .route("/team/:id/owner", patch(transfer_ownership))
-                .route("/team/:id/members", get(team_members_get).post(add_team_member).patch(edit_team_member))
-                .route("/team/:id/members/:user_id", delete(remove_team_member))
+                .route("/:id/join", post(join_team))
+                .route("/:id/owner", patch(transfer_ownership))
+                .route("/:id/members", get(team_members_get).post(add_team_member).patch(edit_team_member))
+                .route("/:id/members/:user_id", delete(remove_team_member))
         )
 }
 

@@ -15,7 +15,7 @@ use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::util::extract::{ConnectInfo, Extension, Form, Json, Query};
 use axum::http::header::{CACHE_CONTROL, LOCATION, PRAGMA};
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
@@ -420,7 +420,12 @@ async fn init_oauth_code_flow(
 
     let redirect_uri = append_params_to_uri(&redirect_uris.validated.0, &redirect_params);
 
-    Ok(([(LOCATION, redirect_uri.clone())], redirect_uri))
+    // IETF RFC 6749 Section 4.1.2 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2)
+    Ok((
+        StatusCode::OK,
+        [(LOCATION, redirect_uri.clone())],
+        Json(redirect_uri),
+    ))
 }
 
 fn append_params_to_uri(uri: &str, params: &[impl AsRef<str>]) -> String {

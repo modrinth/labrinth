@@ -79,10 +79,10 @@ impl ApiTeams for ApiV2 {
     ) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
         self.test_server
-            .get(&format!(
-                "/v2/teams?ids={}",
-                urlencoding::encode(&ids_or_titles)
-            ))
+            .get(
+                "/v2/teams",
+            )
+            .add_query_param("ids", &ids_or_titles)
             .append_pat(pat)
             .await
     }
@@ -216,10 +216,10 @@ impl ApiTeams for ApiV2 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .get(&format!(
-                "/v2/notifications?ids={}",
-                urlencoding::encode(&notification_ids)
-            ))
+            .get(
+                "/v2/notifications",
+            )
+            .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await
     }
@@ -242,10 +242,10 @@ impl ApiTeams for ApiV2 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .patch(&format!(
-                "/v2/notifications?ids={}",
-                urlencoding::encode(&notification_ids)
-            ))
+            .patch(
+                "/v2/notifications",
+            )
+            .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await
     }
@@ -287,10 +287,10 @@ impl ApiTeams for ApiV2 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .delete(&format!(
-                "/v2/notifications?ids={}",
-                urlencoding::encode(&notification_ids)
-            ))
+            .delete(
+                "/v2/notifications",
+            )
+            .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await
     }

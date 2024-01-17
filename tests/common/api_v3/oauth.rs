@@ -43,8 +43,10 @@ impl ApiV3 {
         state: Option<&str>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let uri = generate_authorize_uri(client_id, scope, redirect_uri, state);
-        self.test_server.get(&uri).append_pat(pat).await
+        let params = generate_authorize_params(client_id, scope, redirect_uri, state);
+        self.test_server.get("/_internal/oauth/authorize")
+        .add_query_params(&params)
+        .append_pat(pat).await
     }
 
     pub async fn oauth_accept(&self, flow: &str, pat: Option<&str>) -> TestResponse {
@@ -87,19 +89,28 @@ impl ApiV3 {
     }
 }
 
-pub fn generate_authorize_uri(
+pub fn generate_authorize_params(
     client_id: &str,
     scope: Option<&str>,
     redirect_uri: Option<&str>,
     state: Option<&str>,
-) -> String {
-    format!(
-        "/_internal/oauth/authorize?client_id={}{}{}{}",
-        urlencoding::encode(client_id),
-        optional_query_param("redirect_uri", redirect_uri),
-        optional_query_param("scope", scope),
-        optional_query_param("state", state),
-    )
+) -> serde_json::Value {
+    // TODO: check if you can simnplify with just a jsoin
+    let mut json =  serde_json::json!({
+        "client_id": client_id,
+    });
+
+    if let Some(scope) = scope {
+        json["scope"] = serde_json::json!(scope);
+    }
+    if let Some(redirect_uri) = redirect_uri {
+        json["redirect_uri"] = serde_json::json!(redirect_uri);
+    }
+    if let Some(state) = state {
+        json["state"] = serde_json::json!(state);
+    }
+
+    json
 }
 
 pub async fn get_authorize_accept_flow_id(response: TestResponse) -> String {
@@ -128,12 +139,4 @@ pub fn get_redirect_location_query_params(response: &TestResponse) -> HashMap<St
         .to_string();
     let redirect_location = redirect_location.split_once('?').unwrap().1;
     serde_urlencoded::from_str(redirect_location).unwrap()
-}
-
-fn optional_query_param(key: &str, value: Option<&str>) -> String {
-    if let Some(val) = value {
-        format!("&{key}={}", urlencoding::encode(val))
-    } else {
-        "".to_string()
-    }
 }

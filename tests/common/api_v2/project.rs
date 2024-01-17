@@ -13,6 +13,7 @@ use crate::{
 };
 use axum_test::{http::StatusCode, TestResponse};
 use async_trait::async_trait;
+use bytes::Bytes;
 use labrinth::models::v2::{projects::LegacyProject, search::LegacySearchResults};
 use serde_json::json;
 
@@ -50,23 +51,19 @@ impl ApiV2 {
         facets: Option<serde_json::Value>,
         pat: Option<&str>,
     ) -> LegacySearchResults {
-        let query_field = if let Some(query) = query {
-            format!("&query={}", urlencoding::encode(query))
-        } else {
-            "".to_string()
-        };
+        let mut req = self
+            .test_server
+            .get("/v2/search");
 
-        let facets_field = if let Some(facets) = facets {
-            format!("&facets={}", urlencoding::encode(&facets.to_string()))
-        } else {
-            "".to_string()
-        };
+        if let Some(query) = query {
+            req = req.add_query_param("query", query);
+        }
 
-        let resp = self.test_server
-            .get(&format!(
-                "/v2/search?{}{}",
-                query_field, facets_field
-            ))
+        if let Some(facets) = facets {
+            req = req.add_query_param("facets", &facets.to_string());
+        }
+
+        let resp = req
             .append_pat(pat)
             .await;
         assert_status!(&resp, StatusCode::OK);
@@ -154,7 +151,8 @@ impl ApiProject for ApiV2 {
 
     async fn get_projects(&self, ids_or_slugs: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_slugs = serde_json::to_string(ids_or_slugs).unwrap();
-        self.test_server.get(&format!("/v2/projects?ids={encoded}", encoded = urlencoding::encode(&ids_or_slugs)))
+        self.test_server.get("/v2/projects")
+        .add_query_param("ids", &ids_or_slugs)
         .append_pat(pat).await
     }
 
@@ -212,7 +210,8 @@ impl ApiProject for ApiV2 {
             .map(|s| format!("\"{}\"", s))
             .collect::<Vec<_>>()
             .join(",");
-        self.test_server.patch(&format!("/v2/projects?ids={encoded}", encoded = urlencoding::encode(&format!("[{projects_str}]"))))
+        self.test_server.patch("/v2/projects")
+        .add_query_param("ids", &format!("[{projects_str}]"))
         .json(&patch)
         .append_pat(pat).await
     }
@@ -225,7 +224,8 @@ impl ApiProject for ApiV2 {
     ) -> TestResponse {
         if let Some(icon) = icon {
             // If an icon is provided, upload it
-            self.test_server.patch(&format!("/v2/project/{id_or_slug}/icon?ext={ext}", ext = icon.extension))
+            self.test_server.patch(&format!("/v2/project/{id_or_slug}/icon"))
+            .add_query_param("ext", &icon.extension)
             .bytes(icon.icon.into())
             .append_pat(pat).await
         } else {
@@ -262,7 +262,9 @@ impl ApiProject for ApiV2 {
 
     async fn get_reports(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
-        self.test_server.get(&format!("/v2/reports?ids={encoded}", encoded = urlencoding::encode(&ids_str))).append_pat(pat).await
+        self.test_server.get("/v2/reports")
+        .add_query_param("ids", &ids_str)
+        .append_pat(pat).await
     }
 
     async fn get_user_reports(&self, pat: Option<&str>) -> TestResponse {
@@ -293,7 +295,9 @@ impl ApiProject for ApiV2 {
 
     async fn get_threads(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
-        self.test_server.get(&format!("/v2/threads?ids={encoded}", encoded = urlencoding::encode(&ids_str)))
+        self.test_server
+        .get("/v2/threads")
+        .add_query_param("ids", &ids_str)
         .append_pat(pat).await
     }
 
@@ -342,24 +346,30 @@ impl ApiProject for ApiV2 {
         ordering: Option<i32>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut url = format!(
-            "/v2/project/{id_or_slug}/gallery?ext={ext}&featured={featured}",
-            ext = image.extension,
-            featured = featured
-        );
-        if let Some(title) = title {
-            url.push_str(&format!("&title={}", title));
-        }
-        if let Some(description) = description {
-            url.push_str(&format!("&description={}", description));
-        }
-        if let Some(ordering) = ordering {
-            url.push_str(&format!("&ordering={}", ordering));
-        }
+        let mut req = self.test_server
+        .post(&format!(
+            "/v2/project/{id_or_slug}/gallery",
+        ))
+        .add_query_param("ext", image.extension)
+        .add_query_param("featured", featured);
 
-        self.test_server.post(&url)
-        .bytes(image.icon.into())
-        .append_pat(pat).await
+    if let Some(title) = title {
+        req = req.add_query_param("title", title);
+    }
+
+    if let Some(description) = description {
+        req = req.add_query_param("description", description);
+    }
+
+    if let Some(ordering) = ordering {
+        req = req.add_query_param("ordering", ordering);
+    }        
+
+
+    req
+        .append_pat(pat)
+        .bytes(Bytes::from(image.icon))
+        .await
     }
 
     async fn edit_gallery_item(
@@ -369,21 +379,14 @@ impl ApiProject for ApiV2 {
         patch: HashMap<String, String>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut url = format!(
-            "/v2/project/{id_or_slug}/gallery?url={image_url}",
-            image_url = urlencoding::encode(image_url)
-        );
+        let mut req = self.test_server.patch(&format!("/v2/project/{id_or_slug}/gallery"))
+        .add_query_param("url", image_url);
 
         for (key, value) in patch {
-            url.push_str(&format!(
-                "&{key}={value}",
-                key = key,
-                value = urlencoding::encode(&value)
-            ));
+            req = req.add_query_param(&key, &value);
         }
 
-        self.test_server.patch(&url)
-        .append_pat(pat).await
+        req.append_pat(pat).await
     }
 
     async fn remove_gallery_item(
@@ -392,10 +395,10 @@ impl ApiProject for ApiV2 {
         url: &str,
         pat: Option<&str>,
     ) -> TestResponse {
-        self.test_server.delete(&format!(
-            "/v2/project/{id_or_slug}/gallery?url={url}",
-            url = urlencoding::encode(url)
-        ))
+        self.test_server.delete(
+            &format!("/v2/project/{id_or_slug}/gallery")
+        )
+        .add_query_param("url", url)
         .append_pat(pat).await
     }
 }

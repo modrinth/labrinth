@@ -28,7 +28,7 @@ pub fn config() -> Router {
         Router::new()
             .route(
                 "/members",
-                get(team_members_get), /*.post(add_team_member)*/
+                get(team_members_get).post(add_team_member)
             )
             .route(
                 "/members/:user_id",

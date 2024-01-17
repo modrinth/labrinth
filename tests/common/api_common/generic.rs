@@ -7,7 +7,7 @@ use labrinth::models::{
     teams::{OrganizationPermissions, ProjectPermissions},
 };
 
-use crate::common::{/*api_v2::ApiV2,*/ api_v3::ApiV3, dummy_data::TestFile};
+use crate::common::{api_v2::ApiV2, api_v3::ApiV3, dummy_data::TestFile};
 
 use super::{
     models::{CommonProject, CommonVersion},
@@ -17,7 +17,7 @@ use super::{
 
 #[derive(Clone)]
 pub enum GenericApi {
-    // V2(ApiV2),
+    V2(ApiV2),
     V3(ApiV3),
 }
 
@@ -36,7 +36,7 @@ macro_rules! delegate_api_variant {
             $(
                 async fn $method_name(&self, $($param_name: $param_type),*) -> $ret {
                     match self {
-                        //$struct_name::V2(api) => api.$method_name($($param_name),*).await,
+                        $struct_name::V2(api) => api.$method_name($($param_name),*).await,
                         $struct_name::V3(api) => api.$method_name($($param_name),*).await,
                     }
                 }
@@ -49,14 +49,14 @@ macro_rules! delegate_api_variant {
 impl Api for GenericApi {
     async fn reset_search_index(&self) -> TestResponse {
         match self {
-            // Self::V2(api) => api.reset_search_index().await,
+            Self::V2(api) => api.reset_search_index().await,
             Self::V3(api) => api.reset_search_index().await,
         }
     }
 
     fn get_test_server(&self) -> Arc<axum_test::TestServer> {
         match self {
-            // Self::V2(api) => api.get_test_server(),
+            Self::V2(api) => api.get_test_server(),
             Self::V3(api) => api.get_test_server(),
         }
     }

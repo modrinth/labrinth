@@ -72,7 +72,7 @@ impl IntoResponse for OAuthError {
             }
 
             (
-                StatusCode::TEMPORARY_REDIRECT,
+                StatusCode::OK,
                 [(LOCATION, redirect_uri.clone())],
                 redirect_uri,
             )

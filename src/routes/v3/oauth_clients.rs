@@ -56,13 +56,13 @@ pub fn config() -> Router {
             )
             .route("/app", post(oauth_client_create))
             .route(
-                "/app/{id}",
+                "/app/:id",
                 get(get_client)
                     .patch(oauth_client_edit)
                     .delete(oauth_client_delete),
             )
             .route(
-                "/app/{id}/icon",
+                "/app/:id/icon",
                 patch(oauth_client_icon_edit).delete(oauth_client_icon_delete),
             )
             .route("/apps", get(get_clients)),

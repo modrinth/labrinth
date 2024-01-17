@@ -722,7 +722,7 @@ async fn permissions_patch_project_v3() {
                         .into_iter();
                 }
             })
-            .buffer_unordered(4)
+            .buffer_unordered(1) // TODO: Should be more than 1, but causes deadlocks in axum
             .collect::<Vec<_>>()
             .await;
 

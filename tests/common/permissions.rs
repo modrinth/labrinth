@@ -6,10 +6,10 @@ use itertools::Itertools;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::common::{
+use crate::{common::{
     api_common::ApiTeams,
     database::{generate_random_name, ADMIN_USER_PAT},
-};
+}, assert_status};
 
 use super::{
     api_common::{Api, ApiProject},
@@ -849,8 +849,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             Ok(())
         };
 
-        tokio::try_join!(test_1, test_2, test_3, test_4, test_5, test_6, test_7, test_8)
-            .map_err(|e| e)?;
+        // TODO: Make this concurrent- it hangs in axum.
+        test_1.await.unwrap();
+        test_2.await.unwrap();
+        test_3.await.unwrap();
+        test_4.await.unwrap();
+        test_5.await.unwrap();
+        test_6.await.unwrap();
+        test_7.await.unwrap();
+        test_8.await.unwrap();
+        // tokio::try_join!(test_1, test_2, test_3, test_4, test_5, test_6, test_7, test_8)
+        //     .map_err(|e| e)?;
 
         Ok(())
     }
@@ -882,7 +891,6 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
         let test_1 = async {
             let (organization_id, organization_team_id) =
                 create_dummy_org(&test_env.setup_api).await;
-
             let resp = req_gen(PermissionsTestContext {
                 test_pat: self.user_pat.map(|s| s.to_string()),
                 organization_id: Some(organization_id.clone()),
@@ -934,7 +942,6 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 &test_env.setup_api,
             )
             .await;
-
             let resp = req_gen(PermissionsTestContext {
                 test_pat: self.user_pat.map(|s| s.to_string()),
                 organization_id: Some(organization_id.clone()),
@@ -986,7 +993,6 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 &test_env.setup_api,
             )
             .await;
-
             let resp = req_gen(PermissionsTestContext {
                 test_pat: self.user_pat.map(|s| s.to_string()),
                 organization_id: Some(organization_id.clone()),
@@ -1017,7 +1023,11 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             Ok(())
         };
 
-        tokio::try_join!(test_1, test_2, test_3,).map_err(|e| e)?;
+        // TODO: Make this concurrent- it hangs in axum.
+        // tokio::try_join!(test_1, test_2, test_3,).map_err(|e| e)?;
+        test_1.await.unwrap();
+        test_2.await.unwrap();
+        test_3.await.unwrap();
 
         Ok(())
     }
@@ -1043,7 +1053,6 @@ async fn create_dummy_project(setup_api: &ApiV3) -> (String, String) {
 async fn create_dummy_org(setup_api: &ApiV3) -> (String, String) {
     // Create a very simple organization
     let slug = generate_random_name("test_org");
-
     let resp = setup_api
         .create_organization("Example org", &slug, "Example description.", ADMIN_USER_PAT)
         .await;
@@ -1054,7 +1063,6 @@ async fn create_dummy_org(setup_api: &ApiV3) -> (String, String) {
         .await;
     let organizaion_id = organization.id.to_string();
     let team_id = organization.team_id.to_string();
-
     (organizaion_id, team_id)
 }
 
@@ -1083,7 +1091,7 @@ async fn add_user_to_team(
             ADMIN_USER_PAT,
         )
         .await;
-    assert!(resp.status_code().is_success());
+    assert_status!(resp, StatusCode::NO_CONTENT);
 
     // Accept invitation
     setup_api.join_team(team_id, user_pat).await;

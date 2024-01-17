@@ -65,10 +65,10 @@ impl ApiV3 {
 
     pub async fn get_loader_field_variants(&self, loader_field: &str) -> TestResponse {
         self.test_server
-            .get(&format!(
-                "/v3/tag/loader_field?loader_field={}",
-                loader_field
-            ))
+            .get(
+                "/v3/tag/loader_field",
+            )
+            .add_query_param("loader_field", loader_field)
             .append_pat(ADMIN_USER_PAT)
             .await
     }
@@ -84,7 +84,7 @@ impl ApiV3 {
 
     async fn get_games(&self) -> TestResponse {
         self.test_server
-            .get("/v3/games")
+            .get("/v3/tag/game")
             .append_pat(ADMIN_USER_PAT)
             .await
     }

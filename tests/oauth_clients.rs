@@ -59,7 +59,7 @@ async fn can_create_edit_get_oauth_client() {
             .api
             .edit_oauth_client(&client_id, edit, FRIEND_USER_PAT)
             .await;
-        assert_status!(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         let clients = env
             .api

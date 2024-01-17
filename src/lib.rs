@@ -61,6 +61,7 @@ pub fn app_setup(
     clickhouse: Client,
     file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
     maxmind: Arc<queue::maxmind::MaxMindIndexer>,
+    testing: bool,
 ) -> LabrinthConfig {
     info!(
         "Starting Labrinth on {}",
@@ -72,151 +73,154 @@ pub fn app_setup(
     let local_index_interval =
         std::time::Duration::from_secs(parse_var("LOCAL_INDEX_INTERVAL").unwrap_or(3600));
 
+    let session_queue = Arc::new(AuthQueue::new());
+    let analytics_queue = Arc::new(AnalyticsQueue::new());
+
     let pool_ref = pool.clone();
     let search_config_ref = search_config.clone();
     let redis_pool_ref = redis_pool.clone();
-    schedule(local_index_interval, move || {
-        let pool_ref = pool_ref.clone();
-        let redis_pool_ref = redis_pool_ref.clone();
-        let search_config_ref = search_config_ref.clone();
-        async move {
-            info!("Indexing local database");
-            let result = index_projects(pool_ref, redis_pool_ref.clone(), &search_config_ref).await;
-            if let Err(e) = result {
-                warn!("Local project indexing failed: {:?}", e);
-            }
-            info!("Done indexing local database");
-        }
-    });
 
-    // Changes statuses of scheduled projects/versions
-    let pool_ref = pool.clone();
-    // TODO: Clear cache when these are run
-    schedule(std::time::Duration::from_secs(60 * 5), move || {
-        let pool_ref = pool_ref.clone();
-        info!("Releasing scheduled versions/projects!");
-
-        async move {
-            let projects_results = sqlx::query!(
-                "
-                UPDATE mods
-                SET status = requested_status
-                WHERE status = $1 AND approved < CURRENT_DATE AND requested_status IS NOT NULL
-                ",
-                crate::models::projects::ProjectStatus::Scheduled.as_str(),
-            )
-            .execute(&pool_ref)
-            .await;
-
-            if let Err(e) = projects_results {
-                warn!("Syncing scheduled releases for projects failed: {:?}", e);
-            }
-
-            let versions_results = sqlx::query!(
-                "
-                UPDATE versions
-                SET status = requested_status
-                WHERE status = $1 AND date_published < CURRENT_DATE AND requested_status IS NOT NULL
-                ",
-                crate::models::projects::VersionStatus::Scheduled.as_str(),
-            )
-            .execute(&pool_ref)
-            .await;
-
-            if let Err(e) = versions_results {
-                warn!("Syncing scheduled releases for versions failed: {:?}", e);
-            }
-
-            info!("Finished releasing scheduled versions/projects");
-        }
-    });
-
-    scheduler::schedule_versions(pool.clone(), redis_pool.clone());
-
-    let session_queue = Arc::new(AuthQueue::new());
-
-    let pool_ref = pool.clone();
-    let redis_ref = redis_pool.clone();
-    let session_queue_ref = session_queue.clone();
-    schedule(std::time::Duration::from_secs(60 * 30), move || {
-        let pool_ref = pool_ref.clone();
-        let redis_ref = redis_ref.clone();
-        let session_queue_ref = session_queue_ref.clone();
-
-        async move {
-            info!("Indexing sessions queue");
-            let result = session_queue_ref.index(&pool_ref, &redis_ref).await;
-            if let Err(e) = result {
-                warn!("Indexing sessions queue failed: {:?}", e);
-            }
-            info!("Done indexing sessions queue");
-        }
-    });
-
-    let reader = maxmind.clone();
-    {
-        let reader_ref = reader;
-        schedule(std::time::Duration::from_secs(60 * 60 * 24), move || {
-            let reader_ref = reader_ref.clone();
-
+    if !testing {
+        schedule(local_index_interval, move || {
+            let pool_ref = pool_ref.clone();
+            let redis_pool_ref = redis_pool_ref.clone();
+            let search_config_ref = search_config_ref.clone();
             async move {
-                info!("Downloading MaxMind GeoLite2 country database");
-                let result = reader_ref.index().await;
+                info!("Indexing local database");
+                let result = index_projects(pool_ref, redis_pool_ref.clone(), &search_config_ref).await;
                 if let Err(e) = result {
-                    warn!(
-                        "Downloading MaxMind GeoLite2 country database failed: {:?}",
-                        e
-                    );
+                    warn!("Local project indexing failed: {:?}", e);
                 }
-                info!("Done downloading MaxMind GeoLite2 country database");
+                info!("Done indexing local database");
             }
         });
-    }
-    info!("Downloading MaxMind GeoLite2 country database");
 
-    let analytics_queue = Arc::new(AnalyticsQueue::new());
-    {
-        let client_ref = clickhouse.clone();
-        let analytics_queue_ref = analytics_queue.clone();
+        // Changes statuses of scheduled projects/versions
+        let pool_ref = pool.clone();
+        // TODO: Clear cache when these are run
+        schedule(std::time::Duration::from_secs(60 * 5), move || {
+            let pool_ref = pool_ref.clone();
+            info!("Releasing scheduled versions/projects!");
+
+            async move {
+                let projects_results = sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET status = requested_status
+                    WHERE status = $1 AND approved < CURRENT_DATE AND requested_status IS NOT NULL
+                    ",
+                    crate::models::projects::ProjectStatus::Scheduled.as_str(),
+                )
+                .execute(&pool_ref)
+                .await;
+
+                if let Err(e) = projects_results {
+                    warn!("Syncing scheduled releases for projects failed: {:?}", e);
+                }
+
+                let versions_results = sqlx::query!(
+                    "
+                    UPDATE versions
+                    SET status = requested_status
+                    WHERE status = $1 AND date_published < CURRENT_DATE AND requested_status IS NOT NULL
+                    ",
+                    crate::models::projects::VersionStatus::Scheduled.as_str(),
+                )
+                .execute(&pool_ref)
+                .await;
+
+                if let Err(e) = versions_results {
+                    warn!("Syncing scheduled releases for versions failed: {:?}", e);
+                }
+
+                info!("Finished releasing scheduled versions/projects");
+            }
+        });
+
+        scheduler::schedule_versions(pool.clone(), redis_pool.clone());
+
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
-        schedule(std::time::Duration::from_secs(15), move || {
-            let client_ref = client_ref.clone();
-            let analytics_queue_ref = analytics_queue_ref.clone();
+        let session_queue_ref = session_queue.clone();
+        schedule(std::time::Duration::from_secs(60 * 30), move || {
             let pool_ref = pool_ref.clone();
             let redis_ref = redis_ref.clone();
+            let session_queue_ref = session_queue_ref.clone();
 
             async move {
-                info!("Indexing analytics queue");
-                let result = analytics_queue_ref
-                    .index(client_ref, &redis_ref, &pool_ref)
-                    .await;
+                info!("Indexing sessions queue");
+                let result = session_queue_ref.index(&pool_ref, &redis_ref).await;
                 if let Err(e) = result {
-                    warn!("Indexing analytics queue failed: {:?}", e);
+                    warn!("Indexing sessions queue failed: {:?}", e);
                 }
-                info!("Done indexing analytics queue");
+                info!("Done indexing sessions queue");
             }
         });
-    }
 
-    {
-        let pool_ref = pool.clone();
-        let redis_ref = redis_pool.clone();
-        let client_ref = clickhouse.clone();
-        schedule(std::time::Duration::from_secs(60 * 60 * 6), move || {
-            let pool_ref = pool_ref.clone();
-            let redis_ref = redis_ref.clone();
-            let client_ref = client_ref.clone();
+        let reader = maxmind.clone();
+        {
+            let reader_ref = reader;
+            schedule(std::time::Duration::from_secs(60 * 60 * 24), move || {
+                let reader_ref = reader_ref.clone();
 
-            async move {
-                info!("Started running payouts");
-                let result = process_payout(&pool_ref, &redis_ref, &client_ref).await;
-                if let Err(e) = result {
-                    warn!("Payouts run failed: {:?}", e);
+                async move {
+                    info!("Downloading MaxMind GeoLite2 country database");
+                    let result = reader_ref.index().await;
+                    if let Err(e) = result {
+                        warn!(
+                            "Downloading MaxMind GeoLite2 country database failed: {:?}",
+                            e
+                        );
+                    }
+                    info!("Done downloading MaxMind GeoLite2 country database");
                 }
-                info!("Done running payouts");
-            }
-        });
+            });
+        }
+        info!("Downloading MaxMind GeoLite2 country database");
+
+        {
+            let client_ref = clickhouse.clone();
+            let analytics_queue_ref = analytics_queue.clone();
+            let pool_ref = pool.clone();
+            let redis_ref = redis_pool.clone();
+            schedule(std::time::Duration::from_secs(15), move || {
+                let client_ref = client_ref.clone();
+                let analytics_queue_ref = analytics_queue_ref.clone();
+                let pool_ref = pool_ref.clone();
+                let redis_ref = redis_ref.clone();
+
+                async move {
+                    info!("Indexing analytics queue");
+                    let result = analytics_queue_ref
+                        .index(client_ref, &redis_ref, &pool_ref)
+                        .await;
+                    if let Err(e) = result {
+                        warn!("Indexing analytics queue failed: {:?}", e);
+                    }
+                    info!("Done indexing analytics queue");
+                }
+            });
+        }
+
+        {
+            let pool_ref = pool.clone();
+            let redis_ref = redis_pool.clone();
+            let client_ref = clickhouse.clone();
+            schedule(std::time::Duration::from_secs(60 * 60 * 6), move || {
+                let pool_ref = pool_ref.clone();
+                let redis_ref = redis_ref.clone();
+                let client_ref = client_ref.clone();
+
+                async move {
+                    info!("Started running payouts");
+                    let result = process_payout(&pool_ref, &redis_ref, &client_ref).await;
+                    if let Err(e) = result {
+                        warn!("Payouts run failed: {:?}", e);
+                    }
+                    info!("Done running payouts");
+                }
+            });
+        }
     }
 
     let ip_salt = Pepper {

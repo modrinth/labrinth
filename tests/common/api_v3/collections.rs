@@ -45,10 +45,10 @@ impl ApiV3 {
     pub async fn get_collections(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids = serde_json::to_string(ids).unwrap();
         self.test_server
-            .get(&format!(
-                "/v3/collections?ids={}",
-                urlencoding::encode(&ids)
-            ))
+            .get(
+                "/v3/collections",
+            )
+            .add_query_param("ids", &ids)
             .append_pat(pat)
             .await
     }
@@ -93,9 +93,9 @@ impl ApiV3 {
             // If an icon is provided, upload it
             self.test_server
                 .patch(&format!(
-                    "/v3/collection/{id}/icon?ext={ext}",
-                    ext = icon.extension
+                    "/v3/collection/{id}/icon",
                 ))
+                .add_query_param("ext", icon.extension)
                 .append_pat(pat)
                 .bytes(Bytes::from(icon.icon))
                 .await

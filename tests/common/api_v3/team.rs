@@ -75,10 +75,10 @@ impl ApiTeams for ApiV3 {
     async fn get_teams_members(&self, ids_or_titles: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
         self.test_server
-            .get(&format!(
-                "/v3/teams/members?ids={}",
-                urlencoding::encode(&ids_or_titles)
-            ))
+            .get(
+                "/v3/teams/members",
+            )
+            .add_query_param("ids", &ids_or_titles)
             .append_pat(pat)
             .await
     }
@@ -208,10 +208,10 @@ impl ApiTeams for ApiV3 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .get(&format!(
-                "/v3/notifications?ids={}",
-                urlencoding::encode(&notification_ids)
-            ))
+            .get(
+                "/v3/notifications",
+            )
+            .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await
     }
@@ -234,10 +234,10 @@ impl ApiTeams for ApiV3 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .patch(&format!(
-                "/v3/notifications?ids={}",
-                urlencoding::encode(&notification_ids)
-            ))
+            .patch(
+                "/v3/notifications",
+            )
+            .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await
     }
@@ -275,10 +275,10 @@ impl ApiTeams for ApiV3 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .delete(&format!(
-                "/v3/notifications?ids={}",
-                urlencoding::encode(&notification_ids)
-            ))
+            .delete(
+                "/v3/notifications",
+            )
+            .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await
     }

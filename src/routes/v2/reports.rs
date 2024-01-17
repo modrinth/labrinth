@@ -19,7 +19,7 @@ pub fn config() -> Router {
     Router::new()
         .route("/report", get(reports).post(report_create))
         .route("/reports", get(reports_get))
-        .route("/report/{id}", get(report_get).patch(report_edit).delete(report_delete))
+        .route("/report/:id", get(report_get).patch(report_edit).delete(report_delete))
 }
 #[derive(Deserialize, Validate)]
 pub struct CreateReport {

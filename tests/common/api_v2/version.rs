@@ -187,8 +187,9 @@ impl ApiVersion for ApiV2 {
     ) -> TestResponse {
         self.test_server
             .get(&format!(
-                "/v2/version_file/{hash}?algorithm={algorithm}",
+                "/v2/version_file/{hash}",
             ))
+            .add_query_param("algorithm", algorithm)
             .append_pat(pat)
             .await
     }
@@ -250,8 +251,9 @@ impl ApiVersion for ApiV2 {
     ) -> TestResponse {
         self.test_server
             .post(&format!(
-                "/v2/version_file/{hash}/update?algorithm={algorithm}",
+                "/v2/version_file/{hash}/update",
             ))
+            .add_query_param("algorithm", algorithm)
             .append_pat(pat)
             .json(&json!({
                 "loaders": loaders,
@@ -343,39 +345,36 @@ impl ApiVersion for ApiV2 {
         offset: Option<usize>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut query_string = String::new();
+        let mut req = self.test_server
+            .get(&format!(
+                "/v2/project/{project_id_slug}/version",
+            ));
+        
         if let Some(game_versions) = game_versions {
-            query_string.push_str(&format!(
-                "&game_versions={}",
-                urlencoding::encode(&serde_json::to_string(&game_versions).unwrap())
-            ));
-        }
-        if let Some(loaders) = loaders {
-            query_string.push_str(&format!(
-                "&loaders={}",
-                urlencoding::encode(&serde_json::to_string(&loaders).unwrap())
-            ));
-        }
-        if let Some(featured) = featured {
-            query_string.push_str(&format!("&featured={}", featured));
-        }
-        if let Some(version_type) = version_type {
-            query_string.push_str(&format!("&version_type={}", version_type));
-        }
-        if let Some(limit) = limit {
-            let limit = limit.to_string();
-            query_string.push_str(&format!("&limit={}", limit));
-        }
-        if let Some(offset) = offset {
-            let offset = offset.to_string();
-            query_string.push_str(&format!("&offset={}", offset));
+            req = req.add_query_param("game_versions", &serde_json::to_string(&game_versions).unwrap());
         }
 
-        self.test_server
-            .get(&format!(
-                "/v2/project/{project_id_slug}/version?{}",
-                query_string.trim_start_matches('&')
-            ))
+        if let Some(loaders) = loaders {
+            req = req.add_query_param("loaders", &serde_json::to_string(&loaders).unwrap());
+        }
+
+        if let Some(featured) = featured {
+            req = req.add_query_param("featured", featured);
+        }
+
+        if let Some(version_type) = version_type {
+            req = req.add_query_param("version_type", version_type);
+        }
+
+        if let Some(limit) = limit {
+            req = req.add_query_param("limit", limit);
+        }
+
+        if let Some(offset) = offset {
+            req = req.add_query_param("offset", offset);
+        }
+
+        req
             .append_pat(pat)
             .await
     }
@@ -430,7 +429,8 @@ impl ApiVersion for ApiV2 {
     async fn get_versions(&self, version_ids: Vec<String>, pat: Option<&str>) -> TestResponse {
         let ids = url_encode_json_serialized_vec(&version_ids);
         self.test_server
-            .get(&format!("/v2/versions?ids={}", ids))
+            .get("/v2/versions")
+            .add_query_param("ids", &ids)
             .append_pat(pat)
             .await
     }
