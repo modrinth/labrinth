@@ -243,7 +243,7 @@ pub fn app_setup(
 
 pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
     Router::new()
-        // .merge(routes::v2::config())
+        .merge(routes::v2::config())
         .merge(routes::v3::config())
         .merge(routes::internal::config())
         .merge(routes::root_config())

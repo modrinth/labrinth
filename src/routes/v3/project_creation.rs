@@ -22,6 +22,7 @@ use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use crate::util::extract::{Json, Extension, ConnectInfo};
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{StatusCode, HeaderMap};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -40,7 +41,7 @@ use validator::Validate;
 
 pub fn config() -> Router {
     Router::new()
-        .route("/project", post(project_create))
+        .route("/project", post(project_create).layer(DefaultBodyLimit::max(500*1024)))
 }
 
 
