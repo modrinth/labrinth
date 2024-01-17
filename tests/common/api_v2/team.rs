@@ -75,9 +75,7 @@ impl ApiTeams for ApiV2 {
     async fn get_teams_members(&self, ids_or_titles: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
         self.test_server
-            .get(
-                "/v2/teams",
-            )
+            .get("/v2/teams")
             .add_query_param("ids", &ids_or_titles)
             .append_pat(pat)
             .await
@@ -208,9 +206,7 @@ impl ApiTeams for ApiV2 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .get(
-                "/v2/notifications",
-            )
+            .get("/v2/notifications")
             .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await
@@ -234,9 +230,7 @@ impl ApiTeams for ApiV2 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .patch(
-                "/v2/notifications",
-            )
+            .patch("/v2/notifications")
             .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await
@@ -275,9 +269,7 @@ impl ApiTeams for ApiV2 {
     ) -> TestResponse {
         let notification_ids = serde_json::to_string(notification_ids).unwrap();
         self.test_server
-            .delete(
-                "/v2/notifications",
-            )
+            .delete("/v2/notifications")
             .add_query_param("ids", &notification_ids)
             .append_pat(pat)
             .await

@@ -51,9 +51,7 @@ impl ApiV2 {
         facets: Option<serde_json::Value>,
         pat: Option<&str>,
     ) -> LegacySearchResults {
-        let mut req = self
-            .test_server
-            .get("/v2/search");
+        let mut req = self.test_server.get("/v2/search");
 
         if let Some(query) = query {
             req = req.add_query_param("query", query);
@@ -63,9 +61,7 @@ impl ApiV2 {
             req = req.add_query_param("facets", &facets.to_string());
         }
 
-        let resp = req
-            .append_pat(pat)
-            .await;
+        let resp = req.append_pat(pat).await;
         assert_status!(&resp, StatusCode::OK);
         resp.json()
     }
@@ -161,11 +157,8 @@ impl ApiProject for ApiV2 {
     async fn get_projects(&self, ids_or_slugs: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_slugs = serde_json::to_string(ids_or_slugs).unwrap();
         self.test_server
-            .get(
-                "/v2/projects")
-        .add_query_param("ids",
-                &ids_or_slugs)
-            
+            .get("/v2/projects")
+            .add_query_param("ids", &ids_or_slugs)
             .append_pat(pat)
             .await
     }
@@ -227,11 +220,8 @@ impl ApiProject for ApiV2 {
             .collect::<Vec<_>>()
             .join(",");
         self.test_server
-            .patch(
-                "/v2/projects")
-        .add_query_param("ids",
-                &format!("[{projects_str}]"))
-            
+            .patch("/v2/projects")
+            .add_query_param("ids", &format!("[{projects_str}]"))
             .json(&patch)
             .append_pat(pat)
             .await
@@ -246,11 +236,8 @@ impl ApiProject for ApiV2 {
         if let Some(icon) = icon {
             // If an icon is provided, upload it
             self.test_server
-                .patch(&format!(
-                    "/v2/project/{id_or_slug}/icon"))
-            .add_query_param("ext",
-                    &icon.extension
-                )
+                .patch(&format!("/v2/project/{id_or_slug}/icon"))
+                .add_query_param("ext", &icon.extension)
                 .bytes(icon.icon.into())
                 .append_pat(pat)
                 .await
@@ -294,9 +281,11 @@ impl ApiProject for ApiV2 {
 
     async fn get_reports(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
-        self.test_server.get("/v2/reports")
-        .add_query_param("ids", &ids_str)
-        .append_pat(pat).await
+        self.test_server
+            .get("/v2/reports")
+            .add_query_param("ids", &ids_str)
+            .append_pat(pat)
+            .await
     }
 
     async fn get_user_reports(&self, pat: Option<&str>) -> TestResponse {
@@ -333,12 +322,8 @@ impl ApiProject for ApiV2 {
     async fn get_threads(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
         self.test_server
-        
-            .get(
-                "/v2/threads")
-        .add_query_param("ids",
-                &ids_str)
-            
+            .get("/v2/threads")
+            .add_query_param("ids", &ids_str)
             .append_pat(pat)
             .await
     }
@@ -395,30 +380,25 @@ impl ApiProject for ApiV2 {
         ordering: Option<i32>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut req = self.test_server
-        .post(&format!(
-            "/v2/project/{id_or_slug}/gallery",
-        ))
-        .add_query_param("ext", image.extension)
-        .add_query_param("featured", featured);
+        let mut req = self
+            .test_server
+            .post(&format!("/v2/project/{id_or_slug}/gallery",))
+            .add_query_param("ext", image.extension)
+            .add_query_param("featured", featured);
 
-    if let Some(title) = title {
-        req = req.add_query_param("title", title);
-    }
+        if let Some(title) = title {
+            req = req.add_query_param("title", title);
+        }
 
-    if let Some(description) = description {
-        req = req.add_query_param("description", description);
-    }
+        if let Some(description) = description {
+            req = req.add_query_param("description", description);
+        }
 
-    if let Some(ordering) = ordering {
-        req = req.add_query_param("ordering", ordering);
-    }        
+        if let Some(ordering) = ordering {
+            req = req.add_query_param("ordering", ordering);
+        }
 
-
-    req
-        .append_pat(pat)
-        .bytes(Bytes::from(image.icon))
-        .await
+        req.append_pat(pat).bytes(Bytes::from(image.icon)).await
     }
 
     async fn edit_gallery_item(
@@ -428,8 +408,10 @@ impl ApiProject for ApiV2 {
         patch: HashMap<String, String>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut req = self.test_server.patch(&format!("/v2/project/{id_or_slug}/gallery"))
-        .add_query_param("url", image_url);
+        let mut req = self
+            .test_server
+            .patch(&format!("/v2/project/{id_or_slug}/gallery"))
+            .add_query_param("url", image_url);
 
         for (key, value) in patch {
             req = req.add_query_param(&key, &value);
@@ -445,9 +427,7 @@ impl ApiProject for ApiV2 {
         pat: Option<&str>,
     ) -> TestResponse {
         self.test_server
-            .delete(
-                &format!("/v2/project/{id_or_slug}/gallery")
-            )
+            .delete(&format!("/v2/project/{id_or_slug}/gallery"))
             .add_query_param("url", url)
             .append_pat(pat)
             .await

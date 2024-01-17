@@ -41,7 +41,7 @@ pub async fn setup(db: &database::TemporaryDatabase) -> LabrinthConfig {
         clickhouse,
         file_host.clone(),
         maxmind_reader,
-        true
+        true,
     )
 }
 

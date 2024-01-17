@@ -6,10 +6,13 @@ use itertools::Itertools;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::{common::{
-    api_common::ApiTeams,
-    database::{generate_random_name, ADMIN_USER_PAT},
-}, assert_status};
+use crate::{
+    assert_status,
+    common::{
+        api_common::ApiTeams,
+        database::{generate_random_name, ADMIN_USER_PAT},
+    },
+};
 
 use super::{
     api_common::{Api, ApiProject},

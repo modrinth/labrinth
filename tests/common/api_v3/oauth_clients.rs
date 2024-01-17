@@ -82,10 +82,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> TestResponse {
         self.test_server
-            .delete(
-                "/_internal/oauth/authorizations",
-                
-            )
+            .delete("/_internal/oauth/authorizations")
             .add_query_param("client_id", client_id)
             .append_pat(pat)
             .await

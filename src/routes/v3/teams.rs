@@ -26,10 +26,7 @@ pub fn config() -> Router {
     Router::new().route("/teams", get(teams_get)).nest(
         "/team/:id",
         Router::new()
-            .route(
-                "/members",
-                get(team_members_get).post(add_team_member)
-            )
+            .route("/members", get(team_members_get).post(add_team_member))
             .route(
                 "/members/:user_id",
                 patch(edit_team_member).delete(remove_team_member),

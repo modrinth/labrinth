@@ -44,9 +44,11 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> TestResponse {
         let params = generate_authorize_params(client_id, scope, redirect_uri, state);
-        self.test_server.get("/_internal/oauth/authorize")
-        .add_query_params(&params)
-        .append_pat(pat).await
+        self.test_server
+            .get("/_internal/oauth/authorize")
+            .add_query_params(&params)
+            .append_pat(pat)
+            .await
     }
 
     pub async fn oauth_accept(&self, flow: &str, pat: Option<&str>) -> TestResponse {
@@ -96,7 +98,7 @@ pub fn generate_authorize_params(
     state: Option<&str>,
 ) -> serde_json::Value {
     // TODO: check if you can simnplify with just a jsoin
-    let mut json =  serde_json::json!({
+    let mut json = serde_json::json!({
         "client_id": client_id,
     });
 

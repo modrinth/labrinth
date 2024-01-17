@@ -89,7 +89,8 @@ pub fn app_setup(
             let search_config_ref = search_config_ref.clone();
             async move {
                 info!("Indexing local database");
-                let result = index_projects(pool_ref, redis_pool_ref.clone(), &search_config_ref).await;
+                let result =
+                    index_projects(pool_ref, redis_pool_ref.clone(), &search_config_ref).await;
                 if let Err(e) = result {
                     warn!("Local project indexing failed: {:?}", e);
                 }

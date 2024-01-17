@@ -248,9 +248,7 @@ impl ApiVersion for ApiV2 {
         pat: Option<&str>,
     ) -> TestResponse {
         self.test_server
-            .post(&format!(
-                "/v2/version_file/{hash}/update",
-            ))
+            .post(&format!("/v2/version_file/{hash}/update",))
             .add_query_param("algorithm", algorithm)
             .append_pat(pat)
             .json(&json!({
@@ -343,13 +341,15 @@ impl ApiVersion for ApiV2 {
         offset: Option<usize>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut req = self.test_server
-            .get(&format!(
-                "/v2/project/{project_id_slug}/version",
-            ));
-        
+        let mut req = self
+            .test_server
+            .get(&format!("/v2/project/{project_id_slug}/version",));
+
         if let Some(game_versions) = game_versions {
-            req = req.add_query_param("game_versions", &serde_json::to_string(&game_versions).unwrap());
+            req = req.add_query_param(
+                "game_versions",
+                &serde_json::to_string(&game_versions).unwrap(),
+            );
         }
 
         if let Some(loaders) = loaders {
@@ -372,9 +372,7 @@ impl ApiVersion for ApiV2 {
             req = req.add_query_param("offset", offset);
         }
 
-        req
-            .append_pat(pat)
-            .await
+        req.append_pat(pat).await
     }
 
     async fn get_project_versions_deserialized_common(

@@ -16,15 +16,19 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 pub fn config() -> Router {
-    Router::new().route("/teams", get(teams_get))
-        .nest(
-            "/team",
-            Router::new()
-                .route("/:id/join", post(join_team))
-                .route("/:id/owner", patch(transfer_ownership))
-                .route("/:id/members", get(team_members_get).post(add_team_member).patch(edit_team_member))
-                .route("/:id/members/:user_id", delete(remove_team_member))
-        )
+    Router::new().route("/teams", get(teams_get)).nest(
+        "/team",
+        Router::new()
+            .route("/:id/join", post(join_team))
+            .route("/:id/owner", patch(transfer_ownership))
+            .route(
+                "/:id/members",
+                get(team_members_get)
+                    .post(add_team_member)
+                    .patch(edit_team_member),
+            )
+            .route("/:id/members/:user_id", delete(remove_team_member)),
+    )
 }
 
 // Returns all members of a project,

@@ -123,9 +123,7 @@ impl ApiProject for ApiV3 {
     async fn get_projects(&self, ids_or_slugs: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_slugs = serde_json::to_string(ids_or_slugs).unwrap();
         self.test_server
-            .get(
-                "/v3/projects",
-            )
+            .get("/v3/projects")
             .add_query_param("ids", &ids_or_slugs)
             .append_pat(pat)
             .await
@@ -188,9 +186,7 @@ impl ApiProject for ApiV3 {
             .collect::<Vec<_>>()
             .join(",");
         self.test_server
-            .patch(
-                "/v3/projects",
-            )
+            .patch("/v3/projects")
             .add_query_param("ids", format!("[{projects_str}]"))
             .append_pat(pat)
             .json(&patch)
@@ -206,9 +202,7 @@ impl ApiProject for ApiV3 {
         if let Some(icon) = icon {
             // If an icon is provided, upload it
             self.test_server
-                .patch(&format!(
-                    "/v3/project/{id_or_slug}/icon",
-                ))
+                .patch(&format!("/v3/project/{id_or_slug}/icon",))
                 .add_query_param("ext", icon.extension)
                 .append_pat(pat)
                 .bytes(Bytes::from(icon.icon))
@@ -252,9 +246,7 @@ impl ApiProject for ApiV3 {
     async fn get_reports(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
         self.test_server
-            .get(
-                "/v3/reports",
-            )
+            .get("/v3/reports")
             .add_query_param("ids", &ids_str)
             .append_pat(pat)
             .await
@@ -294,10 +286,9 @@ impl ApiProject for ApiV3 {
         ordering: Option<i32>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut req = self.test_server
-            .post(&format!(
-                "/v3/project/{id_or_slug}/gallery",
-            ))
+        let mut req = self
+            .test_server
+            .post(&format!("/v3/project/{id_or_slug}/gallery",))
             .add_query_param("ext", image.extension)
             .add_query_param("featured", featured);
 
@@ -311,12 +302,9 @@ impl ApiProject for ApiV3 {
 
         if let Some(ordering) = ordering {
             req = req.add_query_param("ordering", ordering);
-        }        
+        }
 
-        req
-            .append_pat(pat)
-            .bytes(Bytes::from(image.icon))
-            .await
+        req.append_pat(pat).bytes(Bytes::from(image.icon)).await
     }
 
     async fn edit_gallery_item(
@@ -326,8 +314,10 @@ impl ApiProject for ApiV3 {
         patch: HashMap<String, String>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut req = self.test_server.patch(&format!("/v3/project/{id_or_slug}/gallery"))
-        .add_query_param("url", image_url);
+        let mut req = self
+            .test_server
+            .patch(&format!("/v3/project/{id_or_slug}/gallery"))
+            .add_query_param("url", image_url);
 
         for (key, value) in patch {
             req = req.add_query_param(&key, &value);
@@ -359,9 +349,7 @@ impl ApiProject for ApiV3 {
     async fn get_threads(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
         self.test_server
-            .get(
-                "/v3/threads",
-            )
+            .get("/v3/threads")
             .add_query_param("ids", &ids_str)
             .append_pat(pat)
             .await
@@ -442,9 +430,7 @@ impl ApiV3 {
         facets: Option<serde_json::Value>,
         pat: Option<&str>,
     ) -> SearchResults {
-        let mut req = self
-            .test_server
-            .get("/v3/search");
+        let mut req = self.test_server.get("/v3/search");
 
         if let Some(query) = query {
             req = req.add_query_param("query", query);
@@ -454,9 +440,7 @@ impl ApiV3 {
             req = req.add_query_param("facets", &facets.to_string());
         }
 
-        let resp = req
-            .append_pat(pat)
-            .await;
+        let resp = req.append_pat(pat).await;
         assert_status!(&resp, StatusCode::OK);
         resp.json()
     }
@@ -470,8 +454,7 @@ impl ApiV3 {
         resolution_minutes: Option<u32>,
         pat: Option<&str>,
     ) -> TestResponse {
-        let mut req = self.test_server
-            .get(&format!("/v3/analytics/revenue"));
+        let mut req = self.test_server.get(&format!("/v3/analytics/revenue"));
 
         if ids_are_version_ids {
             let version_string: String = serde_json::to_string(&id_or_slugs).unwrap();
@@ -494,10 +477,8 @@ impl ApiV3 {
         }
 
         println!("req: {:?}", req);
-    
-        req
-            .append_pat(pat)
-            .await
+
+        req.append_pat(pat).await
     }
 
     pub async fn get_analytics_revenue_deserialized(

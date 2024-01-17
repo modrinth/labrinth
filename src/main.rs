@@ -112,7 +112,7 @@ async fn main() -> std::io::Result<()> {
         clickhouse,
         file_host.clone(),
         maxmind_reader.clone(),
-        false
+        false,
     );
 
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();

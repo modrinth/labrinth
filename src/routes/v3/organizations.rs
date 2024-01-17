@@ -16,7 +16,7 @@ use crate::util::routes::read_from_payload;
 use crate::util::validate::validation_errors_to_string;
 use crate::{database, models};
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{get, patch, post, delete};
+use axum::routing::{delete, get, patch, post};
 use axum::Router;
 use futures::TryStreamExt;
 use rust_decimal::Decimal;
@@ -38,7 +38,10 @@ pub fn config() -> Router {
                     "/:id/projects",
                     get(organization_projects_get).post(organization_projects_add),
                 )
-                .route("/:id/projects/:project_id", delete(organization_projects_remove))
+                .route(
+                    "/:id/projects/:project_id",
+                    delete(organization_projects_remove),
+                )
                 .route(
                     "/:id",
                     get(organization_get)
