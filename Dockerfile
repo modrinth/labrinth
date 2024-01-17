@@ -5,7 +5,7 @@ WORKDIR /usr/src/labrinth
 # Download and compile deps
 COPY . .
 ARG SQLX_OFFLINE=true
-RUN cargo install --path .
+RUN cargo install --features jemalloc --path .
 
 # Final Stage
 FROM debian:bullseye-slim

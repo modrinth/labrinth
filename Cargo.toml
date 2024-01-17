@@ -116,6 +116,11 @@ rust_iso3166 = "0.1.11"
 
 multer = "3.0.0"
 
+jemallocator = {version = "0.3.2", optional = true}
+
+[features]
+jemalloc = ["jemallocator"]
+
 [dev-dependencies]
 axum-test = "14.2.2"
 json-patch = "*"
