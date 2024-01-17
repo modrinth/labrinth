@@ -79,7 +79,7 @@ pub async fn version_project_get(
     .ok();
 
     if let Some(project) = result {
-        if !is_visible_project(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -697,7 +697,7 @@ pub async fn version_list(
     .ok();
 
     if let Some(project) = result {
-        if !is_visible_project(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
             return Err(ApiError::NotFound);
         }
 

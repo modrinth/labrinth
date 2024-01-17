@@ -74,7 +74,7 @@ pub async fn projects_list(
 
         let projects: Vec<_> =
             crate::database::Project::get_many_ids(&project_data, &pool, &redis).await?;
-        let projects = filter_visible_projects(projects, &user, &pool).await?;
+        let projects = filter_visible_projects(projects, &user, &pool, true).await?;
         Ok(Json(projects))
     } else {
         Err(ApiError::NotFound)

@@ -103,7 +103,7 @@ pub async fn maven_metadata(
     .map(|x| x.1)
     .ok();
 
-    if !is_visible_project(&project.inner, &user_option, &pool).await? {
+    if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -294,7 +294,7 @@ pub async fn version_file(
     .map(|x| x.1)
     .ok();
 
-    if !is_visible_project(&project.inner, &user_option, &pool).await? {
+    if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
         return Err(ApiError::NotFound);
     }
 
