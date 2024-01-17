@@ -1,6 +1,7 @@
 use axum::routing::any;
 use axum::{Extension, Router};
 use std::sync::Arc;
+use axum::extract::DefaultBodyLimit;
 
 use database::redis::RedisPool;
 use queue::{
@@ -258,6 +259,7 @@ pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
         .layer(Extension(labrinth_config.clickhouse.clone()))
         .layer(Extension(labrinth_config.maxmind.clone()))
         .layer(Extension(labrinth_config.active_sockets.clone()))
+        .layer(DefaultBodyLimit::max(5 * 1024))
 }
 
 // This is so that env vars not used immediately don't panic at runtime
