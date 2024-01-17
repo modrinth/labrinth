@@ -15,7 +15,7 @@ use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
 pub mod internal;
-// pub mod v2;
+pub mod v2;
 pub mod v3;
 
 pub mod v2_reroute;
@@ -200,5 +200,24 @@ impl IntoResponse for ApiError {
         };
 
         (status_code, Json(error_message)).into_response()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct ApiErrorV2(pub ApiError);
+
+impl IntoResponse for ApiErrorV2 {
+    fn into_response(self) -> Response {
+        match self.0 {
+            ApiError::NotFound => (StatusCode::NOT_FOUND, "").into_response(),
+            err => err.into_response(),
+        }
+    }
+}
+
+impl From<ApiError> for ApiErrorV2 {
+    fn from(error: ApiError) -> Self {
+        ApiErrorV2(error)
     }
 }

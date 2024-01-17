@@ -1,30 +1,36 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use super::ApiError;
 use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::VersionId;
-use crate::models::projects::{Dependency, FileType, Version, VersionStatus, VersionType};
+use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v2_reroute, v3};
+use crate::routes::v3;
 use crate::search::SearchConfig;
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{post, get};
 use serde::{Deserialize, Serialize};
+use axum::Router;
+
 use sqlx::PgPool;
 use validator::Validate;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(versions_get);
-    cfg.service(super::version_creation::version_create);
+pub fn config() -> Router {
+    Router::new()
+        .route("/versions", get(versions_get))
+        .route("/version", post(super::version_creation::version_create))
+        .nest(
+            "/version",
+            Router::new()
+                .route("/:slug", get(version_get).patch(version_edit).delete(version_delete))
+                .route("/:slug/file", post(super::version_creation::upload_file_to_version))
 
-    cfg.service(
-        web::scope("version")
-            .service(version_get)
-            .service(version_delete)
-            .service(version_edit)
-            .service(super::version_creation::upload_file_to_version),
-    );
+        )
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -37,7 +43,6 @@ pub struct VersionListFilters {
     pub offset: Option<usize>,
 }
 
-#[get("version")]
 pub async fn version_list(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -46,7 +51,7 @@ pub async fn version_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<Json<Vec<LegacyVersion>>, ApiError> {
     let loaders = if let Some(loaders) = filters.loaders {
         if let Ok(mut loaders) = serde_json::from_str::<Vec<String>>(&loaders) {
             loaders.push("mrpack".to_string());
@@ -95,46 +100,48 @@ pub async fn version_list(
         offset: filters.offset,
     };
 
-    let response =
-        v3::versions::version_list(req, info, Query(filters), pool, redis, session_queue)
-            .await
-            .or_else(v2_reroute::flatten_404_error)?;
+    let Json(versions) =
+        v3::versions::version_list(
+            ConnectInfo(addr),
+            headers,
+            Path(info),
+            Query(filters),
+            Extension(pool),
+            Extension(redis),
+            Extension(session_queue),
+        )
+            .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Vec<Version>>(response).await {
-        Ok(versions) => {
-            let v2_versions = versions
-                .into_iter()
-                .map(LegacyVersion::from)
-                .collect::<Vec<_>>();
-            Ok(Json(v2_versions))
-        }
-        Err(response) => Ok(response),
-    }
+    let versions = versions
+        .into_iter()
+        .map(LegacyVersion::from)
+        .collect::<Vec<_>>();
+    Ok(Json(versions))
 }
 
 // Given a project ID/slug and a version slug
-#[get("version/{slug}")]
 pub async fn version_project_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(String, String)>,
+    Path(info): Path<(String, String)>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner();
-    let response = v3::versions::version_project_get_helper(req, id, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<LegacyVersion>, ApiError> {
+    let Json(response) = v3::versions::version_project_get(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+        .await?;
+
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Version>(response).await {
-        Ok(version) => {
-            let v2_version = LegacyVersion::from(version);
-            Ok(Json(v2_version))
-        }
-        Err(response) => Ok(response),
-    }
+    let version = LegacyVersion::from(response);
+    Ok(Json(version))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -142,7 +149,6 @@ pub struct VersionIds {
     pub ids: String,
 }
 
-#[get("versions")]
 pub async fn versions_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -150,46 +156,47 @@ pub async fn versions_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<Json<Vec<LegacyVersion>>, ApiError> {
     let ids = v3::versions::VersionIds { ids: ids.ids };
-    let response = v3::versions::versions_get(req, Query(ids), pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+    let Json(versions) = v3::versions::versions_get(
+        ConnectInfo(addr),
+        headers,
+        Query(ids),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+        .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Vec<Version>>(response).await {
-        Ok(versions) => {
-            let v2_versions = versions
-                .into_iter()
-                .map(LegacyVersion::from)
-                .collect::<Vec<_>>();
-            Ok(Json(v2_versions))
-        }
-        Err(response) => Ok(response),
-    }
+    let versions = versions
+        .into_iter()
+        .map(LegacyVersion::from)
+        .collect::<Vec<_>>();
+    Ok(Json(versions))
 }
 
-#[get("{version_id}")]
 pub async fn version_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(models::ids::VersionId,)>,
+    Path(info): Path<models::ids::VersionId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let id = info.into_inner().0;
-    let response = v3::versions::version_get_helper(req, id, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<LegacyVersion>, ApiError> {
+    let Json(version) = v3::versions::version_get(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),        
+    )
+        .await?;
+
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Version>(response).await {
-        Ok(version) => {
-            let v2_version = LegacyVersion::from(version);
-            Ok(Json(v2_version))
-        }
-        Err(response) => Ok(response),
-    }
+    let version = LegacyVersion::from(version);
+    Ok(Json(version))
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -228,17 +235,15 @@ pub struct EditVersionFileType {
     pub file_type: Option<FileType>,
 }
 
-#[patch("{id}")]
 pub async fn version_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(VersionId,)>,
+    Path(info): Path<VersionId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    new_version: Json<EditVersion>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let new_version = new_version.into_inner();
+    Json(new_version): Json<EditVersion>,
+) -> Result<StatusCode, ApiError> {
 
     let mut fields = HashMap::new();
     if new_version.game_versions.is_some() {
@@ -249,19 +254,15 @@ pub async fn version_edit(
     }
 
     // Get the older version to get info from
-    let old_version = v3::versions::version_get_helper(
-        req.clone(),
-        (*info).0,
-        pool.clone(),
-        redis.clone(),
-        session_queue.clone(),
+    let Json(old_version) = v3::versions::version_get(
+        ConnectInfo(addr),
+        headers.clone(),
+        Path(info),
+        Extension(pool.clone()),
+        Extension(redis.clone()),
+        Extension(session_queue.clone())
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)?;
-    let old_version = match v2_reroute::extract_ok_json::<Version>(old_version).await {
-        Ok(version) => version,
-        Err(response) => return Ok(response),
-    };
+    .await?;
 
     // If this has 'mrpack_loaders' as a loader field previously, this is a modpack.
     // Therefore, if we are modifying the 'loader' field in this case,
@@ -299,31 +300,36 @@ pub async fn version_edit(
         fields,
     };
 
-    let response = v3::versions::version_edit(
-        req,
-        info,
-        pool,
-        redis,
-        Json(serde_json::to_value(new_version)?),
-        session_queue,
+    Ok(v3::versions::version_edit(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+        Json(new_version),
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)?;
-    Ok(response)
+    .await?)
 }
 
-#[delete("{version_id}")]
 pub async fn version_delete(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(VersionId,)>,
+    Path(info): Path<VersionId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(search_config): Extension<SearchConfig>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so we don't need to convert the response
-    v3::versions::version_delete(req, info, pool, redis, session_queue, search_config)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
+) -> Result<StatusCode, ApiError> {
+
+    Ok(v3::versions::version_delete(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+        Extension(search_config),
+    )
+        .await?)
 }

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // The structures for project/version creation.
 // These are created differently, but are essentially the same between versions.
 

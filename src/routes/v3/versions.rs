@@ -1,5 +1,5 @@
 use axum::http::HeaderMap;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -37,13 +37,13 @@ use validator::Validate;
 
 pub fn config() -> Router {
     Router::new()
-        // TODO: .route("version", post(super::version_creation::version_create))
+        .route("version", post(super::version_creation::version_create))
         .route("/versions", get(versions_get))
         .route(
             "/version/:id",
             get(version_get).patch(version_edit).delete(version_delete),
         )
-    // TODO: .route("/version/:id/file", post(super::version_creation::upload_file_to_version))
+        .route("/version/:id/file", post(super::version_creation::upload_file_to_version))
 }
 
 // Given a project ID/slug and a version slug

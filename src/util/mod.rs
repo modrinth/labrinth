@@ -9,5 +9,6 @@ pub mod img;
 pub mod ip;
 pub mod ratelimit;
 pub mod routes;
+pub mod multipart;
 pub mod validate;
 pub mod webhook;

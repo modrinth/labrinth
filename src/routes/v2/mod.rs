@@ -22,7 +22,7 @@ pub fn config() -> Router {
         Router::new()
             .merge(super::internal::admin::config())
             .merge(super::internal::session::config())
-            .merge(super::internal::flows::config)
+            .merge(super::internal::flows::config())
             .merge(super::internal::pats::config())
             .merge(moderation::config())
             .merge(notifications::config())
@@ -39,3 +39,4 @@ pub fn config() -> Router {
             .layer(default_cors()),
     )
 }
+

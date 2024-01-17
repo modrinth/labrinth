@@ -3,27 +3,30 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::ImageId;
-use crate::models::projects::{Loader, Project, ProjectStatus};
+use crate::models::projects::{Loader, ProjectStatus};
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType};
 use crate::queue::session::AuthQueue;
-use crate::routes::v3::project_creation::default_project_type;
-use crate::routes::v3::project_creation::{CreateError, NewGalleryItem};
+use crate::routes::v3::project_creation::{CreateError, default_project_type, NewGalleryItem};
 use crate::routes::{v2_reroute, v3};
-use actix_multipart::Multipart;
-use actix_web::web::Data;
-use actix_web::{post, HttpRequest, HttpResponse};
+use crate::util::multipart::MultipartWrapper;
+use crate::util::extract::{ConnectInfo, Extension, Json};
+use axum::Router;
+use axum::http::HeaderMap;
+use axum::routing::post;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use validator::Validate;
 
 use super::version_creation::InitialVersionData;
 
-pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
-    cfg.service(project_create);
+pub fn config() -> Router {
+    Router::new()
+        .route("/project", post(project_create))
 }
 
 pub fn default_requested_status() -> ProjectStatus {
@@ -133,20 +136,19 @@ struct ProjectCreateData {
     pub organization_id: Option<models::ids::OrganizationId>,
 }
 
-#[post("project")]
 pub async fn project_create(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    payload: Multipart,
     Extension(client): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, CreateError> {
+    mut payload: MultipartWrapper,
+) -> Result<Json<LegacyProject>, CreateError> {
+
     // Convert V2 multipart payload to V3 multipart payload
-    let payload = v2_reroute::alter_actix_multipart(
-        payload,
-        req.headers().clone(),
+    let new_payload = v2_reroute::alter_axum_multipart(
+        &mut payload,
         |legacy_create: ProjectCreateData, _| async move {
             // Side types will be applied to each version
             let client_side = legacy_create.client_side;
@@ -235,26 +237,22 @@ pub async fn project_create(
     .await?;
 
     // Call V3 project creation
-    let response = v3::project_creation::project_create(
-        req,
-        payload,
-        client.clone(),
-        redis.clone(),
-        file_host,
-        session_queue,
+    let Json(project) = v3::project_creation::project_create(
+        ConnectInfo(addr),
+        headers,
+        Extension(client.clone()),
+        Extension(redis.clone()),
+        Extension(file_host.clone()),
+        Extension(session_queue.clone()),
+        new_payload,
     )
     .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Project>(response).await {
-        Ok(project) => {
-            let version_item = match project.versions.first() {
-                Some(vid) => version_item::Version::get((*vid).into(), &**client, &redis).await?,
-                None => None,
-            };
-            let project = LegacyProject::from(project, version_item);
-            Ok(Json(project))
-        }
-        Err(response) => Ok(response),
-    }
+    let version_item = match project.versions.first() {
+        Some(vid) => version_item::Version::get((*vid).into(), &client, &redis).await?,
+        None => None,
+    };
+    let project = LegacyProject::from(project, version_item);
+    Ok(Json(project))
 }

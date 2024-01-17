@@ -5,6 +5,7 @@
 // These fields only apply to minecraft-java, and are hardcoded to the minecraft-java game.
 
 use chrono::{DateTime, Utc};
+use futures::Future;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -34,15 +35,16 @@ impl MinecraftGameVersion {
         MinecraftGameVersionBuilder::default()
     }
 
-    pub async fn list<'a, E>(
-        version_type_option: Option<&str>,
+    pub fn list<'a, 'c, E>(
+        version_type_option: Option<&'a str>,
         major_option: Option<bool>,
         exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<MinecraftGameVersion>, DatabaseError>
+        redis: &'a RedisPool,
+    ) -> impl Future<Output = Result<Vec<MinecraftGameVersion>, DatabaseError>> + Send + 'a
     where
-        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
+        E: sqlx::Acquire<'c, Database = sqlx::Postgres> + Send + 'a,
     {
+        async move {
         let mut exec = exec.acquire().await?;
         let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, &mut *exec, redis)
             .await?
@@ -70,6 +72,7 @@ impl MinecraftGameVersion {
             .collect_vec();
 
         Ok(game_versions)
+        }
     }
 
     // Tries to create a MinecraftGameVersion from a VersionField

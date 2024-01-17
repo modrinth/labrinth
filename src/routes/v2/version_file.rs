@@ -1,91 +1,111 @@
 use super::ApiError;
 use crate::database::redis::RedisPool;
-use crate::models::projects::{Project, Version, VersionType};
+use crate::models::projects::VersionType;
 use crate::models::v2::projects::{LegacyProject, LegacyVersion};
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::version_file::HashQuery;
-use crate::routes::{v2_reroute, v3};
-use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
+use crate::routes::v3;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
+use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
+use axum::routing::{get, post};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use axum::Router;
+
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("version_file")
-            .service(delete_file)
-            .service(get_version_from_hash)
-            .service(download_version)
-            .service(get_update_from_hash)
-            .service(get_projects_from_hashes),
-    );
-
-    cfg.service(
-        web::scope("version_files")
-            .service(get_versions_from_hashes)
-            .service(update_files)
-            .service(update_individual_files),
-    );
+pub fn config() -> Router {
+    Router::new()
+        .nest(
+            "/version_file",
+            Router::new()
+                .route("/:hash", get(get_version_from_hash).delete(delete_file))
+                .route("/:hash/download", get(download_version))
+                .route("/:hash/update", post(get_update_from_hash))
+                .route("/project", post(get_projects_from_hashes))
+        )
+        .nest(
+            "/version_files",
+            Router::new()
+                .route("/", post(get_versions_from_hashes))
+                .route("/update", post(update_files))
+                .route("/update_individual", post(update_individual_files))
+        )
 }
 
 // under /api/v1/version_file/{hash}
-#[get("{version_id}")]
 pub async fn get_version_from_hash(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: Query<HashQuery>,
+    Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let response =
-        v3::version_file::get_version_from_hash(req, info, pool, redis, hash_query, session_queue)
-            .await
-            .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<LegacyVersion>, ApiError> {
+    let Json(version) =
+        v3::version_file::get_version_from_hash(
+            ConnectInfo(addr),
+            headers,
+            Path(info),
+            Extension(pool),
+            Extension(redis),
+            Query(hash_query),
+            Extension(session_queue),
+        )
+            .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Version>(response).await {
-        Ok(version) => {
-            let v2_version = LegacyVersion::from(version);
-            Ok(Json(v2_version))
-        }
-        Err(response) => Ok(response),
-    }
+    let version = LegacyVersion::from(version);
+    Ok(Json(version))
 }
 
 // under /api/v1/version_file/{hash}/download
-#[get("{version_id}/download")]
 pub async fn download_version(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: Query<HashQuery>,
+    Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
+) -> Result<impl IntoResponse, ApiError> {
     // Returns TemporaryRedirect, so no need to convert to V2
-    v3::version_file::download_version(req, info, pool, redis, hash_query, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
+    Ok(v3::version_file::download_version(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Query(hash_query),
+        Extension(session_queue),
+    )
+        .await?)
 }
 
 // under /api/v1/version_file/{hash}
-#[delete("{version_id}")]
 pub async fn delete_file(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: Query<HashQuery>,
+    Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so no need to convert to V2
-    v3::version_file::delete_file(req, info, pool, redis, hash_query, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
+) -> Result<StatusCode, ApiError> {
+    Ok(v3::version_file::delete_file(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Query(hash_query),
+        Extension(session_queue),
+    )
+        .await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -95,18 +115,16 @@ pub struct UpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 
-#[post("{version_id}/update")]
 pub async fn get_update_from_hash(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    hash_query: Query<HashQuery>,
-    update_data: Json<UpdateData>,
+    Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let update_data = update_data.into_inner();
+    Json(update_data): Json<UpdateData>,
+) -> Result<Json<LegacyVersion>, ApiError> {
     let mut loader_fields = HashMap::new();
     let mut game_versions = vec![];
     for gv in update_data.game_versions.into_iter().flatten() {
@@ -121,26 +139,21 @@ pub async fn get_update_from_hash(
         loader_fields: Some(loader_fields),
     };
 
-    let response = v3::version_file::get_update_from_hash(
-        req,
-        info,
-        pool,
-        redis,
-        hash_query,
+    let Json(version) = v3::version_file::get_update_from_hash(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Query(hash_query),
+        Extension(session_queue),
         Json(update_data),
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)?;
+    .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Version>(response).await {
-        Ok(version) => {
-            let v2_version = LegacyVersion::from(version);
-            Ok(Json(v2_version))
-        }
-        Err(response) => Ok(response),
-    }
+    let version = LegacyVersion::from(version);
+    Ok(Json(version))
 }
 
 // Requests above with multiple versions below
@@ -151,73 +164,62 @@ pub struct FileHashes {
 }
 
 // under /api/v2/version_files
-#[post("")]
 pub async fn get_versions_from_hashes(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    file_data: Json<FileHashes>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let file_data = file_data.into_inner();
+    Json(file_data): Json<FileHashes>,
+) -> Result<Json<HashMap<String, LegacyVersion>>, ApiError> {
     let file_data = v3::version_file::FileHashes {
         algorithm: file_data.algorithm,
         hashes: file_data.hashes,
     };
-    let response = v3::version_file::get_versions_from_hashes(
-        req,
-        pool,
-        redis,
+    let Json(map) = v3::version_file::get_versions_from_hashes(
+        ConnectInfo(addr),
+        headers,
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
         Json(file_data),
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)?;
+    .await?;
 
     // Convert to V2
-    match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {
-        Ok(versions) => {
-            let v2_versions = versions
-                .into_iter()
-                .map(|(hash, version)| {
-                    let v2_version = LegacyVersion::from(version);
-                    (hash, v2_version)
-                })
-                .collect::<HashMap<_, _>>();
-            Ok(Json(v2_versions))
-        }
-        Err(response) => Ok(response),
-    }
+    let map = map
+        .into_iter()
+        .map(|(hash, version)| {
+            let v2_version = LegacyVersion::from(version);
+            (hash, v2_version)
+        })
+        .collect::<HashMap<_, _>>();
+    Ok(Json(map))
 }
 
-#[post("project")]
 pub async fn get_projects_from_hashes(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    file_data: Json<FileHashes>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let file_data = file_data.into_inner();
+    Json(file_data): Json<FileHashes>,
+) -> Result<Json<HashMap<String, LegacyProject>>, ApiError> {
     let file_data = v3::version_file::FileHashes {
         algorithm: file_data.algorithm,
         hashes: file_data.hashes,
     };
-    let response = v3::version_file::get_projects_from_hashes(
-        req,
-        pool.clone(),
-        redis.clone(),
+    let Json(projects_hashes) = v3::version_file::get_projects_from_hashes(
+        ConnectInfo(addr),
+        headers,
+        Extension(pool.clone()),
+        Extension(redis.clone()),
+        Extension(session_queue),
         Json(file_data),
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)?;
+    .await?;
 
     // Convert to V2
-    match v2_reroute::extract_ok_json::<HashMap<String, Project>>(response).await {
-        Ok(projects_hashes) => {
             let hash_to_project_id = projects_hashes
                 .iter()
                 .map(|(hash, project)| {
@@ -238,9 +240,6 @@ pub async fn get_projects_from_hashes(
                 .collect::<HashMap<_, _>>();
 
             Ok(Json(legacy_projects_hashes))
-        }
-        Err(response) => Ok(response),
-    }
 }
 
 #[derive(Deserialize)]
@@ -252,16 +251,14 @@ pub struct ManyUpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 
-#[post("update")]
 pub async fn update_files(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    update_data: Json<ManyUpdateData>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let update_data = update_data.into_inner();
+    Json(update_data): Json<ManyUpdateData>,
+) -> Result<Json<HashMap<String, LegacyVersion>>, ApiError> {
     let mut loader_fields = HashMap::new();
     let mut game_versions = vec![];
     for gv in update_data.game_versions.into_iter().flatten() {
@@ -278,25 +275,26 @@ pub async fn update_files(
         hashes: update_data.hashes,
     };
 
-    let response =
-        v3::version_file::update_files(req, pool, redis, Json(update_data), session_queue)
-            .await
-            .or_else(v2_reroute::flatten_404_error)?;
+    let Json(map) =
+        v3::version_file::update_files(
+            ConnectInfo(addr),
+            headers,
+            Extension(pool),
+            Extension(redis),
+            Extension(session_queue),
+            Json(update_data),
+        )
+            .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {
-        Ok(returned_versions) => {
-            let v3_versions = returned_versions
-                .into_iter()
-                .map(|(hash, version)| {
-                    let v2_version = LegacyVersion::from(version);
-                    (hash, v2_version)
-                })
-                .collect::<HashMap<_, _>>();
-            Ok(Json(v3_versions))
-        }
-        Err(response) => Ok(response),
-    }
+    let map = map
+        .into_iter()
+        .map(|(hash, version)| {
+            let v2_version = LegacyVersion::from(version);
+            (hash, v2_version)
+        })
+        .collect::<HashMap<_, _>>();
+    Ok(Json(map))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -313,16 +311,14 @@ pub struct ManyFileUpdateData {
     pub hashes: Vec<FileUpdateData>,
 }
 
-#[post("update_individual")]
 pub async fn update_individual_files(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    update_data: Json<ManyFileUpdateData>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let update_data = update_data.into_inner();
+    Json(update_data): Json<ManyFileUpdateData>,
+) -> Result<Json<HashMap<String, LegacyVersion>>, ApiError> {
     let update_data = v3::version_file::ManyFileUpdateData {
         algorithm: update_data.algorithm,
         hashes: update_data
@@ -347,28 +343,24 @@ pub async fn update_individual_files(
             .collect(),
     };
 
-    let response = v3::version_file::update_individual_files(
-        req,
-        pool,
-        redis,
+    let Json(version_map) = v3::version_file::update_individual_files(
+        ConnectInfo(addr),
+        headers,
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
         Json(update_data),
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)?;
+    .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {
-        Ok(returned_versions) => {
-            let v3_versions = returned_versions
-                .into_iter()
-                .map(|(hash, version)| {
-                    let v2_version = LegacyVersion::from(version);
-                    (hash, v2_version)
-                })
-                .collect::<HashMap<_, _>>();
-            Ok(Json(v3_versions))
-        }
-        Err(response) => Ok(response),
-    }
+    let version_map = version_map
+        .into_iter()
+        .map(|(hash, version)| {
+            let v2_version = LegacyVersion::from(version);
+            (hash, v2_version)
+        })
+        .collect::<HashMap<_, _>>();
+    Ok(Json(version_map))
+
 }

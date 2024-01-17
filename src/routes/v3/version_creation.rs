@@ -19,18 +19,19 @@ use crate::models::projects::{
 };
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::util::multipart::{FieldWrapper, MultipartWrapper};
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use crate::validate::{validate_file, ValidationResult};
-use actix_multipart::{Field, Multipart};
-use actix_web::web::Data;
-use actix_web::{web, HttpRequest, HttpResponse};
+use crate::util::extract::{ConnectInfo, Extension, Json, Path};
+use axum::http::{HeaderMap, StatusCode};
 use chrono::Utc;
 use futures::stream::StreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -98,21 +99,22 @@ struct InitialFileData {
 pub async fn version_create(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    mut payload: Multipart,
     Extension(client): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, CreateError> {
+    mut payload: MultipartWrapper,
+) -> Result<Json<Version>, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
 
     let result = version_create_inner(
-        req,
+        ConnectInfo(addr),
+        headers,
         &mut payload,
         &mut transaction,
         &redis,
-        &***file_host,
+        &*file_host,
         &mut uploaded_files,
         &client,
         &session_queue,
@@ -121,7 +123,7 @@ pub async fn version_create(
 
     if result.is_err() {
         let undo_result =
-            super::project_creation::undo_uploads(&***file_host, &uploaded_files).await;
+            super::project_creation::undo_uploads(&*file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
 
         undo_result?;
@@ -139,14 +141,14 @@ pub async fn version_create(
 async fn version_create_inner(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    payload: &mut Multipart,
+    payload: &mut MultipartWrapper,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &RedisPool,
-    file_host: &dyn FileHost,
+    file_host: &(dyn FileHost + Send + Sync),
     uploaded_files: &mut Vec<UploadedFile>,
     pool: &PgPool,
     session_queue: &AuthQueue,
-) -> Result<HttpResponse, CreateError> {
+) -> Result<Json<Version>, CreateError> {
     let cdn_url = dotenvy::var("CDN_URL")?;
 
     let mut initial_version_data = None;
@@ -165,16 +167,15 @@ async fn version_create_inner(
     .1;
 
     let mut error = None;
-    while let Some(item) = payload.next().await {
-        let mut field: Field = item?;
+    while let Some(mut field) = payload.next_field().await? {
 
         if error.is_some() {
             continue;
         }
 
         let result = async {
-            let content_disposition = field.content_disposition().clone();
-            let name = content_disposition.get_name().ok_or_else(|| {
+            let content_disposition_name = field.name().map(|x| x.to_string());
+            let name = content_disposition_name.ok_or_else(|| {
                 CreateError::MissingValueError("Missing content name".to_string())
             })?;
 
@@ -344,14 +345,13 @@ async fn version_create_inner(
                 &mut version.files,
                 &mut version.dependencies,
                 &cdn_url,
-                &content_disposition,
                 version.project_id.into(),
                 version.version_id.into(),
                 &version.version_fields,
                 loaders,
                 version_data.primary_file.is_some(),
-                version_data.primary_file.as_deref() == Some(name),
-                version_data.file_types.get(name).copied().flatten(),
+                version_data.primary_file.as_deref() == Some(&name),
+                version_data.file_types.get(&name).copied().flatten(),
                 transaction,
                 redis,
             )
@@ -507,25 +507,26 @@ async fn version_create_inner(
 pub async fn upload_file_to_version(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    url_data: web::Path<(VersionId,)>,
-    mut payload: Multipart,
+    Path(url_data): Path<VersionId>,
     Extension(client): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, CreateError> {
+    mut payload: MultipartWrapper,
+) -> Result<StatusCode, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
 
-    let version_id = models::VersionId::from(url_data.into_inner().0);
+    let version_id = models::VersionId::from(url_data);
 
     let result = upload_file_to_version_inner(
-        req,
+        ConnectInfo(addr),
+        headers,
         &mut payload,
-        client,
+        Extension(client),
         &mut transaction,
-        redis,
-        &***file_host,
+        Extension(redis),
+        &*file_host,
         &mut uploaded_files,
         version_id,
         &session_queue,
@@ -534,7 +535,7 @@ pub async fn upload_file_to_version(
 
     if result.is_err() {
         let undo_result =
-            super::project_creation::undo_uploads(&***file_host, &uploaded_files).await;
+            super::project_creation::undo_uploads(&*file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
 
         undo_result?;
@@ -552,15 +553,15 @@ pub async fn upload_file_to_version(
 async fn upload_file_to_version_inner(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    payload: &mut Multipart,
+    payload: &mut MultipartWrapper,
     Extension(client): Extension<PgPool>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     Extension(redis): Extension<RedisPool>,
-    file_host: &dyn FileHost,
+    file_host: &(dyn FileHost + Send + Sync),
     uploaded_files: &mut Vec<UploadedFile>,
     version_id: models::VersionId,
     session_queue: &AuthQueue,
-) -> Result<HttpResponse, CreateError> {
+) -> Result<StatusCode, CreateError> {
     let cdn_url = dotenvy::var("CDN_URL")?;
 
     let mut initial_file_data: Option<InitialFileData> = None;
@@ -569,7 +570,7 @@ async fn upload_file_to_version_inner(
     let user = get_user_from_headers(
         &addr,
         &headers,
-        &**client,
+        &client,
         &redis,
         session_queue,
         Some(&[Scopes::VERSION_WRITE]),
@@ -577,7 +578,7 @@ async fn upload_file_to_version_inner(
     .await?
     .1;
 
-    let result = models::Version::get(version_id, &**client, &redis).await?;
+    let result = models::Version::get(version_id, &client, &redis).await?;
 
     let version = match result {
         Some(v) => v,
@@ -621,7 +622,7 @@ async fn upload_file_to_version_inner(
 
         let organization = Organization::get_associated_organization_project_id(
             version.inner.project_id,
-            &**client,
+            &client,
         )
         .await?;
 
@@ -652,16 +653,15 @@ async fn upload_file_to_version_inner(
 
     let project_id = ProjectId(version.inner.project_id.0 as u64);
     let mut error = None;
-    while let Some(item) = payload.next().await {
-        let mut field: Field = item?;
+    while let Some(mut field) = payload.next_field().await? {
 
         if error.is_some() {
             continue;
         }
 
         let result = async {
-            let content_disposition = field.content_disposition().clone();
-            let name = content_disposition.get_name().ok_or_else(|| {
+            let content_disposition_name = field.name().map(|x| x.to_string());
+            let name = content_disposition_name.ok_or_else(|| {
                 CreateError::MissingValueError("Missing content name".to_string())
             })?;
 
@@ -704,14 +704,13 @@ async fn upload_file_to_version_inner(
                 &mut file_builders,
                 &mut dependencies,
                 &cdn_url,
-                &content_disposition,
                 project_id,
                 version_id.into(),
                 &version.version_fields,
                 loaders,
                 true,
                 false,
-                file_data.file_types.get(name).copied().flatten(),
+                file_data.file_types.get(&name).copied().flatten(),
                 transaction,
                 &redis,
             )
@@ -750,14 +749,13 @@ async fn upload_file_to_version_inner(
 // files for a version, and for uploading the initial version files for a project
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
-    field: &mut Field,
-    file_host: &dyn FileHost,
+    field: &mut FieldWrapper<'_>,
+    file_host: &(dyn FileHost + Send + Sync),
     total_files_len: usize,
     uploaded_files: &mut Vec<UploadedFile>,
     version_files: &mut Vec<VersionFileBuilder>,
     dependencies: &mut Vec<DependencyBuilder>,
     cdn_url: &str,
-    content_disposition: &actix_web::http::header::ContentDisposition,
     project_id: ProjectId,
     version_id: VersionId,
     version_fields: &[VersionField],
@@ -768,7 +766,10 @@ pub async fn upload_file(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     redis: &RedisPool,
 ) -> Result<(), CreateError> {
-    let (file_name, file_extension) = get_name_ext(content_disposition)?;
+    let content_disposition_file_name = field.file_name();
+    let (file_name, file_extension) = get_name_ext(content_disposition_file_name)?;
+    let file_name = file_name.to_string();
+    let file_extension = file_extension.to_string();
 
     if file_name.contains('/') {
         return Err(CreateError::InvalidInput(
@@ -776,7 +777,7 @@ pub async fn upload_file(
         ));
     }
 
-    let content_type = crate::util::ext::project_file_type(file_extension)
+    let content_type = crate::util::ext::project_file_type(&file_extension)
         .ok_or_else(|| CreateError::InvalidFileType(file_extension.to_string()))?;
 
     let data = read_from_field(
@@ -891,7 +892,7 @@ pub async fn upload_file(
         "data/{}/versions/{}/{}",
         project_id,
         version_id,
-        urlencoding::encode(file_name)
+        urlencoding::encode(&file_name)
     );
     let file_path = format!("data/{}/versions/{}/{}", project_id, version_id, &file_name);
 
@@ -943,10 +944,9 @@ pub async fn upload_file(
 }
 
 pub fn get_name_ext(
-    content_disposition: &actix_web::http::header::ContentDisposition,
+    file_name: Option<&str>,
 ) -> Result<(&str, &str), CreateError> {
-    let file_name = content_disposition
-        .get_filename()
+    let file_name = file_name
         .ok_or_else(|| CreateError::MissingValueError("Missing content file name".to_string()))?;
     let file_extension = if let Some(last_period) = file_name.rfind('.') {
         file_name.get((last_period + 1)..).unwrap_or("")

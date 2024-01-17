@@ -1,57 +1,57 @@
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models::notifications::Notification;
-use crate::models::projects::Project;
-use crate::models::users::{Badges, Role, User};
+use crate::models::users::{Badges, Role};
 use crate::models::v2::notifications::LegacyNotification;
 use crate::models::v2::projects::LegacyProject;
 use crate::models::v2::user::LegacyUser;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v2_reroute, v3, ApiError};
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use crate::routes::{v3, ApiError};
+use axum::Router;
+use axum::routing::{get, patch};
+use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
+use axum::http::{HeaderMap, StatusCode};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use validator::Validate;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(user_auth_get);
-    cfg.service(users_get);
-
-    cfg.service(
-        web::scope("user")
-            .service(user_get)
-            .service(projects_list)
-            .service(user_delete)
-            .service(user_edit)
-            .service(user_icon_edit)
-            .service(user_notifications)
-            .service(user_follows),
-    );
+pub fn config() -> Router {
+    Router::new()
+        .route("/user", get(user_auth_get))
+        .route("/users", get(users_get))
+        .nest(
+            "/user",
+            Router::new()
+                .route("/:id/projects", get(projects_list))
+                .route("/:id", get(user_get).patch(user_edit).delete(user_delete))
+                .route("/:id/icon", patch(user_icon_edit))
+                .route("/:id/follows", get(user_follows))
+                .route("/:id/notifications", get(user_notifications))
+        )
 }
 
-#[get("user")]
 pub async fn user_auth_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::user_auth_get(req, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<LegacyUser>, ApiError> {
+    let Json(user) = v3::users::user_auth_get(
+        ConnectInfo(addr),
+        headers,
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+        .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<User>(response).await {
-        Ok(user) => {
-            let user = LegacyUser::from(user);
-            Ok(Json(user))
-        }
-        Err(response) => Ok(response),
-    }
+    let user = LegacyUser::from(user);
+    Ok(Json(user))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -59,47 +59,40 @@ pub struct UserIds {
     pub ids: String,
 }
 
-#[get("users")]
 pub async fn users_get(
     Query(ids): Query<UserIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::users_get(Query(v3::users::UserIds { ids: ids.ids }), pool, redis)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<Vec<LegacyUser>>, ApiError> {
+    let Json(users) = v3::users::users_get(
+        Query(v3::users::UserIds { ids: ids.ids }),
+        Extension(pool),
+        Extension(redis),
+    )
+        .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Vec<User>>(response).await {
-        Ok(users) => {
-            let legacy_users: Vec<LegacyUser> = users.into_iter().map(LegacyUser::from).collect();
-            Ok(Json(legacy_users))
-        }
-        Err(response) => Ok(response),
-    }
+    let users = users.into_iter().map(LegacyUser::from).collect();
+    Ok(Json(users))
 }
 
-#[get("{id}")]
 pub async fn user_get(
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::user_get(info, pool, redis)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<LegacyUser>, ApiError> {
+    let Json(user) = v3::users::user_get(
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+    )
+        .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<User>(response).await {
-        Ok(user) => {
-            let user = LegacyUser::from(user);
-            Ok(Json(user))
-        }
-        Err(response) => Ok(response),
-    }
+    let user = LegacyUser::from(user);
+    Ok(Json(user))
 }
 
-#[get("{user_id}/projects")]
 pub async fn projects_list(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -107,19 +100,20 @@ pub async fn projects_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::projects_list(req, info, pool.clone(), redis.clone(), session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<Vec<LegacyProject>>, ApiError> {
+    let Json(projects) = v3::users::projects_list(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool.clone()),
+        Extension(redis.clone()),
+        Extension(session_queue),
+    )
+        .await?;
 
     // Convert to V2 projects
-    match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
-        Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &pool, &redis).await?;
-            Ok(Json(legacy_projects))
-        }
-        Err(response) => Ok(response),
-    }
+    let projects = LegacyProject::from_many(projects, &pool, &redis).await?;
+    Ok(Json(projects))
 }
 
 lazy_static! {
@@ -148,21 +142,23 @@ pub struct EditUser {
     pub badges: Option<Badges>,
 }
 
-#[patch("{id}")]
 pub async fn user_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(info): Path<String>,
-    new_user: Json<EditUser>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let new_user = new_user.into_inner();
-    // Returns NoContent, so we don't need to convert to V2
+    Json(new_user): Json<EditUser>,
+) -> Result<StatusCode, ApiError> {
+    Ok(
     v3::users::user_edit(
-        req,
-        info,
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
         Json(v3::users::EditUser {
             username: new_user.username,
             name: new_user.name,
@@ -171,12 +167,8 @@ pub async fn user_edit(
             badges: new_user.badges,
             venmo_handle: None,
         }),
-        pool,
-        redis,
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)
+    .await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -184,7 +176,6 @@ pub struct FileExt {
     pub ext: String,
 }
 
-#[patch("{id}/icon")]
 #[allow(clippy::too_many_arguments)]
 pub async fn user_icon_edit(
     Query(ext): Query<FileExt>,
@@ -194,25 +185,23 @@ pub async fn user_icon_edit(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
-    payload: web::Payload,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so we don't need to convert to V2
-    v3::users::user_icon_edit(
-        Query(v3::users::Extension { ext: ext.ext }),
-        req,
-        info,
-        pool,
-        redis,
-        file_host,
+    payload: bytes::Bytes,
+) -> Result<StatusCode, ApiError> {
+    Ok(v3::users::user_icon_edit(
+        Query(v3::users::FileExt { ext: ext.ext }),
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(file_host),
+        Extension(session_queue),
         payload,
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)
+    .await?)
 }
 
-#[delete("{id}")]
 pub async fn user_delete(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -220,14 +209,19 @@ pub async fn user_delete(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so we don't need to convert to V2
-    v3::users::user_delete(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
+) -> Result<StatusCode, ApiError> {
+
+    Ok(v3::users::user_delete(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+        .await?)
 }
 
-#[get("{id}/follows")]
 pub async fn user_follows(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -235,22 +229,22 @@ pub async fn user_follows(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::user_follows(req, info, pool.clone(), redis.clone(), session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<Vec<LegacyProject>>, ApiError> {
+    let Json(projects) = v3::users::user_follows(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool.clone()),
+        Extension(redis.clone()),
+        Extension(session_queue),
+    )
+        .await?;
 
     // Convert to V2 projects
-    match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
-        Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &pool, &redis).await?;
-            Ok(Json(legacy_projects))
-        }
-        Err(response) => Ok(response),
-    }
+    let projects = LegacyProject::from_many(projects, &pool, &redis).await?;
+    Ok(Json(projects))
 }
 
-#[get("{id}/notifications")]
 pub async fn user_notifications(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -258,19 +252,21 @@ pub async fn user_notifications(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::users::user_notifications(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<Vec<LegacyNotification>>, ApiError> {
+    let Json(notifications) = v3::users::user_notifications(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+        .await?;
+
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Vec<Notification>>(response).await {
-        Ok(notifications) => {
-            let legacy_notifications: Vec<LegacyNotification> = notifications
-                .into_iter()
-                .map(LegacyNotification::from)
-                .collect();
-            Ok(Json(legacy_notifications))
-        }
-        Err(response) => Ok(response),
-    }
+    let notifications = notifications
+        .into_iter()
+        .map(LegacyNotification::from)
+        .collect::<Vec<_>>();
+    Ok(Json(notifications))
 }

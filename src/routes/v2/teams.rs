@@ -1,26 +1,32 @@
+use std::net::SocketAddr;
+use std::sync::Arc;
+
 use crate::database::redis::RedisPool;
-use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId, TeamMember};
+use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId};
 use crate::models::users::UserId;
 use crate::models::v2::teams::LegacyTeamMember;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v2_reroute, v3, ApiError};
-use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
+use crate::routes::{v3, ApiError};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{post, patch, get, delete};
+use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use axum::Router;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(teams_get);
 
-    cfg.service(
-        web::scope("team")
-            .service(team_members_get)
-            .service(edit_team_member)
-            .service(transfer_ownership)
-            .service(add_team_member)
-            .service(join_team)
-            .service(remove_team_member),
-    );
+pub fn config() -> Router {
+    Router::new()
+        .nest(
+            "/team",
+            Router::new()
+                .route("/teams", get(teams_get))
+                .route("/team/:id/join", post(join_team))
+                .route("/team/:id/owner", patch(transfer_ownership))
+                .route("/team/:id/members", get(team_members_get).post(add_team_member).patch(edit_team_member))
+                .route("/team/:id/members/:user_id", delete(remove_team_member))
+        )
 }
 
 // Returns all members of a project,
@@ -28,7 +34,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 // also the members of the organization's team if the project is associated with an organization
 // (Unlike team_members_get_project, which only returns the members of the project's team)
 // They can be differentiated by the "organization_permissions" field being null or not
-#[get("{id}/members")]
 pub async fn team_members_get_project(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -36,47 +41,50 @@ pub async fn team_members_get_project(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::teams::team_members_get_project(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<Vec<LegacyTeamMember>>, ApiError> {
+    let Json(members) = v3::teams::team_members_get_project(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+        .await?;
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Vec<TeamMember>>(response).await {
-        Ok(members) => {
-            let members = members
-                .into_iter()
-                .map(LegacyTeamMember::from)
-                .collect::<Vec<_>>();
-            Ok(Json(members))
-        }
-        Err(response) => Ok(response),
-    }
+    let members = members
+        .into_iter()
+        .map(LegacyTeamMember::from)
+        .collect::<Vec<_>>();
+    Ok(Json(members))
 }
 
 // Returns all members of a team, but not necessarily those of a project-team's organization (unlike team_members_get_project)
-#[get("{id}/members")]
 pub async fn team_members_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(TeamId,)>,
+    info: Path<TeamId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::teams::team_members_get(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
+) -> Result<Json<Vec<LegacyTeamMember>>, ApiError> {
+    let Json(members) = v3::teams::team_members_get(
+        ConnectInfo(addr),
+        headers,
+        info,
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+        .await?;
+    
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Vec<TeamMember>>(response).await {
-        Ok(members) => {
-            let members = members
-                .into_iter()
-                .map(LegacyTeamMember::from)
-                .collect::<Vec<_>>();
-            Ok(Json(members))
-        }
-        Err(response) => Ok(response),
-    }
+    let members = members
+        .into_iter()
+        .map(LegacyTeamMember::from)
+        .collect::<Vec<_>>();
+    
+    Ok(Json(members))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -84,7 +92,6 @@ pub struct TeamIds {
     pub ids: String,
 }
 
-#[get("teams")]
 pub async fn teams_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -92,47 +99,43 @@ pub async fn teams_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::teams::teams_get(
-        req,
+) -> Result<Json<Vec<Vec<LegacyTeamMember>>>, ApiError> {
+    let Json(teams) = v3::teams::teams_get(
+        ConnectInfo(addr),
+        headers,
         Query(v3::teams::TeamIds { ids: ids.ids }),
-        pool,
-        redis,
-        session_queue,
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error);
+    .await?;
+
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Vec<Vec<TeamMember>>>(response?).await {
-        Ok(members) => {
-            let members = members
-                .into_iter()
-                .map(|members| {
-                    members
-                        .into_iter()
-                        .map(LegacyTeamMember::from)
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            Ok(Json(members))
-        }
-        Err(response) => Ok(response),
-    }
+    let teams = teams
+        .into_iter()
+        .map(|members| members.into_iter().map(LegacyTeamMember::from).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+
+    Ok(Json(teams))
 }
 
-#[post("{id}/join")]
 pub async fn join_team(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(TeamId,)>,
+    info: Path<TeamId>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so we don't need to convert the response
-    v3::teams::join_team(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
+) -> Result<StatusCode, ApiError> {
+    Ok(v3::teams::join_team(
+        ConnectInfo(addr),
+        headers,
+        info,
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+        .await?)
 }
 
 fn default_role() -> String {
@@ -159,21 +162,23 @@ pub struct NewTeamMember {
     pub ordering: i64,
 }
 
-#[post("{id}/members")]
 pub async fn add_team_member(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(TeamId,)>,
+    Path(info): Path<TeamId>,
     Extension(pool): Extension<PgPool>,
-    new_member: Json<NewTeamMember>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so we don't need to convert the response
-    v3::teams::add_team_member(
-        req,
-        info,
-        pool,
+    Json(new_member): Json<NewTeamMember>,
+) -> Result<StatusCode, ApiError> {
+
+    Ok(v3::teams::add_team_member(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
         Json(v3::teams::NewTeamMember {
             user_id: new_member.user_id,
             role: new_member.role.clone(),
@@ -182,11 +187,8 @@ pub async fn add_team_member(
             payouts_split: new_member.payouts_split,
             ordering: new_member.ordering,
         }),
-        redis,
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)
+    .await?)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -198,33 +200,32 @@ pub struct EditTeamMember {
     pub ordering: Option<i64>,
 }
 
-#[patch("{id}/members/{user_id}")]
 pub async fn edit_team_member(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(TeamId, UserId)>,
+    Path(info): Path<(TeamId, UserId)>,
     Extension(pool): Extension<PgPool>,
-    edit_member: Json<EditTeamMember>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so we don't need to convert the response
+    Json(edit_member): Json<EditTeamMember>,
+) -> Result<StatusCode, ApiError> {
+Ok(
     v3::teams::edit_team_member(
-        req,
-        info,
-        pool,
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
         Json(v3::teams::EditTeamMember {
             permissions: edit_member.permissions,
             organization_permissions: edit_member.organization_permissions,
-            role: edit_member.role.clone(),
+            role: edit_member.role,
             payouts_split: edit_member.payouts_split,
             ordering: edit_member.ordering,
         }),
-        redis,
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)
+    .await?)
 }
 
 #[derive(Deserialize)]
@@ -232,42 +233,47 @@ pub struct TransferOwnership {
     pub user_id: UserId,
 }
 
-#[patch("{id}/owner")]
 pub async fn transfer_ownership(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(TeamId,)>,
+    Path(info): Path<TeamId>,
     Extension(pool): Extension<PgPool>,
-    new_owner: Json<TransferOwnership>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so we don't need to convert the response
+    Json(new_owner): Json<TransferOwnership>,
+) -> Result<StatusCode, ApiError> {
+Ok(
     v3::teams::transfer_ownership(
-        req,
-        info,
-        pool,
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
         Json(v3::teams::TransferOwnership {
             user_id: new_owner.user_id,
         }),
-        redis,
-        session_queue,
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)
+    .await?)
 }
 
-#[delete("{id}/members/{user_id}")]
 pub async fn remove_team_member(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    info: web::Path<(TeamId, UserId)>,
+    Path(info): Path<(TeamId, UserId)>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so we don't need to convert the response
-    v3::teams::remove_team_member(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
+) -> Result<StatusCode, ApiError> {
+
+    Ok(v3::teams::remove_team_member(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+
+        .await?)
 }
