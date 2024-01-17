@@ -3,15 +3,15 @@ use crate::database::redis::RedisPool;
 use crate::models::projects::VersionType;
 use crate::models::v2::projects::{LegacyProject, LegacyVersion};
 use crate::queue::session::AuthQueue;
-use crate::routes::v3::version_file::HashQuery;
 use crate::routes::v3;
+use crate::routes::v3::version_file::HashQuery;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
 use axum::routing::{get, post};
+use axum::Router;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use axum::Router;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -25,14 +25,14 @@ pub fn config() -> Router {
                 .route("/:hash", get(get_version_from_hash).delete(delete_file))
                 .route("/:hash/download", get(download_version))
                 .route("/:hash/update", post(get_update_from_hash))
-                .route("/project", post(get_projects_from_hashes))
+                .route("/project", post(get_projects_from_hashes)),
         )
         .nest(
             "/version_files",
             Router::new()
                 .route("/", post(get_versions_from_hashes))
                 .route("/update", post(update_files))
-                .route("/update_individual", post(update_individual_files))
+                .route("/update_individual", post(update_individual_files)),
         )
 }
 
@@ -46,17 +46,16 @@ pub async fn get_version_from_hash(
     Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<Json<LegacyVersion>, ApiError> {
-    let Json(version) =
-        v3::version_file::get_version_from_hash(
-            ConnectInfo(addr),
-            headers,
-            Path(info),
-            Extension(pool),
-            Extension(redis),
-            Query(hash_query),
-            Extension(session_queue),
-        )
-            .await?;
+    let Json(version) = v3::version_file::get_version_from_hash(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Query(hash_query),
+        Extension(session_queue),
+    )
+    .await?;
 
     // Convert response to V2 format
     let version = LegacyVersion::from(version);
@@ -83,7 +82,7 @@ pub async fn download_version(
         Query(hash_query),
         Extension(session_queue),
     )
-        .await?)
+    .await?)
 }
 
 // under /api/v1/version_file/{hash}
@@ -105,7 +104,7 @@ pub async fn delete_file(
         Query(hash_query),
         Extension(session_queue),
     )
-        .await?)
+    .await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -220,26 +219,24 @@ pub async fn get_projects_from_hashes(
     .await?;
 
     // Convert to V2
-            let hash_to_project_id = projects_hashes
-                .iter()
-                .map(|(hash, project)| {
-                    let project_id = project.id;
-                    (hash.clone(), project_id)
-                })
-                .collect::<HashMap<_, _>>();
-            let legacy_projects =
-                LegacyProject::from_many(projects_hashes.into_values().collect(), &pool, &redis)
-                    .await?;
-            let legacy_projects_hashes = hash_to_project_id
-                .into_iter()
-                .filter_map(|(hash, project_id)| {
-                    let legacy_project =
-                        legacy_projects.iter().find(|x| x.id == project_id)?.clone();
-                    Some((hash, legacy_project))
-                })
-                .collect::<HashMap<_, _>>();
+    let hash_to_project_id = projects_hashes
+        .iter()
+        .map(|(hash, project)| {
+            let project_id = project.id;
+            (hash.clone(), project_id)
+        })
+        .collect::<HashMap<_, _>>();
+    let legacy_projects =
+        LegacyProject::from_many(projects_hashes.into_values().collect(), &pool, &redis).await?;
+    let legacy_projects_hashes = hash_to_project_id
+        .into_iter()
+        .filter_map(|(hash, project_id)| {
+            let legacy_project = legacy_projects.iter().find(|x| x.id == project_id)?.clone();
+            Some((hash, legacy_project))
+        })
+        .collect::<HashMap<_, _>>();
 
-            Ok(Json(legacy_projects_hashes))
+    Ok(Json(legacy_projects_hashes))
 }
 
 #[derive(Deserialize)]
@@ -275,16 +272,15 @@ pub async fn update_files(
         hashes: update_data.hashes,
     };
 
-    let Json(map) =
-        v3::version_file::update_files(
-            ConnectInfo(addr),
-            headers,
-            Extension(pool),
-            Extension(redis),
-            Extension(session_queue),
-            Json(update_data),
-        )
-            .await?;
+    let Json(map) = v3::version_file::update_files(
+        ConnectInfo(addr),
+        headers,
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+        Json(update_data),
+    )
+    .await?;
 
     // Convert response to V2 format
     let map = map
@@ -362,5 +358,4 @@ pub async fn update_individual_files(
         })
         .collect::<HashMap<_, _>>();
     Ok(Json(version_map))
-
 }

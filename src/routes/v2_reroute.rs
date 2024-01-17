@@ -1,7 +1,12 @@
 use std::collections::HashMap;
 
 use super::v3::project_creation::CreateError;
-use crate::{models::v2::projects::LegacySideType, util::multipart::{MultipartWrapper, generate_multipart, MultipartBuildSegmentData, MultipartBuildSegment}};
+use crate::{
+    models::v2::projects::LegacySideType,
+    util::multipart::{
+        generate_multipart, MultipartBuildSegment, MultipartBuildSegmentData, MultipartWrapper,
+    },
+};
 use futures::{Future, StreamExt};
 use serde_json::{json, Value};
 

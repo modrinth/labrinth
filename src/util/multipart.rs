@@ -1,19 +1,28 @@
-use std::{pin::Pin, task::{Context, Poll}};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use async_trait::async_trait;
-use axum::{extract::{FromRequest, multipart::{MultipartRejection, MultipartError}, Request}, http::HeaderMap};
+use axum::{
+    extract::{
+        multipart::{MultipartError, MultipartRejection},
+        FromRequest, Request,
+    },
+    http::HeaderMap,
+};
 use bytes::{Bytes, BytesMut};
 use futures::Stream;
 use futures_lite::StreamExt;
 
 pub enum MultipartWrapper {
     Axum(axum::extract::Multipart),
-    Labrinth(multer::Multipart<'static>)
+    Labrinth(multer::Multipart<'static>),
 }
 
 pub enum FieldWrapper<'a> {
     Axum(axum::extract::multipart::Field<'a>),
-    Labrinth(multer::Field<'static>, &'a mut MultipartWrapper)
+    Labrinth(multer::Field<'static>, &'a mut MultipartWrapper),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -21,7 +30,7 @@ pub enum MultipartErrorWrapper {
     #[error("Axum Error: {0}")]
     Axum(MultipartError),
     #[error("Rerouting Error: {0}")]
-    Labrinth(multer::Error)
+    Labrinth(multer::Error),
 }
 
 impl MultipartErrorWrapper {
@@ -45,7 +54,8 @@ where
 
     async fn from_request(req: Request, _state: &S) -> Result<Self, Self::Rejection> {
         axum::extract::Multipart::from_request(req, _state)
-            .await.map(MultipartWrapper::Axum)
+            .await
+            .map(MultipartWrapper::Axum)
     }
 }
 
@@ -56,10 +66,13 @@ impl MultipartWrapper {
             MultipartWrapper::Axum(inner) => {
                 let field = inner.next_field().await?;
                 Ok(field.map(FieldWrapper::Axum))
-            },
+            }
             MultipartWrapper::Labrinth(inner) => {
-                let field = inner.next_field().await.map_err(MultipartErrorWrapper::from_multer)?;
-                Ok(field.map( move |f| FieldWrapper::Labrinth(f, self)))
+                let field = inner
+                    .next_field()
+                    .await
+                    .map_err(MultipartErrorWrapper::from_multer)?;
+                Ok(field.map(move |f| FieldWrapper::Labrinth(f, self)))
             }
         }
     }
@@ -70,77 +83,89 @@ impl Stream for FieldWrapper<'_> {
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match *self {
-            FieldWrapper::Axum(ref mut inner) => inner.poll_next(cx).map_err(MultipartErrorWrapper::from),
-            FieldWrapper::Labrinth(ref mut inner, _) => inner.poll_next(cx).map_err(MultipartErrorWrapper::from_multer)
+            FieldWrapper::Axum(ref mut inner) => {
+                inner.poll_next(cx).map_err(MultipartErrorWrapper::from)
+            }
+            FieldWrapper::Labrinth(ref mut inner, _) => inner
+                .poll_next(cx)
+                .map_err(MultipartErrorWrapper::from_multer),
         }
     }
 }
 
 impl<'a> FieldWrapper<'a> {
-        /// The field name found in the
-        /// [`Content-Disposition`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition)
-        /// header.
-        pub fn name(&self) -> Option<&str> {
-            match self {
-                FieldWrapper::Axum(inner) => inner.name(),
-                FieldWrapper::Labrinth(inner, _) => inner.name()
-            }
+    /// The field name found in the
+    /// [`Content-Disposition`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition)
+    /// header.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            FieldWrapper::Axum(inner) => inner.name(),
+            FieldWrapper::Labrinth(inner, _) => inner.name(),
         }
-    
-        /// The file name found in the
-        /// [`Content-Disposition`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition)
-        /// header.
-        pub fn file_name(&self) -> Option<&str> {
-            match self {
-                FieldWrapper::Axum(inner) => inner.file_name(),
-                FieldWrapper::Labrinth(inner, _) => inner.file_name()
-            }
+    }
+
+    /// The file name found in the
+    /// [`Content-Disposition`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition)
+    /// header.
+    pub fn file_name(&self) -> Option<&str> {
+        match self {
+            FieldWrapper::Axum(inner) => inner.file_name(),
+            FieldWrapper::Labrinth(inner, _) => inner.file_name(),
         }
-    
-        /// Get the [content type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) of the field.
-        pub fn content_type(&self) -> Option<&str> {
-            match self {
-                FieldWrapper::Axum(inner) => inner.content_type().map(|m| m.as_ref()),
-                FieldWrapper::Labrinth(inner, _) => inner.content_type().map(|m| m.as_ref())
-            }
+    }
+
+    /// Get the [content type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) of the field.
+    pub fn content_type(&self) -> Option<&str> {
+        match self {
+            FieldWrapper::Axum(inner) => inner.content_type().map(|m| m.as_ref()),
+            FieldWrapper::Labrinth(inner, _) => inner.content_type().map(|m| m.as_ref()),
         }
-    
-        /// Get a map of headers as [`HeaderMap`].
-        pub fn headers(&self) -> &HeaderMap {
-            match self {
-                FieldWrapper::Axum(inner) => inner.headers(),
-                FieldWrapper::Labrinth(inner, _) => inner.headers()
-            }
+    }
+
+    /// Get a map of headers as [`HeaderMap`].
+    pub fn headers(&self) -> &HeaderMap {
+        match self {
+            FieldWrapper::Axum(inner) => inner.headers(),
+            FieldWrapper::Labrinth(inner, _) => inner.headers(),
         }
-    
-        /// Get the full data of the field as [`Bytes`].
-        pub async fn bytes(self) -> Result<Bytes, MultipartErrorWrapper> {
-            match self {
-                FieldWrapper::Axum(inner) => inner.bytes().await.map_err(MultipartErrorWrapper::from),
-                FieldWrapper::Labrinth(inner, _) => inner.bytes().await.map_err(MultipartErrorWrapper::from_multer)
-            }
+    }
+
+    /// Get the full data of the field as [`Bytes`].
+    pub async fn bytes(self) -> Result<Bytes, MultipartErrorWrapper> {
+        match self {
+            FieldWrapper::Axum(inner) => inner.bytes().await.map_err(MultipartErrorWrapper::from),
+            FieldWrapper::Labrinth(inner, _) => inner
+                .bytes()
+                .await
+                .map_err(MultipartErrorWrapper::from_multer),
         }
-    
-        /// Get the full field data as text.
-        pub async fn text(self) -> Result<String, MultipartErrorWrapper> {
-            match self {
-                FieldWrapper::Axum(inner) => inner.text().await.map_err(MultipartErrorWrapper::from),
-                FieldWrapper::Labrinth(inner, _) => inner.text().await.map_err(MultipartErrorWrapper::from_multer)
-            }
+    }
+
+    /// Get the full field data as text.
+    pub async fn text(self) -> Result<String, MultipartErrorWrapper> {
+        match self {
+            FieldWrapper::Axum(inner) => inner.text().await.map_err(MultipartErrorWrapper::from),
+            FieldWrapper::Labrinth(inner, _) => inner
+                .text()
+                .await
+                .map_err(MultipartErrorWrapper::from_multer),
         }
-    
-        /// Stream a chunk of the field data.
-        ///
-        /// When the field data has been exhausted, this will return [`None`].
-        ///
-        /// Note this does the same thing as `Field`'s [`Stream`] implementation.
-        pub async fn chunk(&mut self) -> Result<Option<Bytes>, MultipartErrorWrapper> {
-            match self {
-                FieldWrapper::Axum(inner) => inner.chunk().await.map_err(MultipartErrorWrapper::from),
-                FieldWrapper::Labrinth(inner, _) => inner.chunk().await.map_err(MultipartErrorWrapper::from_multer)
-            }
+    }
+
+    /// Stream a chunk of the field data.
+    ///
+    /// When the field data has been exhausted, this will return [`None`].
+    ///
+    /// Note this does the same thing as `Field`'s [`Stream`] implementation.
+    pub async fn chunk(&mut self) -> Result<Option<Bytes>, MultipartErrorWrapper> {
+        match self {
+            FieldWrapper::Axum(inner) => inner.chunk().await.map_err(MultipartErrorWrapper::from),
+            FieldWrapper::Labrinth(inner, _) => inner
+                .chunk()
+                .await
+                .map_err(MultipartErrorWrapper::from_multer),
         }
-    
+    }
 }
 
 // Multipart functionality for axum
@@ -162,7 +187,9 @@ pub enum MultipartBuildSegmentData {
     Binary(Vec<u8>),
 }
 
-pub fn generate_multipart(data: impl IntoIterator<Item = MultipartBuildSegment>) -> MultipartWrapper {
+pub fn generate_multipart(
+    data: impl IntoIterator<Item = MultipartBuildSegment>,
+) -> MultipartWrapper {
     let mut boundary: String = String::from("----WebKitFormBoundary");
     boundary.push_str(&rand::random::<u64>().to_string());
     boundary.push_str(&rand::random::<u64>().to_string());
@@ -209,7 +236,6 @@ pub fn generate_multipart(data: impl IntoIterator<Item = MultipartBuildSegment>)
     payload.extend_from_slice(format!("--{boundary}--\r\n", boundary = boundary).as_bytes());
 
     let multipart = multer::Multipart::new(
-        
         futures::stream::once(async move { Ok::<_, MultipartErrorWrapper>(Bytes::from(payload)) }),
         boundary,
     );

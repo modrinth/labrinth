@@ -6,13 +6,13 @@ use crate::models::ids::ImageId;
 use crate::models::projects::{Loader, ProjectStatus};
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType};
 use crate::queue::session::AuthQueue;
-use crate::routes::v3::project_creation::{CreateError, default_project_type, NewGalleryItem};
+use crate::routes::v3::project_creation::{default_project_type, CreateError, NewGalleryItem};
 use crate::routes::{v2_reroute, v3};
-use crate::util::multipart::MultipartWrapper;
 use crate::util::extract::{ConnectInfo, Extension, Json};
-use axum::Router;
+use crate::util::multipart::MultipartWrapper;
 use axum::http::HeaderMap;
 use axum::routing::post;
+use axum::Router;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
@@ -25,8 +25,7 @@ use validator::Validate;
 use super::version_creation::InitialVersionData;
 
 pub fn config() -> Router {
-    Router::new()
-        .route("/project", post(project_create))
+    Router::new().route("/project", post(project_create))
 }
 
 pub fn default_requested_status() -> ProjectStatus {
@@ -145,7 +144,6 @@ pub async fn project_create(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     mut payload: MultipartWrapper,
 ) -> Result<Json<LegacyProject>, CreateError> {
-
     // Convert V2 multipart payload to V3 multipart payload
     let new_payload = v2_reroute::alter_axum_multipart(
         &mut payload,

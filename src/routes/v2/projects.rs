@@ -2,25 +2,23 @@ use crate::database::models::categories::LinkPlatform;
 use crate::database::models::{project_item, version_item};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
-use crate::models::projects::{
-    Link, MonetizationStatus, ProjectStatus, SearchRequest, Version,
-};
-use axum::Router;
+use crate::models::projects::{Link, MonetizationStatus, ProjectStatus, SearchRequest, Version};
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType, LegacyVersion};
 use crate::models::v2::search::LegacySearchResults;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::ProjectIds;
 use crate::routes::{v2_reroute, v3, ApiErrorV2};
 use crate::search::{search_for_project, SearchConfig, SearchError};
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
-use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
-use axum::routing::{get, post, patch};
+use axum::routing::{get, patch, post};
+use axum::Router;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use v3::ApiError;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use v3::ApiError;
 use validator::Validate;
 
 pub fn config() -> Router {
@@ -31,18 +29,31 @@ pub fn config() -> Router {
         .nest(
             "/project",
             Router::new()
-                .route("/:id", get(project_get).patch(project_edit).delete(project_delete))
+                .route(
+                    "/:id",
+                    get(project_get).patch(project_edit).delete(project_delete),
+                )
                 .route("/:id/check", get(project_get_check))
-                .route("/:id/icon", patch(project_icon_edit).delete(delete_project_icon))
-                .route("/:id/gallery", post(add_gallery_item).patch(edit_gallery_item).delete(delete_gallery_item))
+                .route(
+                    "/:id/icon",
+                    patch(project_icon_edit).delete(delete_project_icon),
+                )
+                .route(
+                    "/:id/gallery",
+                    post(add_gallery_item)
+                        .patch(edit_gallery_item)
+                        .delete(delete_gallery_item),
+                )
                 .route("/:id/follow", post(project_follow).delete(project_unfollow))
                 .route("/:id/members", get(super::teams::team_members_get_project))
                 .route("/:id/dependencies", get(dependency_list))
                 .route("/:id/versions", get(super::versions::version_list))
-                .route("/:id/versions/:version_id", get(super::versions::version_project_get))
+                .route(
+                    "/:id/versions/:version_id",
+                    get(super::versions::version_project_get),
+                ),
         )
 }
-
 
 pub async fn project_search(
     Query(info): Query<SearchRequest>,
@@ -153,9 +164,11 @@ pub async fn random_projects_get(
         Extension(pool.clone()),
         Extension(redis.clone()),
     )
-        .await?;
+    .await?;
     // Convert response to V2 format
-    let legacy_projects = LegacyProject::from_many(projects, &pool, &redis).await.map_err(ApiError::from)?;
+    let legacy_projects = LegacyProject::from_many(projects, &pool, &redis)
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(legacy_projects))
 }
 
@@ -168,19 +181,20 @@ pub async fn projects_get(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<Json<Vec<LegacyProject>>, ApiErrorV2> {
     // Call V3 project creation
-    let Json(projects) =
-        v3::projects::projects_get(
-            ConnectInfo(addr),
-            headers,
-            Query(v3::projects::ProjectIds { ids: ids.ids }),
-            Extension(pool.clone()),
-            Extension(redis.clone()),
-            Extension(session_queue.clone()),
-        )
-            .await?;
+    let Json(projects) = v3::projects::projects_get(
+        ConnectInfo(addr),
+        headers,
+        Query(v3::projects::ProjectIds { ids: ids.ids }),
+        Extension(pool.clone()),
+        Extension(redis.clone()),
+        Extension(session_queue.clone()),
+    )
+    .await?;
 
     // Convert response to V2 format
-    let legacy_projects = LegacyProject::from_many(projects, &pool, &redis).await.map_err(ApiError::from)?;
+    let legacy_projects = LegacyProject::from_many(projects, &pool, &redis)
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(legacy_projects))
 }
 
@@ -202,11 +216,13 @@ pub async fn project_get(
         Extension(redis.clone()),
         Extension(session_queue.clone()),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let version_item = match project.versions.first() {
-        Some(vid) => version_item::Version::get((*vid).into(), &pool, &redis).await.map_err(ApiError::from)?,
+        Some(vid) => version_item::Version::get((*vid).into(), &pool, &redis)
+            .await
+            .map_err(ApiError::from)?,
         None => None,
     };
     let project = LegacyProject::from(project, version_item);
@@ -220,12 +236,7 @@ pub async fn project_get_check(
     Extension(redis): Extension<RedisPool>,
 ) -> Result<Json<serde_json::Value>, ApiErrorV2> {
     // Returns an id only, do not need to convert
-    Ok(v3::projects::project_get_check(
-        Path(info),
-        Extension(pool),
-        Extension(redis),
-    )
-        .await?)
+    Ok(v3::projects::project_get_check(Path(info), Extension(pool), Extension(redis)).await?)
 }
 
 #[derive(Serialize)]
@@ -243,29 +254,29 @@ pub async fn dependency_list(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<Json<DependencyInfo>, ApiErrorV2> {
     // TODO: tests, probably
-    let Json(dependency_info) =
-        v3::projects::dependency_list(
-            ConnectInfo(addr),
-            headers,
-            Path(info.clone()),
-            Extension(pool.clone()),
-            Extension(redis.clone()),
-            Extension(session_queue.clone()),
-        )
-            .await?;
+    let Json(dependency_info) = v3::projects::dependency_list(
+        ConnectInfo(addr),
+        headers,
+        Path(info.clone()),
+        Extension(pool.clone()),
+        Extension(redis.clone()),
+        Extension(session_queue.clone()),
+    )
+    .await?;
 
-        let converted_projects =
-            LegacyProject::from_many(dependency_info.projects, &pool, &redis).await.map_err(ApiError::from)?;
-        let converted_versions = dependency_info
-            .versions
-            .into_iter()
-            .map(LegacyVersion::from)
-            .collect();
+    let converted_projects = LegacyProject::from_many(dependency_info.projects, &pool, &redis)
+        .await
+        .map_err(ApiError::from)?;
+    let converted_versions = dependency_info
+        .versions
+        .into_iter()
+        .map(LegacyVersion::from)
+        .collect();
 
-        Ok(Json(DependencyInfo {
-            projects: converted_projects,
-            versions: converted_versions,
-        }))
+    Ok(Json(DependencyInfo {
+        projects: converted_projects,
+        versions: converted_versions,
+    }))
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -427,7 +438,9 @@ pub async fn project_edit(
     // (resetting to the new ones)
     if let Some(donation_urls) = v2_new_project.donation_urls {
         // Fetch current donation links from project so we know what to delete
-        let fetched_example_project = project_item::Project::get(&info, &pool, &redis).await.map_err(ApiError::from)?;
+        let fetched_example_project = project_item::Project::get(&info, &pool, &redis)
+            .await
+            .map_err(ApiError::from)?;
         let donation_links = fetched_example_project
             .map(|x| {
                 x.urls
@@ -489,9 +502,13 @@ pub async fn project_edit(
     // the version setting route for each version to set the side types for each of them.
     if response.is_success() && (client_side.is_some() || server_side.is_some()) {
         let project_item =
-            project_item::Project::get(&new_slug.unwrap_or(project_id), &pool, &redis).await.map_err(ApiError::from)?;
+            project_item::Project::get(&new_slug.unwrap_or(project_id), &pool, &redis)
+                .await
+                .map_err(ApiError::from)?;
         let version_ids = project_item.map(|x| x.versions).unwrap_or_default();
-        let versions = version_item::Version::get_many(&version_ids, &pool, &redis).await.map_err(ApiError::from)?;
+        let versions = version_item::Version::get_many(&version_ids, &pool, &redis)
+            .await
+            .map_err(ApiError::from)?;
         for version in versions {
             let version = Version::from(version);
             let mut fields = version.fields;
@@ -512,7 +529,8 @@ pub async fn project_edit(
                     fields,
                     ..Default::default()
                 }),
-            ).await?;
+            )
+            .await?;
         }
     }
     Ok(response)
@@ -595,7 +613,9 @@ pub async fn projects_edit(
     // If we are *setting* donation links, we will set every possible donation link to None, as
     // setting will delete all of them then 're-add' the ones we want to keep
     if let Some(donation_url) = bulk_edit_project.donation_urls {
-        let link_platforms = LinkPlatform::list(&pool, &redis).await.map_err(ApiError::from)?;
+        let link_platforms = LinkPlatform::list(&pool, &redis)
+            .await
+            .map_err(ApiError::from)?;
         for link in link_platforms {
             if link.donation {
                 link_urls.insert(link.name, None);
@@ -690,7 +710,6 @@ pub async fn project_icon_edit(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     payload: bytes::Bytes,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::projects::project_icon_edit(
         Query(v3::projects::FileExt { ext: ext.ext }),
         ConnectInfo(addr),
@@ -714,7 +733,6 @@ pub async fn delete_project_icon(
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::projects::delete_project_icon(
         ConnectInfo(addr),
         headers,
@@ -724,7 +742,7 @@ pub async fn delete_project_icon(
         Extension(file_host),
         Extension(session_queue),
     )
-        .await?)
+    .await?)
 }
 
 #[derive(Serialize, Deserialize, Validate)]
@@ -750,7 +768,6 @@ pub async fn add_gallery_item(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     payload: bytes::Bytes,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::projects::add_gallery_item(
         Query(v3::projects::FileExt { ext: ext.ext }),
         ConnectInfo(addr),
@@ -802,7 +819,6 @@ pub async fn edit_gallery_item(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::projects::edit_gallery_item(
         ConnectInfo(addr),
         headers,
@@ -836,7 +852,6 @@ pub async fn delete_gallery_item(
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::projects::delete_gallery_item(
         ConnectInfo(addr),
         headers,
@@ -859,7 +874,6 @@ pub async fn project_delete(
     Extension(search_config): Extension<SearchConfig>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::projects::project_delete(
         ConnectInfo(addr),
         headers,
@@ -869,7 +883,7 @@ pub async fn project_delete(
         Extension(search_config),
         Extension(session_queue),
     )
-        .await?)
+    .await?)
 }
 
 pub async fn project_follow(
@@ -880,7 +894,6 @@ pub async fn project_follow(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::projects::project_follow(
         ConnectInfo(addr),
         headers,
@@ -889,7 +902,7 @@ pub async fn project_follow(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?)
+    .await?)
 }
 
 pub async fn project_unfollow(
@@ -900,7 +913,6 @@ pub async fn project_unfollow(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiErrorV2> {
-    
     Ok(v3::projects::project_unfollow(
         ConnectInfo(addr),
         headers,
@@ -908,7 +920,6 @@ pub async fn project_unfollow(
         Extension(pool),
         Extension(redis),
         Extension(session_queue),
-
-            )
-        .await?)
+    )
+    .await?)
 }

@@ -17,7 +17,7 @@ use super::{
 
 #[derive(Clone)]
 pub enum GenericApi {
-    // V2(ApiV2),
+    V2(ApiV2),
     V3(ApiV3),
 }
 
@@ -36,7 +36,7 @@ macro_rules! delegate_api_variant {
             $(
                 async fn $method_name(&self, $($param_name: $param_type),*) -> $ret {
                     match self {
-                        //$struct_name::V2(api) => api.$method_name($($param_name),*).await,
+                        $struct_name::V2(api) => api.$method_name($($param_name),*).await,
                         $struct_name::V3(api) => api.$method_name($($param_name),*).await,
                     }
                 }

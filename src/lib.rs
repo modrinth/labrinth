@@ -1,7 +1,7 @@
+use axum::extract::DefaultBodyLimit;
 use axum::routing::any;
 use axum::{Extension, Router};
 use std::sync::Arc;
-use axum::extract::DefaultBodyLimit;
 
 use database::redis::RedisPool;
 use queue::{

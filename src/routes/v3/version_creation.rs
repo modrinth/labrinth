@@ -19,11 +19,11 @@ use crate::models::projects::{
 };
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path};
 use crate::util::multipart::{FieldWrapper, MultipartWrapper};
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
 use crate::validate::{validate_file, ValidationResult};
-use crate::util::extract::{ConnectInfo, Extension, Json, Path};
 use axum::http::{HeaderMap, StatusCode};
 use chrono::Utc;
 use futures::stream::StreamExt;
@@ -122,8 +122,7 @@ pub async fn version_create(
     .await;
 
     if result.is_err() {
-        let undo_result =
-            super::project_creation::undo_uploads(&*file_host, &uploaded_files).await;
+        let undo_result = super::project_creation::undo_uploads(&*file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
 
         undo_result?;
@@ -168,7 +167,6 @@ async fn version_create_inner(
 
     let mut error = None;
     while let Some(mut field) = payload.next_field().await? {
-
         if error.is_some() {
             continue;
         }
@@ -534,8 +532,7 @@ pub async fn upload_file_to_version(
     .await;
 
     if result.is_err() {
-        let undo_result =
-            super::project_creation::undo_uploads(&*file_host, &uploaded_files).await;
+        let undo_result = super::project_creation::undo_uploads(&*file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
 
         undo_result?;
@@ -620,11 +617,9 @@ async fn upload_file_to_version_inner(
         )
         .await?;
 
-        let organization = Organization::get_associated_organization_project_id(
-            version.inner.project_id,
-            &client,
-        )
-        .await?;
+        let organization =
+            Organization::get_associated_organization_project_id(version.inner.project_id, &client)
+                .await?;
 
         let organization_team_member = if let Some(organization) = &organization {
             models::TeamMember::get_from_user_id(
@@ -654,7 +649,6 @@ async fn upload_file_to_version_inner(
     let project_id = ProjectId(version.inner.project_id.0 as u64);
     let mut error = None;
     while let Some(mut field) = payload.next_field().await? {
-
         if error.is_some() {
             continue;
         }
@@ -943,9 +937,7 @@ pub async fn upload_file(
     Ok(())
 }
 
-pub fn get_name_ext(
-    file_name: Option<&str>,
-) -> Result<(&str, &str), CreateError> {
+pub fn get_name_ext(file_name: Option<&str>) -> Result<(&str, &str), CreateError> {
     let file_name = file_name
         .ok_or_else(|| CreateError::MissingValueError("Missing content file name".to_string()))?;
     let file_extension = if let Some(last_period) = file_name.rfind('.') {

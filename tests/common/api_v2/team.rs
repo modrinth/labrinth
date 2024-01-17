@@ -1,6 +1,6 @@
+use async_trait::async_trait;
 use axum_test::http::StatusCode;
 use axum_test::TestResponse;
-use async_trait::async_trait;
 use labrinth::models::{
     teams::{OrganizationPermissions, ProjectPermissions},
     v2::{notifications::LegacyNotification, teams::LegacyTeamMember},
@@ -72,11 +72,7 @@ impl ApiTeams for ApiV2 {
         serde_json::from_value(value).unwrap()
     }
 
-    async fn get_teams_members(
-        &self,
-        ids_or_titles: &[&str],
-        pat: Option<&str>,
-    ) -> TestResponse {
+    async fn get_teams_members(&self, ids_or_titles: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
         self.test_server
             .get(&format!(
@@ -108,11 +104,7 @@ impl ApiTeams for ApiV2 {
         serde_json::from_value(value).unwrap()
     }
 
-    async fn get_organization_members(
-        &self,
-        id_or_title: &str,
-        pat: Option<&str>,
-    ) -> TestResponse {
+    async fn get_organization_members(&self, id_or_title: &str, pat: Option<&str>) -> TestResponse {
         self.test_server
             .get(&format!("/v2/organization/{id_or_title}/members"))
             .append_pat(pat)
@@ -269,11 +261,7 @@ impl ApiTeams for ApiV2 {
             .await
     }
 
-    async fn delete_notification(
-        &self,
-        notification_id: &str,
-        pat: Option<&str>,
-    ) -> TestResponse {
+    async fn delete_notification(&self, notification_id: &str, pat: Option<&str>) -> TestResponse {
         self.test_server
             .delete(&format!("/v2/notification/{notification_id}"))
             .append_pat(pat)

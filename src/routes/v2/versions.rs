@@ -11,11 +11,11 @@ use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3;
 use crate::search::SearchConfig;
-use crate::util::extract::{ConnectInfo, Extension, Json, Query, Path};
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{post, get};
-use serde::{Deserialize, Serialize};
+use axum::routing::{get, post};
 use axum::Router;
+use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
 use validator::Validate;
@@ -27,9 +27,14 @@ pub fn config() -> Router {
         .nest(
             "/version",
             Router::new()
-                .route("/:slug", get(version_get).patch(version_edit).delete(version_delete))
-                .route("/:slug/file", post(super::version_creation::upload_file_to_version))
-
+                .route(
+                    "/:slug",
+                    get(version_get).patch(version_edit).delete(version_delete),
+                )
+                .route(
+                    "/:slug/file",
+                    post(super::version_creation::upload_file_to_version),
+                ),
         )
 }
 
@@ -100,17 +105,16 @@ pub async fn version_list(
         offset: filters.offset,
     };
 
-    let Json(versions) =
-        v3::versions::version_list(
-            ConnectInfo(addr),
-            headers,
-            Path(info),
-            Query(filters),
-            Extension(pool),
-            Extension(redis),
-            Extension(session_queue),
-        )
-            .await?;
+    let Json(versions) = v3::versions::version_list(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Query(filters),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+    .await?;
 
     // Convert response to V2 format
     let versions = versions
@@ -137,7 +141,7 @@ pub async fn version_project_get(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let version = LegacyVersion::from(response);
@@ -166,7 +170,7 @@ pub async fn versions_get(
         Extension(redis),
         Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let versions = versions
@@ -190,9 +194,9 @@ pub async fn version_get(
         Path(info),
         Extension(pool),
         Extension(redis),
-        Extension(session_queue),        
+        Extension(session_queue),
     )
-        .await?;
+    .await?;
 
     // Convert response to V2 format
     let version = LegacyVersion::from(version);
@@ -244,7 +248,6 @@ pub async fn version_edit(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_version): Json<EditVersion>,
 ) -> Result<StatusCode, ApiError> {
-
     let mut fields = HashMap::new();
     if new_version.game_versions.is_some() {
         fields.insert(
@@ -260,7 +263,7 @@ pub async fn version_edit(
         Path(info),
         Extension(pool.clone()),
         Extension(redis.clone()),
-        Extension(session_queue.clone())
+        Extension(session_queue.clone()),
     )
     .await?;
 
@@ -321,7 +324,6 @@ pub async fn version_delete(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(search_config): Extension<SearchConfig>,
 ) -> Result<StatusCode, ApiError> {
-
     Ok(v3::versions::version_delete(
         ConnectInfo(addr),
         headers,
@@ -331,5 +333,5 @@ pub async fn version_delete(
         Extension(session_queue),
         Extension(search_config),
     )
-        .await?)
+    .await?)
 }

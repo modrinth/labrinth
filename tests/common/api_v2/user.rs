@@ -1,7 +1,7 @@
 use super::ApiV2;
 use crate::common::api_common::{ApiUser, AppendsOptionalPat};
-use axum_test::TestResponse;
 use async_trait::async_trait;
+use axum_test::TestResponse;
 
 #[async_trait(?Send)]
 impl ApiUser for ApiV2 {

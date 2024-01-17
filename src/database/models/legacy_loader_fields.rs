@@ -45,33 +45,33 @@ impl MinecraftGameVersion {
         E: sqlx::Acquire<'c, Database = sqlx::Postgres> + Send + 'a,
     {
         async move {
-        let mut exec = exec.acquire().await?;
-        let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, &mut *exec, redis)
-            .await?
-            .ok_or_else(|| {
-                DatabaseError::SchemaError("Could not find game version enum.".to_string())
-            })?;
-        let game_version_enum_values =
-            LoaderFieldEnumValue::list(game_version_enum.id, &mut *exec, redis).await?;
+            let mut exec = exec.acquire().await?;
+            let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, &mut *exec, redis)
+                .await?
+                .ok_or_else(|| {
+                    DatabaseError::SchemaError("Could not find game version enum.".to_string())
+                })?;
+            let game_version_enum_values =
+                LoaderFieldEnumValue::list(game_version_enum.id, &mut *exec, redis).await?;
 
-        let game_versions = game_version_enum_values
-            .into_iter()
-            .map(MinecraftGameVersion::from_enum_value)
-            .filter(|x| {
-                let mut bool = true;
+            let game_versions = game_version_enum_values
+                .into_iter()
+                .map(MinecraftGameVersion::from_enum_value)
+                .filter(|x| {
+                    let mut bool = true;
 
-                if let Some(version_type) = version_type_option {
-                    bool &= &*x.type_ == version_type;
-                }
-                if let Some(major) = major_option {
-                    bool &= x.major == major;
-                }
+                    if let Some(version_type) = version_type_option {
+                        bool &= &*x.type_ == version_type;
+                    }
+                    if let Some(major) = major_option {
+                        bool &= x.major == major;
+                    }
 
-                bool
-            })
-            .collect_vec();
+                    bool
+                })
+                .collect_vec();
 
-        Ok(game_versions)
+            Ok(game_versions)
         }
     }
 

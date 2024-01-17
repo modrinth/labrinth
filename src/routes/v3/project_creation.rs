@@ -10,22 +10,22 @@ use crate::models::ids::{ImageId, OrganizationId};
 use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    License, Link, MonetizationStatus, ProjectId, ProjectStatus, VersionId, VersionStatus, Project,
+    License, Link, MonetizationStatus, Project, ProjectId, ProjectStatus, VersionId, VersionStatus,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
 use crate::search::indexing::IndexingError;
-use crate::util::multipart::{MultipartErrorWrapper, MultipartWrapper, FieldWrapper};
+use crate::util::extract::{ConnectInfo, Extension, Json};
+use crate::util::multipart::{FieldWrapper, MultipartErrorWrapper, MultipartWrapper};
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
-use crate::util::extract::{Json, Extension, ConnectInfo};
-use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::http::{StatusCode, HeaderMap};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
+use axum::Router;
 use chrono::Utc;
 use futures::stream::StreamExt;
 use image::ImageError;
@@ -40,10 +40,11 @@ use thiserror::Error;
 use validator::Validate;
 
 pub fn config() -> Router {
-    Router::new()
-        .route("/project", post(project_create).layer(DefaultBodyLimit::max(500*1024)))
+    Router::new().route(
+        "/project",
+        post(project_create).layer(DefaultBodyLimit::max(500 * 1024)),
+    )
 }
-
 
 #[derive(Error, Debug)]
 pub enum CreateError {
@@ -367,11 +368,9 @@ async fn project_create_inner(
             .next_field()
             .await
             .map_err(CreateError::MultipartError)?
-            .ok_or_else(
-                || CreateError::MissingValueError(String::from(
-                    "No `data` field in multipart upload",
-                ))
-            )?;
+            .ok_or_else(|| {
+                CreateError::MissingValueError(String::from("No `data` field in multipart upload"))
+            })?;
 
         let content_disposition_name = field.name();
         let name = content_disposition_name
@@ -461,7 +460,6 @@ async fn project_create_inner(
 
     let mut error = None;
     while let Some(mut field) = payload.next_field().await? {
-
         if error.is_some() {
             continue;
         }
@@ -471,7 +469,6 @@ async fn project_create_inner(
             let name = content_disposition_name.ok_or_else(|| {
                 CreateError::MissingValueError("Missing content name".to_string())
             })?;
-
 
             let file_name = field.file_name().map(|x| x.to_string());
             let (file_name, file_extension) =
