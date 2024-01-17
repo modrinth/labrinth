@@ -3,11 +3,11 @@ use axum::{Extension, Router};
 use std::sync::Arc;
 
 use database::redis::RedisPool;
-use log::{info, warn};
 use queue::{
     analytics::AnalyticsQueue, payouts::PayoutsQueue, session::AuthQueue, socket::ActiveSockets,
 };
 use sqlx::Postgres;
+use tracing::{info, warn};
 
 extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;

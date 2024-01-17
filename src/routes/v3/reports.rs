@@ -11,17 +11,17 @@ use crate::models::reports::{ItemType, Report};
 use crate::models::threads::{MessageBody, ThreadType};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use crate::util::img;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
-use axum::{Router};
+use axum::Router;
 use chrono::Utc;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use validator::Validate;
-use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new()

@@ -202,7 +202,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+        if !self
+            .allowed_failure_codes
+            .contains(&resp.status_code().as_u16())
+        {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
                 self.allowed_failure_codes
@@ -226,7 +229,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+        if !self
+            .allowed_failure_codes
+            .contains(&resp.status_code().as_u16())
+        {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
                 self.allowed_failure_codes
@@ -250,7 +256,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+        if !self
+            .allowed_failure_codes
+            .contains(&resp.status_code().as_u16())
+        {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
                 self.allowed_failure_codes
@@ -354,7 +363,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+        if !self
+            .allowed_failure_codes
+            .contains(&resp.status_code().as_u16())
+        {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}. Body: {:#?}",
                 self.allowed_failure_codes
@@ -435,7 +447,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 1 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
@@ -475,7 +490,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 2 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
@@ -524,7 +542,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 3 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
@@ -622,7 +643,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 5 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
@@ -734,7 +758,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 7 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
@@ -863,7 +890,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 1 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
@@ -912,7 +942,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status_code().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 2 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes

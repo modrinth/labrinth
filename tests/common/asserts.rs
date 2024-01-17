@@ -9,24 +9,14 @@ use super::api_common::models::CommonVersion;
 #[macro_export]
 macro_rules! assert_status {
     ($response:expr, $status:expr) => {
-        assert_eq!(
-            $response.status_code(),
-            $status,
-            "{:#?}",
-            $response.text()
-        );
+        assert_eq!($response.status_code(), $status, "{:#?}", $response.text());
     };
 }
 
 #[macro_export]
 macro_rules! assert_any_status_except {
     ($response:expr, $status:expr) => {
-        assert_ne!(
-            $response.status_code(),
-            $status,
-            "{:#?}",
-            $response.text()
-        );
+        assert_ne!($response.status_code(), $status, "{:#?}", $response.text());
     };
 }
 

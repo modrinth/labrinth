@@ -362,7 +362,8 @@ pub async fn add_project_beta(api: &ApiV3) -> (Project, Version) {
 
 pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
     // Add an organzation.
-    let resp = api.test_server
+    let resp = api
+        .test_server
         .post("/v3/organization")
         .append_pat(USER_USER_PAT)
         .json(&json!({
@@ -378,14 +379,16 @@ pub async fn add_organization_zeta(api: &ApiV3) -> Organization {
 
 pub async fn get_project_alpha(api: &ApiV3) -> (Project, Version) {
     // Get project
-    let resp =api.test_server
+    let resp = api
+        .test_server
         .get("/v3/project/alpha")
         .append_pat(USER_USER_PAT)
         .await;
     let project: Project = resp.json();
 
     // Get project's versions
-    let resp = api.test_server
+    let resp = api
+        .test_server
         .get("/v3/project/alpha/version")
         .append_pat(USER_USER_PAT)
         .await;
@@ -397,7 +400,8 @@ pub async fn get_project_alpha(api: &ApiV3) -> (Project, Version) {
 
 pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
     // Get project
-    let resp = api.test_server
+    let resp = api
+        .test_server
         .get("/v3/project/beta")
         .append_pat(USER_USER_PAT)
         .await;
@@ -406,7 +410,8 @@ pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
     let project: Project = serde_json::from_value(project).unwrap();
 
     // Get project's versions
-    let resp = api.test_server
+    let resp = api
+        .test_server
         .get("/v3/project/beta/version")
         .append_pat(USER_USER_PAT)
         .await;
@@ -419,7 +424,8 @@ pub async fn get_project_beta(api: &ApiV3) -> (Project, Version) {
 
 pub async fn get_organization_zeta(api: &ApiV3) -> Organization {
     // Get organization
-    let resp = api.test_server
+    let resp = api
+        .test_server
         .get("/v3/organization/zeta")
         .append_pat(USER_USER_PAT)
         .await;

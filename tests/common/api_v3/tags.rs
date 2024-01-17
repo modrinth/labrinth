@@ -1,6 +1,6 @@
-use axum_test::TestResponse;
-use axum_test::http::StatusCode;
 use async_trait::async_trait;
+use axum_test::http::StatusCode;
+use axum_test::TestResponse;
 use labrinth::routes::v3::tags::{GameData, LoaderData};
 use labrinth::{
     database::models::loader_fields::LoaderFieldEnumValue, routes::v3::tags::CategoryData,
@@ -22,8 +22,10 @@ use super::ApiV3;
 #[async_trait(?Send)]
 impl ApiTags for ApiV3 {
     async fn get_loaders(&self) -> TestResponse {
-        self.test_server.get("/v3/tag/loader")
-        .append_pat(ADMIN_USER_PAT).await
+        self.test_server
+            .get("/v3/tag/loader")
+            .append_pat(ADMIN_USER_PAT)
+            .await
     }
 
     async fn get_loaders_deserialized_common(&self) -> Vec<CommonLoaderData> {
@@ -37,8 +39,10 @@ impl ApiTags for ApiV3 {
     }
 
     async fn get_categories(&self) -> TestResponse {
-        self.test_server.get("/v3/tag/category")
-        .append_pat(ADMIN_USER_PAT).await
+        self.test_server
+            .get("/v3/tag/category")
+            .append_pat(ADMIN_USER_PAT)
+            .await
     }
 
     async fn get_categories_deserialized_common(&self) -> Vec<CommonCategoryData> {
@@ -60,8 +64,13 @@ impl ApiV3 {
     }
 
     pub async fn get_loader_field_variants(&self, loader_field: &str) -> TestResponse {
-        self.test_server.get(&format!("/v3/tag/loader_field?loader_field={}", loader_field))
-        .append_pat(ADMIN_USER_PAT).await
+        self.test_server
+            .get(&format!(
+                "/v3/tag/loader_field?loader_field={}",
+                loader_field
+            ))
+            .append_pat(ADMIN_USER_PAT)
+            .await
     }
 
     pub async fn get_loader_field_variants_deserialized(
@@ -74,8 +83,10 @@ impl ApiV3 {
     }
 
     async fn get_games(&self) -> TestResponse {
-        self.test_server.get("/v3/games")
-        .append_pat(ADMIN_USER_PAT).await
+        self.test_server
+            .get("/v3/games")
+            .append_pat(ADMIN_USER_PAT)
+            .await
     }
 
     pub async fn get_games_deserialized(&self) -> Vec<GameData> {

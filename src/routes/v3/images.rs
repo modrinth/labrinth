@@ -1,6 +1,6 @@
 use axum::http::HeaderMap;
 use axum::routing::post;
-use axum::{Router};
+use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -15,10 +15,10 @@ use crate::models::images::{Image, ImageContext};
 use crate::models::reports::ReportId;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::extract::{ConnectInfo, Extension, Json, Query};
 use crate::util::routes::read_from_payload;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use crate::util::extract::{Json, Query, Extension, ConnectInfo};
 
 use super::threads::is_authorized_thread;
 

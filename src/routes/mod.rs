@@ -1,13 +1,16 @@
 use crate::file_hosting::FileHostingError;
 use crate::routes::not_found::api_v1_gone;
 use crate::util::cors::{analytics_cors, default_cors};
+use axum::extract::multipart::MultipartRejection;
+use axum::extract::rejection::{
+    BytesRejection, ExtensionRejection, FormRejection, JsonRejection, PathRejection,
+    QueryRejection, StringRejection,
+};
+use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
-use axum::extract::multipart::MultipartRejection;
-use axum::extract::rejection::{ExtensionRejection, FormRejection, JsonRejection, PathRejection, QueryRejection, BytesRejection, StringRejection};
-use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
@@ -37,13 +40,16 @@ pub fn root_config() -> Router {
                 .layer(analytics_cors()),
         )
         .route("/api/v1/*path", any(api_v1_gone).layer(default_cors()))
-        .route("/", get(index::index_get))
-        .fallback_service(any(|req| async move {
-            ServeDir::new("assets/")
-                .not_found_service(any(not_found))
-                .oneshot(req)
-                .await
-        }))
+        .route("/", get(index::index_get).layer(default_cors()))
+        .fallback_service(
+            any(|req| async move {
+                ServeDir::new("assets/")
+                    .not_found_service(any(not_found))
+                    .oneshot(req)
+                    .await
+            })
+            .layer(default_cors()),
+        )
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -112,6 +118,8 @@ pub enum ApiError {
     WebSocket(#[from] WebSocketUpgradeRejection),
     #[error("Unable to parse multipart body: {0}")]
     Multipart(#[from] MultipartRejection),
+    #[error("You are being rate-limited. Please wait {0} milliseconds. 0/{1} remaining.")]
+    RateLimitError(u128, u32),
 }
 
 impl IntoResponse for ApiError {
@@ -149,6 +157,7 @@ impl IntoResponse for ApiError {
             ApiError::Bytes(..) => StatusCode::BAD_REQUEST,
             ApiError::WebSocket(..) => StatusCode::BAD_REQUEST,
             ApiError::Multipart(..) => StatusCode::BAD_REQUEST,
+            ApiError::RateLimitError(..) => StatusCode::TOO_MANY_REQUESTS,
         };
 
         let error_message = crate::models::error::ApiError {
@@ -185,6 +194,7 @@ impl IntoResponse for ApiError {
                 ApiError::Bytes(..) => "invalid_body",
                 ApiError::WebSocket(..) => "websocket_error",
                 ApiError::Multipart(..) => "invalid_multipart_body",
+                ApiError::RateLimitError(..) => "ratelimit_error",
             },
             description: &self.to_string(),
         };

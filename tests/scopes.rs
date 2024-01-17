@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::common::api_common::{ApiProject, ApiTeams, ApiUser, ApiVersion, AppendsOptionalPat, Api};
+use crate::common::api_common::{
+    Api, ApiProject, ApiTeams, ApiUser, ApiVersion, AppendsOptionalPat,
+};
 use crate::common::dummy_data::{DummyImage, DummyProjectAlpha, DummyProjectBeta};
 use axum_test::http::StatusCode;
 
@@ -366,9 +368,12 @@ pub async fn project_version_reads_scopes() {
 
         // Project metadata reading
         let req_gen = |pat: Option<String>| async move {
-            test_server.get(
-                &format!("/maven/maven/modrinth/{beta_project_id}/maven-metadata.xml"))
-                .append_pat(pat.as_deref()).await
+            test_server
+                .get(&format!(
+                    "/maven/maven/modrinth/{beta_project_id}/maven-metadata.xml"
+                ))
+                .append_pat(pat.as_deref())
+                .await
         };
         ScopeTest::new(&test_env)
             .with_failure_code(404)
@@ -884,7 +889,8 @@ pub async fn pat_scopes() {
         // Pat create
         let pat_create = Scopes::PAT_CREATE;
         let req_gen = |pat: Option<String>| async move {
-            test_server.post("/_internal/pat")
+            test_server
+                .post("/_internal/pat")
                 .json(&json!({
                     "scopes": 1,
                     "name": "test_pat_scopes Name",
@@ -902,7 +908,8 @@ pub async fn pat_scopes() {
         // Pat write
         let pat_write = Scopes::PAT_WRITE;
         let req_gen = |pat: Option<String>| async move {
-            test_server.patch(&format!("/_internal/pat/{pat_id}"))
+            test_server
+                .patch(&format!("/_internal/pat/{pat_id}"))
                 .json(&json!({}))
                 .append_pat(pat.as_deref())
                 .await
@@ -915,7 +922,8 @@ pub async fn pat_scopes() {
         // Pat read
         let pat_read = Scopes::PAT_READ;
         let req_gen = |pat: Option<String>| async move {
-            test_server.get(&format!("/_internal/pat"))
+            test_server
+                .get(&format!("/_internal/pat"))
                 .append_pat(pat.as_deref())
                 .await
         };
@@ -927,7 +935,8 @@ pub async fn pat_scopes() {
         // Pat delete
         let pat_delete = Scopes::PAT_DELETE;
         let req_gen = |pat: Option<String>| async move {
-            test_server.delete(&format!("/_internal/pat/{pat_id}"))
+            test_server
+                .delete(&format!("/_internal/pat/{pat_id}"))
                 .append_pat(pat.as_deref())
                 .await
         };

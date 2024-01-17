@@ -8,6 +8,8 @@ use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::date::get_current_tenths_of_ms;
 use crate::util::env::parse_strings_from_var;
+use crate::util::extract::{ConnectInfo, Extension, Json};
+use crate::util::ip::get_ip_addr;
 use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -15,7 +17,6 @@ use std::collections::HashMap;
 use std::net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use url::Url;
-use crate::util::extract::{Json, Extension, ConnectInfo};
 
 pub const FILTERED_HEADERS: &[&str] = &[
     "authorization",
@@ -68,7 +69,9 @@ pub async fn page_view_ingest(
     let user = get_user_from_headers(&addr, &headers, &pool, &redis, &session_queue, None)
         .await
         .ok();
-    let conn_info = addr.ip();
+
+    let ip = convert_to_ip_v6(&get_ip_addr(&addr, &headers))
+        .unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped());
 
     let url = Url::parse(&url_input.url)
         .map_err(|_| ApiError::InvalidInput("invalid page view URL specified!".to_string()))?;
@@ -100,13 +103,6 @@ pub async fn page_view_ingest(
             }
         })
         .collect::<HashMap<String, String>>();
-
-    let ip = convert_to_ip_v6(&if let Some(header) = headers.get("cf-connecting-ip") {
-        header.clone()
-    } else {
-        conn_info.to_string()
-    })
-    .unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped());
 
     let mut view = PageView {
         recorded: get_current_tenths_of_ms(),

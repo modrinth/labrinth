@@ -8,10 +8,7 @@ use labrinth::{
 };
 use serde_json::json;
 
-use crate::{
-    assert_status,
-    common::api_common::AppendsOptionalPat,
-};
+use crate::{assert_status, common::api_common::AppendsOptionalPat};
 
 use super::ApiV3;
 
@@ -40,7 +37,8 @@ impl ApiV3 {
         user_id: &str,
         pat: Option<&str>,
     ) -> Vec<OAuthClient> {
-        let resp = self.test_server
+        let resp = self
+            .test_server
             .get(&format!("/v3/user/{}/oauth_apps", user_id))
             .append_pat(pat)
             .await;
@@ -61,8 +59,11 @@ impl ApiV3 {
         edit: OAuthClientEdit,
         pat: Option<&str>,
     ) -> TestResponse {
-       self.test_server
-            .patch(&format!("/_internal/oauth/app/{}", urlencoding::encode(client_id)))
+        self.test_server
+            .patch(&format!(
+                "/_internal/oauth/app/{}",
+                urlencoding::encode(client_id)
+            ))
             .append_pat(pat)
             .json(&edit)
             .await
@@ -93,7 +94,8 @@ impl ApiV3 {
         &self,
         pat: Option<&str>,
     ) -> Vec<OAuthClientAuthorization> {
-        let resp = self.test_server
+        let resp = self
+            .test_server
             .get("/_internal/oauth/authorizations")
             .append_pat(pat)
             .await;

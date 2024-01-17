@@ -2,7 +2,9 @@
 use serde_json::json;
 
 use crate::common::{
-    api_common::request_data::{ProjectCreationRequestData, VersionCreationRequestData, get_public_creation_data_multipart},
+    api_common::request_data::{
+        get_public_creation_data_multipart, ProjectCreationRequestData, VersionCreationRequestData,
+    },
     dummy_data::TestFile,
 };
 use labrinth::models::projects::ProjectId;

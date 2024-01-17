@@ -45,7 +45,10 @@ impl ApiV3 {
     pub async fn get_collections(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids = serde_json::to_string(ids).unwrap();
         self.test_server
-            .get(&format!("/v3/collections?ids={}", urlencoding::encode(&ids)))
+            .get(&format!(
+                "/v3/collections?ids={}",
+                urlencoding::encode(&ids)
+            ))
             .append_pat(pat)
             .await
     }

@@ -39,11 +39,12 @@ pub fn get_public_creation_data_multipart(
     let part = Part::text(serde_json::to_string(json_data).unwrap()).mime_type("application/json");
     form = form.add_part("data", part);
 
-
     if let Some(jar) = version_jar {
         // Basic file
-        let part = Part::bytes(jar.bytes()).file_name(jar.filename()).mime_type("application/java-archive");
+        let part = Part::bytes(jar.bytes())
+            .file_name(jar.filename())
+            .mime_type("application/java-archive");
         form = form.add_part(jar.filename(), part);
-    } 
+    }
     form
 }

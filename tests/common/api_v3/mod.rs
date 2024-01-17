@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-use std::net::SocketAddr;
 use super::api_common::{Api, ApiBuildable};
 use async_trait::async_trait;
 use axum::http::{HeaderName, HeaderValue};
-use axum_test::{TestServer, TestResponse};
+use axum_test::{TestResponse, TestServer};
 use labrinth::LabrinthConfig;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 pub mod collections;
@@ -27,7 +27,8 @@ pub struct ApiV3 {
 #[async_trait(?Send)]
 impl ApiBuildable for ApiV3 {
     async fn build(labrinth_config: LabrinthConfig) -> Self {
-        let app = labrinth::app_config(labrinth_config).into_make_service_with_connect_info::<SocketAddr>();
+        let app = labrinth::app_config(labrinth_config)
+            .into_make_service_with_connect_info::<SocketAddr>();
         let test_server = Arc::new(TestServer::new(app).unwrap());
         Self { test_server }
     }

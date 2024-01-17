@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use axum_test::{http::StatusCode, TestResponse};
 use async_trait::async_trait;
+use axum_test::{http::StatusCode, TestResponse};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use labrinth::{
@@ -47,7 +47,9 @@ impl ApiProject for ApiV3 {
 
         // Approve as a moderator.
         // TODO: de-hardcode
-        let resp = self.test_server.patch(&format!("/v3/project/{}", slug))
+        let resp = self
+            .test_server
+            .patch(&format!("/v3/project/{}", slug))
             .append_pat(MOD_USER_PAT)
             .json(&json!({
                 "status": "approved"
@@ -60,7 +62,9 @@ impl ApiProject for ApiV3 {
 
         // Get project's versions
         // TODO: de-hardcode
-        let resp = self.test_server.get(&format!("/v3/project/{}/version", slug))
+        let resp = self
+            .test_server
+            .get(&format!("/v3/project/{}/version", slug))
             .append_pat(pat)
             .await;
         let versions: Vec<CommonVersion> = resp.json();
@@ -119,16 +123,15 @@ impl ApiProject for ApiV3 {
     async fn get_projects(&self, ids_or_slugs: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_slugs = serde_json::to_string(ids_or_slugs).unwrap();
         self.test_server
-            .get(&format!("/v3/projects?ids={encoded}", encoded = urlencoding::encode(&ids_or_slugs)))
+            .get(&format!(
+                "/v3/projects?ids={encoded}",
+                encoded = urlencoding::encode(&ids_or_slugs)
+            ))
             .append_pat(pat)
             .await
     }
 
-    async fn get_project_dependencies(
-        &self,
-        id_or_slug: &str,
-        pat: Option<&str>,
-    ) -> TestResponse {
+    async fn get_project_dependencies(&self, id_or_slug: &str, pat: Option<&str>) -> TestResponse {
         self.test_server
             .get(&format!("/v3/project/{id_or_slug}/dependencies"))
             .append_pat(pat)
@@ -249,16 +252,16 @@ impl ApiProject for ApiV3 {
     async fn get_reports(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
         self.test_server
-            .get(&format!("/v3/reports?ids={encoded}", encoded = urlencoding::encode(&ids_str)))
+            .get(&format!(
+                "/v3/reports?ids={encoded}",
+                encoded = urlencoding::encode(&ids_str)
+            ))
             .append_pat(pat)
             .await
     }
 
     async fn get_user_reports(&self, pat: Option<&str>) -> TestResponse {
-        self.test_server
-            .get(&"/v3/report")
-            .append_pat(pat)
-            .await
+        self.test_server.get(&"/v3/report").append_pat(pat).await
     }
 
     async fn edit_report(
@@ -334,10 +337,7 @@ impl ApiProject for ApiV3 {
             ));
         }
 
-        self.test_server
-            .patch(&url)
-            .append_pat(pat)
-            .await
+        self.test_server.patch(&url).append_pat(pat).await
     }
 
     async fn remove_gallery_item(
@@ -347,9 +347,7 @@ impl ApiProject for ApiV3 {
         pat: Option<&str>,
     ) -> TestResponse {
         self.test_server
-            .delete(&format!(
-                "/v3/project/{id_or_slug}/gallery?url={url}",
-            ))
+            .delete(&format!("/v3/project/{id_or_slug}/gallery?url={url}",))
             .append_pat(pat)
             .await
     }
@@ -364,7 +362,10 @@ impl ApiProject for ApiV3 {
     async fn get_threads(&self, ids: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_str = serde_json::to_string(ids).unwrap();
         self.test_server
-            .get(&format!("/v3/threads?ids={encoded}", encoded = urlencoding::encode(&ids_str)))
+            .get(&format!(
+                "/v3/threads?ids={encoded}",
+                encoded = urlencoding::encode(&ids_str)
+            ))
             .append_pat(pat)
             .await
     }
@@ -501,8 +502,7 @@ impl ApiV3 {
             extra_args.push_str(&format!("&resolution_minutes={}", resolution_minutes));
         }
 
-        self
-            .test_server
+        self.test_server
             .get(&format!("/v3/analytics/revenue?{pv_string}{extra_args}",))
             .append_pat(pat)
             .await

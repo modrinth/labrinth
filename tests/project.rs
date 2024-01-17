@@ -1,6 +1,6 @@
 use axum_test::http::StatusCode;
 
-use axum_test::multipart::{Part, MultipartForm};
+use axum_test::multipart::{MultipartForm, Part};
 use common::api_v3::ApiV3;
 use common::database::*;
 use common::dummy_data::DUMMY_CATEGORIES;
@@ -102,42 +102,71 @@ async fn test_add_remove_project() {
             .await;
 
         // Basic json - called 'data'
-        let json_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
+        let json_part =
+            Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
 
         // Basic json, with a different file - called 'data'
         json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
-        let json_diff_file_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
-        
+        let json_diff_file_part =
+            Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
+
         // Basic json, with a different file, and a different slug - called 'data'
         // As 'Part' is not clonable, we have to make a second one.
         json_data["slug"] = json!("new_demo");
         json_data["initial_versions"][0]["file_parts"][0] = json!("basic-mod-different.jar");
-        let json_diff_slug_file_part = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
-        let json_diff_slug_file_part_2 = Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
+        let json_diff_slug_file_part =
+            Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
+        let json_diff_slug_file_part_2 =
+            Part::text(serde_json::to_string(&json_data).unwrap()).mime_type("application/json");
 
         let basic_mod_file = TestFile::BasicMod;
         let basic_mod_different_file = TestFile::BasicModDifferent;
 
         // Basic file - 'Basic'
-        let file_part = (basic_mod_file.filename(), Part::bytes(basic_mod_file.bytes()).file_name(basic_mod_file.filename()).mime_type(basic_mod_file.content_type().unwrap()));
+        let file_part = (
+            basic_mod_file.filename(),
+            Part::bytes(basic_mod_file.bytes())
+                .file_name(basic_mod_file.filename())
+                .mime_type(basic_mod_file.content_type().unwrap()),
+        );
 
         // Differently named file, with the SAME byte content (for hash testing)
-        let file_diff_name_part = (basic_mod_different_file.filename(), Part::bytes(basic_mod_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
+        let file_diff_name_part = (
+            basic_mod_different_file.filename(),
+            Part::bytes(basic_mod_file.bytes())
+                .file_name(basic_mod_different_file.filename())
+                .mime_type(basic_mod_different_file.content_type().unwrap()),
+        );
 
         // Differently named file, with entirely different content
         // As 'Part' is not clonable, we have to make a second one.
-        let file_diff_name_content_part = (basic_mod_different_file.filename(), Part::bytes(basic_mod_different_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
-        let file_diff_name_content_part_2 = (basic_mod_different_file.filename(), Part::bytes(basic_mod_different_file.bytes()).file_name(basic_mod_different_file.filename()).mime_type(basic_mod_different_file.content_type().unwrap()));
-        
+        let file_diff_name_content_part = (
+            basic_mod_different_file.filename(),
+            Part::bytes(basic_mod_different_file.bytes())
+                .file_name(basic_mod_different_file.filename())
+                .mime_type(basic_mod_different_file.content_type().unwrap()),
+        );
+        let file_diff_name_content_part_2 = (
+            basic_mod_different_file.filename(),
+            Part::bytes(basic_mod_different_file.bytes())
+                .file_name(basic_mod_different_file.filename())
+                .mime_type(basic_mod_different_file.content_type().unwrap()),
+        );
+
         // Add a project- simple, should work.
         let mut form = MultipartForm::new();
         form = form.add_part("data", json_part);
         form = form.add_part(file_part.0, file_part.1);
-        let resp = api.create_project(ProjectCreationRequestData {
-            slug: "demo".to_string(),
-            jar: None, // File not needed at this point, as it is in the multipart form
-            multipart_data: form,
-        }, USER_USER_PAT).await;
+        let resp = api
+            .create_project(
+                ProjectCreationRequestData {
+                    slug: "demo".to_string(),
+                    jar: None, // File not needed at this point, as it is in the multipart form
+                    multipart_data: form,
+                },
+                USER_USER_PAT,
+            )
+            .await;
         assert_status!(&resp, StatusCode::OK);
 
         // Get the project we just made, and confirm that it's correct
@@ -159,33 +188,51 @@ async fn test_add_remove_project() {
         let mut form = MultipartForm::new();
         form = form.add_part("data", json_diff_slug_file_part); // Different slug, different file name
         form = form.add_part(file_diff_name_part.0, file_diff_name_part.1); // Different file name, same content
-        let resp = api.create_project(ProjectCreationRequestData {
-            slug: "demo".to_string(),
-            jar: None, // File not needed at this point, as it is in the multipart form
-            multipart_data: form,
-        }, USER_USER_PAT).await;
+        let resp = api
+            .create_project(
+                ProjectCreationRequestData {
+                    slug: "demo".to_string(),
+                    jar: None, // File not needed at this point, as it is in the multipart form
+                    multipart_data: form,
+                },
+                USER_USER_PAT,
+            )
+            .await;
         assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Reusing with the same slug and a different file should fail
         let mut form = MultipartForm::new();
         form = form.add_part("data", json_diff_file_part); // Same slug, different file name
         form = form.add_part(file_diff_name_content_part.0, file_diff_name_content_part.1); // Different file name, different content
-        let resp = api.create_project(ProjectCreationRequestData {
-            slug: "demo".to_string(),
-            jar: None, // File not needed at this point, as it is in the multipart form
-            multipart_data: form,
-        }, USER_USER_PAT).await;
+        let resp = api
+            .create_project(
+                ProjectCreationRequestData {
+                    slug: "demo".to_string(),
+                    jar: None, // File not needed at this point, as it is in the multipart form
+                    multipart_data: form,
+                },
+                USER_USER_PAT,
+            )
+            .await;
         assert_status!(&resp, StatusCode::BAD_REQUEST);
 
         // Different slug, different file should succeed
         let mut form = MultipartForm::new();
         form = form.add_part("data", json_diff_slug_file_part_2); // Different slug, different file name
-        form = form.add_part(file_diff_name_content_part_2.0, file_diff_name_content_part_2.1); // Different file name, different content
-        let resp = api.create_project(ProjectCreationRequestData {
-            slug: "new_demo".to_string(),
-            jar: None, // File not needed at this point, as it is in the multipart form
-            multipart_data: form,
-        }, USER_USER_PAT).await;
+        form = form.add_part(
+            file_diff_name_content_part_2.0,
+            file_diff_name_content_part_2.1,
+        ); // Different file name, different content
+        let resp = api
+            .create_project(
+                ProjectCreationRequestData {
+                    slug: "new_demo".to_string(),
+                    jar: None, // File not needed at this point, as it is in the multipart form
+                    multipart_data: form,
+                },
+                USER_USER_PAT,
+            )
+            .await;
         assert_status!(&resp, StatusCode::OK);
 
         // Get

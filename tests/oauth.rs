@@ -1,5 +1,6 @@
 use axum_test::http::StatusCode;
 
+use axum_test::http::header::{CACHE_CONTROL, PRAGMA};
 use common::{
     api_v3::oauth::get_redirect_location_query_params,
     api_v3::{
@@ -12,7 +13,6 @@ use common::{
     environment::{with_test_environment, TestEnvironment},
 };
 use labrinth::auth::oauth::TokenResponse;
-use axum_test::http::header::{CACHE_CONTROL, PRAGMA};
 
 mod common;
 
@@ -66,7 +66,7 @@ async fn oauth_flow_happy_path() {
         assert_eq!(resp.headers().get(CACHE_CONTROL).unwrap(), "no-store");
         assert_eq!(resp.headers().get(PRAGMA).unwrap(), "no-cache");
         let token_resp: TokenResponse = resp.json();
-        
+
         // Validate the token works
         env.assert_read_notifications_status(
             FRIEND_USER_ID,

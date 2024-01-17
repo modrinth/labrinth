@@ -6,10 +6,10 @@ use self::models::{
     CommonTeamMember, CommonVersion,
 };
 use self::request_data::{ImageData, ProjectCreationRequestData};
-use axum::http::HeaderValue;
-use axum::http::header::AUTHORIZATION;
-use axum_test::TestResponse;
 use async_trait::async_trait;
+use axum::http::header::AUTHORIZATION;
+use axum::http::HeaderValue;
+use axum_test::TestResponse;
 use labrinth::{
     models::{
         projects::{ProjectId, VersionType},
@@ -62,16 +62,9 @@ pub trait ApiProject {
         pat: Option<&str>,
     ) -> CommonProject;
     async fn get_projects(&self, ids_or_slugs: &[&str], pat: Option<&str>) -> TestResponse;
-    async fn get_project_dependencies(
-        &self,
-        id_or_slug: &str,
-        pat: Option<&str>,
-    ) -> TestResponse;
-    async fn get_user_projects(
-        &self,
-        user_id_or_username: &str,
-        pat: Option<&str>,
-    ) -> TestResponse;
+    async fn get_project_dependencies(&self, id_or_slug: &str, pat: Option<&str>) -> TestResponse;
+    async fn get_user_projects(&self, user_id_or_username: &str, pat: Option<&str>)
+        -> TestResponse;
     async fn get_user_projects_deserialized_common(
         &self,
         user_id_or_username: &str,
@@ -174,11 +167,7 @@ pub trait ApiTeams {
         id_or_slug: &str,
         pat: Option<&str>,
     ) -> Vec<CommonTeamMember>;
-    async fn get_organization_members(
-        &self,
-        id_or_title: &str,
-        pat: Option<&str>,
-    ) -> TestResponse;
+    async fn get_organization_members(&self, id_or_title: &str, pat: Option<&str>) -> TestResponse;
     async fn get_organization_members_deserialized_common(
         &self,
         id_or_title: &str,
@@ -226,11 +215,7 @@ pub trait ApiTeams {
         organization_permissions: Option<OrganizationPermissions>,
         pat: Option<&str>,
     ) -> TestResponse;
-    async fn delete_notification(
-        &self,
-        notification_id: &str,
-        pat: Option<&str>,
-    ) -> TestResponse;
+    async fn delete_notification(&self, notification_id: &str, pat: Option<&str>) -> TestResponse;
     async fn delete_notifications(&self, ids: &[&str], pat: Option<&str>) -> TestResponse;
 }
 
@@ -398,10 +383,7 @@ pub trait AppendsOptionalPat {
 impl AppendsOptionalPat for axum_test::TestRequest {
     fn append_pat(self, pat: Option<&str>) -> Self {
         if let Some(pat) = pat {
-            self.add_header(
-                AUTHORIZATION,
-                HeaderValue::from_str(pat).unwrap(),
-            )
+            self.add_header(AUTHORIZATION, HeaderValue::from_str(pat).unwrap())
         } else {
             self
         }

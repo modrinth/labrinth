@@ -53,7 +53,10 @@ impl ApiV3 {
     ) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
         self.test_server
-            .get(&format!("/v3/organizations?ids={}", urlencoding::encode(&ids_or_titles)))
+            .get(&format!(
+                "/v3/organizations?ids={}",
+                urlencoding::encode(&ids_or_titles)
+            ))
             .append_pat(pat)
             .await
     }
@@ -117,11 +120,7 @@ impl ApiV3 {
         }
     }
 
-    pub async fn delete_organization(
-        &self,
-        id_or_title: &str,
-        pat: Option<&str>,
-    ) -> TestResponse {
+    pub async fn delete_organization(&self, id_or_title: &str, pat: Option<&str>) -> TestResponse {
         self.test_server
             .delete(&format!("/v3/organization/{id_or_title}"))
             .append_pat(pat)

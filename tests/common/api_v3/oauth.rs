@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
+use axum::http::{
+    header::{AUTHORIZATION, LOCATION},
+    HeaderValue,
+};
 use axum_test::{http::StatusCode, TestResponse};
 use labrinth::auth::oauth::{
     OAuthClientAccessRequest, RespondToOAuthClientScopes, TokenRequest, TokenResponse,
 };
-use axum::http::{header::{AUTHORIZATION, LOCATION}, HeaderValue};
 
-use crate::{
-    assert_status,
-    common::api_common::AppendsOptionalPat,
-};
+use crate::{assert_status, common::api_common::AppendsOptionalPat};
 
 use super::ApiV3;
 
@@ -44,10 +44,7 @@ impl ApiV3 {
         pat: Option<&str>,
     ) -> TestResponse {
         let uri = generate_authorize_uri(client_id, scope, redirect_uri, state);
-        self.test_server
-            .get(&uri)
-            .append_pat(pat)
-            .await
+        self.test_server.get(&uri).append_pat(pat).await
     }
 
     pub async fn oauth_accept(&self, flow: &str, pat: Option<&str>) -> TestResponse {
@@ -121,9 +118,7 @@ pub async fn get_access_token(response: TestResponse) -> String {
     response.json::<TokenResponse>().access_token
 }
 
-pub fn get_redirect_location_query_params(
-    response: &TestResponse,
-) -> HashMap<String, String> {
+pub fn get_redirect_location_query_params(response: &TestResponse) -> HashMap<String, String> {
     let redirect_location = response
         .headers()
         .get(LOCATION)

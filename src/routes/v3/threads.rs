@@ -1,6 +1,6 @@
 use axum::http::HeaderMap;
 use axum::routing::{delete, get, post};
-use axum::{Router};
+use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -20,11 +20,11 @@ use crate::models::threads::{MessageBody, Thread, ThreadId, ThreadType};
 use crate::models::users::User;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::StatusCode;
 use futures::TryStreamExt;
 use serde::Deserialize;
 use sqlx::PgPool;
-use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new()

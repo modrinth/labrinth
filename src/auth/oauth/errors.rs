@@ -2,10 +2,10 @@ use super::ValidatedRedirectUri;
 use crate::auth::AuthenticationError;
 use crate::models::error::ApiError;
 use crate::models::ids::DecodingError;
+use crate::util::extract::Json;
 use axum::http::header::LOCATION;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use crate::util::extract::Json;
 
 #[derive(thiserror::Error, Debug)]
 #[error("{}", .error_type)]

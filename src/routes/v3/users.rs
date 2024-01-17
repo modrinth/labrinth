@@ -1,14 +1,14 @@
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::HeaderMap;
-use axum::routing::{get, patch};
-use axum::{Router};
-use std::net::SocketAddr;
-use std::{collections::HashMap, sync::Arc};
-use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 use axum::http::StatusCode;
+use axum::routing::{get, patch};
+use axum::Router;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::net::SocketAddr;
+use std::{collections::HashMap, sync::Arc};
 use validator::Validate;
 
 use crate::{

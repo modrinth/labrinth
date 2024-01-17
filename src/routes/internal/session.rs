@@ -7,11 +7,12 @@ use crate::models::pats::Scopes;
 use crate::models::sessions::Session;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use crate::util::env::parse_var;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path};
+use crate::util::ip::get_ip_addr;
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, post};
-use axum::{Router};
+use axum::Router;
 use chrono::Utc;
 use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
@@ -20,7 +21,6 @@ use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use woothee::parser::Parser;
-use crate::util::extract::{Json, Path, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new().nest(
@@ -46,15 +46,7 @@ pub async fn get_session_metadata(
     addr: &SocketAddr,
     headers: &HeaderMap,
 ) -> Result<SessionMetadata, AuthenticationError> {
-    let ip_addr = if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
-        if let Some(header) = headers.get("CF-Connecting-IP") {
-            header.to_str().ok().map(|x| x.to_string())
-        } else {
-            Some(addr.ip().to_string())
-        }
-    } else {
-        Some(addr.ip().to_string())
-    };
+    let ip_addr = get_ip_addr(addr, headers);
 
     let country = headers.get("cf-ipcountry").and_then(|x| x.to_str().ok());
     let city = headers.get("cf-ipcity").and_then(|x| x.to_str().ok());
@@ -77,9 +69,7 @@ pub async fn get_session_metadata(
         platform: os.map(|x| x.1.to_string()),
         city: city.map(|x| x.to_string()),
         country: country.map(|x| x.to_string()),
-        ip: ip_addr
-            .ok_or_else(|| AuthenticationError::InvalidCredentials)?
-            .to_string(),
+        ip: ip_addr,
         user_agent: user_agent.to_string(),
     })
 }

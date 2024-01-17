@@ -1,13 +1,13 @@
-use axum::routing::get;
-use axum::{Router};
-use std::collections::HashMap;
-use crate::util::extract::{Json, Path, Query, Extension};
 use super::ApiError;
 use crate::database::models::categories::{Category, LinkPlatform, ProjectType, ReportType};
 use crate::database::models::loader_fields::{
     Game, Loader, LoaderField, LoaderFieldEnumValue, LoaderFieldType,
 };
 use crate::database::redis::RedisPool;
+use crate::util::extract::{Extension, Json, Path, Query};
+use axum::routing::get;
+use axum::Router;
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use serde_json::Value;

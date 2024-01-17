@@ -1,14 +1,25 @@
+use axum::http::header::AUTHORIZATION;
 use axum::routing::get;
+use axum::Extension;
 use axum_prometheus::PrometheusMetricLayer;
-use env_logger::Env;
+use governor::middleware::StateInformationMiddleware;
+use governor::{Quota, RateLimiter};
 use labrinth::database::redis::RedisPool;
 use labrinth::file_hosting::S3Host;
+use labrinth::scheduler::schedule;
 use labrinth::search;
+use labrinth::util::ratelimit::{ratelimit, KeyedRateLimiter};
 use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
-use log::{error, info};
 use std::net::SocketAddr;
+use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::time::Duration;
 use tower_http::compression::CompressionLayer;
+use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
+use tower_http::trace::TraceLayer;
+use tracing::{error, info};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Clone)]
 pub struct Pepper {
@@ -19,7 +30,14 @@ pub struct Pepper {
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "labrinth=debug,tower_http=debug,axum::rejection=trace".into()),
+        )
+        .with(sentry::integrations::tracing::layer())
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     if check_env_vars() {
         error!("Some environment variables are missing!");
@@ -27,15 +45,15 @@ async fn main() -> std::io::Result<()> {
 
     // DSN is from SENTRY_DSN env variable.
     // Has no effect if not set.
-    // let sentry = sentry::init(sentry::ClientOptions {
-    //     release: sentry::release_name!(),
-    //     traces_sample_rate: 0.1,
-    //     ..Default::default()
-    // });
-    // if sentry.is_enabled() {
-    //     info!("Enabled Sentry integration");
-    //     std::env::set_var("RUST_BACKTRACE", "1");
-    // }
+    let sentry = sentry::init(sentry::ClientOptions {
+        release: sentry::release_name!(),
+        traces_sample_rate: 0.1,
+        ..Default::default()
+    });
+    if sentry.is_enabled() {
+        info!("Enabled Sentry integration");
+        std::env::set_var("RUST_BACKTRACE", "1");
+    }
 
     info!(
         "Starting Labrinth on {}",
@@ -98,7 +116,29 @@ async fn main() -> std::io::Result<()> {
 
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
+    let limiter: Arc<KeyedRateLimiter> = Arc::new(
+        RateLimiter::keyed(Quota::per_minute(NonZeroU32::new(300).unwrap()))
+            .with_middleware::<StateInformationMiddleware>(),
+    );
+
+    let limiter_clone = limiter.clone();
+    schedule(Duration::from_secs(10 * 60), move || {
+        info!(
+            "Clearing ratelimiter, storage size: {}",
+            limiter_clone.len()
+        );
+        limiter_clone.retain_recent();
+        info!(
+            "Done clearing ratelimiter, storage size: {}",
+            limiter_clone.len()
+        );
+
+        async move {}
+    });
+
     let app = labrinth::app_config(labrinth_config)
+        .layer(axum::middleware::from_fn(ratelimit))
+        .layer(Extension(limiter))
         .route("/metrics", get(|| async move { metric_handle.render() }))
         .layer(prometheus_layer)
         .layer(
@@ -108,9 +148,13 @@ async fn main() -> std::io::Result<()> {
                 .gzip(true)
                 .zstd(true),
         )
+        .layer(SetSensitiveRequestHeadersLayer::new(std::iter::once(
+            AUTHORIZATION,
+        )))
+        .layer(TraceLayer::new_for_http())
+        .layer(sentry_tower::NewSentryLayer::new_from_top())
+        .layer(sentry_tower::SentryHttpLayer::with_transaction())
         .into_make_service_with_connect_info::<SocketAddr>();
-    // TODO: wrap sentry here
-    // TODO: ratelimiter
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;

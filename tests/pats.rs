@@ -7,7 +7,7 @@ use common::{database::*, environment::with_test_environment_all};
 use labrinth::models::pats::Scopes;
 use serde_json::json;
 
-use crate::common::api_common::{AppendsOptionalPat, Api};
+use crate::common::api_common::{Api, AppendsOptionalPat};
 
 mod common;
 
@@ -25,7 +25,8 @@ pub async fn pat_full_test() {
         // Create a PAT for a full test
         let test_server = test_env.api.get_test_server();
 
-        let resp = test_server.post("/_internal/pat")
+        let resp = test_server
+            .post("/_internal/pat")
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "scopes": Scopes::COLLECTION_CREATE, // Collection create as an easily tested example
@@ -46,7 +47,8 @@ pub async fn pat_full_test() {
         let access_token = success["access_token"].as_str().unwrap();
 
         // Get PAT again
-        let resp = test_server.get(&format!("/_internal/pat"))
+        let resp = test_server
+            .get(&format!("/_internal/pat"))
             .append_pat(USER_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::OK);
@@ -80,7 +82,8 @@ pub async fn pat_full_test() {
         assert_eq!(mock_pat_test(access_token).await, 200);
 
         // Change scopes and test again
-        let resp = test_server.patch(&format!("/_internal/pat/{}", id))
+        let resp = test_server
+            .patch(&format!("/_internal/pat/{}", id))
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "scopes": 0
@@ -90,7 +93,8 @@ pub async fn pat_full_test() {
         assert_eq!(mock_pat_test(access_token).await, 401); // No longer works
 
         // Change scopes back, and set expiry to the past, and test again
-        let resp = test_server.patch(&format!("/_internal/pat/{}", id))
+        let resp = test_server
+            .patch(&format!("/_internal/pat/{}", id))
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "scopes": Scopes::COLLECTION_CREATE,
@@ -98,13 +102,14 @@ pub async fn pat_full_test() {
             }))
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
-        
+
         // Wait 1 second before testing again for expiry
         tokio::time::sleep(Duration::seconds(1).to_std().unwrap()).await;
         assert_eq!(mock_pat_test(access_token).await, 401); // No longer works
 
         // Change everything back to normal and test again
-        let resp = test_server.patch(&format!("/_internal/pat/{}", id))
+        let resp = test_server
+            .patch(&format!("/_internal/pat/{}", id))
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "expires": Utc::now() + Duration::days(1), // no longer expired!
@@ -114,7 +119,8 @@ pub async fn pat_full_test() {
         assert_eq!(mock_pat_test(access_token).await, 200); // Works again
 
         // Patching to a bad expiry should fail
-        let resp = test_server.patch(&format!("/_internal/pat/{}", id))
+        let resp = test_server
+            .patch(&format!("/_internal/pat/{}", id))
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "expires": Utc::now() - Duration::days(1), // Past
@@ -129,7 +135,8 @@ pub async fn pat_full_test() {
                 continue;
             }
 
-            let resp = test_server.patch(&format!("/_internal/pat/{}", id))
+            let resp = test_server
+                .patch(&format!("/_internal/pat/{}", id))
                 .append_pat(USER_USER_PAT)
                 .json(&json!({
                     "scopes": scope.bits(),
@@ -142,7 +149,8 @@ pub async fn pat_full_test() {
         }
 
         // Delete PAT
-        let resp = test_server.delete(&format!("/_internal/pat/{}", id))
+        let resp = test_server
+            .delete(&format!("/_internal/pat/{}", id))
             .append_pat(USER_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
@@ -157,7 +165,8 @@ pub async fn bad_pats() {
         // Creating a PAT with no name should fail
         let test_server = test_env.api.get_test_server();
 
-        let resp = test_server.post("/_internal/pat")
+        let resp = test_server
+            .post("/_internal/pat")
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "scopes": Scopes::COLLECTION_CREATE, // Collection create as an easily tested example
@@ -168,7 +177,8 @@ pub async fn bad_pats() {
 
         // Name too short or too long should fail
         for name in ["n", "this_name_is_too_long".repeat(16).as_str()] {
-            let resp = test_server.post("/_internal/pat")
+            let resp = test_server
+                .post("/_internal/pat")
                 .append_pat(USER_USER_PAT)
                 .json(&json!({
                     "name": name,
@@ -180,7 +190,8 @@ pub async fn bad_pats() {
         }
 
         // Creating a PAT with an expiry in the past should fail
-        let resp = test_server.post("/_internal/pat")
+        let resp = test_server
+            .post("/_internal/pat")
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "scopes": Scopes::COLLECTION_CREATE, // Collection create as an easily tested example
@@ -196,7 +207,8 @@ pub async fn bad_pats() {
             if !Scopes::all().contains(scope) {
                 continue;
             }
-            let resp = test_server.post("/_internal/pat")
+            let resp = test_server
+                .post("/_internal/pat")
                 .append_pat(USER_USER_PAT)
                 .json(&json!({
                     "scopes": scope.bits(),
@@ -211,7 +223,8 @@ pub async fn bad_pats() {
         }
 
         // Create a 'good' PAT for patching
-        let resp = test_server.post("/_internal/pat")
+        let resp = test_server
+            .post("/_internal/pat")
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "scopes": Scopes::COLLECTION_CREATE, // Collection create as an easily tested example
@@ -225,7 +238,8 @@ pub async fn bad_pats() {
 
         // Patching to a bad name should fail
         for name in ["n", "this_name_is_too_long".repeat(16).as_str()] {
-            let resp = test_server.patch(&format!("/_internal/pat/{}", id))
+            let resp = test_server
+                .patch(&format!("/_internal/pat/{}", id))
                 .append_pat(USER_USER_PAT)
                 .json(&json!({
                     "name": name,
@@ -235,7 +249,8 @@ pub async fn bad_pats() {
         }
 
         // Patching to a bad expiry should fail
-        let resp = test_server.patch(&format!("/_internal/pat/{}", id))
+        let resp = test_server
+            .patch(&format!("/_internal/pat/{}", id))
             .append_pat(USER_USER_PAT)
             .json(&json!({
                 "expires": Utc::now() - Duration::days(1), // Past
@@ -249,7 +264,8 @@ pub async fn bad_pats() {
             if !Scopes::all().contains(scope) {
                 continue;
             }
-            let resp = test_server.patch(&format!("/_internal/pat/{}", id))
+            let resp = test_server
+                .patch(&format!("/_internal/pat/{}", id))
                 .append_pat(USER_USER_PAT)
                 .json(&json!({
                     "scopes": scope.bits(),

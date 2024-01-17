@@ -1,9 +1,8 @@
 use crate::routes::ApiError;
+use crate::util::extract::{Extension, Json};
 use axum::routing::get;
-use axum::{Router};
+use axum::Router;
 use sqlx::PgPool;
-use crate::util::extract::{Json, Extension};
-
 
 pub fn config() -> Router {
     Router::new().route("/statistics", get(get_stats))

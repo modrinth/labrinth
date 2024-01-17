@@ -14,7 +14,7 @@ where
     });
 }
 
-use log::{info, warn};
+use tracing::{info, warn};
 
 pub fn schedule_versions(pool: sqlx::Pool<sqlx::Postgres>, redis: RedisPool) {
     let version_index_interval =

@@ -1,7 +1,7 @@
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch, post};
-use axum::{Router};
-use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
+use axum::Router;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;

@@ -8,10 +8,11 @@ use crate::models::payouts::{PayoutMethodType, PayoutStatus};
 use crate::queue::payouts::PayoutsQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
-use axum::{Router};
+use axum::Router;
 use chrono::Utc;
 use hex::ToHex;
 use hmac::{Hmac, Mac, NewMac};
@@ -23,7 +24,6 @@ use sha2::Sha256;
 use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new()

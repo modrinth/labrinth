@@ -1,7 +1,7 @@
 use crate::models::projects::SearchRequest;
+use crate::util::extract::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use crate::util::extract::Json;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use meilisearch_sdk::client::Client;

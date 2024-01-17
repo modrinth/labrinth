@@ -1,6 +1,4 @@
-use axum::{
-    extract::{FromRequest},
-};
+use axum::extract::FromRequest;
 use axum::extract::FromRequestParts;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
@@ -10,29 +8,25 @@ use serde::Serialize;
 pub struct Json<T>(pub T);
 
 impl<T> IntoResponse for Json<T>
-    where
-        T: Serialize,
+where
+    T: Serialize,
 {
     fn into_response(self) -> Response {
         axum::Json::<T>::into_response(axum::Json(self.0))
     }
 }
 
-
 #[derive(FromRequest, FromRequestParts)]
 #[from_request(via(axum::Form), rejection(crate::routes::ApiError))]
 pub struct Form<T>(pub T);
-
 
 #[derive(FromRequest, FromRequestParts)]
 #[from_request(via(axum::extract::Path), rejection(crate::routes::ApiError))]
 pub struct Path<T>(pub T);
 
-
 #[derive(FromRequest, FromRequestParts)]
 #[from_request(via(axum::extract::Query), rejection(crate::routes::ApiError))]
 pub struct Query<T>(pub T);
-
 
 #[derive(FromRequest, FromRequestParts)]
 #[from_request(via(axum::Extension), rejection(crate::routes::ApiError))]

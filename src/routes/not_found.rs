@@ -1,14 +1,16 @@
 use crate::models::error::ApiError;
+use crate::util::extract::Json;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use crate::util::extract::Json;
 
 pub async fn not_found() -> (StatusCode, Json<ApiError<'static>>) {
-    (StatusCode::NOT_FOUND,
-    Json(ApiError {
-        error: "not_found",
-        description: "the requested route does not exist",
-    }))
+    (
+        StatusCode::NOT_FOUND,
+        Json(ApiError {
+            error: "not_found",
+            description: "the requested route does not exist",
+        }),
+    )
 }
 
 pub async fn api_v1_gone() -> impl IntoResponse {

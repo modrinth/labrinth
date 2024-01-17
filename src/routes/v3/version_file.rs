@@ -7,20 +7,20 @@ use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use crate::{database, models};
 use axum::http::header::LOCATION;
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::{Router};
+use axum::Router;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use crate::util::extract::{Json, Path, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new()

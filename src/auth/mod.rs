@@ -4,9 +4,9 @@ pub mod oauth;
 pub mod templates;
 pub mod validate;
 
+use crate::util::extract::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use crate::util::extract::Json;
 pub use checks::{
     filter_enlisted_projects_ids, filter_enlisted_version_ids, filter_visible_collections,
     filter_visible_project_ids, filter_visible_projects,

@@ -2,6 +2,7 @@ use super::ApiError;
 use crate::database;
 use crate::database::redis::RedisPool;
 use crate::models::teams::ProjectPermissions;
+use crate::util::extract::{ConnectInfo, Extension, Json, Query};
 use crate::{
     auth::get_user_from_headers,
     database::models::user_item,
@@ -13,7 +14,7 @@ use crate::{
 };
 use axum::http::HeaderMap;
 use axum::routing::get;
-use axum::{Router};
+use axum::Router;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::types::PgInterval;
@@ -22,7 +23,6 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use crate::util::extract::{Json, Query, Extension, ConnectInfo};
 
 pub fn config() -> Router {
     Router::new().nest(

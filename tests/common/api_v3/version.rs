@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 
-use super::{
-    request_data::get_public_version_creation_data,
-    ApiV3,
-};
+use super::{request_data::get_public_version_creation_data, ApiV3};
 use crate::{
     assert_status,
     common::{
-        api_common::{models::CommonVersion, ApiVersion, AppendsOptionalPat, request_data::get_public_creation_data_multipart},
+        api_common::{
+            models::CommonVersion, request_data::get_public_creation_data_multipart, ApiVersion,
+            AppendsOptionalPat,
+        },
         dummy_data::TestFile,
     },
 };
-use axum_test::{http::StatusCode, TestResponse};
 use async_trait::async_trait;
+use axum_test::{http::StatusCode, TestResponse};
 use labrinth::{
     models::{
         projects::{ProjectId, VersionType},

@@ -1,9 +1,9 @@
 use crate::database;
 use crate::database::models::generate_pat_id;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path};
 use axum::http::HeaderMap;
 use axum::routing::{get, patch, post};
-use axum::{Router};
-use crate::util::extract::{Json, Extension, ConnectInfo, Path};
+use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
