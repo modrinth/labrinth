@@ -9,7 +9,7 @@ use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::ProjectIds;
 use crate::routes::{v2_reroute, v3, ApiErrorV2};
 use crate::search::{search_for_project, SearchConfig, SearchError};
-use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
+use crate::util::extract::{BytesExtract, ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch, post};
 use axum::Router;
@@ -707,7 +707,7 @@ pub async fn project_icon_edit(
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    payload: bytes::Bytes,
+    payload: BytesExtract,
 ) -> Result<StatusCode, ApiErrorV2> {
     Ok(v3::projects::project_icon_edit(
         Query(v3::projects::FileExt { ext: ext.ext }),
@@ -764,7 +764,7 @@ pub async fn add_gallery_item(
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    payload: bytes::Bytes,
+    payload: BytesExtract,
 ) -> Result<StatusCode, ApiErrorV2> {
     Ok(v3::projects::add_gallery_item(
         Query(v3::projects::FileExt { ext: ext.ext }),

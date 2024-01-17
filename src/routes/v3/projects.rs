@@ -1,4 +1,4 @@
-use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
+use crate::util::extract::{BytesExtract, ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch, post};
 use axum::Router;
@@ -1328,7 +1328,7 @@ pub async fn project_icon_edit(
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    payload: bytes::Bytes,
+    payload: BytesExtract,
 ) -> Result<StatusCode, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         let cdn_url = dotenvy::var("CDN_URL")?;
@@ -1538,7 +1538,7 @@ pub async fn add_gallery_item(
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    payload: bytes::Bytes,
+    payload: BytesExtract,
 ) -> Result<StatusCode, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         item.validate()

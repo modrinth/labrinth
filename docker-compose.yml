@@ -17,7 +17,7 @@ services:
     ports:
       - "7700:7700"
     volumes:
-      - meilisearch-data:/data.ms
+      - meilisearch-data:/meili_data/data.ms
     environment:
       MEILI_MASTER_KEY: modrinth
       MEILI_HTTP_PAYLOAD_SIZE_LIMIT: 107374182400

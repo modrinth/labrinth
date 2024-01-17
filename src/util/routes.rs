@@ -2,19 +2,20 @@ use crate::routes::v3::project_creation::CreateError;
 use crate::routes::ApiError;
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
+use crate::util::extract::BytesExtract;
 
 use super::multipart::FieldWrapper;
 
 pub async fn read_from_payload(
-    payload: Bytes,
+    payload: BytesExtract,
     cap: usize,
     err_msg: &'static str,
 ) -> Result<Bytes, ApiError> {
-    if payload.len() >= cap {
+    if payload.0.len() >= cap {
         return Err(ApiError::InvalidInput(String::from(err_msg)));
     }
 
-    Ok(payload)
+    Ok(payload.0)
 }
 
 pub async fn read_from_field(

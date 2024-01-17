@@ -50,4 +50,4 @@ pub struct StringExtract(String);
 
 #[derive(FromRequest)]
 #[from_request(rejection(crate::routes::ApiError))]
-pub struct BytesExtract(bytes::Bytes);
+pub struct BytesExtract(pub(crate) bytes::Bytes);

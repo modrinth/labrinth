@@ -1,11 +1,10 @@
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch, post};
 use axum::Router;
-use bytes::Bytes;
 use std::net::SocketAddr;
 use std::{collections::HashSet, fmt::Display, sync::Arc};
 
-use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
+use crate::util::extract::{BytesExtract, ConnectInfo, Extension, Json, Path, Query};
 use chrono::Utc;
 use itertools::Itertools;
 use rand::{distributions::Alphanumeric, Rng, SeedableRng};
@@ -381,7 +380,7 @@ pub async fn oauth_client_icon_edit(
     Extension(redis): Extension<RedisPool>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    payload: Bytes,
+    payload: BytesExtract,
 ) -> Result<StatusCode, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
         let cdn_url = dotenvy::var("CDN_URL")?;

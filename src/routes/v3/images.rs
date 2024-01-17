@@ -15,7 +15,7 @@ use crate::models::images::{Image, ImageContext};
 use crate::models::reports::ReportId;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use crate::util::extract::{ConnectInfo, Extension, Json, Query};
+use crate::util::extract::{BytesExtract, ConnectInfo, Extension, Json, Query};
 use crate::util::routes::read_from_payload;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -49,7 +49,7 @@ pub async fn images_add(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-    payload: bytes::Bytes,
+    payload: BytesExtract,
 ) -> Result<Json<Image>, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&data.ext) {
         let mut context = ImageContext::from_str(&data.context, None);

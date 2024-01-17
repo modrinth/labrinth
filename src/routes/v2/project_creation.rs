@@ -28,7 +28,7 @@ use super::version_creation::InitialVersionData;
 pub fn config() -> Router {
     Router::new().route(
         "/project",
-        post(project_create).layer(DefaultBodyLimit::max(512 * 1024)),
+        post(project_create).layer(DefaultBodyLimit::max(512 * 1024 * 1024)),
     )
 }
 
