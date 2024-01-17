@@ -2255,6 +2255,7 @@ dependencies = [
  "rust_decimal",
  "rust_iso3166",
  "sentry",
+ "sentry-tower",
  "serde",
  "serde_json",
  "serde_urlencoded",
