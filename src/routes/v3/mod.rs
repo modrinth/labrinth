@@ -33,7 +33,7 @@ pub fn config() -> Router {
             .merge(moderation::config())
             .merge(notifications::config())
             .merge(organizations::config())
-            //todo: .merge(project_creation::config())
+            .merge(project_creation::config())
             .merge(projects::config())
             .merge(reports::config())
             .merge(statistics::config())

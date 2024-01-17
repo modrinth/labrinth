@@ -1,3 +1,4 @@
+use axum::extract::DefaultBodyLimit;
 use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::Router;
@@ -37,13 +38,13 @@ use validator::Validate;
 
 pub fn config() -> Router {
     Router::new()
-        .route("/version", post(super::version_creation::version_create))
+        .route("/version", post(super::version_creation::version_create).layer(DefaultBodyLimit::max(500*1024)))
         .route("/versions", get(versions_get))
         .route(
             "/version/:id",
             get(version_get).patch(version_edit).delete(version_delete),
         )
-        .route("/version/:id/file", post(super::version_creation::upload_file_to_version))
+        .route("/version/:id/file", post(super::version_creation::upload_file_to_version).layer(DefaultBodyLimit::max(500*1024)))
 }
 
 // Given a project ID/slug and a version slug
