@@ -49,14 +49,14 @@ macro_rules! delegate_api_variant {
 impl Api for GenericApi {
     async fn reset_search_index(&self) -> TestResponse {
         match self {
-            // Self::V2(api) => api.reset_search_index().await,
+            Self::V2(api) => api.reset_search_index().await,
             Self::V3(api) => api.reset_search_index().await,
         }
     }
 
     fn get_test_server(&self) -> Arc<axum_test::TestServer> {
         match self {
-            // Self::V2(api) => api.get_test_server(),
+            Self::V2(api) => api.get_test_server(),
             Self::V3(api) => api.get_test_server(),
         }
     }

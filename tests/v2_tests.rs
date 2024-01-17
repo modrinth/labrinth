@@ -7,13 +7,13 @@ mod common;
 // (such as checking client_side in v2, but loader fields on v3- which are model-exclusie)
 
 // Such V2 tests are exported here
-// mod v2 {
-//     mod error;
-//     mod notifications;
-//     mod project;
-//     mod scopes;
-//     mod search;
-//     mod tags;
-//     mod teams;
-//     mod version;
-// }
+mod v2 {
+    mod error;
+    mod notifications;
+    mod project;
+    mod scopes;
+    mod search;
+    mod tags;
+    mod teams;
+    mod version;
+}

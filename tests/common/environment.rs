@@ -41,17 +41,17 @@ where
     f(test_env_api_v3).await;
     db.cleanup().await;
 
-    // println!("Test environment: API v2");
-    // let test_env_api_v2 = TestEnvironment::<ApiV2>::build(max_connections).await;
-    // let test_env_api_v2 = TestEnvironment {
-    //     db: test_env_api_v2.db.clone(),
-    //     api: GenericApi::V2(test_env_api_v2.api),
-    //     setup_api: test_env_api_v2.setup_api,
-    //     dummy: test_env_api_v2.dummy,
-    // };
-    // let db = test_env_api_v2.db.clone();
-    // f(test_env_api_v2).await;
-    // db.cleanup().await;
+    println!("Test environment: API v2");
+    let test_env_api_v2 = TestEnvironment::<ApiV2>::build(max_connections).await;
+    let test_env_api_v2 = TestEnvironment {
+        db: test_env_api_v2.db.clone(),
+        api: GenericApi::V2(test_env_api_v2.api),
+        setup_api: test_env_api_v2.setup_api,
+        dummy: test_env_api_v2.dummy,
+    };
+    let db = test_env_api_v2.db.clone();
+    f(test_env_api_v2).await;
+    db.cleanup().await;
 }
 
 // A complete test environment, with a test actix app and a database.
