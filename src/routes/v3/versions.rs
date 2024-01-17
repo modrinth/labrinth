@@ -37,7 +37,7 @@ use validator::Validate;
 
 pub fn config() -> Router {
     Router::new()
-        .route("version", post(super::version_creation::version_create))
+        .route("/version", post(super::version_creation::version_create))
         .route("/versions", get(versions_get))
         .route(
             "/version/:id",
