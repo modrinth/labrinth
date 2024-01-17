@@ -45,6 +45,8 @@ pub async fn remove_documents(
     for index in indexes {
         index
             .delete_documents(&ids.iter().map(|x| to_base62(x.0)).collect::<Vec<_>>())
+            .await?
+            .wait_for_completion(&config.make_client(), None, Some(TIMEOUT))
             .await?;
     }
 
