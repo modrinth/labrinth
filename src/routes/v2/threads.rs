@@ -7,7 +7,7 @@ use crate::models::ids::ThreadMessageId;
 use crate::models::threads::{MessageBody, ThreadId};
 use crate::models::v2::threads::LegacyThread;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v3, ApiError};
+use crate::routes::{v3, ApiErrorV2};
 use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, post};
@@ -38,7 +38,7 @@ pub async fn thread_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<LegacyThread>, ApiError> {
+) -> Result<Json<LegacyThread>, ApiErrorV2> {
     let Json(thread) = v3::threads::thread_get(
         ConnectInfo(addr),
         headers,
@@ -66,7 +66,7 @@ pub async fn threads_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyThread>>, ApiError> {
+) -> Result<Json<Vec<LegacyThread>>, ApiErrorV2> {
     let Json(threads) = v3::threads::threads_get(
         ConnectInfo(addr),
         headers,
@@ -98,8 +98,8 @@ pub async fn thread_send_message(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_message): Json<NewThreadMessage>,
-) -> Result<StatusCode, ApiError> {
-    v3::threads::thread_send_message(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::threads::thread_send_message(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -110,7 +110,7 @@ pub async fn thread_send_message(
             body: new_message.body,
         }),
     )
-    .await
+    .await?)
 }
 
 pub async fn moderation_inbox(
@@ -119,7 +119,7 @@ pub async fn moderation_inbox(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyThread>>, ApiError> {
+) -> Result<Json<Vec<LegacyThread>>, ApiErrorV2> {
     let Json(threads) = v3::threads::moderation_inbox(
         ConnectInfo(addr),
         headers,
@@ -144,8 +144,8 @@ pub async fn thread_read(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<StatusCode, ApiError> {
-    v3::threads::thread_read(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::threads::thread_read(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -153,7 +153,7 @@ pub async fn thread_read(
         Extension(redis),
         Extension(session_queue),
     )
-    .await
+    .await?)
 }
 
 pub async fn message_delete(
@@ -164,8 +164,8 @@ pub async fn message_delete(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
-) -> Result<StatusCode, ApiError> {
-    v3::threads::message_delete(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::threads::message_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -174,5 +174,5 @@ pub async fn message_delete(
         Extension(session_queue),
         Extension(file_host),
     )
-    .await
+    .await?)
 }

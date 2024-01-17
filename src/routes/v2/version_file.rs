@@ -3,8 +3,8 @@ use crate::database::redis::RedisPool;
 use crate::models::projects::VersionType;
 use crate::models::v2::projects::{LegacyProject, LegacyVersion};
 use crate::queue::session::AuthQueue;
-use crate::routes::v3;
 use crate::routes::v3::version_file::HashQuery;
+use crate::routes::{v3, ApiErrorV2};
 use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
@@ -45,7 +45,7 @@ pub async fn get_version_from_hash(
     Extension(redis): Extension<RedisPool>,
     Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<LegacyVersion>, ApiError> {
+) -> Result<Json<LegacyVersion>, ApiErrorV2> {
     let Json(version) = v3::version_file::get_version_from_hash(
         ConnectInfo(addr),
         headers,
@@ -71,9 +71,9 @@ pub async fn download_version(
     Extension(redis): Extension<RedisPool>,
     Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<impl IntoResponse, ApiErrorV2> {
     // Returns TemporaryRedirect, so no need to convert to V2
-    v3::version_file::download_version(
+    Ok(v3::version_file::download_version(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -82,7 +82,7 @@ pub async fn download_version(
         Query(hash_query),
         Extension(session_queue),
     )
-    .await
+    .await?)
 }
 
 // under /api/v1/version_file/{hash}
@@ -94,8 +94,8 @@ pub async fn delete_file(
     Extension(redis): Extension<RedisPool>,
     Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<StatusCode, ApiError> {
-    v3::version_file::delete_file(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::version_file::delete_file(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -104,7 +104,7 @@ pub async fn delete_file(
         Query(hash_query),
         Extension(session_queue),
     )
-    .await
+    .await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -123,7 +123,7 @@ pub async fn get_update_from_hash(
     Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(update_data): Json<UpdateData>,
-) -> Result<Json<LegacyVersion>, ApiError> {
+) -> Result<Json<LegacyVersion>, ApiErrorV2> {
     let mut loader_fields = HashMap::new();
     let mut game_versions = vec![];
     for gv in update_data.game_versions.into_iter().flatten() {
@@ -170,7 +170,7 @@ pub async fn get_versions_from_hashes(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(file_data): Json<FileHashes>,
-) -> Result<Json<HashMap<String, LegacyVersion>>, ApiError> {
+) -> Result<Json<HashMap<String, LegacyVersion>>, ApiErrorV2> {
     let file_data = v3::version_file::FileHashes {
         algorithm: file_data.algorithm,
         hashes: file_data.hashes,
@@ -203,7 +203,7 @@ pub async fn get_projects_from_hashes(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(file_data): Json<FileHashes>,
-) -> Result<Json<HashMap<String, LegacyProject>>, ApiError> {
+) -> Result<Json<HashMap<String, LegacyProject>>, ApiErrorV2> {
     let file_data = v3::version_file::FileHashes {
         algorithm: file_data.algorithm,
         hashes: file_data.hashes,
@@ -227,7 +227,9 @@ pub async fn get_projects_from_hashes(
         })
         .collect::<HashMap<_, _>>();
     let legacy_projects =
-        LegacyProject::from_many(projects_hashes.into_values().collect(), &pool, &redis).await?;
+        LegacyProject::from_many(projects_hashes.into_values().collect(), &pool, &redis)
+            .await
+            .map_err(ApiError::from)?;
     let legacy_projects_hashes = hash_to_project_id
         .into_iter()
         .filter_map(|(hash, project_id)| {
@@ -255,7 +257,7 @@ pub async fn update_files(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(update_data): Json<ManyUpdateData>,
-) -> Result<Json<HashMap<String, LegacyVersion>>, ApiError> {
+) -> Result<Json<HashMap<String, LegacyVersion>>, ApiErrorV2> {
     let mut loader_fields = HashMap::new();
     let mut game_versions = vec![];
     for gv in update_data.game_versions.into_iter().flatten() {
@@ -314,7 +316,7 @@ pub async fn update_individual_files(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(update_data): Json<ManyFileUpdateData>,
-) -> Result<Json<HashMap<String, LegacyVersion>>, ApiError> {
+) -> Result<Json<HashMap<String, LegacyVersion>>, ApiErrorV2> {
     let update_data = v3::version_file::ManyFileUpdateData {
         algorithm: update_data.algorithm,
         hashes: update_data

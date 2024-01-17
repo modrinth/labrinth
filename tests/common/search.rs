@@ -216,7 +216,6 @@ pub async fn setup_search_projects(test_env: &TestEnvironment<ApiV3>) -> Arc<Has
     }
     let id_conversion = Arc::new(id_conversion);
 
-
     // Create a second version for project 7
     let project_7 = api
         .get_project_deserialized_common(

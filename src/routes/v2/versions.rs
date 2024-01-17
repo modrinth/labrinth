@@ -1,22 +1,20 @@
-use axum::extract::DefaultBodyLimit;
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::Arc;
-
-use super::ApiError;
 use crate::database::redis::RedisPool;
 use crate::models;
 use crate::models::ids::VersionId;
 use crate::models::projects::{Dependency, FileType, VersionStatus, VersionType};
 use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
-use crate::routes::v3;
+use crate::routes::{v3, ApiErrorV2};
 use crate::search::SearchConfig;
 use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::Router;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use sqlx::PgPool;
 use validator::Validate;
@@ -61,7 +59,7 @@ pub async fn version_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyVersion>>, ApiError> {
+) -> Result<Json<Vec<LegacyVersion>>, ApiErrorV2> {
     let loaders = if let Some(loaders) = filters.loaders {
         if let Ok(mut loaders) = serde_json::from_str::<Vec<String>>(&loaders) {
             loaders.push("mrpack".to_string());
@@ -137,7 +135,7 @@ pub async fn version_project_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<LegacyVersion>, ApiError> {
+) -> Result<Json<LegacyVersion>, ApiErrorV2> {
     let Json(response) = v3::versions::version_project_get(
         ConnectInfo(addr),
         headers,
@@ -165,7 +163,7 @@ pub async fn versions_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyVersion>>, ApiError> {
+) -> Result<Json<Vec<LegacyVersion>>, ApiErrorV2> {
     let ids = v3::versions::VersionIds { ids: ids.ids };
     let Json(versions) = v3::versions::versions_get(
         ConnectInfo(addr),
@@ -192,7 +190,7 @@ pub async fn version_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<LegacyVersion>, ApiError> {
+) -> Result<Json<LegacyVersion>, ApiErrorV2> {
     let Json(version) = v3::versions::version_get(
         ConnectInfo(addr),
         headers,
@@ -252,7 +250,7 @@ pub async fn version_edit(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_version): Json<EditVersion>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<StatusCode, ApiErrorV2> {
     let mut fields = HashMap::new();
     if new_version.game_versions.is_some() {
         fields.insert(
@@ -308,7 +306,7 @@ pub async fn version_edit(
         fields,
     };
 
-    v3::versions::version_edit(
+    Ok(v3::versions::version_edit(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -317,7 +315,7 @@ pub async fn version_edit(
         Extension(session_queue),
         Json(new_version),
     )
-    .await
+    .await?)
 }
 
 pub async fn version_delete(
@@ -328,8 +326,8 @@ pub async fn version_delete(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(search_config): Extension<SearchConfig>,
-) -> Result<StatusCode, ApiError> {
-    v3::versions::version_delete(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::versions::version_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -338,5 +336,5 @@ pub async fn version_delete(
         Extension(session_queue),
         Extension(search_config),
     )
-    .await
+    .await?)
 }

@@ -6,7 +6,7 @@ use crate::models::teams::{OrganizationPermissions, ProjectPermissions, TeamId};
 use crate::models::users::UserId;
 use crate::models::v2::teams::LegacyTeamMember;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v3, ApiError};
+use crate::routes::{v3, ApiErrorV2};
 use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, patch, post};
@@ -21,12 +21,11 @@ pub fn config() -> Router {
         Router::new()
             .route("/:id/join", post(join_team))
             .route("/:id/owner", patch(transfer_ownership))
+            .route("/:id/members", get(team_members_get).post(add_team_member))
             .route(
-                "/:id/members",
-                get(team_members_get)
-                    .post(add_team_member),
-            )
-            .route("/:id/members/:user_id", delete(remove_team_member).patch(edit_team_member)),
+                "/:id/members/:user_id",
+                delete(remove_team_member).patch(edit_team_member),
+            ),
     )
 }
 
@@ -42,7 +41,7 @@ pub async fn team_members_get_project(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyTeamMember>>, ApiError> {
+) -> Result<Json<Vec<LegacyTeamMember>>, ApiErrorV2> {
     let Json(members) = v3::teams::team_members_get_project(
         ConnectInfo(addr),
         headers,
@@ -68,7 +67,7 @@ pub async fn team_members_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyTeamMember>>, ApiError> {
+) -> Result<Json<Vec<LegacyTeamMember>>, ApiErrorV2> {
     let Json(members) = v3::teams::team_members_get(
         ConnectInfo(addr),
         headers,
@@ -100,7 +99,7 @@ pub async fn teams_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<Vec<LegacyTeamMember>>>, ApiError> {
+) -> Result<Json<Vec<Vec<LegacyTeamMember>>>, ApiErrorV2> {
     let Json(teams) = v3::teams::teams_get(
         ConnectInfo(addr),
         headers,
@@ -132,8 +131,8 @@ pub async fn join_team(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<StatusCode, ApiError> {
-    v3::teams::join_team(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::teams::join_team(
         ConnectInfo(addr),
         headers,
         info,
@@ -141,7 +140,7 @@ pub async fn join_team(
         Extension(redis),
         Extension(session_queue),
     )
-    .await
+    .await?)
 }
 
 fn default_role() -> String {
@@ -176,8 +175,8 @@ pub async fn add_team_member(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_member): Json<NewTeamMember>,
-) -> Result<StatusCode, ApiError> {
-    v3::teams::add_team_member(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::teams::add_team_member(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -193,7 +192,7 @@ pub async fn add_team_member(
             ordering: new_member.ordering,
         }),
     )
-    .await
+    .await?)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -213,8 +212,8 @@ pub async fn edit_team_member(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(edit_member): Json<EditTeamMember>,
-) -> Result<StatusCode, ApiError> {
-    v3::teams::edit_team_member(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::teams::edit_team_member(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -229,7 +228,7 @@ pub async fn edit_team_member(
             ordering: edit_member.ordering,
         }),
     )
-    .await
+    .await?)
 }
 
 #[derive(Deserialize)]
@@ -245,8 +244,8 @@ pub async fn transfer_ownership(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_owner): Json<TransferOwnership>,
-) -> Result<StatusCode, ApiError> {
-    v3::teams::transfer_ownership(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::teams::transfer_ownership(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -257,7 +256,7 @@ pub async fn transfer_ownership(
             user_id: new_owner.user_id,
         }),
     )
-    .await
+    .await?)
 }
 
 pub async fn remove_team_member(
@@ -267,8 +266,8 @@ pub async fn remove_team_member(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<StatusCode, ApiError> {
-    v3::teams::remove_team_member(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::teams::remove_team_member(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -276,5 +275,5 @@ pub async fn remove_team_member(
         Extension(redis),
         Extension(session_queue),
     )
-    .await
+    .await?)
 }

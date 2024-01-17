@@ -216,7 +216,7 @@ async fn search_projects() {
             id_conversion.insert(project_id, test_id);
         }
         let id_conversion = Arc::new(id_conversion);
-    
+
         // Create a second version for project 7
         let project_7 = api
             .get_project_deserialized(&format!("{test_name}-searchable-project-7"), USER_USER_PAT)

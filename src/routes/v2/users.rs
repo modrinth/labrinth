@@ -5,7 +5,7 @@ use crate::models::v2::notifications::LegacyNotification;
 use crate::models::v2::projects::LegacyProject;
 use crate::models::v2::user::LegacyUser;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v3, ApiError};
+use crate::routes::{v3, ApiErrorV2};
 use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch};
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use v3::ApiError;
 use validator::Validate;
 
 pub fn config() -> Router {
@@ -39,7 +40,7 @@ pub async fn user_auth_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<LegacyUser>, ApiError> {
+) -> Result<Json<LegacyUser>, ApiErrorV2> {
     let Json(user) = v3::users::user_auth_get(
         ConnectInfo(addr),
         headers,
@@ -63,7 +64,7 @@ pub async fn users_get(
     Query(ids): Query<UserIds>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<Json<Vec<LegacyUser>>, ApiError> {
+) -> Result<Json<Vec<LegacyUser>>, ApiErrorV2> {
     let Json(users) = v3::users::users_get(
         Query(v3::users::UserIds { ids: ids.ids }),
         Extension(pool),
@@ -80,7 +81,7 @@ pub async fn user_get(
     Path(info): Path<String>,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<Json<LegacyUser>, ApiError> {
+) -> Result<Json<LegacyUser>, ApiErrorV2> {
     let Json(user) = v3::users::user_get(Path(info), Extension(pool), Extension(redis)).await?;
 
     // Convert response to V2 format
@@ -95,7 +96,7 @@ pub async fn projects_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyProject>>, ApiError> {
+) -> Result<Json<Vec<LegacyProject>>, ApiErrorV2> {
     let Json(projects) = v3::users::projects_list(
         ConnectInfo(addr),
         headers,
@@ -107,7 +108,9 @@ pub async fn projects_list(
     .await?;
 
     // Convert to V2 projects
-    let projects = LegacyProject::from_many(projects, &pool, &redis).await?;
+    let projects = LegacyProject::from_many(projects, &pool, &redis)
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(projects))
 }
 
@@ -145,8 +148,8 @@ pub async fn user_edit(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_user): Json<EditUser>,
-) -> Result<StatusCode, ApiError> {
-    v3::users::user_edit(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::users::user_edit(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -162,7 +165,7 @@ pub async fn user_edit(
             venmo_handle: None,
         }),
     )
-    .await
+    .await?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -180,8 +183,8 @@ pub async fn user_icon_edit(
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     payload: bytes::Bytes,
-) -> Result<StatusCode, ApiError> {
-    v3::users::user_icon_edit(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::users::user_icon_edit(
         Query(v3::users::FileExt { ext: ext.ext }),
         ConnectInfo(addr),
         headers,
@@ -192,7 +195,7 @@ pub async fn user_icon_edit(
         Extension(session_queue),
         payload,
     )
-    .await
+    .await?)
 }
 
 pub async fn user_delete(
@@ -202,8 +205,8 @@ pub async fn user_delete(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<StatusCode, ApiError> {
-    v3::users::user_delete(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::users::user_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -211,7 +214,7 @@ pub async fn user_delete(
         Extension(redis),
         Extension(session_queue),
     )
-    .await
+    .await?)
 }
 
 pub async fn user_follows(
@@ -221,7 +224,7 @@ pub async fn user_follows(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyProject>>, ApiError> {
+) -> Result<Json<Vec<LegacyProject>>, ApiErrorV2> {
     let Json(projects) = v3::users::user_follows(
         ConnectInfo(addr),
         headers,
@@ -233,7 +236,9 @@ pub async fn user_follows(
     .await?;
 
     // Convert to V2 projects
-    let projects = LegacyProject::from_many(projects, &pool, &redis).await?;
+    let projects = LegacyProject::from_many(projects, &pool, &redis)
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(projects))
 }
 
@@ -244,7 +249,7 @@ pub async fn user_notifications(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyNotification>>, ApiError> {
+) -> Result<Json<Vec<LegacyNotification>>, ApiErrorV2> {
     let Json(notifications) = v3::users::user_notifications(
         ConnectInfo(addr),
         headers,

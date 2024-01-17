@@ -6,7 +6,6 @@ use axum_test::multipart::{MultipartForm, Part};
 
 use crate::common::dummy_data::TestFile;
 
-
 pub struct ProjectCreationRequestData {
     pub slug: String,
     pub jar: Option<TestFile>,

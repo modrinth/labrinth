@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
-use super::ApiError;
 use crate::database::redis::RedisPool;
 use crate::models::v2::projects::LegacySideType;
 use crate::routes::v2_reroute::capitalize_first;
-use crate::routes::v3;
 use crate::routes::v3::tags::LoaderFieldsEnumQuery;
+use crate::routes::{v3, ApiErrorV2};
 use crate::util::extract::{Extension, Json, Path, Query};
 use axum::routing::get;
 use axum::Router;
@@ -41,7 +40,7 @@ pub struct CategoryData {
 pub async fn category_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<Json<Vec<CategoryData>>, ApiError> {
+) -> Result<Json<Vec<CategoryData>>, ApiErrorV2> {
     let Json(categories) = v3::tags::category_list(Extension(pool), Extension(redis)).await?;
 
     // Convert to V2 format
@@ -67,7 +66,7 @@ pub struct LoaderData {
 pub async fn loader_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<Json<Vec<LoaderData>>, ApiError> {
+) -> Result<Json<Vec<LoaderData>>, ApiErrorV2> {
     let Json(loaders) = v3::tags::loader_list(Extension(pool), Extension(redis)).await?;
 
     // Convert to V2 format
@@ -120,7 +119,7 @@ pub async fn game_version_list(
     Extension(pool): Extension<PgPool>,
     Query(query): Query<GameVersionQuery>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<Json<Vec<GameVersionQueryData>>, ApiError> {
+) -> Result<Json<Vec<GameVersionQueryData>>, ApiErrorV2> {
     let mut filters = HashMap::new();
     if let Some(type_) = &query.type_ {
         filters.insert("type".to_string(), serde_json::json!(type_));
@@ -186,7 +185,7 @@ pub struct LicenseText {
     pub body: String,
 }
 
-pub async fn license_text(Path(params): Path<String>) -> Result<Json<LicenseText>, ApiError> {
+pub async fn license_text(Path(params): Path<String>) -> Result<Json<LicenseText>, ApiErrorV2> {
     let Json(license) = v3::tags::license_text(Path(params)).await?;
 
     // Convert to V2 format
@@ -209,7 +208,7 @@ pub struct DonationPlatformQueryData {
 pub async fn donation_platform_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<Json<Vec<DonationPlatformQueryData>>, ApiError> {
+) -> Result<Json<Vec<DonationPlatformQueryData>>, ApiErrorV2> {
     let Json(platforms) = v3::tags::link_platform_list(Extension(pool), Extension(redis)).await?;
 
     // Convert to V2 format
@@ -242,20 +241,20 @@ pub async fn donation_platform_list(
 pub async fn report_type_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<Json<Vec<String>>, ApiError> {
+) -> Result<Json<Vec<String>>, ApiErrorV2> {
     // This returns a list of strings directly, so we don't need to convert to v2 format.
-    v3::tags::report_type_list(Extension(pool), Extension(redis)).await
+    Ok(v3::tags::report_type_list(Extension(pool), Extension(redis)).await?)
 }
 
 pub async fn project_type_list(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-) -> Result<Json<Vec<String>>, ApiError> {
+) -> Result<Json<Vec<String>>, ApiErrorV2> {
     // This returns a list of strings directly, so we don't need to convert to v2 format.
-    v3::tags::project_type_list(Extension(pool), Extension(redis)).await
+    Ok(v3::tags::project_type_list(Extension(pool), Extension(redis)).await?)
 }
 
-pub async fn side_type_list() -> Result<Json<Vec<String>>, ApiError> {
+pub async fn side_type_list() -> Result<Json<Vec<String>>, ApiErrorV2> {
     // Original side types are no longer reflected in the database.
     // Therefore, we hardcode and return all the fields that are supported by our v2 conversion logic.
     let side_types = [

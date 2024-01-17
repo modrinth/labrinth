@@ -16,7 +16,12 @@ use std::sync::Arc;
 
 pub fn config() -> Router {
     Router::new()
-        .route("/notifications", get(notifications_get).patch(notifications_read).delete(notifications_delete))
+        .route(
+            "/notifications",
+            get(notifications_get)
+                .patch(notifications_read)
+                .delete(notifications_delete),
+        )
         .nest(
             "/notification",
             Router::new().route(

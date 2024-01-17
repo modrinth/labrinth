@@ -5,9 +5,8 @@ use crate::{
     assert_status,
     common::{
         api_common::{
-            models::CommonVersion,
-            request_data::get_public_creation_data_multipart,
-            ApiVersion, AppendsOptionalPat,
+            models::CommonVersion, request_data::get_public_creation_data_multipart, ApiVersion,
+            AppendsOptionalPat,
         },
         dummy_data::TestFile,
     },

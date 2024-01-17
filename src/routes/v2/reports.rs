@@ -6,7 +6,7 @@ use crate::models::ids::ImageId;
 use crate::models::reports::ItemType;
 use crate::models::v2::reports::LegacyReport;
 use crate::queue::session::AuthQueue;
-use crate::routes::{v3, ApiError};
+use crate::routes::{v3, ApiErrorV2};
 use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
@@ -43,7 +43,7 @@ pub async fn report_create(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(create_report): Json<CreateReport>,
-) -> Result<Json<LegacyReport>, ApiError> {
+) -> Result<Json<LegacyReport>, ApiErrorV2> {
     let Json(report) = v3::reports::report_create(
         ConnectInfo(addr),
         headers,
@@ -87,7 +87,7 @@ pub async fn reports(
     Extension(redis): Extension<RedisPool>,
     Query(count): Query<ReportsRequestOptions>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyReport>>, ApiError> {
+) -> Result<Json<Vec<LegacyReport>>, ApiErrorV2> {
     let Json(reports) = v3::reports::reports(
         ConnectInfo(addr),
         headers,
@@ -118,7 +118,7 @@ pub async fn reports_get(
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyReport>>, ApiError> {
+) -> Result<Json<Vec<LegacyReport>>, ApiErrorV2> {
     let Json(reports) = v3::reports::reports_get(
         ConnectInfo(addr),
         headers,
@@ -141,7 +141,7 @@ pub async fn report_get(
     Extension(redis): Extension<RedisPool>,
     Path(info): Path<crate::models::reports::ReportId>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<LegacyReport>, ApiError> {
+) -> Result<Json<LegacyReport>, ApiErrorV2> {
     let Json(report) = v3::reports::report_get(
         ConnectInfo(addr),
         headers,
@@ -172,8 +172,8 @@ pub async fn report_edit(
     Path(info): Path<crate::models::reports::ReportId>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(edit_report): Json<EditReport>,
-) -> Result<StatusCode, ApiError> {
-    v3::reports::report_edit(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::reports::report_edit(
         ConnectInfo(addr),
         headers,
         Extension(pool),
@@ -185,7 +185,7 @@ pub async fn report_edit(
             closed: edit_report.closed,
         }),
     )
-    .await
+    .await?)
 }
 
 pub async fn report_delete(
@@ -195,8 +195,8 @@ pub async fn report_delete(
     Path(info): Path<crate::models::reports::ReportId>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<StatusCode, ApiError> {
-    v3::reports::report_delete(
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::reports::report_delete(
         ConnectInfo(addr),
         headers,
         Extension(pool),
@@ -204,5 +204,5 @@ pub async fn report_delete(
         Extension(redis),
         Extension(session_queue),
     )
-    .await
+    .await?)
 }

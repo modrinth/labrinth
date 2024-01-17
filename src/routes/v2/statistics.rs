@@ -1,4 +1,4 @@
-use crate::routes::{v3, ApiError};
+use crate::routes::{v3, ApiErrorV2};
 use crate::util::extract::{Extension, Json};
 use axum::{routing::get, Router};
 use sqlx::PgPool;
@@ -15,7 +15,7 @@ pub struct V2Stats {
     pub files: Option<i64>,
 }
 
-pub async fn get_stats(Extension(pool): Extension<PgPool>) -> Result<Json<V2Stats>, ApiError> {
+pub async fn get_stats(Extension(pool): Extension<PgPool>) -> Result<Json<V2Stats>, ApiErrorV2> {
     let Json(stats) = v3::statistics::get_stats(Extension(pool)).await?;
 
     let stats = V2Stats {
