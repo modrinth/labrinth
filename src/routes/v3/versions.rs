@@ -40,7 +40,8 @@ pub fn config() -> Router {
     Router::new()
         .route(
             "/version",
-            post(super::version_creation::version_create).layer(DefaultBodyLimit::max(512 * 1024 * 1024)),
+            post(super::version_creation::version_create)
+                .layer(DefaultBodyLimit::max(512 * 1024 * 1024)),
         )
         .route("/versions", get(versions_get))
         .route(
