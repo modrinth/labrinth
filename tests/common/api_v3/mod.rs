@@ -38,9 +38,9 @@ impl ApiBuildable for ApiV3 {
 impl Api for ApiV3 {
     async fn reset_search_index(&self) -> TestResponse {
         self.test_server
-            .post(&"/v3/admin/_force_reindex")
+            .post(&"/_internal/admin/_force_reindex")
             .add_header(
-                HeaderName::from_static("Modrinth-Admin"),
+                HeaderName::from_static("modrinth-admin"),
                 HeaderValue::from_str(&dotenvy::var("LABRINTH_ADMIN_KEY").unwrap()).unwrap(),
             )
             .await

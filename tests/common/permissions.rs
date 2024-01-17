@@ -205,6 +205,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
+    println!("Response: {:#?}", resp);
         if !self
             .allowed_failure_codes
             .contains(&resp.status_code().as_u16())

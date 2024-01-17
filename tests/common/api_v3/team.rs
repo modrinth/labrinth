@@ -75,7 +75,7 @@ impl ApiTeams for ApiV3 {
     async fn get_teams_members(&self, ids_or_titles: &[&str], pat: Option<&str>) -> TestResponse {
         let ids_or_titles = serde_json::to_string(ids_or_titles).unwrap();
         self.test_server
-            .get("/v3/teams/members")
+            .get("/v3/teams")
             .add_query_param("ids", &ids_or_titles)
             .append_pat(pat)
             .await

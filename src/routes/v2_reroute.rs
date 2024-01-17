@@ -28,7 +28,7 @@ where
 
     let mut json = None;
     let mut json_segment = None;
-    let mut mime_types = Vec::new();
+    let mut file_names = Vec::new();
 
     if let Some(mut field) = multipart.next_field().await? {
         let field_name = field.name().unwrap_or("").to_string();
@@ -67,7 +67,7 @@ where
             buffer.extend_from_slice(&data);
         }
 
-        mime_types.push(field_content_type.clone());
+        file_names.push(field_filename.clone());
         segments.push(MultipartBuildSegment {
             name: field_name.to_string(),
             filename: field_filename.map(|s| s.to_string()),
@@ -86,7 +86,7 @@ where
         ))?;
 
         // Call closure, with the json value and names of the other segments
-        let json_value: U = closure(json_value, mime_types).await?;
+        let json_value: U = closure(json_value, file_names).await?;
         let buffer = serde_json::to_vec(&json_value)?;
         json_segment.data = MultipartBuildSegmentData::Binary(buffer);
 

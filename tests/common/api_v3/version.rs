@@ -377,7 +377,7 @@ impl ApiVersion for ApiV3 {
     ) -> TestResponse {
         let mut req = self
             .test_server
-            .get(&format!("/v3/project/{project_id_slug}/version",));
+            .get(&format!("/v3/project/{project_id_slug}/version"));
 
         if let Some(game_versions) = game_versions {
             req = req.add_query_param(

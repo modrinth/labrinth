@@ -1315,12 +1315,12 @@ async fn projects_various_visibility() {
                 .api
                 .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
                 .await;
-            assert_status!(&resp, StatusCode::OK);
+            assert_status!(&resp, StatusCode::NO_CONTENT);
             let resp = env
                 .api
                 .organization_add_project(zeta_organization_id, beta_project_id, USER_USER_PAT)
                 .await;
-            assert_status!(&resp, StatusCode::OK);
+            assert_status!(&resp, StatusCode::NO_CONTENT);
 
             // Test get_project, a route that uses is_visible_project
             let visible_pat_pairs = vec![

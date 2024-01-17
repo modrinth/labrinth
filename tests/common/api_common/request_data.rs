@@ -6,10 +6,6 @@ use axum_test::multipart::{MultipartForm, Part};
 
 use crate::common::dummy_data::TestFile;
 
-pub fn url_encode_json_serialized_vec(elements: &[String]) -> String {
-    let serialized = serde_json::to_string(&elements).unwrap();
-    urlencoding::encode(&serialized).to_string()
-}
 
 pub struct ProjectCreationRequestData {
     pub slug: String,

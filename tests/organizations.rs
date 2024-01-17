@@ -339,7 +339,7 @@ async fn add_remove_organization_projects() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_status!(&resp, StatusCode::OK);
+            assert_status!(&resp, StatusCode::NO_CONTENT);
 
             // Get user's projects as user - should be 1, the alpha project,
             // as we gave back ownership to the user when we removed it from the organization
@@ -449,7 +449,7 @@ async fn add_remove_organization_project_ownership_to_user() {
                 .api
                 .organization_add_project(zeta_organization_id, project_id, pat)
                 .await;
-            assert_status!(&resp, StatusCode::OK);
+            assert_status!(&resp, StatusCode::NO_CONTENT);
 
             // Get and confirm it has been added
             let project = test_env.api.get_project_deserialized(project_id, pat).await;
@@ -559,7 +559,7 @@ async fn add_remove_organization_project_ownership_to_user() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status!(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Remove project from organization with a user that is an organization member, but not a project member
         // This should succeed
@@ -572,7 +572,7 @@ async fn add_remove_organization_project_ownership_to_user() {
                 USER_USER_PAT,
             )
             .await;
-        assert_status!(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // For each of alpha and beta, confirm:
         // - There is one member of each project, the owner, USER_USER_ID

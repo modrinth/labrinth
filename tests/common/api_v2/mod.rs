@@ -37,7 +37,7 @@ impl Api for ApiV2 {
         self.test_server
             .post(&"/v2/admin/_force_reindex")
             .add_header(
-                HeaderName::from_static("Modrinth-Admin"),
+                HeaderName::from_static("modrinth-admin"),
                 HeaderValue::from_str(&dotenvy::var("LABRINTH_ADMIN_KEY").unwrap()).unwrap(),
             )
             .await

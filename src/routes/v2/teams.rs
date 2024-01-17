@@ -24,10 +24,9 @@ pub fn config() -> Router {
             .route(
                 "/:id/members",
                 get(team_members_get)
-                    .post(add_team_member)
-                    .patch(edit_team_member),
+                    .post(add_team_member),
             )
-            .route("/:id/members/:user_id", delete(remove_team_member)),
+            .route("/:id/members/:user_id", delete(remove_team_member).patch(edit_team_member)),
     )
 }
 

@@ -152,7 +152,7 @@ pub async fn create_pat(
     }))
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Deserialize, Validate, Debug)]
 pub struct ModifyPersonalAccessToken {
     pub scopes: Option<Scopes>,
     #[validate(length(min = 3, max = 255))]
@@ -179,6 +179,9 @@ pub async fn edit_pat(
     )
     .await?
     .1;
+
+    info.validate()
+        .map_err(|err| ApiError::InvalidInput(validation_errors_to_string(err, None)))?;
 
     let pat = database::models::pat_item::PersonalAccessToken::get(&id, &pool, &redis).await?;
 

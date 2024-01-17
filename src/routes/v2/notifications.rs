@@ -7,9 +7,7 @@ use crate::routes::ApiErrorV2;
 use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
-use axum::routing::delete;
 use axum::routing::get;
-use axum::routing::patch;
 use axum::Router;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -18,9 +16,7 @@ use std::sync::Arc;
 
 pub fn config() -> Router {
     Router::new()
-        .route("/notifications_get", get(notifications_get))
-        .route("/notifications_delete", delete(notifications_delete))
-        .route("/notifications_read", patch(notifications_read))
+        .route("/notifications", get(notifications_get).patch(notifications_read).delete(notifications_delete))
         .nest(
             "/notification",
             Router::new().route(

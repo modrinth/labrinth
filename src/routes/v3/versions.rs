@@ -683,7 +683,6 @@ pub async fn version_list(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<Json<Vec<models::projects::Version>>, ApiError> {
     let result = database::models::Project::get(&string, &pool, &redis).await?;
-
     let user_option = get_user_from_headers(
         &addr,
         &headers,

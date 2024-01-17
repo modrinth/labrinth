@@ -379,7 +379,7 @@ async fn version_updates() {
 
         // Wait on all tests, 4 at a time
         futures::stream::iter(tests)
-            .buffer_unordered(4)
+            .buffer_unordered(1) // TODO: Axum causes this to hang when >1, fix 
             .collect::<Vec<_>>()
             .await;
 

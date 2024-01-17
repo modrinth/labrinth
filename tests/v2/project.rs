@@ -442,7 +442,7 @@ async fn permissions_patch_project_v2() {
                         .into_iter();
                 }
             })
-            .buffer_unordered(4)
+            .buffer_unordered(1) // TODO: Axum makes concurrency hard, so we have to do this
             .collect::<Vec<_>>()
             .await;
 

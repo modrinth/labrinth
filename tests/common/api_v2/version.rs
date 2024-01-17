@@ -6,7 +6,7 @@ use crate::{
     common::{
         api_common::{
             models::CommonVersion,
-            request_data::{get_public_creation_data_multipart, url_encode_json_serialized_vec},
+            request_data::get_public_creation_data_multipart,
             ApiVersion, AppendsOptionalPat,
         },
         dummy_data::TestFile,
@@ -422,10 +422,9 @@ impl ApiVersion for ApiV2 {
     }
 
     async fn get_versions(&self, version_ids: Vec<String>, pat: Option<&str>) -> TestResponse {
-        let ids = url_encode_json_serialized_vec(&version_ids);
         self.test_server
             .get("/v2/versions")
-            .add_query_param("ids", &ids)
+            .add_query_param("ids", &serde_json::to_string(&version_ids).unwrap())
             .append_pat(pat)
             .await
     }

@@ -273,7 +273,7 @@ async fn test_get_team_project_orgs() {
             .api
             .organization_add_project(zeta_organization_id, alpha_project_id, USER_USER_PAT)
             .await;
-        assert_status!(&resp, StatusCode::OK);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Invite and add friend to zeta
         let resp = test_env

@@ -47,7 +47,7 @@ pub fn config() -> Router {
                 .route("/:id/follow", post(project_follow).delete(project_unfollow))
                 .route("/:id/members", get(super::teams::team_members_get_project))
                 .route("/:id/dependencies", get(dependency_list))
-                .route("/:id/versions", get(super::versions::version_list))
+                .route("/:id/version", get(super::versions::version_list))
                 .route(
                     "/:id/versions/:version_id",
                     get(super::versions::version_project_get),

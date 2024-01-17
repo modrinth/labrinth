@@ -204,13 +204,19 @@ async fn search_projects() {
         // Await all project creation
         // Returns a mapping of:
         // project id -> test id
-        let id_conversion: Arc<HashMap<u64, u64>> = Arc::new(
-            futures::future::join_all(project_creation_futures)
-                .await
-                .into_iter()
-                .collect(),
-        );
-
+        // let id_conversion: Arc<HashMap<u64, u64>> = Arc::new(
+        //     futures::future::join_all(project_creation_futures)
+        //         .await
+        //         .into_iter()
+        //         .collect(),
+        // );
+        let mut id_conversion: HashMap<u64, u64> = HashMap::new();
+        for fut in project_creation_futures {
+            let (project_id, test_id) = fut.await;
+            id_conversion.insert(project_id, test_id);
+        }
+        let id_conversion = Arc::new(id_conversion);
+    
         // Create a second version for project 7
         let project_7 = api
             .get_project_deserialized(&format!("{test_name}-searchable-project-7"), USER_USER_PAT)
