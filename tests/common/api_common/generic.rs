@@ -7,7 +7,7 @@ use labrinth::models::{
     teams::{OrganizationPermissions, ProjectPermissions},
 };
 
-use crate::common::{/*api_v2::ApiV2,*/ api_v3::ApiV3, dummy_data::TestFile};
+use crate::common::{api_v2::ApiV2, api_v3::ApiV3, dummy_data::TestFile};
 
 use super::{
     models::{CommonProject, CommonVersion},

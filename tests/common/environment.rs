@@ -2,7 +2,7 @@
 
 use super::{
     api_common::{generic::GenericApi, Api, ApiBuildable},
-    // api_v2::ApiV2,
+    api_v2::ApiV2,
     api_v3::ApiV3,
     database::{TemporaryDatabase, FRIEND_USER_ID, USER_USER_PAT},
     dummy_data,
