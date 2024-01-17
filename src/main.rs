@@ -157,8 +157,8 @@ async fn main() -> std::io::Result<()> {
             AUTHORIZATION,
         )))
         .layer(TraceLayer::new_for_http())
-        .layer(sentry_tower::NewSentryLayer::new_from_top())
-        .layer(sentry_tower::SentryHttpLayer::with_transaction())
+        .layer(sentry::integrations::tower::NewSentryLayer::new_from_top())
+        .layer(sentry::integrations::tower::SentryHttpLayer::with_transaction())
         .into_make_service_with_connect_info::<SocketAddr>();
 
     // run our app with hyper, listening globally on port 3000
