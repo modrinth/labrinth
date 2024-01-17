@@ -8,7 +8,7 @@ ARG SQLX_OFFLINE=true
 RUN cargo install --features jemalloc --path .
 
 # Final Stage
-FROM debian:bullseye-slim
+FROM ubuntu:latest
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
