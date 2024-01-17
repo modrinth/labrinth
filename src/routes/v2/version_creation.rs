@@ -285,7 +285,7 @@ pub async fn upload_file_to_version(
     payload: MultipartWrapper,
 ) -> Result<StatusCode, CreateError> {
     // Returns NoContent, so no need to convert to V2
-    Ok(v3::version_creation::upload_file_to_version(
+    v3::version_creation::upload_file_to_version(
         ConnectInfo(addr),
         headers,
         Path(url_data),
@@ -295,5 +295,5 @@ pub async fn upload_file_to_version(
         Extension(session_queue),
         payload,
     )
-    .await?)
+    .await
 }

@@ -173,7 +173,7 @@ pub async fn report_edit(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(edit_report): Json<EditReport>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::reports::report_edit(
+    v3::reports::report_edit(
         ConnectInfo(addr),
         headers,
         Extension(pool),
@@ -185,7 +185,7 @@ pub async fn report_edit(
             closed: edit_report.closed,
         }),
     )
-    .await?)
+    .await
 }
 
 pub async fn report_delete(
@@ -196,7 +196,7 @@ pub async fn report_delete(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::reports::report_delete(
+    v3::reports::report_delete(
         ConnectInfo(addr),
         headers,
         Extension(pool),
@@ -204,5 +204,5 @@ pub async fn report_delete(
         Extension(redis),
         Extension(session_queue),
     )
-    .await?)
+    .await
 }

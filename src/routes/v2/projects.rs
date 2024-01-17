@@ -698,7 +698,6 @@ pub struct FileExt {
     pub ext: String,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn project_icon_edit(
     Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -755,7 +754,6 @@ pub struct GalleryCreateQuery {
     pub ordering: Option<i64>,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn add_gallery_item(
     Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

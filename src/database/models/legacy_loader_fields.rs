@@ -35,6 +35,7 @@ impl MinecraftGameVersion {
         MinecraftGameVersionBuilder::default()
     }
 
+    #[allow(clippy::manual_async_fn)]
     pub fn list<'a, 'c, E>(
         version_type_option: Option<&'a str>,
         major_option: Option<bool>,

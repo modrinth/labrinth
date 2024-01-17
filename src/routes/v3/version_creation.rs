@@ -136,7 +136,6 @@ pub async fn version_create(
     result
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn version_create_inner(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -546,7 +545,6 @@ pub async fn upload_file_to_version(
     result
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn upload_file_to_version_inner(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -741,7 +739,7 @@ async fn upload_file_to_version_inner(
 
 // This function is used for adding a file to a version, uploading the initial
 // files for a version, and for uploading the initial version files for a project
-#[allow(clippy::too_many_arguments)]
+
 pub async fn upload_file(
     field: &mut FieldWrapper<'_>,
     file_host: &(dyn FileHost + Send + Sync),

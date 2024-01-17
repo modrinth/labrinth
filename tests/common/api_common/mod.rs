@@ -88,7 +88,7 @@ pub trait ApiProject {
         icon: Option<ImageData>,
         pat: Option<&str>,
     ) -> TestResponse;
-    #[allow(clippy::too_many_arguments)]
+
     async fn add_gallery_item(
         &self,
         id_or_slug: &str,
@@ -336,7 +336,7 @@ pub trait ApiVersion {
         version_types: Option<Vec<String>>,
         pat: Option<&str>,
     ) -> HashMap<String, CommonVersion>;
-    #[allow(clippy::too_many_arguments)]
+
     async fn get_project_versions(
         &self,
         project_id_slug: &str,
@@ -348,7 +348,7 @@ pub trait ApiVersion {
         offset: Option<usize>,
         pat: Option<&str>,
     ) -> TestResponse;
-    #[allow(clippy::too_many_arguments)]
+
     async fn get_project_versions_deserialized_common(
         &self,
         slug: &str,

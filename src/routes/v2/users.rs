@@ -146,7 +146,7 @@ pub async fn user_edit(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_user): Json<EditUser>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::users::user_edit(
+    v3::users::user_edit(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -162,7 +162,7 @@ pub async fn user_edit(
             venmo_handle: None,
         }),
     )
-    .await?)
+    .await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -170,7 +170,6 @@ pub struct FileExt {
     pub ext: String,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn user_icon_edit(
     Query(ext): Query<FileExt>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -182,7 +181,7 @@ pub async fn user_icon_edit(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     payload: bytes::Bytes,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::users::user_icon_edit(
+    v3::users::user_icon_edit(
         Query(v3::users::FileExt { ext: ext.ext }),
         ConnectInfo(addr),
         headers,
@@ -193,7 +192,7 @@ pub async fn user_icon_edit(
         Extension(session_queue),
         payload,
     )
-    .await?)
+    .await
 }
 
 pub async fn user_delete(
@@ -204,7 +203,7 @@ pub async fn user_delete(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::users::user_delete(
+    v3::users::user_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -212,7 +211,7 @@ pub async fn user_delete(
         Extension(redis),
         Extension(session_queue),
     )
-    .await?)
+    .await
 }
 
 pub async fn user_follows(

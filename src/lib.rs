@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use axum::extract::DefaultBodyLimit;
 use axum::routing::any;
 use axum::{Extension, Router};

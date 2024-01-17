@@ -216,6 +216,7 @@ impl LegacyProject {
     }
 
     // Because from needs a version_item, this is a helper function to get many from one db query.
+    #[allow(clippy::manual_async_fn)]
     pub fn from_many<'a, 'c, E>(
         data: Vec<Project>,
         exec: E,

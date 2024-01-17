@@ -135,7 +135,7 @@ pub async fn join_team(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::teams::join_team(
+    v3::teams::join_team(
         ConnectInfo(addr),
         headers,
         info,
@@ -143,7 +143,7 @@ pub async fn join_team(
         Extension(redis),
         Extension(session_queue),
     )
-    .await?)
+    .await
 }
 
 fn default_role() -> String {
@@ -179,7 +179,7 @@ pub async fn add_team_member(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_member): Json<NewTeamMember>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::teams::add_team_member(
+    v3::teams::add_team_member(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -195,7 +195,7 @@ pub async fn add_team_member(
             ordering: new_member.ordering,
         }),
     )
-    .await?)
+    .await
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -216,7 +216,7 @@ pub async fn edit_team_member(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(edit_member): Json<EditTeamMember>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::teams::edit_team_member(
+    v3::teams::edit_team_member(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -231,7 +231,7 @@ pub async fn edit_team_member(
             ordering: edit_member.ordering,
         }),
     )
-    .await?)
+    .await
 }
 
 #[derive(Deserialize)]
@@ -248,7 +248,7 @@ pub async fn transfer_ownership(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_owner): Json<TransferOwnership>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::teams::transfer_ownership(
+    v3::teams::transfer_ownership(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -259,7 +259,7 @@ pub async fn transfer_ownership(
             user_id: new_owner.user_id,
         }),
     )
-    .await?)
+    .await
 }
 
 pub async fn remove_team_member(
@@ -270,7 +270,7 @@ pub async fn remove_team_member(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::teams::remove_team_member(
+    v3::teams::remove_team_member(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -278,5 +278,5 @@ pub async fn remove_team_member(
         Extension(redis),
         Extension(session_queue),
     )
-    .await?)
+    .await
 }

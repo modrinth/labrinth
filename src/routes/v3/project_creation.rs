@@ -42,7 +42,7 @@ use validator::Validate;
 pub fn config() -> Router {
     Router::new().route(
         "/project",
-        post(project_create).layer(DefaultBodyLimit::max(500 * 1024)),
+        post(project_create).layer(DefaultBodyLimit::max(512 * 1024)),
     )
 }
 
@@ -326,7 +326,6 @@ Get logged in user
     - Add project data to indexing queue
 */
 
-#[allow(clippy::too_many_arguments)]
 async fn project_create_inner(
     addr: SocketAddr,
     headers: HeaderMap,

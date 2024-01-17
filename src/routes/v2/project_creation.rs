@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
 
+use axum::extract::DefaultBodyLimit;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -25,7 +26,10 @@ use validator::Validate;
 use super::version_creation::InitialVersionData;
 
 pub fn config() -> Router {
-    Router::new().route("/project", post(project_create))
+    Router::new().route(
+        "/project",
+        post(project_create).layer(DefaultBodyLimit::max(512 * 1024)),
+    )
 }
 
 pub fn default_requested_status() -> ProjectStatus {

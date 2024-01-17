@@ -99,7 +99,7 @@ pub async fn thread_send_message(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(new_message): Json<NewThreadMessage>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::threads::thread_send_message(
+    v3::threads::thread_send_message(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -110,7 +110,7 @@ pub async fn thread_send_message(
             body: new_message.body,
         }),
     )
-    .await?)
+    .await
 }
 
 pub async fn moderation_inbox(
@@ -145,7 +145,7 @@ pub async fn thread_read(
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::threads::thread_read(
+    v3::threads::thread_read(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -153,7 +153,7 @@ pub async fn thread_read(
         Extension(redis),
         Extension(session_queue),
     )
-    .await?)
+    .await
 }
 
 pub async fn message_delete(
@@ -165,7 +165,7 @@ pub async fn message_delete(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::threads::message_delete(
+    v3::threads::message_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -174,5 +174,5 @@ pub async fn message_delete(
         Extension(session_queue),
         Extension(file_host),
     )
-    .await?)
+    .await
 }

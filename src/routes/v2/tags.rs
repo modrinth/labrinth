@@ -244,7 +244,7 @@ pub async fn report_type_list(
     Extension(redis): Extension<RedisPool>,
 ) -> Result<Json<Vec<String>>, ApiError> {
     // This returns a list of strings directly, so we don't need to convert to v2 format.
-    Ok(v3::tags::report_type_list(Extension(pool), Extension(redis)).await?)
+    v3::tags::report_type_list(Extension(pool), Extension(redis)).await
 }
 
 pub async fn project_type_list(
@@ -252,7 +252,7 @@ pub async fn project_type_list(
     Extension(redis): Extension<RedisPool>,
 ) -> Result<Json<Vec<String>>, ApiError> {
     // This returns a list of strings directly, so we don't need to convert to v2 format.
-    Ok(v3::tags::project_type_list(Extension(pool), Extension(redis)).await?)
+    v3::tags::project_type_list(Extension(pool), Extension(redis)).await
 }
 
 pub async fn side_type_list() -> Result<Json<Vec<String>>, ApiError> {

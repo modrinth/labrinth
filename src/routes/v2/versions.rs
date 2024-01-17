@@ -1,3 +1,4 @@
+use axum::extract::DefaultBodyLimit;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -23,7 +24,10 @@ use validator::Validate;
 pub fn config() -> Router {
     Router::new()
         .route("/versions", get(versions_get))
-        .route("/version", post(super::version_creation::version_create))
+        .route(
+            "/version",
+            post(super::version_creation::version_create).layer(DefaultBodyLimit::max(512 * 1024)),
+        )
         .nest(
             "/version",
             Router::new()
@@ -33,7 +37,8 @@ pub fn config() -> Router {
                 )
                 .route(
                     "/:slug/file",
-                    post(super::version_creation::upload_file_to_version),
+                    post(super::version_creation::upload_file_to_version)
+                        .layer(DefaultBodyLimit::max(512 * 1024)),
                 ),
         )
 }
@@ -303,7 +308,7 @@ pub async fn version_edit(
         fields,
     };
 
-    Ok(v3::versions::version_edit(
+    v3::versions::version_edit(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -312,7 +317,7 @@ pub async fn version_edit(
         Extension(session_queue),
         Json(new_version),
     )
-    .await?)
+    .await
 }
 
 pub async fn version_delete(
@@ -324,7 +329,7 @@ pub async fn version_delete(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
     Extension(search_config): Extension<SearchConfig>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::versions::version_delete(
+    v3::versions::version_delete(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -333,5 +338,5 @@ pub async fn version_delete(
         Extension(session_queue),
         Extension(search_config),
     )
-    .await?)
+    .await
 }

@@ -73,7 +73,7 @@ pub async fn download_version(
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Returns TemporaryRedirect, so no need to convert to V2
-    Ok(v3::version_file::download_version(
+    v3::version_file::download_version(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -82,7 +82,7 @@ pub async fn download_version(
         Query(hash_query),
         Extension(session_queue),
     )
-    .await?)
+    .await
 }
 
 // under /api/v1/version_file/{hash}
@@ -95,7 +95,7 @@ pub async fn delete_file(
     Query(hash_query): Query<HashQuery>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
 ) -> Result<StatusCode, ApiError> {
-    Ok(v3::version_file::delete_file(
+    v3::version_file::delete_file(
         ConnectInfo(addr),
         headers,
         Path(info),
@@ -104,7 +104,7 @@ pub async fn delete_file(
         Query(hash_query),
         Extension(session_queue),
     )
-    .await?)
+    .await
 }
 
 #[derive(Serialize, Deserialize)]

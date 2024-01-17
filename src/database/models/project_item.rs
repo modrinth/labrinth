@@ -466,6 +466,7 @@ impl Project {
     }
 
     /// What's going on here? See: https://github.com/launchbadge/sqlx/issues/1015#issuecomment-767787777
+    #[allow(clippy::manual_async_fn)]
     pub fn get<'a, 'c, E>(
         string: &'a str,
         executor: E,
@@ -481,6 +482,7 @@ impl Project {
         }
     }
 
+    #[allow(clippy::manual_async_fn)]
     pub fn get_id<'a, 'c, E>(
         id: ProjectId,
         executor: E,
@@ -496,6 +498,7 @@ impl Project {
         }
     }
 
+    #[allow(clippy::manual_async_fn)]
     pub fn get_many_ids<'a, 'c, E>(
         project_ids: &'a [ProjectId],
         exec: E,
@@ -513,6 +516,7 @@ impl Project {
         }
     }
 
+    #[allow(clippy::manual_async_fn)]
     pub fn get_many<'a, 'c, E, T: ToString + std::marker::Sync>(
         project_strings: &'a [T],
         exec: E,

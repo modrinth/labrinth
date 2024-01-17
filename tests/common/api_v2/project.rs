@@ -385,7 +385,6 @@ impl ApiProject for ApiV2 {
             .await
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn add_gallery_item(
         &self,
         id_or_slug: &str,

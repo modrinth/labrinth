@@ -56,6 +56,7 @@ fn check_admin_key(headers: &HeaderMap) -> Result<(), ApiError> {
 }
 
 // This is an internal route, cannot be used without key
+
 pub async fn count_download(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

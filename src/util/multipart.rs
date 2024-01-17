@@ -117,7 +117,7 @@ impl<'a> FieldWrapper<'a> {
     /// Get the [content type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) of the field.
     pub fn content_type(&self) -> Option<&str> {
         match self {
-            FieldWrapper::Axum(inner) => inner.content_type().map(|m| m.as_ref()),
+            FieldWrapper::Axum(inner) => inner.content_type(),
             FieldWrapper::Labrinth(inner, _) => inner.content_type().map(|m| m.as_ref()),
         }
     }

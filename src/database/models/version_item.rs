@@ -449,6 +449,7 @@ impl Version {
         Ok(Some(()))
     }
 
+    #[allow(clippy::manual_async_fn)]
     pub fn get<'a, 'c, E>(
         id: VersionId,
         executor: E,
@@ -464,6 +465,7 @@ impl Version {
         }
     }
 
+    #[allow(clippy::manual_async_fn)]
     pub fn get_many<'a, 'c, E>(
         version_ids: &'a [VersionId],
         exec: E,
