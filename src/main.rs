@@ -54,7 +54,7 @@ async fn main() -> std::io::Result<()> {
     // Has no effect if not set.
     let sentry = sentry::init(sentry::ClientOptions {
         release: sentry::release_name!(),
-        traces_sample_rate: 0.1,
+        traces_sample_rate: 0.05,
         ..Default::default()
     });
     if sentry.is_enabled() {
@@ -122,7 +122,7 @@ async fn main() -> std::io::Result<()> {
         false,
     );
 
-    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
+    // let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
     let limiter: Arc<KeyedRateLimiter> = Arc::new(
         RateLimiter::keyed(Quota::per_minute(NonZeroU32::new(300).unwrap()))
@@ -147,8 +147,8 @@ async fn main() -> std::io::Result<()> {
     let app = labrinth::app_config(labrinth_config)
         .layer(axum::middleware::from_fn(ratelimit))
         .layer(Extension(limiter))
-        .route("/metrics", get(|| async move { metric_handle.render() }))
-        .layer(prometheus_layer)
+        // .route("/metrics", get(|| async move { metric_handle.render() }))
+        // .layer(prometheus_layer)
         .layer(
             CompressionLayer::new()
                 .br(true)
