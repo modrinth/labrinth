@@ -1,14 +1,17 @@
 #![allow(dead_code)]
-use actix_http::StatusCode;
-use actix_web::{dev::ServiceResponse, test};
+use axum_test::http::StatusCode;
+use axum_test::TestResponse;
 use futures::Future;
 use itertools::Itertools;
 use labrinth::models::teams::{OrganizationPermissions, ProjectPermissions};
 use serde_json::json;
 
-use crate::common::{
-    api_common::ApiTeams,
-    database::{generate_random_name, ADMIN_USER_PAT},
+use crate::{
+    assert_status,
+    common::{
+        api_common::ApiTeams,
+        database::{generate_random_name, ADMIN_USER_PAT},
+    },
 };
 
 use super::{
@@ -161,7 +164,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
     ) -> Result<(), String>
     where
         T: Fn(PermissionsTestContext) -> Fut,
-        Fut: Future<Output = ServiceResponse>, // Ensure Fut is Send and 'static
+        Fut: Future<Output = TestResponse>, // Ensure Fut is Send and 'static
     {
         let test_env = self.test_env;
         let failure_project_permissions = self
@@ -202,19 +205,23 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+        println!("Response: {:#?}", resp);
+        if !self
+            .allowed_failure_codes
+            .contains(&resp.status_code().as_u16())
+        {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
                 self.allowed_failure_codes
                     .iter()
                     .map(|code| code.to_string())
                     .join(","),
-                resp.status().as_u16()
+                resp.status_code().as_u16()
             ));
         }
-        if resp.status() == StatusCode::OK {
+        if resp.status_code() == StatusCode::OK {
             if let Some(failure_json_check) = &self.failure_json_check {
-                failure_json_check(&test::read_body_json(resp).await);
+                failure_json_check(&resp.json());
             }
         }
 
@@ -226,43 +233,49 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+        if !self
+            .allowed_failure_codes
+            .contains(&resp.status_code().as_u16())
+        {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
                 self.allowed_failure_codes
                     .iter()
                     .map(|code| code.to_string())
                     .join(","),
-                resp.status().as_u16()
+                resp.status_code().as_u16()
             ));
         }
-        if resp.status() == StatusCode::OK {
+        if resp.status_code() == StatusCode::OK {
             if let Some(failure_json_check) = &self.failure_json_check {
-                failure_json_check(&test::read_body_json(resp).await);
+                failure_json_check(&resp.json());
             }
         }
 
         // Failure test- logged in with EVERY non-relevant permission
-        let resp: ServiceResponse = req_gen(PermissionsTestContext {
+        let resp: TestResponse = req_gen(PermissionsTestContext {
             test_pat: self.user_pat.map(|s| s.to_string()),
             project_id: Some(project_id.clone()),
             team_id: Some(team_id.clone()),
             ..test_context.clone()
         })
         .await;
-        if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+        if !self
+            .allowed_failure_codes
+            .contains(&resp.status_code().as_u16())
+        {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}",
                 self.allowed_failure_codes
                     .iter()
                     .map(|code| code.to_string())
                     .join(","),
-                resp.status().as_u16()
+                resp.status_code().as_u16()
             ));
         }
-        if resp.status() == StatusCode::OK {
+        if resp.status_code() == StatusCode::OK {
             if let Some(failure_json_check) = &self.failure_json_check {
-                failure_json_check(&test::read_body_json(resp).await);
+                failure_json_check(&resp.json());
             }
         }
 
@@ -284,15 +297,15 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !resp.status().is_success() {
+        if !resp.status_code().is_success() {
             return Err(format!(
                 "Success permissions test failed. Expected success, got {}",
-                resp.status().as_u16()
+                resp.status_code().as_u16()
             ));
         }
-        if resp.status() == StatusCode::OK {
+        if resp.status_code() == StatusCode::OK {
             if let Some(success_json_check) = &self.success_json_check {
-                success_json_check(&test::read_body_json(resp).await);
+                success_json_check(&resp.json());
             }
         }
 
@@ -311,7 +324,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
     ) -> Result<(), String>
     where
         T: Fn(PermissionsTestContext) -> Fut,
-        Fut: Future<Output = ServiceResponse>,
+        Fut: Future<Output = TestResponse>,
     {
         let test_env = self.test_env;
         let failure_organization_permissions = self
@@ -354,15 +367,18 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+        if !self
+            .allowed_failure_codes
+            .contains(&resp.status_code().as_u16())
+        {
             return Err(format!(
                 "Failure permissions test failed. Expected failure codes {} got {}. Body: {:#?}",
                 self.allowed_failure_codes
                     .iter()
                     .map(|code| code.to_string())
                     .join(","),
-                resp.status().as_u16(),
-                resp.response().body()
+                resp.status_code().as_u16(),
+                resp.text()
             ));
         }
 
@@ -384,11 +400,11 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             ..test_context.clone()
         })
         .await;
-        if !resp.status().is_success() {
+        if !resp.status_code().is_success() {
             return Err(format!(
                 "Success permissions test failed. Expected success, got {}. Body: {:#?}",
-                resp.status().as_u16(),
-                resp.response().body()
+                resp.status_code().as_u16(),
+                resp.text()
             ));
         }
 
@@ -407,7 +423,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
     ) -> Result<(), String>
     where
         T: Fn(PermissionsTestContext) -> Fut,
-        Fut: Future<Output = ServiceResponse>,
+        Fut: Future<Output = TestResponse>,
     {
         let test_env = self.test_env;
         let failure_project_permissions = self
@@ -435,14 +451,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 1 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
                         .iter()
                         .map(|code| code.to_string())
                         .join(","),
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -475,14 +494,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 2 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
                         .iter()
                         .map(|code| code.to_string())
                         .join(","),
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -524,14 +546,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 3 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
                         .iter()
                         .map(|code| code.to_string())
                         .join(","),
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -573,10 +598,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !resp.status().is_success() {
+            if !resp.status_code().is_success() {
                 return Err(format!(
                     "Test 4 failed. Expected success, got {}",
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -622,14 +647,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 5 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
                         .iter()
                         .map(|code| code.to_string())
                         .join(","),
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -675,10 +703,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !resp.status().is_success() {
+            if !resp.status_code().is_success() {
                 return Err(format!(
                     "Test 6 failed. Expected success, got {}",
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -734,14 +762,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 7 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
                         .iter()
                         .map(|code| code.to_string())
                         .join(","),
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -798,10 +829,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             })
             .await;
 
-            if !resp.status().is_success() {
+            if !resp.status_code().is_success() {
                 return Err(format!(
                     "Test 8 failed. Expected success, got {}",
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -822,8 +853,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             Ok(())
         };
 
-        tokio::try_join!(test_1, test_2, test_3, test_4, test_5, test_6, test_7, test_8)
-            .map_err(|e| e)?;
+        // TODO: Make this concurrent- it hangs in axum.
+        test_1.await.unwrap();
+        test_2.await.unwrap();
+        test_3.await.unwrap();
+        test_4.await.unwrap();
+        test_5.await.unwrap();
+        test_6.await.unwrap();
+        test_7.await.unwrap();
+        test_8.await.unwrap();
+        // tokio::try_join!(test_1, test_2, test_3, test_4, test_5, test_6, test_7, test_8)
+        //     .map_err(|e| e)?;
 
         Ok(())
     }
@@ -835,7 +875,7 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
     ) -> Result<(), String>
     where
         T: Fn(PermissionsTestContext) -> Fut,
-        Fut: Future<Output = ServiceResponse>,
+        Fut: Future<Output = TestResponse>,
     {
         let test_env = self.test_env;
         let failure_organization_permissions = self
@@ -855,7 +895,6 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
         let test_1 = async {
             let (organization_id, organization_team_id) =
                 create_dummy_org(&test_env.setup_api).await;
-
             let resp = req_gen(PermissionsTestContext {
                 test_pat: self.user_pat.map(|s| s.to_string()),
                 organization_id: Some(organization_id.clone()),
@@ -863,14 +902,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 1 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
                         .iter()
                         .map(|code| code.to_string())
                         .join(","),
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -904,7 +946,6 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 &test_env.setup_api,
             )
             .await;
-
             let resp = req_gen(PermissionsTestContext {
                 test_pat: self.user_pat.map(|s| s.to_string()),
                 organization_id: Some(organization_id.clone()),
@@ -912,14 +953,17 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !self.allowed_failure_codes.contains(&resp.status().as_u16()) {
+            if !self
+                .allowed_failure_codes
+                .contains(&resp.status_code().as_u16())
+            {
                 return Err(format!(
                     "Test 2 failed. Expected failure codes {} got {}",
                     self.allowed_failure_codes
                         .iter()
                         .map(|code| code.to_string())
                         .join(","),
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -953,7 +997,6 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 &test_env.setup_api,
             )
             .await;
-
             let resp = req_gen(PermissionsTestContext {
                 test_pat: self.user_pat.map(|s| s.to_string()),
                 organization_id: Some(organization_id.clone()),
@@ -961,10 +1004,10 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
                 ..test_context.clone()
             })
             .await;
-            if !resp.status().is_success() {
+            if !resp.status_code().is_success() {
                 return Err(format!(
                     "Test 3 failed. Expected success, got {}",
-                    resp.status().as_u16()
+                    resp.status_code().as_u16()
                 ));
             }
 
@@ -984,7 +1027,11 @@ impl<'a, A: Api> PermissionsTest<'a, A> {
             Ok(())
         };
 
-        tokio::try_join!(test_1, test_2, test_3,).map_err(|e| e)?;
+        // TODO: Make this concurrent- it hangs in axum.
+        // tokio::try_join!(test_1, test_2, test_3,).map_err(|e| e)?;
+        test_1.await.unwrap();
+        test_2.await.unwrap();
+        test_3.await.unwrap();
 
         Ok(())
     }
@@ -1010,18 +1057,16 @@ async fn create_dummy_project(setup_api: &ApiV3) -> (String, String) {
 async fn create_dummy_org(setup_api: &ApiV3) -> (String, String) {
     // Create a very simple organization
     let slug = generate_random_name("test_org");
-
     let resp = setup_api
         .create_organization("Example org", &slug, "Example description.", ADMIN_USER_PAT)
         .await;
-    assert!(resp.status().is_success());
+    assert!(resp.status_code().is_success());
 
     let organization = setup_api
         .get_organization_deserialized(&slug, ADMIN_USER_PAT)
         .await;
     let organizaion_id = organization.id.to_string();
     let team_id = organization.team_id.to_string();
-
     (organizaion_id, team_id)
 }
 
@@ -1029,7 +1074,7 @@ async fn add_project_to_org(setup_api: &ApiV3, project_id: &str, organization_id
     let resp = setup_api
         .organization_add_project(organization_id, project_id, ADMIN_USER_PAT)
         .await;
-    assert!(resp.status().is_success());
+    assert!(resp.status_code().is_success());
 }
 
 async fn add_user_to_team(
@@ -1050,7 +1095,7 @@ async fn add_user_to_team(
             ADMIN_USER_PAT,
         )
         .await;
-    assert!(resp.status().is_success());
+    assert_status!(resp, StatusCode::NO_CONTENT);
 
     // Accept invitation
     setup_api.join_team(team_id, user_pat).await;
@@ -1078,7 +1123,7 @@ async fn modify_user_team_permissions(
             ADMIN_USER_PAT,
         )
         .await;
-    assert!(resp.status().is_success());
+    assert!(resp.status_code().is_success());
 }
 
 async fn remove_user_from_team(user_id: &str, team_id: &str, setup_api: &ApiV3) {
@@ -1086,7 +1131,7 @@ async fn remove_user_from_team(user_id: &str, team_id: &str, setup_api: &ApiV3) 
     let resp = setup_api
         .remove_from_team(team_id, user_id, ADMIN_USER_PAT)
         .await;
-    assert!(resp.status().is_success());
+    assert!(resp.status_code().is_success());
 }
 
 async fn get_project_permissions(
@@ -1144,8 +1189,8 @@ async fn get_organization_permissions(
     let resp = setup_api
         .get_organization_members(organization_id, user_pat)
         .await;
-    let permissions = if resp.status().as_u16() == 200 {
-        let value: serde_json::Value = test::read_body_json(resp).await;
+    let permissions = if resp.status_code().as_u16() == 200 {
+        let value: serde_json::Value = resp.json();
         value
             .as_array()
             .unwrap()

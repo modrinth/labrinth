@@ -1,30 +1,32 @@
-use std::collections::HashMap;
-
 use super::ApiError;
 use crate::database::models::categories::{Category, LinkPlatform, ProjectType, ReportType};
 use crate::database::models::loader_fields::{
     Game, Loader, LoaderField, LoaderFieldEnumValue, LoaderFieldType,
 };
 use crate::database::redis::RedisPool;
-use actix_web::{web, HttpResponse};
+use crate::util::extract::{Extension, Json, Path, Query};
+use axum::routing::get;
+use axum::Router;
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use serde_json::Value;
 use sqlx::PgPool;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("tag")
-            .route("category", web::get().to(category_list))
-            .route("loader", web::get().to(loader_list)),
+pub fn config() -> Router {
+    Router::new().nest(
+        "/tag",
+        Router::new()
+            .route("/category", get(category_list))
+            .route("/loader", get(loader_list))
+            .route("/game", get(games_list))
+            .route("/loader_field", get(loader_fields_list))
+            .route("/license", get(license_list))
+            .route("/license/:id", get(license_text))
+            .route("/link_platform", get(link_platform_list))
+            .route("/report_type", get(report_type_list))
+            .route("/project_type", get(project_type_list)),
     )
-    .route("games", web::get().to(games_list))
-    .route("loader_field", web::get().to(loader_fields_list))
-    .route("license", web::get().to(license_list))
-    .route("license/{id}", web::get().to(license_text))
-    .route("link_platform", web::get().to(link_platform_list))
-    .route("report_type", web::get().to(report_type_list))
-    .route("project_type", web::get().to(project_type_list));
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -36,10 +38,10 @@ pub struct GameData {
 }
 
 pub async fn games_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let results = Game::list(&**pool, &redis)
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+) -> Result<Json<Vec<GameData>>, ApiError> {
+    let results = Game::list(&pool, &redis)
         .await?
         .into_iter()
         .map(|x| GameData {
@@ -50,7 +52,7 @@ pub async fn games_list(
         })
         .collect::<Vec<_>>();
 
-    Ok(HttpResponse::Ok().json(results))
+    Ok(Json(results))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -62,10 +64,10 @@ pub struct CategoryData {
 }
 
 pub async fn category_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let results = Category::list(&**pool, &redis)
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+) -> Result<Json<Vec<CategoryData>>, ApiError> {
+    let results = Category::list(&pool, &redis)
         .await?
         .into_iter()
         .map(|x| CategoryData {
@@ -76,7 +78,7 @@ pub async fn category_list(
         })
         .collect::<Vec<_>>();
 
-    Ok(HttpResponse::Ok().json(results))
+    Ok(Json(results))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -90,14 +92,14 @@ pub struct LoaderData {
 }
 
 pub async fn loader_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let loaders = Loader::list(&**pool, &redis).await?;
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+) -> Result<Json<Vec<LoaderData>>, ApiError> {
+    let loaders = Loader::list(&pool, &redis).await?;
 
     let loader_fields = LoaderField::get_fields_per_loader(
         &loaders.iter().map(|x| x.id).collect_vec(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
@@ -119,7 +121,7 @@ pub async fn loader_list(
 
     results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
-    Ok(HttpResponse::Ok().json(results))
+    Ok(Json(results))
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -130,12 +132,11 @@ pub struct LoaderFieldsEnumQuery {
 
 // Provides the variants for any enumerable loader field.
 pub async fn loader_fields_list(
-    pool: web::Data<PgPool>,
-    query: web::Query<LoaderFieldsEnumQuery>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let query = query.into_inner();
-    let loader_field = LoaderField::get_fields_all(&**pool, &redis)
+    Extension(pool): Extension<PgPool>,
+    Query(query): Query<LoaderFieldsEnumQuery>,
+    Extension(redis): Extension<RedisPool>,
+) -> Result<Json<Vec<LoaderFieldEnumValue>>, ApiError> {
+    let loader_field = LoaderField::get_fields_all(&pool, &redis)
         .await?
         .into_iter()
         .find(|x| x.field == query.loader_field)
@@ -158,12 +159,12 @@ pub async fn loader_fields_list(
     };
 
     let results: Vec<_> = if let Some(filters) = query.filters {
-        LoaderFieldEnumValue::list_filter(loader_field_enum_id, filters, &**pool, &redis).await?
+        LoaderFieldEnumValue::list_filter(loader_field_enum_id, filters, &pool, &redis).await?
     } else {
-        LoaderFieldEnumValue::list(loader_field_enum_id, &**pool, &redis).await?
+        LoaderFieldEnumValue::list(loader_field_enum_id, &pool, &redis).await?
     };
 
-    Ok(HttpResponse::Ok().json(results))
+    Ok(Json(results))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -172,7 +173,7 @@ pub struct License {
     pub name: String,
 }
 
-pub async fn license_list() -> HttpResponse {
+pub async fn license_list() -> Json<Vec<License>> {
     let licenses = spdx::identifiers::LICENSES;
     let mut results: Vec<License> = Vec::with_capacity(licenses.len());
 
@@ -183,7 +184,7 @@ pub async fn license_list() -> HttpResponse {
         });
     }
 
-    HttpResponse::Ok().json(results)
+    Json(results)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -192,18 +193,16 @@ pub struct LicenseText {
     pub body: String,
 }
 
-pub async fn license_text(params: web::Path<(String,)>) -> Result<HttpResponse, ApiError> {
-    let license_id = params.into_inner().0;
-
+pub async fn license_text(Path(license_id): Path<String>) -> Result<Json<LicenseText>, ApiError> {
     if license_id == *crate::models::projects::DEFAULT_LICENSE_ID {
-        return Ok(HttpResponse::Ok().json(LicenseText {
+        return Ok(Json(LicenseText {
             title: "All Rights Reserved".to_string(),
             body: "All rights reserved unless explicitly stated.".to_string(),
         }));
     }
 
     if let Some(license) = spdx::license_id(&license_id) {
-        return Ok(HttpResponse::Ok().json(LicenseText {
+        return Ok(Json(LicenseText {
             title: license.full_name.to_string(),
             body: license.text().to_string(),
         }));
@@ -221,10 +220,10 @@ pub struct LinkPlatformQueryData {
 }
 
 pub async fn link_platform_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let results: Vec<LinkPlatformQueryData> = LinkPlatform::list(&**pool, &redis)
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+) -> Result<Json<Vec<LinkPlatformQueryData>>, ApiError> {
+    let results: Vec<LinkPlatformQueryData> = LinkPlatform::list(&pool, &redis)
         .await?
         .into_iter()
         .map(|x| LinkPlatformQueryData {
@@ -232,21 +231,21 @@ pub async fn link_platform_list(
             donation: x.donation,
         })
         .collect();
-    Ok(HttpResponse::Ok().json(results))
+    Ok(Json(results))
 }
 
 pub async fn report_type_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let results = ReportType::list(&**pool, &redis).await?;
-    Ok(HttpResponse::Ok().json(results))
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let results = ReportType::list(&pool, &redis).await?;
+    Ok(Json(results))
 }
 
 pub async fn project_type_list(
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let results = ProjectType::list(&**pool, &redis).await?;
-    Ok(HttpResponse::Ok().json(results))
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let results = ProjectType::list(&pool, &redis).await?;
+    Ok(Json(results))
 }

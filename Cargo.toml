@@ -11,20 +11,26 @@ name = "labrinth"
 path = "src/main.rs"
 
 [dependencies]
-actix = "0.13.1"
-actix-web = "4.4.1"
-actix-rt = "2.9.0"
-actix-multipart = "0.6.1"
-actix-cors = "0.7.0"
-actix-ws = "0.2.5"
-actix-files = "0.6.5"
-actix-web-prom = "0.7.0"
+axum = { version = "0.7.4", features = ["json", "form", "multipart", "query", "ws", "macros"] }
+axum-prometheus = "0.5.0"
+
+# middleware + utils
+sentry = { version = "0.32.1", features = ["tracing", "tower", "tower-http", "tower-axum-matched-path"] }
+sentry-tower = { verison = "0.32.1", features = ["axum-matched-path", "http"] }
+tower-http = {  version = "0.5.0", features = ["trace", "cors", "sensitive-headers", "fs", "compression-zstd", "compression-gzip", "compression-deflate", "compression-br"] }
+tower = "0.4.13"
+governor = "0.6.0"
+
+# tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 tokio = { version = "1.35.1", features = ["sync"] }
 tokio-stream = "0.1.14"
 
 futures = "0.3.30"
 futures-timer = "3.0.2"
+futures-lite = "1.13.0"
 async-trait = "0.1.70"
 dashmap = "5.4.0"
 lazy_static = "1.4.0"
@@ -69,8 +75,6 @@ censor = "0.3.0"
 spdx = { version = "0.10.3", features = ["text"] }
 
 dotenvy = "0.15.7"
-log = "0.4.20"
-env_logger = "0.10.1"
 thiserror = "1.0.56"
 
 sqlx = { version = "0.7.3", features = [
@@ -95,22 +99,33 @@ maxminddb = "0.24.0"
 flate2 = "1.0.25"
 tar = "0.4.38"
 
-sentry = { version = "0.32.1" }
-sentry-actix = "0.32.1"
-
 image = "0.24.6"
 color-thief = "0.2.2"
 
+# UA parsing
 woothee = "0.13.0"
 
+# mail send
 lettre = "0.11.3"
 
+# todo: remove
 derive-new = "0.6.0"
+
+# country list
 rust_iso3166 = "0.1.11"
 
+multer = "3.0.0"
+
+jemallocator = {version = "0.5.4", optional = true}
+
+[features]
+jemalloc = ["jemallocator"]
+
 [dev-dependencies]
-actix-http = "3.4.0"
+axum-test = "14.2.2"
 json-patch = "*"
+serde_urlencoded = "0.7.1"
+
 [profile.dev]
 opt-level = 0                # Minimal optimization, speeds up compilation
 lto = false                  # Disables Link Time Optimization

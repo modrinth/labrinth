@@ -1,3 +1,7 @@
+use axum::http::HeaderMap;
+use axum::routing::post;
+use axum::Router;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::auth::checks::{is_team_member_project, is_team_member_version};
@@ -11,15 +15,15 @@ use crate::models::images::{Image, ImageContext};
 use crate::models::reports::ReportId;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::extract::{BytesExtract, ConnectInfo, Extension, Json, Query};
 use crate::util::routes::read_from_payload;
-use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 use super::threads::is_authorized_thread;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("image", web::post().to(images_add));
+pub fn config() -> Router {
+    Router::new().route("/image", post(images_add))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -38,30 +42,38 @@ pub struct ImageUpload {
 }
 
 pub async fn images_add(
-    req: HttpRequest,
-    web::Query(data): web::Query<ImageUpload>,
-    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
-    mut payload: web::Payload,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(data): Query<ImageUpload>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    payload: BytesExtract,
+) -> Result<Json<Image>, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&data.ext) {
         let mut context = ImageContext::from_str(&data.context, None);
 
         let scopes = vec![context.relevant_scope()];
 
         let cdn_url = dotenvy::var("CDN_URL")?;
-        let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, Some(&scopes))
-            .await?
-            .1;
+        let user = get_user_from_headers(
+            &addr,
+            &headers,
+            &pool,
+            &redis,
+            &session_queue,
+            Some(&scopes),
+        )
+        .await?
+        .1;
 
         // Attempt to associated a supplied id with the context
         // If the context cannot be found, or the user is not authorized to upload images for the context, return an error
         match &mut context {
             ImageContext::Project { project_id } => {
                 if let Some(id) = data.project_id {
-                    let project = project_item::Project::get(&id, &**pool, &redis).await?;
+                    let project = project_item::Project::get(&id, &pool, &redis).await?;
                     if let Some(project) = project {
                         if is_team_member_project(&project.inner, &Some(user.clone()), &pool)
                             .await?
@@ -82,7 +94,7 @@ pub async fn images_add(
             }
             ImageContext::Version { version_id } => {
                 if let Some(id) = data.version_id {
-                    let version = version_item::Version::get(id.into(), &**pool, &redis).await?;
+                    let version = version_item::Version::get(id.into(), &pool, &redis).await?;
                     if let Some(version) = version {
                         if is_team_member_version(
                             &version.inner,
@@ -108,14 +120,12 @@ pub async fn images_add(
             }
             ImageContext::ThreadMessage { thread_message_id } => {
                 if let Some(id) = data.thread_message_id {
-                    let thread_message = thread_item::ThreadMessage::get(id.into(), &**pool)
+                    let thread_message = thread_item::ThreadMessage::get(id.into(), &pool)
                         .await?
                         .ok_or_else(|| {
-                            ApiError::InvalidInput(
-                                "The thread message could not found.".to_string(),
-                            )
-                        })?;
-                    let thread = thread_item::Thread::get(thread_message.thread_id, &**pool)
+                        ApiError::InvalidInput("The thread message could not found.".to_string())
+                    })?;
+                    let thread = thread_item::Thread::get(thread_message.thread_id, &pool)
                         .await?
                         .ok_or_else(|| {
                             ApiError::InvalidInput(
@@ -135,12 +145,12 @@ pub async fn images_add(
             }
             ImageContext::Report { report_id } => {
                 if let Some(id) = data.report_id {
-                    let report = report_item::Report::get(id.into(), &**pool)
+                    let report = report_item::Report::get(id.into(), &pool)
                         .await?
                         .ok_or_else(|| {
                             ApiError::InvalidInput("The report could not be found.".to_string())
                         })?;
-                    let thread = thread_item::Thread::get(report.thread_id, &**pool)
+                    let thread = thread_item::Thread::get(report.thread_id, &pool)
                         .await?
                         .ok_or_else(|| {
                             ApiError::InvalidInput(
@@ -166,14 +176,14 @@ pub async fn images_add(
 
         // Upload the image to the file host
         let bytes =
-            read_from_payload(&mut payload, 1_048_576, "Icons must be smaller than 1MiB").await?;
+            read_from_payload(payload, 1_048_576, "Icons must be smaller than 1MiB").await?;
 
         let hash = sha1::Sha1::from(&bytes).hexdigest();
         let upload_data = file_host
             .upload_file(
                 content_type,
                 &format!("data/cached_images/{}.{}", hash, data.ext),
-                bytes.freeze(),
+                bytes,
             )
             .await?;
 
@@ -234,7 +244,7 @@ pub async fn images_add(
 
         transaction.commit().await?;
 
-        Ok(HttpResponse::Ok().json(image))
+        Ok(Json(image))
     } else {
         Err(ApiError::InvalidInput(
             "The specified file is not an image!".to_string(),

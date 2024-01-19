@@ -7,7 +7,7 @@ use common::{
 
 mod common;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_games() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = test_env.api;

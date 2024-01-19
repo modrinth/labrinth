@@ -9,14 +9,14 @@ use crate::common::dummy_data::TestFile;
 use crate::common::dummy_data::DUMMY_CATEGORIES;
 use crate::common::environment::with_test_environment;
 use crate::common::environment::TestEnvironment;
-use actix_http::StatusCode;
+use axum_test::http::StatusCode;
 use futures::stream::StreamExt;
 use labrinth::models::ids::base62_impl::parse_base62;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn search_projects() {
     // Test setup and dummy data
     with_test_environment(Some(10), |test_env: TestEnvironment<ApiV2>| async move {
@@ -204,12 +204,18 @@ async fn search_projects() {
         // Await all project creation
         // Returns a mapping of:
         // project id -> test id
-        let id_conversion: Arc<HashMap<u64, u64>> = Arc::new(
-            futures::future::join_all(project_creation_futures)
-                .await
-                .into_iter()
-                .collect(),
-        );
+        // let id_conversion: Arc<HashMap<u64, u64>> = Arc::new(
+        //     futures::future::join_all(project_creation_futures)
+        //         .await
+        //         .into_iter()
+        //         .collect(),
+        // );
+        let mut id_conversion: HashMap<u64, u64> = HashMap::new();
+        for fut in project_creation_futures {
+            let (project_id, test_id) = fut.await;
+            id_conversion.insert(project_id, test_id);
+        }
+        let id_conversion = Arc::new(id_conversion);
 
         // Create a second version for project 7
         let project_7 = api

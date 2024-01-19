@@ -3,6 +3,10 @@ pub mod email;
 pub mod oauth;
 pub mod templates;
 pub mod validate;
+
+use crate::util::extract::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 pub use checks::{
     filter_enlisted_projects_ids, filter_enlisted_version_ids, filter_visible_collections,
     filter_visible_project_ids, filter_visible_projects,
@@ -13,8 +17,6 @@ pub use validate::{check_is_moderator_from_headers, get_user_from_headers};
 
 use crate::file_hosting::FileHostingError;
 use crate::models::error::ApiError;
-use actix_web::http::StatusCode;
-use actix_web::HttpResponse;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -49,8 +51,19 @@ pub enum AuthenticationError {
     Url,
 }
 
-impl actix_web::ResponseError for AuthenticationError {
-    fn status_code(&self) -> StatusCode {
+impl IntoResponse for AuthenticationError {
+    fn into_response(self) -> Response {
+        let error_message = ApiError {
+            error: self.error_name(),
+            description: &self.to_string(),
+        };
+
+        (self.status_code(), Json(error_message)).into_response()
+    }
+}
+
+impl AuthenticationError {
+    pub fn status_code(&self) -> StatusCode {
         match self {
             AuthenticationError::Env(..) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthenticationError::Sqlx(..) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -69,15 +82,6 @@ impl actix_web::ResponseError for AuthenticationError {
         }
     }
 
-    fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code()).json(ApiError {
-            error: self.error_name(),
-            description: &self.to_string(),
-        })
-    }
-}
-
-impl AuthenticationError {
     pub fn error_name(&self) -> &'static str {
         match self {
             AuthenticationError::Env(..) => "environment_error",

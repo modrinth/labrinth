@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-use crate::common::api_common::{ApiProject, ApiTeams, ApiUser, ApiVersion, AppendsOptionalPat};
+use crate::common::api_common::{
+    Api, ApiProject, ApiTeams, ApiUser, ApiVersion, AppendsOptionalPat,
+};
 use crate::common::dummy_data::{DummyImage, DummyProjectAlpha, DummyProjectBeta};
-use actix_http::StatusCode;
-use actix_web::test;
+use axum_test::http::StatusCode;
+
 use chrono::{Duration, Utc};
 use common::api_common::models::CommonItemType;
-use common::api_common::Api;
 use common::api_v3::request_data::get_public_project_creation_data;
 use common::api_v3::ApiV3;
 use common::dummy_data::TestFile;
@@ -27,7 +28,7 @@ use serde_json::json;
 mod common;
 
 // Test for users, emails, and payout scopes (not user auth scope or notifs)
-#[actix_rt::test]
+#[tokio::test]
 async fn user_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
@@ -103,7 +104,7 @@ async fn user_scopes() {
 }
 
 // Notifications
-#[actix_rt::test]
+#[tokio::test]
 pub async fn notifications_scopes() {
     with_test_environment_all(None, |test_env| async move {
         let api = &test_env.api;
@@ -215,7 +216,7 @@ pub async fn notifications_scopes() {
 }
 
 // Project version creation scopes
-#[actix_rt::test]
+#[tokio::test]
 pub async fn project_version_create_scopes_v3() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;
@@ -256,7 +257,7 @@ pub async fn project_version_create_scopes_v3() {
 }
 
 // Project management scopes
-#[actix_rt::test]
+#[tokio::test]
 pub async fn project_version_reads_scopes() {
     with_test_environment_all(None, |test_env| async move {
         let api = &test_env.api;
@@ -270,6 +271,8 @@ pub async fn project_version_reads_scopes() {
             file_hash: beta_file_hash,
             ..
         } = &test_env.dummy.project_beta;
+
+        let test_server = &api.get_test_server();
 
         // Project reading
         // Uses 404 as the expected failure code (or 200 and an empty list for mass reads)
@@ -365,13 +368,12 @@ pub async fn project_version_reads_scopes() {
 
         // Project metadata reading
         let req_gen = |pat: Option<String>| async move {
-            let req = test::TestRequest::get()
-                .uri(&format!(
+            test_server
+                .get(&format!(
                     "/maven/maven/modrinth/{beta_project_id}/maven-metadata.xml"
                 ))
                 .append_pat(pat.as_deref())
-                .to_request();
-            api.call(req).await
+                .await
         };
         ScopeTest::new(&test_env)
             .with_failure_code(404)
@@ -470,7 +472,7 @@ pub async fn project_version_reads_scopes() {
 }
 
 // Project writing
-#[actix_rt::test]
+#[tokio::test]
 pub async fn project_write_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
@@ -555,7 +557,7 @@ pub async fn project_write_scopes() {
 
         // Get project, as we need the gallery image url
         let resp = api.get_project(beta_project_id, USER_USER_PAT).await;
-        let project: serde_json::Value = test::read_body_json(resp).await;
+        let project: serde_json::Value = resp.json();
         let gallery_url = project["gallery"][0]["url"].as_str().unwrap();
 
         let req_gen = |pat: Option<String>| async move {
@@ -648,7 +650,7 @@ pub async fn project_write_scopes() {
 }
 
 // Version write
-#[actix_rt::test]
+#[tokio::test]
 pub async fn version_write_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
@@ -714,7 +716,7 @@ pub async fn version_write_scopes() {
 }
 
 // Report scopes
-#[actix_rt::test]
+#[tokio::test]
 pub async fn report_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
@@ -793,7 +795,7 @@ pub async fn report_scopes() {
 }
 
 // Thread scopes
-#[actix_rt::test]
+#[tokio::test]
 pub async fn thread_scopes() {
     // Test setup and dummy data
     with_test_environment_all(None, |test_env| async move {
@@ -861,7 +863,7 @@ pub async fn thread_scopes() {
         // Delete that message
         // First, get message id
         let resp = api.get_thread(thread_id, USER_USER_PAT).await;
-        let success: serde_json::Value = test::read_body_json(resp).await;
+        let success: serde_json::Value = resp.json();
         let thread_message_id = success["messages"][0]["id"].as_str().unwrap();
 
         let req_gen = |pat: Option<String>| async move {
@@ -878,23 +880,24 @@ pub async fn thread_scopes() {
 }
 
 // Pat scopes
-#[actix_rt::test]
+#[tokio::test]
 pub async fn pat_scopes() {
     with_test_environment_all(None, |test_env| async move {
         let api = &test_env.api;
+        let test_server = &api.get_test_server();
+
         // Pat create
         let pat_create = Scopes::PAT_CREATE;
         let req_gen = |pat: Option<String>| async move {
-            let req = test::TestRequest::post()
-                .uri("/_internal/pat")
-                .set_json(json!({
+            test_server
+                .post("/_internal/pat")
+                .json(&json!({
                     "scopes": 1,
                     "name": "test_pat_scopes Name",
                     "expires": Utc::now() + Duration::days(1),
                 }))
                 .append_pat(pat.as_deref())
-                .to_request();
-            api.call(req).await
+                .await
         };
         let (_, success) = ScopeTest::new(&test_env)
             .test(req_gen, pat_create)
@@ -905,12 +908,11 @@ pub async fn pat_scopes() {
         // Pat write
         let pat_write = Scopes::PAT_WRITE;
         let req_gen = |pat: Option<String>| async move {
-            let req = test::TestRequest::patch()
-                .uri(&format!("/_internal/pat/{pat_id}"))
-                .set_json(json!({}))
+            test_server
+                .patch(&format!("/_internal/pat/{pat_id}"))
+                .json(&json!({}))
                 .append_pat(pat.as_deref())
-                .to_request();
-            api.call(req).await
+                .await
         };
         ScopeTest::new(&test_env)
             .test(req_gen, pat_write)
@@ -920,11 +922,10 @@ pub async fn pat_scopes() {
         // Pat read
         let pat_read = Scopes::PAT_READ;
         let req_gen = |pat: Option<String>| async move {
-            let req = test::TestRequest::get()
-                .uri("/_internal/pat")
+            test_server
+                .get(&format!("/_internal/pat"))
                 .append_pat(pat.as_deref())
-                .to_request();
-            api.call(req).await
+                .await
         };
         ScopeTest::new(&test_env)
             .test(req_gen, pat_read)
@@ -934,11 +935,10 @@ pub async fn pat_scopes() {
         // Pat delete
         let pat_delete = Scopes::PAT_DELETE;
         let req_gen = |pat: Option<String>| async move {
-            let req = test::TestRequest::delete()
-                .uri(&format!("/_internal/pat/{pat_id}"))
+            test_server
+                .delete(&format!("/_internal/pat/{pat_id}"))
                 .append_pat(pat.as_deref())
-                .to_request();
-            api.call(req).await
+                .await
         };
         ScopeTest::new(&test_env)
             .test(req_gen, pat_delete)
@@ -949,7 +949,7 @@ pub async fn pat_scopes() {
 }
 
 // Collection scopes
-#[actix_rt::test]
+#[tokio::test]
 pub async fn collections_scopes() {
     // Test setup and dummy data
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
@@ -1051,7 +1051,7 @@ pub async fn collections_scopes() {
 }
 
 // Organization scopes (and a couple PROJECT_WRITE scopes that are only allowed for orgs)
-#[actix_rt::test]
+#[tokio::test]
 pub async fn organization_scopes() {
     // Test setup and dummy data
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {

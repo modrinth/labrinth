@@ -1,7 +1,7 @@
-use crate::models::error::ApiError;
 use crate::models::projects::SearchRequest;
-use actix_web::http::StatusCode;
-use actix_web::HttpResponse;
+use crate::util::extract::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use meilisearch_sdk::client::Client;
@@ -30,21 +30,19 @@ pub enum SearchError {
     InvalidIndex(String),
 }
 
-impl actix_web::ResponseError for SearchError {
-    fn status_code(&self) -> StatusCode {
-        match self {
+impl IntoResponse for SearchError {
+    fn into_response(self) -> Response {
+        let status_code = match &self {
             SearchError::Env(..) => StatusCode::INTERNAL_SERVER_ERROR,
             SearchError::MeiliSearch(..) => StatusCode::BAD_REQUEST,
             SearchError::Serde(..) => StatusCode::BAD_REQUEST,
             SearchError::IntParsing(..) => StatusCode::BAD_REQUEST,
             SearchError::InvalidIndex(..) => StatusCode::BAD_REQUEST,
             SearchError::FormatError(..) => StatusCode::BAD_REQUEST,
-        }
-    }
+        };
 
-    fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code()).json(ApiError {
-            error: match self {
+        let error_message = crate::models::error::ApiError {
+            error: match &self {
                 SearchError::Env(..) => "environment_error",
                 SearchError::MeiliSearch(..) => "meilisearch_error",
                 SearchError::Serde(..) => "invalid_input",
@@ -53,7 +51,9 @@ impl actix_web::ResponseError for SearchError {
                 SearchError::FormatError(..) => "invalid_input",
             },
             description: &self.to_string(),
-        })
+        };
+
+        (status_code, Json(error_message)).into_response()
     }
 }
 

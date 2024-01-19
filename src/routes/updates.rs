@@ -1,6 +1,10 @@
+use axum::http::HeaderMap;
+use axum::routing::get;
+use axum::Router;
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-use actix_web::{get, web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -12,11 +16,12 @@ use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
 use crate::queue::session::AuthQueue;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 
 use super::ApiError;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(forge_updates);
+pub fn config() -> Router {
+    Router::new().route("/:id/forge_updates.json", get(forge_updates))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -25,30 +30,35 @@ pub struct NeoForge {
     pub neoforge: String,
 }
 
+#[derive(Serialize)]
+pub struct ForgeUpdates {
+    homepage: String,
+    promos: HashMap<String, String>,
+}
+
 fn default_neoforge() -> String {
     "none".into()
 }
 
-#[get("{id}/forge_updates.json")]
 pub async fn forge_updates(
-    req: HttpRequest,
-    web::Query(neo): web::Query<NeoForge>,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(neo): Query<NeoForge>,
+    Path(id): Path<String>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<ForgeUpdates>, ApiError> {
     const ERROR: &str = "The specified project does not exist!";
 
-    let (id,) = info.into_inner();
-
-    let project = database::models::Project::get(&id, &**pool, &redis)
+    let project = database::models::Project::get(&id, &pool, &redis)
         .await?
         .ok_or_else(|| ApiError::InvalidInput(ERROR.to_string()))?;
 
     let user_option = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PROJECT_READ]),
@@ -57,11 +67,11 @@ pub async fn forge_updates(
     .map(|x| x.1)
     .ok();
 
-    if !is_visible_project(&project.inner, &user_option, &pool).await? {
+    if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
         return Err(ApiError::InvalidInput(ERROR.to_string()));
     }
 
-    let versions = database::models::Version::get_many(&project.versions, &**pool, &redis).await?;
+    let versions = database::models::Version::get_many(&project.versions, &pool, &redis).await?;
 
     let loaders = match &*neo.neoforge {
         "only" => |x: &String| *x == "neoforge",
@@ -81,12 +91,6 @@ pub async fn forge_updates(
     .await?;
 
     versions.sort_by(|a, b| b.date_published.cmp(&a.date_published));
-
-    #[derive(Serialize)]
-    struct ForgeUpdates {
-        homepage: String,
-        promos: HashMap<String, String>,
-    }
 
     let mut response = ForgeUpdates {
         homepage: format!(
@@ -125,5 +129,5 @@ pub async fn forge_updates(
         }
     }
 
-    Ok(HttpResponse::Ok().json(response))
+    Ok(Json(response))
 }

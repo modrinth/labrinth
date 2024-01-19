@@ -269,9 +269,13 @@ impl TeamMember {
             .try_collect::<Vec<TeamMember>>()
             .await?;
 
-            for (id, members) in &teams.into_iter().group_by(|x| x.team_id) {
-                let mut members = members.collect::<Vec<_>>();
-
+            for (id, mut members) in teams
+                .into_iter()
+                .group_by(|x| x.team_id)
+                .into_iter()
+                .map(|(key, group)| (key, group.collect::<Vec<_>>()))
+                .collect::<Vec<_>>()
+            {
                 redis
                     .set_serialized_to_json(TEAMS_NAMESPACE, id.0, &members, None)
                     .await?;
@@ -453,7 +457,6 @@ impl TeamMember {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn edit_team_member(
         id: TeamId,
         user_id: UserId,

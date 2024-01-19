@@ -1,9 +1,11 @@
 use crate::routes::ApiError;
-use actix_web::{web, HttpResponse};
+use crate::util::extract::{Extension, Json};
+use axum::routing::get;
+use axum::Router;
 use sqlx::PgPool;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("statistics", web::get().to(get_stats));
+pub fn config() -> Router {
+    Router::new().route("/statistics", get(get_stats))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -14,7 +16,7 @@ pub struct V3Stats {
     pub files: Option<i64>,
 }
 
-pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
+pub async fn get_stats(Extension(pool): Extension<PgPool>) -> Result<Json<V3Stats>, ApiError> {
     let projects = sqlx::query!(
         "
         SELECT COUNT(id)
@@ -26,7 +28,7 @@ pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError
             .map(|x| x.to_string())
             .collect::<Vec<String>>(),
     )
-    .fetch_one(&**pool)
+    .fetch_one(&pool)
     .await?;
 
     let versions = sqlx::query!(
@@ -45,7 +47,7 @@ pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError
             .map(|x| x.to_string())
             .collect::<Vec<String>>(),
     )
-    .fetch_one(&**pool)
+    .fetch_one(&pool)
     .await?;
 
     let authors = sqlx::query!(
@@ -60,7 +62,7 @@ pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError
             .map(|x| x.to_string())
             .collect::<Vec<String>>(),
     )
-    .fetch_one(&**pool)
+    .fetch_one(&pool)
     .await?;
 
     let files = sqlx::query!(
@@ -78,7 +80,7 @@ pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError
             .map(|x| x.to_string())
             .collect::<Vec<String>>(),
     )
-    .fetch_one(&**pool)
+    .fetch_one(&pool)
     .await?;
 
     let v3_stats = V3Stats {
@@ -88,5 +90,5 @@ pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError
         files: files.count,
     };
 
-    Ok(HttpResponse::Ok().json(v3_stats))
+    Ok(Json(v3_stats))
 }

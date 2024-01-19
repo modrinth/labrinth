@@ -10,19 +10,22 @@ use crate::models::ids::{ImageId, OrganizationId};
 use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
 use crate::models::projects::{
-    License, Link, MonetizationStatus, ProjectId, ProjectStatus, VersionId, VersionStatus,
+    License, Link, MonetizationStatus, Project, ProjectId, ProjectStatus, VersionId, VersionStatus,
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::ThreadType;
 use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
 use crate::search::indexing::IndexingError;
+use crate::util::extract::{ConnectInfo, Extension, Json};
+use crate::util::multipart::{FieldWrapper, MultipartErrorWrapper, MultipartWrapper};
 use crate::util::routes::read_from_field;
 use crate::util::validate::validation_errors_to_string;
-use actix_multipart::{Field, Multipart};
-use actix_web::http::StatusCode;
-use actix_web::web::{self, Data};
-use actix_web::{HttpRequest, HttpResponse};
+use axum::extract::DefaultBodyLimit;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::post;
+use axum::Router;
 use chrono::Utc;
 use futures::stream::StreamExt;
 use image::ImageError;
@@ -31,12 +34,16 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use validator::Validate;
 
-pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
-    cfg.route("project", web::post().to(project_create));
+pub fn config() -> Router {
+    Router::new().route(
+        "/project",
+        post(project_create).layer(DefaultBodyLimit::max(512 * 1024 * 1024)),
+    )
 }
 
 #[derive(Error, Debug)]
@@ -50,7 +57,7 @@ pub enum CreateError {
     #[error("Indexing Error: {0}")]
     IndexingError(#[from] IndexingError),
     #[error("Error while parsing multipart payload: {0}")]
-    MultipartError(#[from] actix_multipart::MultipartError),
+    MultipartError(#[from] MultipartErrorWrapper),
     #[error("Error while parsing JSON: {0}")]
     SerDeError(#[from] serde_json::Error),
     #[error("Error while validating input: {0}")]
@@ -85,9 +92,9 @@ pub enum CreateError {
     RerouteError(#[from] reqwest::Error),
 }
 
-impl actix_web::ResponseError for CreateError {
-    fn status_code(&self) -> StatusCode {
-        match self {
+impl IntoResponse for CreateError {
+    fn into_response(self) -> Response {
+        let status_code = match self {
             CreateError::EnvError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::SqlxDatabaseError(..) => StatusCode::INTERNAL_SERVER_ERROR,
             CreateError::DatabaseError(..) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -109,11 +116,9 @@ impl actix_web::ResponseError for CreateError {
             CreateError::FileValidationError(..) => StatusCode::BAD_REQUEST,
             CreateError::ImageError(..) => StatusCode::BAD_REQUEST,
             CreateError::RerouteError(..) => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
+        };
 
-    fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code()).json(ApiError {
+        let error = ApiError {
             error: match self {
                 CreateError::EnvError(..) => "environment_error",
                 CreateError::SqlxDatabaseError(..) => "database_error",
@@ -138,10 +143,13 @@ impl actix_web::ResponseError for CreateError {
                 CreateError::RerouteError(..) => "reroute_error",
             },
             description: &self.to_string(),
-        })
+        };
+
+        (status_code, Json(error)).into_response()
     }
 }
 
+//
 pub fn default_project_type() -> String {
     "mod".to_string()
 }
@@ -216,7 +224,7 @@ pub struct ProjectCreateData {
     /// The id of the organization to create the project in
     pub organization_id: Option<OrganizationId>,
 }
-
+//
 #[derive(Serialize, Deserialize, Validate, Clone)]
 pub struct NewGalleryItem {
     /// The name of the multipart item where the gallery media is located
@@ -238,7 +246,7 @@ pub struct UploadedFile {
 }
 
 pub async fn undo_uploads(
-    file_host: &dyn FileHost,
+    file_host: &(dyn FileHost + Send + Sync),
     uploaded_files: &[UploadedFile],
 ) -> Result<(), CreateError> {
     for file in uploaded_files {
@@ -250,21 +258,23 @@ pub async fn undo_uploads(
 }
 
 pub async fn project_create(
-    req: HttpRequest,
-    mut payload: Multipart,
-    client: Data<PgPool>,
-    redis: Data<RedisPool>,
-    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, CreateError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(client): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    mut payload: MultipartWrapper,
+) -> Result<Json<Project>, CreateError> {
     let mut transaction = client.begin().await?;
     let mut uploaded_files = Vec::new();
 
     let result = project_create_inner(
-        req,
+        addr,
+        headers,
         &mut payload,
         &mut transaction,
-        &***file_host,
+        &*file_host,
         &mut uploaded_files,
         &client,
         &redis,
@@ -273,7 +283,7 @@ pub async fn project_create(
     .await;
 
     if result.is_err() {
-        let undo_result = undo_uploads(&***file_host, &uploaded_files).await;
+        let undo_result = undo_uploads(&*file_host, &uploaded_files).await;
         let rollback_result = transaction.rollback().await;
 
         undo_result?;
@@ -316,23 +326,24 @@ Get logged in user
     - Add project data to indexing queue
 */
 
-#[allow(clippy::too_many_arguments)]
 async fn project_create_inner(
-    req: HttpRequest,
-    payload: &mut Multipart,
+    addr: SocketAddr,
+    headers: HeaderMap,
+    payload: &mut MultipartWrapper,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    file_host: &dyn FileHost,
+    file_host: &(dyn FileHost + Send + Sync),
     uploaded_files: &mut Vec<UploadedFile>,
     pool: &PgPool,
     redis: &RedisPool,
     session_queue: &AuthQueue,
-) -> Result<HttpResponse, CreateError> {
+) -> Result<Json<Project>, CreateError> {
     // The base URL for files uploaded to backblaze
     let cdn_url = dotenvy::var("CDN_URL")?;
 
     // The currently logged in user
     let current_user = get_user_from_headers(
-        &req,
+        &addr,
+        &headers,
         pool,
         redis,
         session_queue,
@@ -353,18 +364,15 @@ async fn project_create_inner(
         // JSON `ProjectCreateData` object.
 
         let mut field = payload
-            .next()
+            .next_field()
             .await
-            .map(|m| m.map_err(CreateError::MultipartError))
-            .unwrap_or_else(|| {
-                Err(CreateError::MissingValueError(String::from(
-                    "No `data` field in multipart upload",
-                )))
+            .map_err(CreateError::MultipartError)?
+            .ok_or_else(|| {
+                CreateError::MissingValueError(String::from("No `data` field in multipart upload"))
             })?;
 
-        let content_disposition = field.content_disposition();
-        let name = content_disposition
-            .get_name()
+        let content_disposition_name = field.name();
+        let name = content_disposition_name
             .ok_or_else(|| CreateError::MissingValueError(String::from("Missing content name")))?;
 
         if name != "data" {
@@ -450,22 +458,20 @@ async fn project_create_inner(
     let mut icon_data = None;
 
     let mut error = None;
-    while let Some(item) = payload.next().await {
-        let mut field: Field = item?;
-
+    while let Some(mut field) = payload.next_field().await? {
         if error.is_some() {
             continue;
         }
 
         let result = async {
-            let content_disposition = field.content_disposition().clone();
-
-            let name = content_disposition.get_name().ok_or_else(|| {
+            let content_disposition_name = field.name().map(|x| x.to_string());
+            let name = content_disposition_name.ok_or_else(|| {
                 CreateError::MissingValueError("Missing content name".to_string())
             })?;
 
+            let file_name = field.file_name().map(|x| x.to_string());
             let (file_name, file_extension) =
-                super::version_creation::get_name_ext(&content_disposition)?;
+                super::version_creation::get_name_ext(file_name.as_deref())?;
 
             if name == "icon" {
                 if icon_data.is_some() {
@@ -502,7 +508,7 @@ async fn project_create_inner(
                     .await?;
                     let hash = sha1::Sha1::from(&data).hexdigest();
                     let (_, file_extension) =
-                        super::version_creation::get_name_ext(&content_disposition)?;
+                        super::version_creation::get_name_ext(field.file_name())?;
                     let content_type = crate::util::ext::get_image_content_type(file_extension)
                         .ok_or_else(|| {
                             CreateError::InvalidIconFormat(file_extension.to_string())
@@ -526,7 +532,7 @@ async fn project_create_inner(
                     return Ok(());
                 }
             }
-            let index = if let Some(i) = versions_map.get(name) {
+            let index = if let Some(i) = versions_map.get(&name) {
                 *i
             } else {
                 return Err(CreateError::InvalidInput(format!(
@@ -547,13 +553,12 @@ async fn project_create_inner(
                 &mut created_version.files,
                 &mut created_version.dependencies,
                 &cdn_url,
-                &content_disposition,
                 project_id,
                 created_version.version_id.into(),
                 &created_version.version_fields,
                 version_data.loaders.clone(),
                 version_data.primary_file.is_some(),
-                version_data.primary_file.as_deref() == Some(name),
+                version_data.primary_file.as_deref() == Some(&name),
                 None,
                 transaction,
                 redis,
@@ -828,7 +833,7 @@ async fn project_create_inner(
             fields: HashMap::new(), // Fields instantiate to empty
         };
 
-        Ok(HttpResponse::Ok().json(response))
+        Ok(Json(response))
     }
 }
 
@@ -913,8 +918,8 @@ async fn process_icon_upload(
     uploaded_files: &mut Vec<UploadedFile>,
     id: u64,
     file_extension: &str,
-    file_host: &dyn FileHost,
-    mut field: Field,
+    file_host: &(dyn FileHost + Send + Sync),
+    mut field: FieldWrapper<'_>,
     cdn_url: &str,
 ) -> Result<(String, Option<u32>), CreateError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(file_extension) {

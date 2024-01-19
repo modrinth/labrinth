@@ -10,20 +10,23 @@ use crate::database::models::{
     OAuthClientAuthorizationId,
 };
 use crate::database::redis::RedisPool;
-use crate::models;
 use crate::models::ids::OAuthClientId;
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
-use actix_web::http::header::LOCATION;
-use actix_web::web::{Data, Query, ServiceConfig};
-use actix_web::{get, post, web, HttpRequest, HttpResponse};
+use crate::util::extract::{ConnectInfo, Extension, Form, Json, Query};
+use axum::http::header::{CACHE_CONTROL, LOCATION, PRAGMA};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
+use axum::routing::{get, post};
+use axum::Router;
 use chrono::Duration;
 use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use reqwest::header::{CACHE_CONTROL, PRAGMA};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use self::errors::{OAuthError, OAuthErrorType};
 
@@ -32,11 +35,12 @@ use super::AuthenticationError;
 pub mod errors;
 pub mod uris;
 
-pub fn config(cfg: &mut ServiceConfig) {
-    cfg.service(init_oauth)
-        .service(accept_client_scopes)
-        .service(reject_client_scopes)
-        .service(request_token);
+pub fn config() -> Router {
+    Router::new()
+        .route("/authorize", get(init_oauth))
+        .route("/accept", post(accept_client_scopes))
+        .route("/reject", post(reject_client_scopes))
+        .route("/token", post(request_token))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -56,17 +60,18 @@ pub struct OAuthClientAccessRequest {
     pub requested_scopes: Scopes,
 }
 
-#[get("authorize")]
 pub async fn init_oauth(
-    req: HttpRequest,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(oauth_info): Query<OAuthInit>,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, OAuthError> {
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<axum::response::Response, OAuthError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::USER_AUTH_WRITE]),
@@ -75,7 +80,7 @@ pub async fn init_oauth(
     .1;
 
     let client_id = oauth_info.client_id.into();
-    let client = DBOAuthClient::get(client_id, &**pool).await?;
+    let client = DBOAuthClient::get(client_id, &pool).await?;
 
     if let Some(client) = client {
         let redirect_uri = ValidatedRedirectUri::validate(
@@ -106,7 +111,7 @@ pub async fn init_oauth(
         }
 
         let existing_authorization =
-            OAuthClientAuthorization::get(client.id, user.id.into(), &**pool)
+            OAuthClientAuthorization::get(client.id, user.id.into(), &pool)
                 .await
                 .map_err(|e| OAuthError::redirect(e, &oauth_info.state, &redirect_uri))?;
         let redirect_uris =
@@ -115,7 +120,7 @@ pub async fn init_oauth(
             Some(existing_authorization)
                 if existing_authorization.scopes.contains(requested_scopes) =>
             {
-                init_oauth_code_flow(
+                Ok(init_oauth_code_flow(
                     user.id.into(),
                     client.id.into(),
                     existing_authorization.id,
@@ -124,7 +129,8 @@ pub async fn init_oauth(
                     oauth_info.state,
                     &redis,
                 )
-                .await
+                .await?
+                .into_response())
             }
             _ => {
                 let flow_id = Flow::InitOAuthAppApproval {
@@ -146,7 +152,7 @@ pub async fn init_oauth(
                     flow_id,
                     requested_scopes,
                 };
-                Ok(HttpResponse::Ok().json(access_request))
+                Ok(Json(access_request).into_response())
             }
         }
     } else {
@@ -161,26 +167,27 @@ pub struct RespondToOAuthClientScopes {
     pub flow: String,
 }
 
-#[post("accept")]
 pub async fn accept_client_scopes(
-    req: HttpRequest,
-    accept_body: web::Json<RespondToOAuthClientScopes>,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, OAuthError> {
-    accept_or_reject_client_scopes(true, req, accept_body, pool, redis, session_queue).await
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(accept_body): Json<RespondToOAuthClientScopes>,
+) -> Result<impl IntoResponse, OAuthError> {
+    accept_or_reject_client_scopes(true, addr, headers, accept_body, pool, redis, session_queue)
+        .await
 }
 
-#[post("reject")]
 pub async fn reject_client_scopes(
-    req: HttpRequest,
-    body: web::Json<RespondToOAuthClientScopes>,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, OAuthError> {
-    accept_or_reject_client_scopes(false, req, body, pool, redis, session_queue).await
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(body): Json<RespondToOAuthClientScopes>,
+) -> Result<impl IntoResponse, OAuthError> {
+    accept_or_reject_client_scopes(false, addr, headers, body, pool, redis, session_queue).await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -188,7 +195,7 @@ pub struct TokenRequest {
     pub grant_type: String,
     pub code: String,
     pub redirect_uri: Option<String>,
-    pub client_id: models::ids::OAuthClientId,
+    pub client_id: OAuthClientId,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -198,20 +205,19 @@ pub struct TokenResponse {
     pub expires_in: i64,
 }
 
-#[post("token")]
 /// Params should be in the urlencoded request body
 /// And client secret should be in the HTTP basic authorization header
 /// Per IETF RFC6749 Section 4.1.3 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3)
 pub async fn request_token(
-    req: HttpRequest,
-    req_params: web::Form<TokenRequest>,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-) -> Result<HttpResponse, OAuthError> {
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Form(req_params): Form<TokenRequest>,
+) -> Result<impl IntoResponse, OAuthError> {
     let req_client_id = req_params.client_id;
-    let client = DBOAuthClient::get(req_client_id.into(), &**pool).await?;
+    let client = DBOAuthClient::get(req_client_id.into(), &pool).await?;
     if let Some(client) = client {
-        authenticate_client_token_request(&req, &client)?;
+        authenticate_client_token_request(&headers, &client)?;
 
         // Ensure auth code is single use
         // per IETF RFC6749 Section 10.5 (https://datatracker.ietf.org/doc/html/rfc6749#section-10.5)
@@ -271,14 +277,15 @@ pub async fn request_token(
             transaction.commit().await?;
 
             // IETF RFC6749 Section 5.1 (https://datatracker.ietf.org/doc/html/rfc6749#section-5.1)
-            Ok(HttpResponse::Ok()
-                .append_header((CACHE_CONTROL, "no-store"))
-                .append_header((PRAGMA, "no-cache"))
-                .json(TokenResponse {
+
+            Ok((
+                [(CACHE_CONTROL, "no-store"), (PRAGMA, "no-cache")],
+                Json(TokenResponse {
                     access_token: token,
                     token_type: "Bearer".to_string(),
                     expires_in: time_until_expiration.num_seconds(),
-                }))
+                }),
+            ))
         } else {
             Err(OAuthError::error(OAuthErrorType::InvalidAuthCode))
         }
@@ -291,15 +298,17 @@ pub async fn request_token(
 
 pub async fn accept_or_reject_client_scopes(
     accept: bool,
-    req: HttpRequest,
-    body: web::Json<RespondToOAuthClientScopes>,
-    pool: Data<PgPool>,
-    redis: Data<RedisPool>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, OAuthError> {
+    addr: SocketAddr,
+    headers: HeaderMap,
+    body: RespondToOAuthClientScopes,
+    pool: PgPool,
+    redis: RedisPool,
+    session_queue: Arc<AuthQueue>,
+) -> Result<impl IntoResponse, OAuthError> {
     let current_user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::SESSION_ACCESS]),
@@ -361,10 +370,10 @@ pub async fn accept_or_reject_client_scopes(
 }
 
 fn authenticate_client_token_request(
-    req: &HttpRequest,
+    headers: &HeaderMap,
     client: &DBOAuthClient,
 ) -> Result<(), OAuthError> {
-    let client_secret = extract_authorization_header(req)?;
+    let client_secret = extract_authorization_header(headers)?;
     let hashed_client_secret = DBOAuthClient::hash_secret(client_secret);
     if client.secret_hash != hashed_client_secret {
         Err(OAuthError::error(
@@ -392,7 +401,7 @@ async fn init_oauth_code_flow(
     redirect_uris: OAuthRedirectUris,
     state: Option<String>,
     redis: &RedisPool,
-) -> Result<HttpResponse, OAuthError> {
+) -> Result<impl IntoResponse, OAuthError> {
     let code = Flow::OAuthAuthorizationCodeSupplied {
         user_id,
         client_id: client_id.into(),
@@ -412,9 +421,11 @@ async fn init_oauth_code_flow(
     let redirect_uri = append_params_to_uri(&redirect_uris.validated.0, &redirect_params);
 
     // IETF RFC 6749 Section 4.1.2 (https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2)
-    Ok(HttpResponse::Ok()
-        .append_header((LOCATION, redirect_uri.clone()))
-        .body(redirect_uri))
+    Ok((
+        StatusCode::OK,
+        [(LOCATION, redirect_uri.clone())],
+        Json(redirect_uri),
+    ))
 }
 
 fn append_params_to_uri(uri: &str, params: &[impl AsRef<str>]) -> String {

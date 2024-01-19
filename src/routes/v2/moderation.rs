@@ -1,15 +1,20 @@
-use super::ApiError;
-use crate::models::projects::Project;
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use crate::database::redis::RedisPool;
 use crate::models::v2::projects::LegacyProject;
 use crate::queue::session::AuthQueue;
-use crate::routes::v3;
-use crate::{database::redis::RedisPool, routes::v2_reroute};
-use actix_web::{get, web, HttpRequest, HttpResponse};
+use crate::routes::{v3, ApiErrorV2};
+use crate::util::extract::{ConnectInfo, Extension, Json, Query};
+use axum::http::HeaderMap;
+use axum::routing::get;
+use axum::Router;
 use serde::Deserialize;
 use sqlx::PgPool;
+use v3::ApiError;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("moderation").service(get_projects));
+pub fn config() -> Router {
+    Router::new().route("/moderation/projects", get(get_projects))
 }
 
 #[derive(Deserialize)]
@@ -22,30 +27,26 @@ fn default_count() -> i16 {
     100
 }
 
-#[get("projects")]
 pub async fn get_projects(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    count: web::Query<ResultCount>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::moderation::get_projects(
-        req,
-        pool.clone(),
-        redis.clone(),
-        web::Query(v3::moderation::ResultCount { count: count.count }),
-        session_queue,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Query(count): Query<ResultCount>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<LegacyProject>>, ApiErrorV2> {
+    let Json(response) = v3::moderation::get_projects(
+        ConnectInfo(addr),
+        headers,
+        Extension(pool.clone()),
+        Extension(redis.clone()),
+        Query(v3::moderation::ResultCount { count: count.count }),
+        Extension(session_queue),
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)?;
+    .await?;
 
-    // Convert to V2 projects
-    match v2_reroute::extract_ok_json::<Vec<Project>>(response).await {
-        Ok(project) => {
-            let legacy_projects = LegacyProject::from_many(project, &**pool, &redis).await?;
-            Ok(HttpResponse::Ok().json(legacy_projects))
-        }
-        Err(response) => Ok(response),
-    }
+    let legacy_projects = LegacyProject::from_many(response, &pool, &redis)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(legacy_projects))
 }

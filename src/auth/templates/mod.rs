@@ -1,6 +1,6 @@
 use crate::auth::AuthenticationError;
-use actix_web::http::StatusCode;
-use actix_web::{HttpResponse, ResponseError};
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
 use std::fmt::{Debug, Display, Formatter};
 
 pub struct Success<'a> {
@@ -9,15 +9,13 @@ pub struct Success<'a> {
 }
 
 impl<'a> Success<'a> {
-    pub fn render(self) -> HttpResponse {
+    pub fn render(self) -> Html<String> {
         let html = include_str!("success.html");
 
-        HttpResponse::Ok()
-            .append_header(("Content-Type", "text/html; charset=utf-8"))
-            .body(
-                html.replace("{{ icon }}", self.icon)
-                    .replace("{{ name }}", self.name),
-            )
+        Html(
+            html.replace("{{ icon }}", self.icon)
+                .replace("{{ name }}", self.name),
+        )
     }
 }
 
@@ -38,21 +36,9 @@ impl Display for ErrorPage {
     }
 }
 
-impl ErrorPage {
-    pub fn render(&self) -> HttpResponse {
-        HttpResponse::Ok()
-            .append_header(("Content-Type", "text/html; charset=utf-8"))
-            .body(self.to_string())
-    }
-}
-
-impl actix_web::ResponseError for ErrorPage {
-    fn status_code(&self) -> StatusCode {
-        self.code
-    }
-
-    fn error_response(&self) -> HttpResponse {
-        self.render()
+impl IntoResponse for ErrorPage {
+    fn into_response(self) -> Response {
+        (self.code, Html(self.to_string())).into_response()
     }
 }
 

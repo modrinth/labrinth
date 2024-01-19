@@ -6,12 +6,14 @@ use crate::models::pats::Scopes;
 use crate::models::users::{Role, User, UserId, UserPayoutData};
 use crate::queue::session::AuthQueue;
 use crate::routes::internal::session::get_session_metadata;
-use actix_web::HttpRequest;
+use axum::http::header::AUTHORIZATION;
+use axum::http::{HeaderMap, HeaderValue};
 use chrono::Utc;
-use reqwest::header::{HeaderValue, AUTHORIZATION};
+use std::net::SocketAddr;
 
 pub async fn get_user_from_headers<'a, E>(
-    req: &HttpRequest,
+    addr: &SocketAddr,
+    headers: &HeaderMap,
     executor: E,
     redis: &RedisPool,
     session_queue: &AuthQueue,
@@ -22,7 +24,7 @@ where
 {
     // Fetch DB user record and minos user from headers
     let (scopes, db_user) =
-        get_user_record_from_bearer_token(req, None, executor, redis, session_queue)
+        get_user_record_from_bearer_token(addr, headers, None, executor, redis, session_queue)
             .await?
             .ok_or_else(|| AuthenticationError::InvalidCredentials)?;
     let mut auth_providers = Vec::new();
@@ -83,7 +85,8 @@ where
 }
 
 pub async fn get_user_record_from_bearer_token<'a, 'b, E>(
-    req: &HttpRequest,
+    addr: &SocketAddr,
+    headers: &HeaderMap,
     token: Option<&str>,
     executor: E,
     redis: &RedisPool,
@@ -95,7 +98,7 @@ where
     let token = if let Some(token) = token {
         token
     } else {
-        extract_authorization_header(req)?
+        extract_authorization_header(headers)?
     };
 
     let possible_user = match token.split_once('_') {
@@ -128,14 +131,13 @@ where
             let user = user_item::User::get_id(session.user_id, executor, redis).await?;
 
             let rate_limit_ignore = dotenvy::var("RATE_LIMIT_IGNORE_KEY")?;
-            if !req
-                .headers()
+            if !headers
                 .get("x-ratelimit-key")
                 .and_then(|x| x.to_str().ok())
                 .map(|x| x == rate_limit_ignore)
                 .unwrap_or(false)
             {
-                let metadata = get_session_metadata(req).await?;
+                let metadata = get_session_metadata(addr, headers).await?;
                 session_queue.add_session(session.id, metadata).await;
             }
 
@@ -178,8 +180,7 @@ where
     Ok(possible_user)
 }
 
-pub fn extract_authorization_header(req: &HttpRequest) -> Result<&str, AuthenticationError> {
-    let headers = req.headers();
+pub fn extract_authorization_header(headers: &HeaderMap) -> Result<&str, AuthenticationError> {
     let token_val: Option<&HeaderValue> = headers.get(AUTHORIZATION);
     token_val
         .ok_or_else(|| AuthenticationError::InvalidAuthMethod)?
@@ -188,7 +189,8 @@ pub fn extract_authorization_header(req: &HttpRequest) -> Result<&str, Authentic
 }
 
 pub async fn check_is_moderator_from_headers<'a, 'b, E>(
-    req: &HttpRequest,
+    addr: &SocketAddr,
+    headers: &HeaderMap,
     executor: E,
     redis: &RedisPool,
     session_queue: &AuthQueue,
@@ -197,9 +199,16 @@ pub async fn check_is_moderator_from_headers<'a, 'b, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
 {
-    let user = get_user_from_headers(req, executor, redis, session_queue, required_scopes)
-        .await?
-        .1;
+    let user = get_user_from_headers(
+        addr,
+        headers,
+        executor,
+        redis,
+        session_queue,
+        required_scopes,
+    )
+    .await?
+    .1;
 
     if user.role.is_mod() {
         Ok(user)

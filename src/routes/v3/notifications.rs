@@ -6,21 +6,29 @@ use crate::models::notifications::Notification;
 use crate::models::pats::Scopes;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
-use actix_web::{web, HttpRequest, HttpResponse};
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::get;
+use axum::Router;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("notifications", web::get().to(notifications_get));
-    cfg.route("notifications", web::patch().to(notifications_read));
-    cfg.route("notifications", web::delete().to(notifications_delete));
-
-    cfg.service(
-        web::scope("notification")
-            .route("{id}", web::get().to(notification_get))
-            .route("{id}", web::patch().to(notification_read))
-            .route("{id}", web::delete().to(notification_delete)),
-    );
+pub fn config() -> Router {
+    Router::new()
+        .route(
+            "/notifications",
+            get(notifications_get)
+                .patch(notifications_read)
+                .delete(notifications_delete),
+        )
+        .route(
+            "/notification/:id",
+            get(notification_get)
+                .patch(notification_read)
+                .delete(notification_delete),
+        )
 }
 
 #[derive(Serialize, Deserialize)]
@@ -29,15 +37,17 @@ pub struct NotificationIds {
 }
 
 pub async fn notifications_get(
-    req: HttpRequest,
-    web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(ids): Query<NotificationIds>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<Notification>>, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::NOTIFICATION_READ]),
@@ -55,7 +65,7 @@ pub async fn notifications_get(
             .collect();
 
     let notifications_data: Vec<DBNotification> =
-        database::models::notification_item::Notification::get_many(&notification_ids, &**pool)
+        database::models::notification_item::Notification::get_many(&notification_ids, &pool)
             .await?;
 
     let notifications: Vec<Notification> = notifications_data
@@ -64,19 +74,21 @@ pub async fn notifications_get(
         .map(Notification::from)
         .collect();
 
-    Ok(HttpResponse::Ok().json(notifications))
+    Ok(Json(notifications))
 }
 
 pub async fn notification_get(
-    req: HttpRequest,
-    info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<NotificationId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Notification>, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::NOTIFICATION_READ]),
@@ -84,14 +96,12 @@ pub async fn notification_get(
     .await?
     .1;
 
-    let id = info.into_inner().0;
-
     let notification_data =
-        database::models::notification_item::Notification::get(id.into(), &**pool).await?;
+        database::models::notification_item::Notification::get(info.into(), &pool).await?;
 
     if let Some(data) = notification_data {
         if user.id == data.user_id.into() || user.role.is_admin() {
-            Ok(HttpResponse::Ok().json(Notification::from(data)))
+            Ok(Json(Notification::from(data)))
         } else {
             Err(ApiError::NotFound)
         }
@@ -101,15 +111,17 @@ pub async fn notification_get(
 }
 
 pub async fn notification_read(
-    req: HttpRequest,
-    info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<NotificationId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::NOTIFICATION_WRITE]),
@@ -117,10 +129,8 @@ pub async fn notification_read(
     .await?
     .1;
 
-    let id = info.into_inner().0;
-
     let notification_data =
-        database::models::notification_item::Notification::get(id.into(), &**pool).await?;
+        database::models::notification_item::Notification::get(id.into(), &pool).await?;
 
     if let Some(data) = notification_data {
         if data.user_id == user.id.into() || user.role.is_admin() {
@@ -135,7 +145,7 @@ pub async fn notification_read(
 
             transaction.commit().await?;
 
-            Ok(HttpResponse::NoContent().body(""))
+            Ok(StatusCode::NO_CONTENT)
         } else {
             Err(ApiError::CustomAuthentication(
                 "You are not authorized to read this notification!".to_string(),
@@ -147,15 +157,17 @@ pub async fn notification_read(
 }
 
 pub async fn notification_delete(
-    req: HttpRequest,
-    info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<NotificationId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::NOTIFICATION_WRITE]),
@@ -163,10 +175,8 @@ pub async fn notification_delete(
     .await?
     .1;
 
-    let id = info.into_inner().0;
-
     let notification_data =
-        database::models::notification_item::Notification::get(id.into(), &**pool).await?;
+        database::models::notification_item::Notification::get(id.into(), &pool).await?;
 
     if let Some(data) = notification_data {
         if data.user_id == user.id.into() || user.role.is_admin() {
@@ -181,7 +191,7 @@ pub async fn notification_delete(
 
             transaction.commit().await?;
 
-            Ok(HttpResponse::NoContent().body(""))
+            Ok(StatusCode::NO_CONTENT)
         } else {
             Err(ApiError::CustomAuthentication(
                 "You are not authorized to delete this notification!".to_string(),
@@ -193,15 +203,17 @@ pub async fn notification_delete(
 }
 
 pub async fn notifications_read(
-    req: HttpRequest,
-    web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(ids): Query<NotificationIds>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::NOTIFICATION_WRITE]),
@@ -217,7 +229,7 @@ pub async fn notifications_read(
     let mut transaction = pool.begin().await?;
 
     let notifications_data =
-        database::models::notification_item::Notification::get_many(&notification_ids, &**pool)
+        database::models::notification_item::Notification::get_many(&notification_ids, &pool)
             .await?;
 
     let mut notifications: Vec<database::models::ids::NotificationId> = Vec::new();
@@ -237,19 +249,21 @@ pub async fn notifications_read(
 
     transaction.commit().await?;
 
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn notifications_delete(
-    req: HttpRequest,
-    web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(ids): Query<NotificationIds>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::NOTIFICATION_WRITE]),
@@ -265,7 +279,7 @@ pub async fn notifications_delete(
     let mut transaction = pool.begin().await?;
 
     let notifications_data =
-        database::models::notification_item::Notification::get_many(&notification_ids, &**pool)
+        database::models::notification_item::Notification::get_many(&notification_ids, &pool)
             .await?;
 
     let mut notifications: Vec<database::models::ids::NotificationId> = Vec::new();
@@ -285,5 +299,5 @@ pub async fn notifications_delete(
 
     transaction.commit().await?;
 
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }

@@ -4,21 +4,22 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::ImageId;
 use crate::models::projects::{
-    Dependency, FileType, Loader, ProjectId, Version, VersionId, VersionStatus, VersionType,
+    Dependency, FileType, Loader, ProjectId, VersionId, VersionStatus, VersionType,
 };
 use crate::models::v2::projects::LegacyVersion;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::CreateError;
 use crate::routes::v3::version_creation;
 use crate::routes::{v2_reroute, v3};
-use actix_multipart::Multipart;
-use actix_web::http::header::ContentDisposition;
-use actix_web::web::Data;
-use actix_web::{post, web, HttpRequest, HttpResponse};
+use crate::util::extract::{ConnectInfo, Extension, Json, Path};
+use crate::util::multipart::MultipartWrapper;
+use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -79,19 +80,18 @@ struct InitialFileData {
 }
 
 // under `/api/v1/version`
-#[post("version")]
 pub async fn version_create(
-    req: HttpRequest,
-    payload: Multipart,
-    client: Data<PgPool>,
-    redis: Data<RedisPool>,
-    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    session_queue: Data<AuthQueue>,
-) -> Result<HttpResponse, CreateError> {
-    let payload = v2_reroute::alter_actix_multipart(
-        payload,
-        req.headers().clone(),
-        |legacy_create: InitialVersionData, content_dispositions: Vec<ContentDisposition>| {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(client): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    mut payload: MultipartWrapper,
+) -> Result<Json<LegacyVersion>, CreateError> {
+    let payload = v2_reroute::alter_axum_multipart(
+        &mut payload,
+        |legacy_create: InitialVersionData, content_disposition_file_names: Vec<Option<String>>| {
             let client = client.clone();
             let redis = redis.clone();
             async move {
@@ -103,18 +103,19 @@ pub async fn version_create(
                 );
 
                 // Get all possible side-types for loaders given- we will use these to check if we need to convert/apply singleplayer, etc.
-                let loaders = match v3::tags::loader_list(client.clone(), redis.clone()).await {
-                    Ok(loader_response) => match v2_reroute::extract_ok_json::<
-                        Vec<v3::tags::LoaderData>,
-                    >(loader_response)
-                    .await
-                    {
-                        Ok(loaders) => loaders,
-                        Err(_) => vec![],
-                    },
-                    Err(_) => vec![],
+                let loaders = match v3::tags::loader_list(
+                    Extension(client.clone()),
+                    Extension(redis.clone()),
+                )
+                .await
+                {
+                    Ok(Json(loaders)) => loaders,
+                    Err(_) => {
+                        return Err(CreateError::InvalidInput(
+                            "Could not fetch list of loaders".to_string(),
+                        ))
+                    }
                 };
-
                 let loader_fields_aggregate = loaders
                     .into_iter()
                     .filter_map(|loader| {
@@ -150,8 +151,12 @@ pub async fn version_create(
                             .iter()
                             .map(|f| (f.to_string(), json!(false))),
                     );
-                    if let Some(example_version_fields) =
-                        get_example_version_fields(legacy_create.project_id, client, &redis).await?
+                    if let Some(example_version_fields) = get_example_version_fields(
+                        legacy_create.project_id,
+                        Extension(client),
+                        &redis,
+                    )
+                    .await?
                     {
                         fields.extend(example_version_fields.into_iter().filter_map(|f| {
                             if side_type_loader_field_names.contains(&f.field_name.as_str()) {
@@ -179,9 +184,9 @@ pub async fn version_create(
                 }
 
                 // Similarly, check actual content disposition for mrpacks, in case file_parts is wrong
-                for content_disposition in content_dispositions {
+                for file_name in content_disposition_file_names {
                     // Uses version_create functions to get the file name and extension
-                    let (_, file_extension) = version_creation::get_name_ext(&content_disposition)?;
+                    let (_, file_extension) = version_creation::get_name_ext(file_name.as_deref())?;
                     crate::util::ext::project_file_type(file_extension)
                         .ok_or_else(|| CreateError::InvalidFileType(file_extension.to_string()))?;
 
@@ -226,30 +231,26 @@ pub async fn version_create(
     .await?;
 
     // Call V3 project creation
-    let response = v3::version_creation::version_create(
-        req,
+    let Json(version) = v3::version_creation::version_create(
+        ConnectInfo(addr),
+        headers,
+        Extension(client),
+        Extension(redis),
+        Extension(file_host),
+        Extension(session_queue),
         payload,
-        client.clone(),
-        redis.clone(),
-        file_host,
-        session_queue,
     )
     .await?;
 
     // Convert response to V2 format
-    match v2_reroute::extract_ok_json::<Version>(response).await {
-        Ok(version) => {
-            let v2_version = LegacyVersion::from(version);
-            Ok(HttpResponse::Ok().json(v2_version))
-        }
-        Err(response) => Ok(response),
-    }
+    let version = LegacyVersion::from(version);
+    Ok(Json(version))
 }
 
 // Gets version fields of an example version of a project, if one exists.
 async fn get_example_version_fields(
     project_id: Option<ProjectId>,
-    pool: Data<PgPool>,
+    Extension(pool): Extension<PgPool>,
     redis: &RedisPool,
 ) -> Result<Option<Vec<VersionField>>, CreateError> {
     let project_id = match project_id {
@@ -257,7 +258,7 @@ async fn get_example_version_fields(
         None => return Ok(None),
     };
 
-    let vid = match project_item::Project::get_id(project_id.into(), &**pool, redis)
+    let vid = match project_item::Project::get_id(project_id.into(), &pool, redis)
         .await?
         .and_then(|p| p.versions.first().cloned())
     {
@@ -265,7 +266,7 @@ async fn get_example_version_fields(
         None => return Ok(None),
     };
 
-    let example_version = match version_item::Version::get(vid, &**pool, redis).await? {
+    let example_version = match version_item::Version::get(vid, &pool, redis).await? {
         Some(version) => version,
         None => return Ok(None),
     };
@@ -273,26 +274,26 @@ async fn get_example_version_fields(
 }
 
 // under /api/v1/version/{version_id}
-#[post("{version_id}/file")]
 pub async fn upload_file_to_version(
-    req: HttpRequest,
-    url_data: web::Path<(VersionId,)>,
-    payload: Multipart,
-    client: Data<PgPool>,
-    redis: Data<RedisPool>,
-    file_host: Data<Arc<dyn FileHost + Send + Sync>>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, CreateError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(url_data): Path<VersionId>,
+    Extension(client): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(file_host): Extension<Arc<dyn FileHost + Send + Sync>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    payload: MultipartWrapper,
+) -> Result<StatusCode, CreateError> {
     // Returns NoContent, so no need to convert to V2
-    let response = v3::version_creation::upload_file_to_version(
-        req,
-        url_data,
+    v3::version_creation::upload_file_to_version(
+        ConnectInfo(addr),
+        headers,
+        Path(url_data),
+        Extension(client),
+        Extension(redis),
+        Extension(file_host),
+        Extension(session_queue),
         payload,
-        client.clone(),
-        redis.clone(),
-        file_host,
-        session_queue,
     )
-    .await?;
-    Ok(response)
+    .await
 }

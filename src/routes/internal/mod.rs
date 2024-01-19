@@ -3,19 +3,21 @@ pub mod flows;
 pub mod pats;
 pub mod session;
 
-use super::v3::oauth_clients;
+// use super::v3::oauth_clients;
 pub use super::ApiError;
+use crate::routes::v3::oauth_clients;
 use crate::util::cors::default_cors;
+use axum::Router;
 
-pub fn config(cfg: &mut actix_web::web::ServiceConfig) {
-    cfg.service(
-        actix_web::web::scope("_internal")
-            .wrap(default_cors())
-            .configure(admin::config)
-            // TODO: write tests that catch these
-            .configure(oauth_clients::config)
-            .configure(session::config)
-            .configure(flows::config)
-            .configure(pats::config),
-    );
+pub fn config() -> Router {
+    Router::new().nest(
+        "/_internal",
+        Router::new()
+            .merge(admin::config())
+            .merge(oauth_clients::config())
+            .merge(session::config())
+            .merge(flows::config())
+            .merge(pats::config())
+            .layer(default_cors()),
+    )
 }

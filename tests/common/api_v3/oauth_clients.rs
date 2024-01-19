@@ -1,8 +1,4 @@
-use actix_http::StatusCode;
-use actix_web::{
-    dev::ServiceResponse,
-    test::{self, TestRequest},
-};
+use axum_test::{http::StatusCode, TestResponse};
 use labrinth::{
     models::{
         oauth_clients::{OAuthClient, OAuthClientAuthorization},
@@ -12,10 +8,7 @@ use labrinth::{
 };
 use serde_json::json;
 
-use crate::{
-    assert_status,
-    common::api_common::{Api, AppendsOptionalPat},
-};
+use crate::{assert_status, common::api_common::AppendsOptionalPat};
 
 use super::ApiV3;
 
@@ -26,19 +19,17 @@ impl ApiV3 {
         max_scopes: Scopes,
         redirect_uris: Vec<String>,
         pat: Option<&str>,
-    ) -> ServiceResponse {
+    ) -> TestResponse {
         let max_scopes = max_scopes.bits();
-        let req = TestRequest::post()
-            .uri("/_internal/oauth/app")
+        self.test_server
+            .post("/_internal/oauth/app")
             .append_pat(pat)
-            .set_json(json!({
+            .json(&json!({
                 "name": name,
                 "max_scopes": max_scopes,
                 "redirect_uris": redirect_uris
             }))
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     pub async fn get_user_oauth_clients(
@@ -46,23 +37,20 @@ impl ApiV3 {
         user_id: &str,
         pat: Option<&str>,
     ) -> Vec<OAuthClient> {
-        let req = TestRequest::get()
-            .uri(&format!("/v3/user/{}/oauth_apps", user_id))
+        let resp = self
+            .test_server
+            .get(&format!("/v3/user/{}/oauth_apps", user_id))
             .append_pat(pat)
-            .to_request();
-        let resp = self.call(req).await;
+            .await;
         assert_status!(&resp, StatusCode::OK);
-
-        test::read_body_json(resp).await
+        resp.json()
     }
 
-    pub async fn get_oauth_client(&self, client_id: String, pat: Option<&str>) -> ServiceResponse {
-        let req = TestRequest::get()
-            .uri(&format!("/_internal/oauth/app/{}", client_id))
+    pub async fn get_oauth_client(&self, client_id: String, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .get(&format!("/_internal/oauth/app/{}", client_id))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     pub async fn edit_oauth_client(
@@ -70,54 +58,46 @@ impl ApiV3 {
         client_id: &str,
         edit: OAuthClientEdit,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = TestRequest::patch()
-            .uri(&format!(
+    ) -> TestResponse {
+        self.test_server
+            .patch(&format!(
                 "/_internal/oauth/app/{}",
                 urlencoding::encode(client_id)
             ))
-            .set_json(edit)
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .json(&edit)
+            .await
     }
 
-    pub async fn delete_oauth_client(&self, client_id: &str, pat: Option<&str>) -> ServiceResponse {
-        let req = TestRequest::delete()
-            .uri(&format!("/_internal/oauth/app/{}", client_id))
+    pub async fn delete_oauth_client(&self, client_id: &str, pat: Option<&str>) -> TestResponse {
+        self.test_server
+            .delete(&format!("/_internal/oauth/app/{}", client_id))
             .append_pat(pat)
-            .to_request();
-
-        self.call(req).await
+            .await
     }
 
     pub async fn revoke_oauth_authorization(
         &self,
         client_id: &str,
         pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = TestRequest::delete()
-            .uri(&format!(
-                "/_internal/oauth/authorizations?client_id={}",
-                urlencoding::encode(client_id)
-            ))
+    ) -> TestResponse {
+        self.test_server
+            .delete("/_internal/oauth/authorizations")
+            .add_query_param("client_id", client_id)
             .append_pat(pat)
-            .to_request();
-        self.call(req).await
+            .await
     }
 
     pub async fn get_user_oauth_authorizations(
         &self,
         pat: Option<&str>,
     ) -> Vec<OAuthClientAuthorization> {
-        let req = TestRequest::get()
-            .uri("/_internal/oauth/authorizations")
+        let resp = self
+            .test_server
+            .get("/_internal/oauth/authorizations")
             .append_pat(pat)
-            .to_request();
-        let resp = self.call(req).await;
+            .await;
         assert_status!(&resp, StatusCode::OK);
-
-        test::read_body_json(resp).await
+        resp.json()
     }
 }

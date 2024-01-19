@@ -2,8 +2,10 @@ use super::ValidatedRedirectUri;
 use crate::auth::AuthenticationError;
 use crate::models::error::ApiError;
 use crate::models::ids::DecodingError;
-use actix_web::http::{header::LOCATION, StatusCode};
-use actix_web::HttpResponse;
+use crate::util::extract::Json;
+use axum::http::header::LOCATION;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 
 #[derive(thiserror::Error, Debug)]
 #[error("{}", .error_type)]
@@ -55,33 +57,8 @@ impl OAuthError {
     }
 }
 
-impl actix_web::ResponseError for OAuthError {
-    fn status_code(&self) -> StatusCode {
-        match self.error_type {
-            OAuthErrorType::AuthenticationError(_)
-            | OAuthErrorType::FailedScopeParse(_)
-            | OAuthErrorType::ScopesTooBroad
-            | OAuthErrorType::AccessDenied => {
-                if self.valid_redirect_uri.is_some() {
-                    StatusCode::OK
-                } else {
-                    StatusCode::INTERNAL_SERVER_ERROR
-                }
-            }
-            OAuthErrorType::RedirectUriNotConfigured(_)
-            | OAuthErrorType::ClientMissingRedirectURI { client_id: _ }
-            | OAuthErrorType::InvalidAcceptFlowId
-            | OAuthErrorType::MalformedId(_)
-            | OAuthErrorType::InvalidClientId(_)
-            | OAuthErrorType::InvalidAuthCode
-            | OAuthErrorType::OnlySupportsAuthorizationCodeGrant(_)
-            | OAuthErrorType::RedirectUriChanged(_)
-            | OAuthErrorType::UnauthorizedClient => StatusCode::BAD_REQUEST,
-            OAuthErrorType::ClientAuthenticationFailed => StatusCode::UNAUTHORIZED,
-        }
-    }
-
-    fn error_response(&self) -> HttpResponse {
+impl IntoResponse for OAuthError {
+    fn into_response(self) -> Response {
         if let Some(ValidatedRedirectUri(mut redirect_uri)) = self.valid_redirect_uri.clone() {
             redirect_uri = format!(
                 "{}?error={}&error_description={}",
@@ -94,14 +71,44 @@ impl actix_web::ResponseError for OAuthError {
                 redirect_uri = format!("{}&state={}", redirect_uri, state);
             }
 
-            HttpResponse::Ok()
-                .append_header((LOCATION, redirect_uri.clone()))
-                .body(redirect_uri)
+            (
+                StatusCode::OK,
+                [(LOCATION, redirect_uri.clone())],
+                redirect_uri,
+            )
+                .into_response()
         } else {
-            HttpResponse::build(self.status_code()).json(ApiError {
-                error: &self.error_type.error_name(),
-                description: &self.error_type.to_string(),
-            })
+            let status_code = match self.error_type {
+                OAuthErrorType::AuthenticationError(_)
+                | OAuthErrorType::FailedScopeParse(_)
+                | OAuthErrorType::ScopesTooBroad
+                | OAuthErrorType::AccessDenied => {
+                    if self.valid_redirect_uri.is_some() {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    }
+                }
+                OAuthErrorType::RedirectUriNotConfigured(_)
+                | OAuthErrorType::ClientMissingRedirectURI { client_id: _ }
+                | OAuthErrorType::InvalidAcceptFlowId
+                | OAuthErrorType::MalformedId(_)
+                | OAuthErrorType::InvalidClientId(_)
+                | OAuthErrorType::InvalidAuthCode
+                | OAuthErrorType::OnlySupportsAuthorizationCodeGrant(_)
+                | OAuthErrorType::RedirectUriChanged(_)
+                | OAuthErrorType::UnauthorizedClient => StatusCode::BAD_REQUEST,
+                OAuthErrorType::ClientAuthenticationFailed => StatusCode::UNAUTHORIZED,
+            };
+
+            (
+                status_code,
+                Json(ApiError {
+                    error: &self.error_type.error_name(),
+                    description: &self.error_type.to_string(),
+                }),
+            )
+                .into_response()
         }
     }
 }

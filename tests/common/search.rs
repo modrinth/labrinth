@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use actix_http::StatusCode;
+use axum_test::http::StatusCode;
 use serde_json::json;
 
 use crate::{
@@ -202,12 +202,19 @@ pub async fn setup_search_projects(test_env: &TestEnvironment<ApiV3>) -> Arc<Has
     // Await all project creation
     // Returns a mapping of:
     // project id -> test id
-    let id_conversion: Arc<HashMap<u64, u64>> = Arc::new(
-        futures::future::join_all(project_creation_futures)
-            .await
-            .into_iter()
-            .collect(),
-    );
+    // let id_conversion: Arc<HashMap<u64, u64>> = Arc::new(
+    //     futures::future::join_all(project_creation_futures)
+    //         .await
+    //         .into_iter()
+    //         .collect(),
+    // );
+    // TODO: With axum, we can't run concurrently. So temporarily, we just run sequentially.
+    let mut id_conversion: HashMap<u64, u64> = HashMap::new();
+    for fut in project_creation_futures {
+        let (project_id, test_id) = fut.await;
+        id_conversion.insert(project_id, test_id);
+    }
+    let id_conversion = Arc::new(id_conversion);
 
     // Create a second version for project 7
     let project_7 = api

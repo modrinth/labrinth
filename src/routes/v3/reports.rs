@@ -11,21 +11,26 @@ use crate::models::reports::{ItemType, Report};
 use crate::models::threads::{MessageBody, ThreadType};
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use crate::util::img;
-use actix_web::{web, HttpRequest, HttpResponse};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::get;
+use axum::Router;
 use chrono::Utc;
-use futures::StreamExt;
 use serde::Deserialize;
 use sqlx::PgPool;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use validator::Validate;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("report", web::post().to(report_create));
-    cfg.route("report", web::get().to(reports));
-    cfg.route("reports", web::get().to(reports_get));
-    cfg.route("report/{id}", web::get().to(report_get));
-    cfg.route("report/{id}", web::patch().to(report_edit));
-    cfg.route("report/{id}", web::delete().to(report_delete));
+pub fn config() -> Router {
+    Router::new()
+        .route("/report", get(reports).post(report_create))
+        .route("/reports", get(reports_get))
+        .route(
+            "/report/:id",
+            get(report_get).patch(report_edit).delete(report_delete),
+        )
 }
 
 #[derive(Deserialize, Validate)]
@@ -41,31 +46,25 @@ pub struct CreateReport {
 }
 
 pub async fn report_create(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    mut body: web::Payload,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(new_report): Json<CreateReport>,
+) -> Result<Json<Report>, ApiError> {
     let mut transaction = pool.begin().await?;
 
     let current_user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::REPORT_CREATE]),
     )
     .await?
     .1;
-
-    let mut bytes = web::BytesMut::new();
-    while let Some(item) = body.next().await {
-        bytes.extend_from_slice(&item.map_err(|_| {
-            ApiError::InvalidInput("Error while parsing request payload!".to_string())
-        })?);
-    }
-    let new_report: CreateReport = serde_json::from_slice(bytes.as_ref())?;
 
     let id = crate::database::models::generate_report_id(&mut transaction).await?;
     let report_type = crate::database::models::categories::ReportType::get_id(
@@ -203,7 +202,7 @@ pub async fn report_create(
 
     transaction.commit().await?;
 
-    Ok(HttpResponse::Ok().json(Report {
+    Ok(Json(Report {
         id: id.into(),
         report_type: new_report.report_type.clone(),
         item_id: new_report.item_id.clone(),
@@ -232,15 +231,17 @@ fn default_all() -> bool {
 }
 
 pub async fn reports(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    count: web::Query<ReportsRequestOptions>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Query(count): Query<ReportsRequestOptions>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<Report>>, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::REPORT_READ]),
@@ -260,7 +261,7 @@ pub async fn reports(
             ",
             count.count as i64
         )
-        .fetch_many(&**pool)
+        .fetch_many(&pool)
         .try_filter_map(|e| async {
             Ok(e.right()
                 .map(|m| crate::database::models::ids::ReportId(m.id)))
@@ -278,7 +279,7 @@ pub async fn reports(
             user.id.0 as i64,
             count.count as i64
         )
-        .fetch_many(&**pool)
+        .fetch_many(&pool)
         .try_filter_map(|e| async {
             Ok(e.right()
                 .map(|m| crate::database::models::ids::ReportId(m.id)))
@@ -288,7 +289,7 @@ pub async fn reports(
     };
 
     let query_reports =
-        crate::database::models::report_item::Report::get_many(&report_ids, &**pool).await?;
+        crate::database::models::report_item::Report::get_many(&report_ids, &pool).await?;
 
     let mut reports: Vec<Report> = Vec::new();
 
@@ -296,7 +297,7 @@ pub async fn reports(
         reports.push(x.into());
     }
 
-    Ok(HttpResponse::Ok().json(reports))
+    Ok(Json(reports))
 }
 
 #[derive(Deserialize)]
@@ -305,12 +306,13 @@ pub struct ReportIds {
 }
 
 pub async fn reports_get(
-    req: HttpRequest,
-    web::Query(ids): web::Query<ReportIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(ids): Query<ReportIds>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<Report>>, ApiError> {
     let report_ids: Vec<crate::database::models::ids::ReportId> =
         serde_json::from_str::<Vec<crate::models::ids::ReportId>>(&ids.ids)?
             .into_iter()
@@ -318,11 +320,12 @@ pub async fn reports_get(
             .collect();
 
     let reports_data =
-        crate::database::models::report_item::Report::get_many(&report_ids, &**pool).await?;
+        crate::database::models::report_item::Report::get_many(&report_ids, &pool).await?;
 
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::REPORT_READ]),
@@ -336,28 +339,29 @@ pub async fn reports_get(
         .map(|x| x.into())
         .collect::<Vec<Report>>();
 
-    Ok(HttpResponse::Ok().json(all_reports))
+    Ok(Json(all_reports))
 }
 
 pub async fn report_get(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    info: web::Path<(crate::models::reports::ReportId,)>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Path(id): Path<crate::models::reports::ReportId>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Report>, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::REPORT_READ]),
     )
     .await?
     .1;
-    let id = info.into_inner().0.into();
 
-    let report = crate::database::models::report_item::Report::get(id, &**pool).await?;
+    let report = crate::database::models::report_item::Report::get(id.into(), &pool).await?;
 
     if let Some(report) = report {
         if !user.role.is_mod() && report.reporter != user.id.into() {
@@ -365,7 +369,7 @@ pub async fn report_get(
         }
 
         let report: Report = report.into();
-        Ok(HttpResponse::Ok().json(report))
+        Ok(Json(report))
     } else {
         Err(ApiError::NotFound)
     }
@@ -379,25 +383,27 @@ pub struct EditReport {
 }
 
 pub async fn report_edit(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    info: web::Path<(crate::models::reports::ReportId,)>,
-    session_queue: web::Data<AuthQueue>,
-    edit_report: web::Json<EditReport>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Path(id): Path<crate::models::reports::ReportId>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(edit_report): Json<EditReport>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::REPORT_WRITE]),
     )
     .await?
     .1;
-    let id = info.into_inner().0.into();
 
-    let report = crate::database::models::report_item::Report::get(id, &**pool).await?;
+    let id = id.into();
+    let report = crate::database::models::report_item::Report::get(id, &pool).await?;
 
     if let Some(report) = report {
         if !user.role.is_mod() && report.reporter != user.id.into() {
@@ -477,22 +483,24 @@ pub async fn report_edit(
 
         transaction.commit().await?;
 
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
 }
 
 pub async fn report_delete(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    info: web::Path<(crate::models::reports::ReportId,)>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Path(id): Path<crate::models::reports::ReportId>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     check_is_moderator_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::REPORT_DELETE]),
@@ -501,7 +509,6 @@ pub async fn report_delete(
 
     let mut transaction = pool.begin().await?;
 
-    let id = info.into_inner().0;
     let context = ImageContext::Report {
         report_id: Some(id),
     };
@@ -517,7 +524,7 @@ pub async fn report_delete(
     transaction.commit().await?;
 
     if result.is_some() {
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }

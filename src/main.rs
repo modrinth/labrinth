@@ -1,16 +1,29 @@
-use actix_web::{App, HttpServer};
-use actix_web_prom::PrometheusMetricsBuilder;
-use env_logger::Env;
+use axum::http::header::AUTHORIZATION;
+use axum::routing::get;
+use axum::Extension;
+use axum_prometheus::PrometheusMetricLayer;
+use governor::middleware::StateInformationMiddleware;
+use governor::{Quota, RateLimiter};
 use labrinth::database::redis::RedisPool;
 use labrinth::file_hosting::S3Host;
-use labrinth::ratelimit::errors::ARError;
-use labrinth::ratelimit::memory::{MemoryStore, MemoryStoreActor};
-use labrinth::ratelimit::middleware::RateLimiter;
+use labrinth::scheduler::schedule;
 use labrinth::search;
-use labrinth::util::env::parse_var;
+use labrinth::util::ratelimit::{ratelimit, KeyedRateLimiter};
 use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
-use log::{error, info};
+use std::net::SocketAddr;
+use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::time::Duration;
+use tower_http::compression::CompressionLayer;
+use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
+use tower_http::trace::TraceLayer;
+use tracing::{error, info};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[derive(Clone)]
 pub struct Pepper {
@@ -18,20 +31,30 @@ pub struct Pepper {
 }
 
 #[cfg(not(tarpaulin_include))]
-#[actix_rt::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "labrinth=debug,tower_http=debug,axum::rejection=trace".into()),
+        )
+        .with(sentry::integrations::tracing::layer())
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     if check_env_vars() {
         error!("Some environment variables are missing!");
     }
 
+    #[cfg(feature = "jemalloc")]
+    println!("JEMMALLOC");
+
     // DSN is from SENTRY_DSN env variable.
     // Has no effect if not set.
     let sentry = sentry::init(sentry::ClientOptions {
         release: sentry::release_name!(),
-        traces_sample_rate: 0.1,
+        traces_sample_rate: 0.05,
         ..Default::default()
     });
     if sentry.is_enabled() {
@@ -82,16 +105,9 @@ async fn main() -> std::io::Result<()> {
     };
 
     info!("Initializing clickhouse connection");
-    let mut clickhouse = clickhouse::init_client().await.unwrap();
+    let clickhouse = clickhouse::init_client().await.unwrap();
 
     let maxmind_reader = Arc::new(queue::maxmind::MaxMindIndexer::new().await.unwrap());
-
-    let store = MemoryStore::new();
-
-    let prometheus = PrometheusMetricsBuilder::new("labrinth")
-        .endpoint("/metrics")
-        .build()
-        .expect("Failed to create prometheus metrics middleware");
 
     let search_config = search::SearchConfig::new(None);
     info!("Starting Actix HTTP server!");
@@ -100,41 +116,55 @@ async fn main() -> std::io::Result<()> {
         pool.clone(),
         redis_pool.clone(),
         search_config.clone(),
-        &mut clickhouse,
+        clickhouse,
         file_host.clone(),
         maxmind_reader.clone(),
+        false,
     );
 
-    // Init App
-    HttpServer::new(move || {
-        App::new()
-            .wrap(prometheus.clone())
-            .wrap(actix_web::middleware::Compress::default())
-            .wrap(
-                RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
-                    .with_identifier(|req| {
-                        let connection_info = req.connection_info();
-                        let ip =
-                            String::from(if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
-                                if let Some(header) = req.headers().get("CF-Connecting-IP") {
-                                    header.to_str().map_err(|_| ARError::Identification)?
-                                } else {
-                                    connection_info.peer_addr().ok_or(ARError::Identification)?
-                                }
-                            } else {
-                                connection_info.peer_addr().ok_or(ARError::Identification)?
-                            });
+    // let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
-                        Ok(ip)
-                    })
-                    .with_interval(std::time::Duration::from_secs(60))
-                    .with_max_requests(300)
-                    .with_ignore_key(dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok()),
-            )
-            .wrap(sentry_actix::Sentry::new())
-            .configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()))
-    })
-    .bind(dotenvy::var("BIND_ADDR").unwrap())?
-    .run()
-    .await
+    let limiter: Arc<KeyedRateLimiter> = Arc::new(
+        RateLimiter::keyed(Quota::per_minute(NonZeroU32::new(300).unwrap()))
+            .with_middleware::<StateInformationMiddleware>(),
+    );
+
+    let limiter_clone = limiter.clone();
+    schedule(Duration::from_secs(10 * 60), move || {
+        info!(
+            "Clearing ratelimiter, storage size: {}",
+            limiter_clone.len()
+        );
+        limiter_clone.retain_recent();
+        info!(
+            "Done clearing ratelimiter, storage size: {}",
+            limiter_clone.len()
+        );
+
+        async move {}
+    });
+
+    let app = labrinth::app_config(labrinth_config)
+        .layer(axum::middleware::from_fn(ratelimit))
+        .layer(Extension(limiter))
+        // .route("/metrics", get(|| async move { metric_handle.render() }))
+        // .layer(prometheus_layer)
+        .layer(
+            CompressionLayer::new()
+                .br(true)
+                .deflate(true)
+                .gzip(true)
+                .zstd(true),
+        )
+        .layer(SetSensitiveRequestHeadersLayer::new(std::iter::once(
+            AUTHORIZATION,
+        )))
+        .layer(TraceLayer::new_for_http())
+        .layer(sentry_tower::NewSentryLayer::new_from_top())
+        .layer(sentry_tower::SentryHttpLayer::with_transaction())
+        .into_make_service_with_connect_info::<SocketAddr>();
+
+    // run our app with hyper, listening globally on port 3000
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
+    axum::serve(listener, app).await
 }

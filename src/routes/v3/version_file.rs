@@ -7,41 +7,51 @@ use crate::models::pats::Scopes;
 use crate::models::projects::VersionType;
 use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use crate::{database, models};
-use actix_web::{web, HttpRequest, HttpResponse};
+use axum::http::header::LOCATION;
+use axum::http::HeaderMap;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::{get, post};
+use axum::Router;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("version_file")
-            .route("{version_id}", web::get().to(get_version_from_hash))
-            .route("{version_id}/update", web::post().to(get_update_from_hash))
-            .route("project", web::post().to(get_projects_from_hashes))
-            .route("{version_id}", web::delete().to(delete_file))
-            .route("{version_id}/download", web::get().to(download_version)),
-    );
-    cfg.service(
-        web::scope("version_files")
-            .route("update", web::post().to(update_files))
-            .route("update_individual", web::post().to(update_individual_files))
-            .route("", web::post().to(get_versions_from_hashes)),
-    );
+pub fn config() -> Router {
+    Router::new()
+        .route(
+            "/version_file/:id",
+            get(get_version_from_hash).delete(delete_file),
+        )
+        .route("/version_file/:id/update", post(get_update_from_hash))
+        .route("/version_file/project", post(get_projects_from_hashes))
+        .route("/version_file/:id/download", get(download_version))
+        .route("/version_files", post(get_versions_from_hashes))
+        .route("/version_files/update", post(update_files))
+        .route(
+            "/version_files/update_individual",
+            post(update_individual_files),
+        )
 }
 
 pub async fn get_version_from_hash(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    hash_query: web::Query<HashQuery>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<String>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Query(hash_query): Query<HashQuery>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<models::projects::Version>, ApiError> {
     let user_option = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::VERSION_READ]),
@@ -49,7 +59,7 @@ pub async fn get_version_from_hash(
     .await
     .map(|x| x.1)
     .ok();
-    let hash = info.into_inner().0.to_lowercase();
+    let hash = info.to_lowercase();
     let algorithm = hash_query
         .algorithm
         .clone()
@@ -58,18 +68,18 @@ pub async fn get_version_from_hash(
         algorithm,
         hash,
         hash_query.version_id.map(|x| x.into()),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
     if let Some(file) = file {
-        let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
+        let version = database::models::Version::get(file.version_id, &pool, &redis).await?;
         if let Some(version) = version {
             if !is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
                 return Err(ApiError::NotFound);
             }
 
-            Ok(HttpResponse::Ok().json(models::projects::Version::from(version)))
+            Ok(Json(models::projects::Version::from(version)))
         } else {
             Err(ApiError::NotFound)
         }
@@ -113,17 +123,19 @@ pub struct UpdateData {
 }
 
 pub async fn get_update_from_hash(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    hash_query: web::Query<HashQuery>,
-    update_data: web::Json<UpdateData>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<String>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Query(hash_query): Query<HashQuery>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(update_data): Json<UpdateData>,
+) -> Result<Json<models::projects::Version>, ApiError> {
     let user_option = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::VERSION_READ]),
@@ -131,7 +143,7 @@ pub async fn get_update_from_hash(
     .await
     .map(|x| x.1)
     .ok();
-    let hash = info.into_inner().0.to_lowercase();
+    let hash = info.to_lowercase();
     if let Some(file) = database::models::Version::get_file_from_hash(
         hash_query
             .algorithm
@@ -139,15 +151,15 @@ pub async fn get_update_from_hash(
             .unwrap_or_else(|| default_algorithm_from_hashes(&[hash.clone()])),
         hash,
         hash_query.version_id.map(|x| x.into()),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?
     {
         if let Some(project) =
-            database::models::Project::get_id(file.project_id, &**pool, &redis).await?
+            database::models::Project::get_id(file.project_id, &pool, &redis).await?
         {
-            let versions = database::models::Version::get_many(&project.versions, &**pool, &redis)
+            let versions = database::models::Version::get_many(&project.versions, &pool, &redis)
                 .await?
                 .into_iter()
                 .filter(|x| {
@@ -180,7 +192,7 @@ pub async fn get_update_from_hash(
                     return Err(ApiError::NotFound);
                 }
 
-                return Ok(HttpResponse::Ok().json(models::projects::Version::from(first)));
+                return Ok(Json(models::projects::Version::from(first)));
             }
         }
     }
@@ -195,15 +207,17 @@ pub struct FileHashes {
 }
 
 pub async fn get_versions_from_hashes(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    file_data: web::Json<FileHashes>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(file_data): Json<FileHashes>,
+) -> Result<Json<HashMap<String, models::projects::Version>>, ApiError> {
     let user_option = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::VERSION_READ]),
@@ -220,14 +234,14 @@ pub async fn get_versions_from_hashes(
     let files = database::models::Version::get_files_from_hash(
         algorithm.clone(),
         &file_data.hashes,
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
 
     let version_ids = files.iter().map(|x| x.version_id).collect::<Vec<_>>();
     let versions_data = filter_visible_versions(
-        database::models::Version::get_many(&version_ids, &**pool, &redis).await?,
+        database::models::Version::get_many(&version_ids, &pool, &redis).await?,
         &user_option,
         &pool,
         &redis,
@@ -244,19 +258,21 @@ pub async fn get_versions_from_hashes(
         }
     }
 
-    Ok(HttpResponse::Ok().json(response))
+    Ok(Json(response))
 }
 
 pub async fn get_projects_from_hashes(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    file_data: web::Json<FileHashes>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(file_data): Json<FileHashes>,
+) -> Result<Json<HashMap<String, models::projects::Project>>, ApiError> {
     let user_option = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PROJECT_READ, Scopes::VERSION_READ]),
@@ -272,7 +288,7 @@ pub async fn get_projects_from_hashes(
     let files = database::models::Version::get_files_from_hash(
         algorithm.clone(),
         &file_data.hashes,
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
@@ -280,9 +296,10 @@ pub async fn get_projects_from_hashes(
     let project_ids = files.iter().map(|x| x.project_id).collect::<Vec<_>>();
 
     let projects_data = filter_visible_projects(
-        database::models::Project::get_many_ids(&project_ids, &**pool, &redis).await?,
+        database::models::Project::get_many_ids(&project_ids, &pool, &redis).await?,
         &user_option,
         &pool,
+        false,
     )
     .await?;
 
@@ -296,7 +313,7 @@ pub async fn get_projects_from_hashes(
         }
     }
 
-    Ok(HttpResponse::Ok().json(response))
+    Ok(Json(response))
 }
 
 #[derive(Deserialize)]
@@ -308,15 +325,17 @@ pub struct ManyUpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 pub async fn update_files(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    update_data: web::Json<ManyUpdateData>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(update_data): Json<ManyUpdateData>,
+) -> Result<Json<HashMap<String, models::projects::Version>>, ApiError> {
     let user_option = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::VERSION_READ]),
@@ -332,14 +351,14 @@ pub async fn update_files(
     let files = database::models::Version::get_files_from_hash(
         algorithm.clone(),
         &update_data.hashes,
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
 
     let projects = database::models::Project::get_many_ids(
         &files.iter().map(|x| x.project_id).collect::<Vec<_>>(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
@@ -348,7 +367,7 @@ pub async fn update_files(
             .iter()
             .flat_map(|x| x.versions.clone())
             .collect::<Vec<_>>(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
@@ -402,7 +421,7 @@ pub async fn update_files(
         }
     }
 
-    Ok(HttpResponse::Ok().json(response))
+    Ok(Json(response))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -420,15 +439,17 @@ pub struct ManyFileUpdateData {
 }
 
 pub async fn update_individual_files(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    update_data: web::Json<ManyFileUpdateData>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Json(update_data): Json<ManyFileUpdateData>,
+) -> Result<Json<HashMap<String, models::projects::Version>>, ApiError> {
     let user_option = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::VERSION_READ]),
@@ -453,14 +474,14 @@ pub async fn update_individual_files(
             .iter()
             .map(|x| x.hash.clone())
             .collect::<Vec<_>>(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
 
     let projects = database::models::Project::get_many_ids(
         &files.iter().map(|x| x.project_id).collect::<Vec<_>>(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
@@ -469,7 +490,7 @@ pub async fn update_individual_files(
             .iter()
             .flat_map(|x| x.versions.clone())
             .collect::<Vec<_>>(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
@@ -524,21 +545,23 @@ pub async fn update_individual_files(
         }
     }
 
-    Ok(HttpResponse::Ok().json(response))
+    Ok(Json(response))
 }
 
 // under /api/v1/version_file/{hash}
 pub async fn delete_file(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    hash_query: web::Query<HashQuery>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<String>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Query(hash_query): Query<HashQuery>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::VERSION_WRITE]),
@@ -546,7 +569,7 @@ pub async fn delete_file(
     .await?
     .1;
 
-    let hash = info.into_inner().0.to_lowercase();
+    let hash = info.to_lowercase();
     let algorithm = hash_query
         .algorithm
         .clone()
@@ -555,7 +578,7 @@ pub async fn delete_file(
         algorithm.clone(),
         hash,
         hash_query.version_id.map(|x| x.into()),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
@@ -565,7 +588,7 @@ pub async fn delete_file(
             let team_member = database::models::TeamMember::get_from_user_id_version(
                 row.version_id,
                 user.id.into(),
-                &**pool,
+                &pool,
             )
             .await
             .map_err(ApiError::Database)?;
@@ -573,7 +596,7 @@ pub async fn delete_file(
             let organization =
                 database::models::Organization::get_associated_organization_project_id(
                     row.project_id,
-                    &**pool,
+                    &pool,
                 )
                 .await
                 .map_err(ApiError::Database)?;
@@ -583,7 +606,7 @@ pub async fn delete_file(
                     organization.id,
                     user.id.into(),
                     false,
-                    &**pool,
+                    &pool,
                 )
                 .await
                 .map_err(ApiError::Database)?
@@ -605,7 +628,7 @@ pub async fn delete_file(
             }
         }
 
-        let version = database::models::Version::get(row.version_id, &**pool, &redis).await?;
+        let version = database::models::Version::get(row.version_id, &pool, &redis).await?;
         if let Some(version) = version {
             if version.files.len() < 2 {
                 return Err(ApiError::InvalidInput(
@@ -640,7 +663,7 @@ pub async fn delete_file(
 
         transaction.commit().await?;
 
-        Ok(HttpResponse::NoContent().body(""))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
@@ -653,16 +676,18 @@ pub struct DownloadRedirect {
 
 // under /api/v1/version_file/{hash}/download
 pub async fn download_version(
-    req: HttpRequest,
-    info: web::Path<(String,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    hash_query: web::Query<HashQuery>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<String>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Query(hash_query): Query<HashQuery>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<impl IntoResponse, ApiError> {
     let user_option = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::VERSION_READ]),
@@ -671,7 +696,7 @@ pub async fn download_version(
     .map(|x| x.1)
     .ok();
 
-    let hash = info.into_inner().0.to_lowercase();
+    let hash = info.to_lowercase();
     let algorithm = hash_query
         .algorithm
         .clone()
@@ -680,22 +705,24 @@ pub async fn download_version(
         algorithm.clone(),
         hash,
         hash_query.version_id.map(|x| x.into()),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
 
     if let Some(file) = file {
-        let version = database::models::Version::get(file.version_id, &**pool, &redis).await?;
+        let version = database::models::Version::get(file.version_id, &pool, &redis).await?;
 
         if let Some(version) = version {
             if !is_visible_version(&version.inner, &user_option, &pool, &redis).await? {
                 return Err(ApiError::NotFound);
             }
 
-            Ok(HttpResponse::TemporaryRedirect()
-                .append_header(("Location", &*file.url))
-                .json(DownloadRedirect { url: file.url }))
+            Ok((
+                StatusCode::TEMPORARY_REDIRECT,
+                [(LOCATION, file.url.clone())],
+                Json(DownloadRedirect { url: file.url }),
+            ))
         } else {
             Err(ApiError::NotFound)
         }

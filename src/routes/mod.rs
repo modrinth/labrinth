@@ -1,12 +1,18 @@
 use crate::file_hosting::FileHostingError;
-use crate::routes::analytics::{page_view_ingest, playtime_ingest};
-use crate::util::cors::default_cors;
-use crate::util::env::parse_strings_from_var;
-use actix_cors::Cors;
-use actix_files::Files;
-use actix_web::http::StatusCode;
-use actix_web::{web, HttpResponse};
-use futures::FutureExt;
+use crate::routes::not_found::api_v1_gone;
+use crate::util::cors::{analytics_cors, default_cors};
+use axum::extract::multipart::MultipartRejection;
+use axum::extract::rejection::{
+    BytesRejection, ExtensionRejection, FormRejection, JsonRejection, PathRejection,
+    QueryRejection, StringRejection,
+};
+use axum::extract::ws::rejection::WebSocketUpgradeRejection;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::routing::{any, get, post};
+use axum::{Json, Router};
+use tower::ServiceExt;
+use tower_http::services::ServeDir;
 
 pub mod internal;
 pub mod v2;
@@ -22,59 +28,28 @@ mod updates;
 
 pub use self::not_found::not_found;
 
-pub fn root_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("maven")
-            .wrap(default_cors())
-            .configure(maven::config),
-    );
-    cfg.service(
-        web::scope("updates")
-            .wrap(default_cors())
-            .configure(updates::config),
-    );
-    cfg.service(
-        web::scope("analytics")
-            .wrap(
-                Cors::default()
-                    .allowed_origin_fn(|origin, _req_head| {
-                        let allowed_origins =
-                            parse_strings_from_var("ANALYTICS_ALLOWED_ORIGINS").unwrap_or_default();
-
-                        allowed_origins.contains(&"*".to_string())
-                            || allowed_origins
-                                .contains(&origin.to_str().unwrap_or_default().to_string())
-                    })
-                    .allowed_methods(vec!["GET", "POST"])
-                    .allowed_headers(vec![
-                        actix_web::http::header::AUTHORIZATION,
-                        actix_web::http::header::ACCEPT,
-                        actix_web::http::header::CONTENT_TYPE,
-                    ])
-                    .max_age(3600),
-            )
-            .service(page_view_ingest)
-            .service(playtime_ingest),
-    );
-    cfg.service(
-        web::scope("api/v1")
-            .wrap(default_cors())
-            .wrap_fn(|req, _srv| {
-            async {
-                Ok(req.into_response(
-                    HttpResponse::Gone()
-                        .content_type("application/json")
-                        .body(r#"{"error":"api_deprecated","description":"You are using an application that uses an outdated version of Modrinth's API. Please either update it or switch to another application. For developers: https://docs.modrinth.com/docs/migrations/v1-to-v2/"}"#)
-                ))
-            }.boxed_local()
-        })
-    );
-    cfg.service(
-        web::scope("")
-            .wrap(default_cors())
-            .service(index::index_get)
-            .service(Files::new("/", "assets/")),
-    );
+pub fn root_config() -> Router {
+    Router::new()
+        .nest("/maven", maven::config().layer(default_cors()))
+        .nest("/updates", updates::config().layer(default_cors()))
+        .nest(
+            "/analytics",
+            Router::new()
+                .route("/view", post(analytics::page_view_ingest))
+                .route("/playtime", post(analytics::playtime_ingest))
+                .layer(analytics_cors()),
+        )
+        .route("/api/v1/*path", any(api_v1_gone).layer(default_cors()))
+        .route("/", get(index::index_get).layer(default_cors()))
+        .fallback_service(
+            any(|req| async move {
+                ServeDir::new("assets/")
+                    .not_found_service(any(not_found))
+                    .oneshot(req)
+                    .await
+            })
+            .layer(default_cors()),
+        )
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -125,11 +100,31 @@ pub enum ApiError {
     Reroute(#[from] reqwest::Error),
     #[error("Resource not found")]
     NotFound,
+    #[error("Could not read JSON body: {0}")]
+    JsonBody(#[from] JsonRejection),
+    #[error("Could not read form: {0}")]
+    Form(#[from] FormRejection),
+    #[error("Could not read query: {0}")]
+    Query(#[from] QueryRejection),
+    #[error("Bad path params: {0}")]
+    Path(#[from] PathRejection),
+    #[error("Internal extension error: {0}")]
+    Extension(#[from] ExtensionRejection),
+    #[error("Unable to parse body: {0}")]
+    String(#[from] StringRejection),
+    #[error("Unable to parse body: {0}")]
+    Bytes(#[from] BytesRejection),
+    #[error("Unable to upgrade connection: {0}")]
+    WebSocket(#[from] WebSocketUpgradeRejection),
+    #[error("Unable to parse multipart body: {0}")]
+    Multipart(#[from] MultipartRejection),
+    #[error("You are being rate-limited. Please wait {0} milliseconds. 0/{1} remaining.")]
+    RateLimitError(u128, u32),
 }
 
-impl actix_web::ResponseError for ApiError {
-    fn status_code(&self) -> StatusCode {
-        match self {
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let status_code = match &self {
             ApiError::Env(..) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Database(..) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::SqlxDatabase(..) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -153,12 +148,20 @@ impl actix_web::ResponseError for ApiError {
             ApiError::Mail(..) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Reroute(..) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::NotFound => StatusCode::NOT_FOUND,
-        }
-    }
+            ApiError::JsonBody(..) => StatusCode::BAD_REQUEST,
+            ApiError::Form(..) => StatusCode::BAD_REQUEST,
+            ApiError::Query(..) => StatusCode::BAD_REQUEST,
+            ApiError::Path(..) => StatusCode::BAD_REQUEST,
+            ApiError::Extension(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::String(..) => StatusCode::BAD_REQUEST,
+            ApiError::Bytes(..) => StatusCode::BAD_REQUEST,
+            ApiError::WebSocket(..) => StatusCode::BAD_REQUEST,
+            ApiError::Multipart(..) => StatusCode::BAD_REQUEST,
+            ApiError::RateLimitError(..) => StatusCode::TOO_MANY_REQUESTS,
+        };
 
-    fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code()).json(crate::models::error::ApiError {
-            error: match self {
+        let error_message = crate::models::error::ApiError {
+            error: match &self {
                 ApiError::Env(..) => "environment_error",
                 ApiError::SqlxDatabase(..) => "database_error",
                 ApiError::Database(..) => "database_error",
@@ -182,8 +185,38 @@ impl actix_web::ResponseError for ApiError {
                 ApiError::Clickhouse(..) => "clickhouse_error",
                 ApiError::Reroute(..) => "reroute_error",
                 ApiError::NotFound => "not_found",
+                ApiError::JsonBody(..) => "invalid_json_body",
+                ApiError::Form(..) => "invalid_form_body",
+                ApiError::Query(..) => "invalid_query",
+                ApiError::Path(..) => "invalid_path",
+                ApiError::Extension(..) => "extension_error",
+                ApiError::String(..) => "invalid_body",
+                ApiError::Bytes(..) => "invalid_body",
+                ApiError::WebSocket(..) => "websocket_error",
+                ApiError::Multipart(..) => "invalid_multipart_body",
+                ApiError::RateLimitError(..) => "ratelimit_error",
             },
             description: &self.to_string(),
-        })
+        };
+
+        (status_code, Json(error_message)).into_response()
+    }
+}
+
+#[derive(Debug)]
+pub struct ApiErrorV2(pub ApiError);
+
+impl IntoResponse for ApiErrorV2 {
+    fn into_response(self) -> Response {
+        match self.0 {
+            ApiError::NotFound => (StatusCode::NOT_FOUND, "").into_response(),
+            err => err.into_response(),
+        }
+    }
+}
+
+impl From<ApiError> for ApiErrorV2 {
+    fn from(error: ApiError) -> Self {
+        ApiErrorV2(error)
     }
 }

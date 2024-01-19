@@ -8,12 +8,13 @@ use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::util::date::get_current_tenths_of_ms;
 use crate::util::env::parse_strings_from_var;
-use actix_web::{post, web};
-use actix_web::{HttpRequest, HttpResponse};
+use crate::util::extract::{ConnectInfo, Extension, Json};
+use crate::util::ip::get_ip_addr;
+use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
-use std::net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use url::Url;
 
@@ -55,20 +56,22 @@ pub struct UrlInput {
 }
 
 //this route should be behind the cloudflare WAF to prevent non-browsers from calling it
-#[post("view")]
 pub async fn page_view_ingest(
-    req: HttpRequest,
-    maxmind: web::Data<Arc<MaxMindIndexer>>,
-    analytics_queue: web::Data<Arc<AnalyticsQueue>>,
-    session_queue: web::Data<AuthQueue>,
-    url_input: web::Json<UrlInput>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(&req, &**pool, &redis, &session_queue, None)
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(maxmind): Extension<Arc<MaxMindIndexer>>,
+    Extension(analytics_queue): Extension<Arc<AnalyticsQueue>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(url_input): Json<UrlInput>,
+) -> Result<StatusCode, ApiError> {
+    let user = get_user_from_headers(&addr, &headers, &pool, &redis, &session_queue, None)
         .await
         .ok();
-    let conn_info = req.connection_info().peer_addr().map(|x| x.to_string());
+
+    let ip = convert_to_ip_v6(&get_ip_addr(&addr, &headers))
+        .unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped());
 
     let url = Url::parse(&url_input.url)
         .map_err(|_| ApiError::InvalidInput("invalid page view URL specified!".to_string()))?;
@@ -87,23 +90,17 @@ pub async fn page_view_ingest(
         ));
     }
 
-    let headers = req
-        .headers()
+    let headers = headers
         .into_iter()
-        .map(|(key, val)| {
-            (
-                key.to_string().to_lowercase(),
-                val.to_str().unwrap_or_default().to_string(),
-            )
+        .flat_map(|(key, val)| {
+            key.map(|key| {
+                (
+                    key.to_string().to_lowercase(),
+                    val.to_str().unwrap_or_default().to_string(),
+                )
+            })
         })
         .collect::<HashMap<String, String>>();
-
-    let ip = convert_to_ip_v6(if let Some(header) = headers.get("cf-connecting-ip") {
-        header
-    } else {
-        conn_info.as_deref().unwrap_or_default()
-    })
-    .unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped());
 
     let mut view = PageView {
         recorded: get_current_tenths_of_ms(),
@@ -135,7 +132,7 @@ pub async fn page_view_ingest(
 
             if PROJECT_TYPES.contains(&segments_vec[0]) {
                 let project =
-                    crate::database::models::Project::get(segments_vec[1], &**pool, &redis).await?;
+                    crate::database::models::Project::get(segments_vec[1], &pool, &redis).await?;
 
                 if let Some(project) = project {
                     view.project_id = project.inner.id.0 as u64;
@@ -150,7 +147,7 @@ pub async fn page_view_ingest(
 
     analytics_queue.add_view(view);
 
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize, Debug)]
@@ -161,25 +158,24 @@ pub struct PlaytimeInput {
     parent: Option<crate::models::ids::VersionId>,
 }
 
-#[post("playtime")]
 pub async fn playtime_ingest(
-    req: HttpRequest,
-    analytics_queue: web::Data<Arc<AnalyticsQueue>>,
-    session_queue: web::Data<AuthQueue>,
-    playtime_input: web::Json<HashMap<crate::models::ids::VersionId, PlaytimeInput>>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-) -> Result<HttpResponse, ApiError> {
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Extension(analytics_queue): Extension<Arc<AnalyticsQueue>>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Json(playtimes): Json<HashMap<crate::models::ids::VersionId, PlaytimeInput>>,
+) -> Result<StatusCode, ApiError> {
     let (_, user) = get_user_from_headers(
-        &req,
-        &**pool,
+        &addr,
+        &headers,
+        &pool,
         &redis,
         &session_queue,
         Some(&[Scopes::PERFORM_ANALYTICS]),
     )
     .await?;
-
-    let playtimes = playtime_input.0;
 
     if playtimes.len() > 2000 {
         return Err(ApiError::InvalidInput(
@@ -189,7 +185,7 @@ pub async fn playtime_ingest(
 
     let versions = crate::database::models::Version::get_many(
         &playtimes.iter().map(|x| (*x.0).into()).collect::<Vec<_>>(),
-        &**pool,
+        &pool,
         &redis,
     )
     .await?;
@@ -213,5 +209,5 @@ pub async fn playtime_ingest(
         }
     }
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(StatusCode::NO_CONTENT)
 }

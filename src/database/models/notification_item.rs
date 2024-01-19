@@ -91,11 +91,8 @@ impl Notification {
         .execute(&mut **transaction)
         .await?;
 
-        Notification::clear_user_notifications_cache(
-            notifications.iter().map(|n| &n.user_id),
-            redis,
-        )
-        .await?;
+        let user_ids = notifications.iter().map(|n| n.user_id).collect::<Vec<_>>();
+        Notification::clear_user_notifications_cache(&user_ids, redis).await?;
 
         Ok(())
     }

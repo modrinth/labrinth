@@ -5,6 +5,7 @@
 // These fields only apply to minecraft-java, and are hardcoded to the minecraft-java game.
 
 use chrono::{DateTime, Utc};
+use futures::Future;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -34,42 +35,45 @@ impl MinecraftGameVersion {
         MinecraftGameVersionBuilder::default()
     }
 
-    pub async fn list<'a, E>(
-        version_type_option: Option<&str>,
+    #[allow(clippy::manual_async_fn)]
+    pub fn list<'a, 'c, E>(
+        version_type_option: Option<&'a str>,
         major_option: Option<bool>,
         exec: E,
-        redis: &RedisPool,
-    ) -> Result<Vec<MinecraftGameVersion>, DatabaseError>
+        redis: &'a RedisPool,
+    ) -> impl Future<Output = Result<Vec<MinecraftGameVersion>, DatabaseError>> + Send + 'a
     where
-        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
+        E: sqlx::Acquire<'c, Database = sqlx::Postgres> + Send + 'a,
     {
-        let mut exec = exec.acquire().await?;
-        let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, &mut *exec, redis)
-            .await?
-            .ok_or_else(|| {
-                DatabaseError::SchemaError("Could not find game version enum.".to_string())
-            })?;
-        let game_version_enum_values =
-            LoaderFieldEnumValue::list(game_version_enum.id, &mut *exec, redis).await?;
+        async move {
+            let mut exec = exec.acquire().await?;
+            let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, &mut *exec, redis)
+                .await?
+                .ok_or_else(|| {
+                    DatabaseError::SchemaError("Could not find game version enum.".to_string())
+                })?;
+            let game_version_enum_values =
+                LoaderFieldEnumValue::list(game_version_enum.id, &mut *exec, redis).await?;
 
-        let game_versions = game_version_enum_values
-            .into_iter()
-            .map(MinecraftGameVersion::from_enum_value)
-            .filter(|x| {
-                let mut bool = true;
+            let game_versions = game_version_enum_values
+                .into_iter()
+                .map(MinecraftGameVersion::from_enum_value)
+                .filter(|x| {
+                    let mut bool = true;
 
-                if let Some(version_type) = version_type_option {
-                    bool &= &*x.type_ == version_type;
-                }
-                if let Some(major) = major_option {
-                    bool &= x.major == major;
-                }
+                    if let Some(version_type) = version_type_option {
+                        bool &= &*x.type_ == version_type;
+                    }
+                    if let Some(major) = major_option {
+                        bool &= x.major == major;
+                    }
 
-                bool
-            })
-            .collect_vec();
+                    bool
+                })
+                .collect_vec();
 
-        Ok(game_versions)
+            Ok(game_versions)
+        }
     }
 
     // Tries to create a MinecraftGameVersion from a VersionField

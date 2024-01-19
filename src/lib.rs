@@ -1,19 +1,23 @@
+#![allow(clippy::too_many_arguments)]
+
+use axum::extract::DefaultBodyLimit;
+use axum::routing::any;
+use axum::{Extension, Router};
 use std::sync::Arc;
 
-use actix_web::web;
 use database::redis::RedisPool;
-use log::{info, warn};
 use queue::{
     analytics::AnalyticsQueue, payouts::PayoutsQueue, session::AuthQueue, socket::ActiveSockets,
 };
-use scheduler::Scheduler;
 use sqlx::Postgres;
-use tokio::sync::RwLock;
+use tracing::{info, warn};
 
 extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;
-use util::cors::default_cors;
 
+use crate::routes::not_found;
+use crate::scheduler::schedule;
+use crate::util::cors::default_cors;
 use crate::{
     queue::payouts::process_payout,
     search::indexing::index_projects,
@@ -26,7 +30,6 @@ pub mod database;
 pub mod file_hosting;
 pub mod models;
 pub mod queue;
-pub mod ratelimit;
 pub mod routes;
 pub mod scheduler;
 pub mod search;
@@ -45,188 +48,190 @@ pub struct LabrinthConfig {
     pub clickhouse: Client,
     pub file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
     pub maxmind: Arc<queue::maxmind::MaxMindIndexer>,
-    pub scheduler: Arc<Scheduler>,
     pub ip_salt: Pepper,
     pub search_config: search::SearchConfig,
-    pub session_queue: web::Data<AuthQueue>,
-    pub payouts_queue: web::Data<PayoutsQueue>,
+    pub session_queue: Arc<AuthQueue>,
+    pub payouts_queue: Arc<PayoutsQueue>,
     pub analytics_queue: Arc<AnalyticsQueue>,
-    pub active_sockets: web::Data<RwLock<ActiveSockets>>,
+    pub active_sockets: Arc<ActiveSockets>,
 }
 
 pub fn app_setup(
     pool: sqlx::Pool<Postgres>,
     redis_pool: RedisPool,
     search_config: search::SearchConfig,
-    clickhouse: &mut Client,
+    clickhouse: Client,
     file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
     maxmind: Arc<queue::maxmind::MaxMindIndexer>,
+    testing: bool,
 ) -> LabrinthConfig {
     info!(
         "Starting Labrinth on {}",
         dotenvy::var("BIND_ADDR").unwrap()
     );
 
-    let mut scheduler = scheduler::Scheduler::new();
-
     // The interval in seconds at which the local database is indexed
     // for searching.  Defaults to 1 hour if unset.
     let local_index_interval =
         std::time::Duration::from_secs(parse_var("LOCAL_INDEX_INTERVAL").unwrap_or(3600));
 
+    let session_queue = Arc::new(AuthQueue::new());
+    let analytics_queue = Arc::new(AnalyticsQueue::new());
+
     let pool_ref = pool.clone();
     let search_config_ref = search_config.clone();
     let redis_pool_ref = redis_pool.clone();
-    scheduler.run(local_index_interval, move || {
-        let pool_ref = pool_ref.clone();
-        let redis_pool_ref = redis_pool_ref.clone();
-        let search_config_ref = search_config_ref.clone();
-        async move {
-            info!("Indexing local database");
-            let result = index_projects(pool_ref, redis_pool_ref.clone(), &search_config_ref).await;
-            if let Err(e) = result {
-                warn!("Local project indexing failed: {:?}", e);
-            }
-            info!("Done indexing local database");
-        }
-    });
 
-    // Changes statuses of scheduled projects/versions
-    let pool_ref = pool.clone();
-    // TODO: Clear cache when these are run
-    scheduler.run(std::time::Duration::from_secs(60 * 5), move || {
-        let pool_ref = pool_ref.clone();
-        info!("Releasing scheduled versions/projects!");
-
-        async move {
-            let projects_results = sqlx::query!(
-                "
-                UPDATE mods
-                SET status = requested_status
-                WHERE status = $1 AND approved < CURRENT_DATE AND requested_status IS NOT NULL
-                ",
-                crate::models::projects::ProjectStatus::Scheduled.as_str(),
-            )
-            .execute(&pool_ref)
-            .await;
-
-            if let Err(e) = projects_results {
-                warn!("Syncing scheduled releases for projects failed: {:?}", e);
-            }
-
-            let versions_results = sqlx::query!(
-                "
-                UPDATE versions
-                SET status = requested_status
-                WHERE status = $1 AND date_published < CURRENT_DATE AND requested_status IS NOT NULL
-                ",
-                crate::models::projects::VersionStatus::Scheduled.as_str(),
-            )
-            .execute(&pool_ref)
-            .await;
-
-            if let Err(e) = versions_results {
-                warn!("Syncing scheduled releases for versions failed: {:?}", e);
-            }
-
-            info!("Finished releasing scheduled versions/projects");
-        }
-    });
-
-    scheduler::schedule_versions(&mut scheduler, pool.clone(), redis_pool.clone());
-
-    let session_queue = web::Data::new(AuthQueue::new());
-
-    let pool_ref = pool.clone();
-    let redis_ref = redis_pool.clone();
-    let session_queue_ref = session_queue.clone();
-    scheduler.run(std::time::Duration::from_secs(60 * 30), move || {
-        let pool_ref = pool_ref.clone();
-        let redis_ref = redis_ref.clone();
-        let session_queue_ref = session_queue_ref.clone();
-
-        async move {
-            info!("Indexing sessions queue");
-            let result = session_queue_ref.index(&pool_ref, &redis_ref).await;
-            if let Err(e) = result {
-                warn!("Indexing sessions queue failed: {:?}", e);
-            }
-            info!("Done indexing sessions queue");
-        }
-    });
-
-    let reader = maxmind.clone();
-    {
-        let reader_ref = reader;
-        scheduler.run(std::time::Duration::from_secs(60 * 60 * 24), move || {
-            let reader_ref = reader_ref.clone();
-
+    if !testing {
+        schedule(local_index_interval, move || {
+            let pool_ref = pool_ref.clone();
+            let redis_pool_ref = redis_pool_ref.clone();
+            let search_config_ref = search_config_ref.clone();
             async move {
-                info!("Downloading MaxMind GeoLite2 country database");
-                let result = reader_ref.index().await;
+                info!("Indexing local database");
+                let result =
+                    index_projects(pool_ref, redis_pool_ref.clone(), &search_config_ref).await;
                 if let Err(e) = result {
-                    warn!(
-                        "Downloading MaxMind GeoLite2 country database failed: {:?}",
-                        e
-                    );
+                    warn!("Local project indexing failed: {:?}", e);
                 }
-                info!("Done downloading MaxMind GeoLite2 country database");
+                info!("Done indexing local database");
             }
         });
-    }
-    info!("Downloading MaxMind GeoLite2 country database");
 
-    let analytics_queue = Arc::new(AnalyticsQueue::new());
-    {
-        let client_ref = clickhouse.clone();
-        let analytics_queue_ref = analytics_queue.clone();
+        // Changes statuses of scheduled projects/versions
+        let pool_ref = pool.clone();
+        // TODO: Clear cache when these are run
+        schedule(std::time::Duration::from_secs(60 * 5), move || {
+            let pool_ref = pool_ref.clone();
+            info!("Releasing scheduled versions/projects!");
+
+            async move {
+                let projects_results = sqlx::query!(
+                    "
+                    UPDATE mods
+                    SET status = requested_status
+                    WHERE status = $1 AND approved < CURRENT_DATE AND requested_status IS NOT NULL
+                    ",
+                    crate::models::projects::ProjectStatus::Scheduled.as_str(),
+                )
+                .execute(&pool_ref)
+                .await;
+
+                if let Err(e) = projects_results {
+                    warn!("Syncing scheduled releases for projects failed: {:?}", e);
+                }
+
+                let versions_results = sqlx::query!(
+                    "
+                    UPDATE versions
+                    SET status = requested_status
+                    WHERE status = $1 AND date_published < CURRENT_DATE AND requested_status IS NOT NULL
+                    ",
+                    crate::models::projects::VersionStatus::Scheduled.as_str(),
+                )
+                .execute(&pool_ref)
+                .await;
+
+                if let Err(e) = versions_results {
+                    warn!("Syncing scheduled releases for versions failed: {:?}", e);
+                }
+
+                info!("Finished releasing scheduled versions/projects");
+            }
+        });
+
+        scheduler::schedule_versions(pool.clone(), redis_pool.clone());
+
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
-        scheduler.run(std::time::Duration::from_secs(15), move || {
-            let client_ref = client_ref.clone();
-            let analytics_queue_ref = analytics_queue_ref.clone();
+        let session_queue_ref = session_queue.clone();
+        schedule(std::time::Duration::from_secs(60 * 30), move || {
             let pool_ref = pool_ref.clone();
             let redis_ref = redis_ref.clone();
+            let session_queue_ref = session_queue_ref.clone();
 
             async move {
-                info!("Indexing analytics queue");
-                let result = analytics_queue_ref
-                    .index(client_ref, &redis_ref, &pool_ref)
-                    .await;
+                info!("Indexing sessions queue");
+                let result = session_queue_ref.index(&pool_ref, &redis_ref).await;
                 if let Err(e) = result {
-                    warn!("Indexing analytics queue failed: {:?}", e);
+                    warn!("Indexing sessions queue failed: {:?}", e);
                 }
-                info!("Done indexing analytics queue");
+                info!("Done indexing sessions queue");
             }
         });
-    }
 
-    {
-        let pool_ref = pool.clone();
-        let redis_ref = redis_pool.clone();
-        let client_ref = clickhouse.clone();
-        scheduler.run(std::time::Duration::from_secs(60 * 60 * 6), move || {
-            let pool_ref = pool_ref.clone();
-            let redis_ref = redis_ref.clone();
-            let client_ref = client_ref.clone();
+        let reader = maxmind.clone();
+        {
+            let reader_ref = reader;
+            schedule(std::time::Duration::from_secs(60 * 60 * 24), move || {
+                let reader_ref = reader_ref.clone();
 
-            async move {
-                info!("Started running payouts");
-                let result = process_payout(&pool_ref, &redis_ref, &client_ref).await;
-                if let Err(e) = result {
-                    warn!("Payouts run failed: {:?}", e);
+                async move {
+                    info!("Downloading MaxMind GeoLite2 country database");
+                    let result = reader_ref.index().await;
+                    if let Err(e) = result {
+                        warn!(
+                            "Downloading MaxMind GeoLite2 country database failed: {:?}",
+                            e
+                        );
+                    }
+                    info!("Done downloading MaxMind GeoLite2 country database");
                 }
-                info!("Done running payouts");
-            }
-        });
+            });
+        }
+        info!("Downloading MaxMind GeoLite2 country database");
+
+        {
+            let client_ref = clickhouse.clone();
+            let analytics_queue_ref = analytics_queue.clone();
+            let pool_ref = pool.clone();
+            let redis_ref = redis_pool.clone();
+            schedule(std::time::Duration::from_secs(15), move || {
+                let client_ref = client_ref.clone();
+                let analytics_queue_ref = analytics_queue_ref.clone();
+                let pool_ref = pool_ref.clone();
+                let redis_ref = redis_ref.clone();
+
+                async move {
+                    info!("Indexing analytics queue");
+                    let result = analytics_queue_ref
+                        .index(client_ref, &redis_ref, &pool_ref)
+                        .await;
+                    if let Err(e) = result {
+                        warn!("Indexing analytics queue failed: {:?}", e);
+                    }
+                    info!("Done indexing analytics queue");
+                }
+            });
+        }
+
+        {
+            let pool_ref = pool.clone();
+            let redis_ref = redis_pool.clone();
+            let client_ref = clickhouse.clone();
+            schedule(std::time::Duration::from_secs(60 * 60 * 6), move || {
+                let pool_ref = pool_ref.clone();
+                let redis_ref = redis_ref.clone();
+                let client_ref = client_ref.clone();
+
+                async move {
+                    info!("Started running payouts");
+                    let result = process_payout(&pool_ref, &redis_ref, &client_ref).await;
+                    if let Err(e) = result {
+                        warn!("Payouts run failed: {:?}", e);
+                    }
+                    info!("Done running payouts");
+                }
+            });
+        }
     }
 
     let ip_salt = Pepper {
         pepper: models::ids::Base62Id(models::ids::random_base62(11)).to_string(),
     };
 
-    let payouts_queue = web::Data::new(PayoutsQueue::new());
-    let active_sockets = web::Data::new(RwLock::new(ActiveSockets::default()));
+    let payouts_queue = Arc::new(PayoutsQueue::new());
+    let active_sockets = Arc::new(ActiveSockets::default());
 
     LabrinthConfig {
         pool,
@@ -234,7 +239,6 @@ pub fn app_setup(
         clickhouse: clickhouse.clone(),
         file_host,
         maxmind,
-        scheduler: Arc::new(scheduler),
         ip_salt,
         search_config,
         session_queue,
@@ -244,39 +248,25 @@ pub fn app_setup(
     }
 }
 
-pub fn app_config(cfg: &mut web::ServiceConfig, labrinth_config: LabrinthConfig) {
-    cfg.app_data(
-        web::FormConfig::default()
-            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
-    )
-    .app_data(
-        web::PathConfig::default()
-            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
-    )
-    .app_data(
-        web::QueryConfig::default()
-            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
-    )
-    .app_data(
-        web::JsonConfig::default()
-            .error_handler(|err, _req| routes::ApiError::Validation(err.to_string()).into()),
-    )
-    .app_data(web::Data::new(labrinth_config.redis_pool.clone()))
-    .app_data(web::Data::new(labrinth_config.pool.clone()))
-    .app_data(web::Data::new(labrinth_config.file_host.clone()))
-    .app_data(web::Data::new(labrinth_config.search_config.clone()))
-    .app_data(labrinth_config.session_queue.clone())
-    .app_data(labrinth_config.payouts_queue.clone())
-    .app_data(web::Data::new(labrinth_config.ip_salt.clone()))
-    .app_data(web::Data::new(labrinth_config.analytics_queue.clone()))
-    .app_data(web::Data::new(labrinth_config.clickhouse.clone()))
-    .app_data(web::Data::new(labrinth_config.maxmind.clone()))
-    .app_data(labrinth_config.active_sockets.clone())
-    .configure(routes::v2::config)
-    .configure(routes::v3::config)
-    .configure(routes::internal::config)
-    .configure(routes::root_config)
-    .default_service(web::get().wrap(default_cors()).to(routes::not_found));
+pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
+    Router::new()
+        .merge(routes::v2::config())
+        .merge(routes::v3::config())
+        .merge(routes::internal::config())
+        .merge(routes::root_config())
+        .fallback_service(any(not_found).layer(default_cors()))
+        .layer(Extension(labrinth_config.redis_pool.clone()))
+        .layer(Extension(labrinth_config.pool.clone()))
+        .layer(Extension(labrinth_config.file_host.clone()))
+        .layer(Extension(labrinth_config.search_config.clone()))
+        .layer(Extension(labrinth_config.session_queue.clone()))
+        .layer(Extension(labrinth_config.payouts_queue.clone()))
+        .layer(Extension(labrinth_config.ip_salt.clone()))
+        .layer(Extension(labrinth_config.analytics_queue.clone()))
+        .layer(Extension(labrinth_config.clickhouse.clone()))
+        .layer(Extension(labrinth_config.maxmind.clone()))
+        .layer(Extension(labrinth_config.active_sockets.clone()))
+        .layer(DefaultBodyLimit::max(5 * 1024 * 1024))
 }
 
 // This is so that env vars not used immediately don't panic at runtime

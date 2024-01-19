@@ -9,7 +9,7 @@ use crate::common::api_common::ApiTags;
 
 mod common;
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_tags() {
     with_test_environment_all(None, |test_env| async move {
         let api = &test_env.api;
@@ -38,7 +38,7 @@ async fn get_tags() {
     .await;
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn get_tags_v3() {
     with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
         let api = &test_env.api;

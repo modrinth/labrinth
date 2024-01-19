@@ -1,26 +1,36 @@
 use crate::database::redis::RedisPool;
 use crate::models::ids::NotificationId;
-use crate::models::notifications::Notification;
 use crate::models::v2::notifications::LegacyNotification;
 use crate::queue::session::AuthQueue;
-use crate::routes::v2_reroute;
 use crate::routes::v3;
-use crate::routes::ApiError;
-use actix_web::{delete, get, patch, web, HttpRequest, HttpResponse};
+use crate::routes::ApiErrorV2;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
+use axum::http::HeaderMap;
+use axum::http::StatusCode;
+use axum::routing::get;
+use axum::Router;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(notifications_get);
-    cfg.service(notifications_delete);
-    cfg.service(notifications_read);
-
-    cfg.service(
-        web::scope("notification")
-            .service(notification_get)
-            .service(notification_read)
-            .service(notification_delete),
-    );
+pub fn config() -> Router {
+    Router::new()
+        .route(
+            "/notifications",
+            get(notifications_get)
+                .patch(notifications_read)
+                .delete(notifications_delete),
+        )
+        .nest(
+            "/notification",
+            Router::new().route(
+                "/:id",
+                get(notification_get)
+                    .patch(notification_read)
+                    .delete(notification_delete),
+            ),
+        )
 }
 
 #[derive(Serialize, Deserialize)]
@@ -28,119 +38,124 @@ pub struct NotificationIds {
     pub ids: String,
 }
 
-#[get("notifications")]
 pub async fn notifications_get(
-    req: HttpRequest,
-    web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    let resp = v3::notifications::notifications_get(
-        req,
-        web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
-        pool,
-        redis,
-        session_queue,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(ids): Query<NotificationIds>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<Vec<LegacyNotification>>, ApiErrorV2> {
+    let Json(notifications) = v3::notifications::notifications_get(
+        ConnectInfo(addr),
+        headers,
+        Query(v3::notifications::NotificationIds { ids: ids.ids }),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error);
-    match v2_reroute::extract_ok_json::<Vec<Notification>>(resp?).await {
-        Ok(notifications) => {
-            let notifications: Vec<LegacyNotification> = notifications
-                .into_iter()
-                .map(LegacyNotification::from)
-                .collect();
-            Ok(HttpResponse::Ok().json(notifications))
-        }
-        Err(response) => Ok(response),
-    }
+    .await?;
+
+    let legacy_notifications = notifications
+        .into_iter()
+        .map(LegacyNotification::from)
+        .collect();
+    Ok(Json(legacy_notifications))
 }
 
-#[get("{id}")]
 pub async fn notification_get(
-    req: HttpRequest,
-    info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    let response = v3::notifications::notification_get(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)?;
-    match v2_reroute::extract_ok_json::<Notification>(response).await {
-        Ok(notification) => {
-            let notification = LegacyNotification::from(notification);
-            Ok(HttpResponse::Ok().json(notification))
-        }
-        Err(response) => Ok(response),
-    }
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<NotificationId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<Json<LegacyNotification>, ApiErrorV2> {
+    let Json(notification) = v3::notifications::notification_get(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+    .await?;
+
+    Ok(Json(LegacyNotification::from(notification)))
 }
 
-#[patch("{id}")]
 pub async fn notification_read(
-    req: HttpRequest,
-    info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so no need to convert
-    v3::notifications::notification_read(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<NotificationId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::notifications::notification_read(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+    .await?)
 }
 
-#[delete("{id}")]
 pub async fn notification_delete(
-    req: HttpRequest,
-    info: web::Path<(NotificationId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so no need to convert
-    v3::notifications::notification_delete(req, info, pool, redis, session_queue)
-        .await
-        .or_else(v2_reroute::flatten_404_error)
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(info): Path<NotificationId>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::notifications::notification_delete(
+        ConnectInfo(addr),
+        headers,
+        Path(info),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
+    )
+    .await?)
 }
 
-#[patch("notifications")]
 pub async fn notifications_read(
-    req: HttpRequest,
-    web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so no need to convert
-    v3::notifications::notifications_read(
-        req,
-        web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
-        pool,
-        redis,
-        session_queue,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(ids): Query<NotificationIds>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::notifications::notifications_read(
+        ConnectInfo(addr),
+        headers,
+        Query(v3::notifications::NotificationIds { ids: ids.ids }),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)
+    .await?)
 }
 
-#[delete("notifications")]
 pub async fn notifications_delete(
-    req: HttpRequest,
-    web::Query(ids): web::Query<NotificationIds>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    // Returns NoContent, so no need to convert
-    v3::notifications::notifications_delete(
-        req,
-        web::Query(v3::notifications::NotificationIds { ids: ids.ids }),
-        pool,
-        redis,
-        session_queue,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(ids): Query<NotificationIds>,
+    Extension(pool): Extension<PgPool>,
+    Extension(redis): Extension<RedisPool>,
+    Extension(session_queue): Extension<Arc<AuthQueue>>,
+) -> Result<StatusCode, ApiErrorV2> {
+    Ok(v3::notifications::notifications_delete(
+        ConnectInfo(addr),
+        headers,
+        Query(v3::notifications::NotificationIds { ids: ids.ids }),
+        Extension(pool),
+        Extension(redis),
+        Extension(session_queue),
     )
-    .await
-    .or_else(v2_reroute::flatten_404_error)
+    .await?)
 }

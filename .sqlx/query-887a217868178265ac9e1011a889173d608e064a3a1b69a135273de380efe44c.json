@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                SELECT DISTINCT id, field, field_type, enum_type, min_val, max_val, optional\n                FROM loader_fields lf\n                WHERE id = ANY($1)  \n                ",
+  "query": "\n                    SELECT DISTINCT id, field, field_type, enum_type, min_val, max_val, optional\n                    FROM loader_fields lf\n                    WHERE id = ANY($1)\n                    ",
   "describe": {
     "columns": [
       {
@@ -54,5 +54,5 @@
       false
     ]
   },
-  "hash": "5329254eeb1e80d2a0f4f3bc2b613f3a7d54b0673f1a41f31fe5b5bbc4b5e478"
+  "hash": "887a217868178265ac9e1011a889173d608e064a3a1b69a135273de380efe44c"
 }

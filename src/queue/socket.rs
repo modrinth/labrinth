@@ -1,9 +1,14 @@
 //! "Database" for Hydra
-use actix_ws::Session;
 use dashmap::DashMap;
+use tokio::sync::mpsc::UnboundedSender;
+
+pub enum WebSocketMessage {
+    Text(String),
+    Close,
+}
 
 pub struct ActiveSockets {
-    pub auth_sockets: DashMap<String, Session>,
+    pub auth_sockets: DashMap<String, UnboundedSender<WebSocketMessage>>,
 }
 
 impl Default for ActiveSockets {
