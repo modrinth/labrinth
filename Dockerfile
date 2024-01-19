@@ -17,7 +17,7 @@ RUN apt-get update \
 
 RUN update-ca-certificates
 
-COPY --from=build /usr/src/labrinth/target/release/labrinth /labrinth/labrinth
+COPY --from=builder /usr/src/labrinth/target/release/labrinth /labrinth/labrinth
 COPY --from=builder /usr/src/labrinth/migrations/* /labrinth/migrations/
 COPY --from=builder /usr/src/labrinth/assets /labrinth/assets
 WORKDIR /labrinth
