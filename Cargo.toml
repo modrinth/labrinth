@@ -25,7 +25,7 @@ governor = "0.6.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-tokio = { version = "1.35.1", features = ["sync"] }
+tokio = { version = "1.35.1", features = ["sync", "signal"] }
 tokio-stream = "0.1.14"
 
 futures = "0.3.30"
@@ -117,9 +117,11 @@ rust_iso3166 = "0.1.11"
 multer = "3.0.0"
 
 jemallocator = {version = "0.3.2", optional = true}
+dhat = {version = "0.3.2", optional = true}
 
 [features]
-jemalloc = ["jemallocator"]
+jemalloc = ["dep:jemallocator"]
+dhat = ["dep:dhat"]
 
 [dev-dependencies]
 axum-test = "14.2.2"
