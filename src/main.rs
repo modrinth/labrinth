@@ -20,10 +20,18 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tokio::signal;
 
 #[cfg(feature = "jemalloc")]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
+#[cfg(feature = "dhat")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+// "dhat" feature is used to profile memory usage.
+// .json is put in "dhat-heap.json" file.
+// https://nnethercote.github.io/dh_view/dh_view.html
 
 #[derive(Clone)]
 pub struct Pepper {
@@ -33,7 +41,11 @@ pub struct Pepper {
 #[cfg(not(tarpaulin_include))]
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    #[cfg(feature = "dhat")]
+    let _profiler = dhat::Profiler::new_heap();
+
     dotenvy::dotenv().ok();
+    
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -163,5 +175,35 @@ async fn main() -> std::io::Result<()> {
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
-    axum::serve(listener, app).await
+    axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            println!("Ctrl+C received, shutting down gracefully")
+        },
+        _ = terminate => {
+            println!("SIGTERM received, shutting down gracefully")
+        },
+    }
 }

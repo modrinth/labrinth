@@ -5,7 +5,7 @@ WORKDIR /usr/src/labrinth
 # Download and compile deps
 COPY . .
 ARG SQLX_OFFLINE=true
-RUN cargo install --features jemalloc --path .
+RUN cargo install --features dhat --path .
 
 # Final Stage
 FROM ubuntu:latest
