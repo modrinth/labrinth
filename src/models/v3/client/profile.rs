@@ -117,7 +117,6 @@ impl ClientProfile {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ClientProfileShareLink {
     pub id: ClientProfileLinkId, // The url identifier, encoded as base62
-    pub url: String,             // Includes the url identifier, intentionally redundant
     pub profile_id: ClientProfileId,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
@@ -128,16 +127,9 @@ impl From<database::models::client_profile_item::ClientProfileLink> for ClientPr
         // Generate URL for easy access
         let profile_id: ClientProfileId = link.shared_profile_id.into();
         let link_id: ClientProfileLinkId = link.id.into();
-        let url = format!(
-            "{}/v3/client/profile/{}/accept/{}",
-            dotenvy::var("SELF_ADDR").unwrap(),
-            profile_id,
-            link_id
-        );
 
         Self {
             id: link_id,
-            url,
             profile_id,
             created: link.created,
             expires: link.expires,

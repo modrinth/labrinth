@@ -268,17 +268,6 @@ async fn accept_share_link() {
             .generate_client_profile_share_link_deserialized(&id, USER_USER_PAT)
             .await;
 
-        // Links should be internally consistent and match the expected format
-        assert_eq!(
-            share_link.url,
-            format!(
-                "{}/v3/client/profile/{}/accept/{}",
-                dotenvy::var("SELF_ADDR").unwrap(),
-                id,
-                share_link.id
-            )
-        );
-
         // Link is an 'accept' link, when visited using any user token using POST, it should add the user to the profile
         // As 'friend', accept the share link
         let resp = api

@@ -41,6 +41,9 @@ pub enum ClientProfileMetadata {
     Minecraft {
         loader_version: String,
         game_version_id: LoaderFieldEnumValueId,
+        // TODO: Currently, we store the game_version directly. If client profiles use more than just Minecraft, 
+        // this should change to use a variant of dynamic loader field system that versions use, and fields like
+        // this would be loaded dynamically from the loader_field_enum_values table.
         game_version: String,
     },
     Unknown,
@@ -100,11 +103,12 @@ impl ClientProfile {
         Ok(())
     }
 
+    // Returns the hashes of the files that were deleted, so they can be deleted from the file host
     pub async fn remove(
         id: ClientProfileId,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &RedisPool,
-    ) -> Result<Option<()>, DatabaseError> {
+    ) -> Result<Vec<String>, DatabaseError> {
         // Delete shared_profiles_links
         sqlx::query!(
             "
@@ -127,15 +131,17 @@ impl ClientProfile {
         .execute(&mut **transaction)
         .await?;
 
-        sqlx::query!(
+        // Deletes attached files- we return the hashes so we can delete them from the file host if needed
+        let deleted_hashes = sqlx::query!(
             "
             DELETE FROM shared_profiles_mods
             WHERE shared_profile_id = $1
+            RETURNING file_hash
             ",
             id as ClientProfileId,
         )
-        .execute(&mut **transaction)
-        .await?;
+        .fetch_all(&mut **transaction)
+        .await?.into_iter().filter_map(|x| x.file_hash).collect::<Vec<_>>();
 
         sqlx::query!(
             "
@@ -159,7 +165,7 @@ impl ClientProfile {
 
         ClientProfile::clear_cache(id, redis).await?;
 
-        Ok(Some(()))
+        Ok(deleted_hashes)
     }
 
     pub async fn get<'a, 'b, E>(
@@ -274,16 +280,15 @@ impl ClientProfile {
             // One to many for shared_profiles to loaders, so can safely group by shared_profile_id
             let db_profiles: Vec<ClientProfile> = sqlx::query!(
                 r#"
-                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.game_version_id, sp.loader_id,
+                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.loader_id,
                 l.loader, g.name as game_name, g.id as game_id, sp.metadata,
                 ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users
                 FROM shared_profiles sp                
                 LEFT JOIN loaders l ON l.id = sp.loader_id
                 LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id
                 INNER JOIN games g ON g.id = sp.game_id
-                LEFT JOIN loader_field_enum_values lfev ON sp.game_version_id = lfev.id
                 WHERE sp.id = ANY($1)
-                GROUP BY sp.id, l.id, g.id, lfev.id
+                GROUP BY sp.id, l.id, g.id
                 "#,
                 &remaining_ids.iter().map(|x| x.0).collect::<Vec<i64>>()
             )

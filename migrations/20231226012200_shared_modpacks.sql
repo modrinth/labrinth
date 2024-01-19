@@ -10,9 +10,7 @@ CREATE TABLE shared_profiles (
     loader_id int NOT NULL REFERENCES loaders(id), 
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
 
-    game_id int NOT NULL REFERENCES games(id),
-    game_version_id int NULL REFERENCES loader_field_enum_values(id) -- Minecraft java
-
+    game_id int NOT NULL REFERENCES games(id)
 );  
 
 CREATE TABLE shared_profiles_mods (

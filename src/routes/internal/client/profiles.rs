@@ -499,6 +499,7 @@ pub async fn profile_delete(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
+    file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
 ) -> Result<HttpResponse, ApiError> {
     let string = info.into_inner().0;
 
@@ -519,7 +520,8 @@ pub async fn profile_delete(
     if let Some(data) = profile_data {
         if data.owner_id == user_option.1.id.into() {
             let mut transaction = pool.begin().await?;
-            database::models::client_profile_item::ClientProfile::remove(
+
+            let deleted_hashes = database::models::client_profile_item::ClientProfile::remove(
                 data.id,
                 &mut transaction,
                 &redis,
@@ -527,6 +529,10 @@ pub async fn profile_delete(
             .await?;
             transaction.commit().await?;
             client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
+
+            // Delete the files from the CDN if they are no longer used by any profile
+            delete_unused_files_from_host(deleted_hashes, &pool, &file_host).await?;
+
             return Ok(HttpResponse::NoContent().finish());
         } else if data.users.contains(&user_option.1.id.into()) {
             // We know it exists, but still can't delete it
@@ -1184,7 +1190,7 @@ pub async fn client_profile_remove_overrides(
     redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
     session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, CreateError> {
+) -> Result<HttpResponse, ApiError> {
     let client_id = client_id.into_inner();
     let user = get_user_from_headers(
         &req,
@@ -1204,11 +1210,11 @@ pub async fn client_profile_remove_overrides(
     )
     .await?
     .ok_or_else(|| {
-        CreateError::InvalidInput("The specified profile does not exist!".to_string())
+        ApiError::InvalidInput("The specified profile does not exist!".to_string())
     })?;
 
     if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
-        return Err(CreateError::CustomAuthenticationError(
+        return Err(ApiError::CustomAuthentication(
             "You don't have permission to remove  overrides.".to_string(),
         ));
     }
@@ -1242,19 +1248,6 @@ pub async fn client_profile_remove_overrides(
     .fetch_all(&mut *transaction)
     .await?.into_iter().filter_map(|x| x.file_hash).collect::<Vec<_>>();
 
-    let still_existing_hashes = sqlx::query!(
-        "
-            SELECT file_hash FROM shared_profiles_mods
-            WHERE file_hash = ANY($1::text[])
-            ",
-        &deleted_hashes[..],
-    )
-    .fetch_all(&mut *transaction)
-    .await?
-    .into_iter()
-    .filter_map(|x| x.file_hash)
-    .collect::<Vec<_>>();
-
     // Set updated
     sqlx::query!(
         "
@@ -1268,6 +1261,36 @@ pub async fn client_profile_remove_overrides(
     .await?;
 
     transaction.commit().await?;
+
+    database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
+        .await?;
+
+    // Delete the files from the CDN if they are no longer used by any profile
+    delete_unused_files_from_host(deleted_hashes, &pool, &file_host).await?;
+
+    Ok(HttpResponse::NoContent().body(""))
+}
+
+
+// For a list of deleted hashes, delete the files from the CDN if they are no longer used by any profile
+async fn delete_unused_files_from_host(
+    deleted_hashes : Vec<String>,
+    pool: &PgPool,
+    file_host: &Arc<dyn FileHost + Send + Sync>,
+) -> Result<(), ApiError> {
+    // Get all hashes that are still used by any profile
+    let still_existing_hashes = sqlx::query!(
+        "
+            SELECT file_hash FROM shared_profiles_mods
+            WHERE file_hash = ANY($1::text[])
+            ",
+        &deleted_hashes[..],
+    )
+    .fetch_all(&*pool)
+    .await?
+    .into_iter()
+    .filter_map(|x| x.file_hash)
+    .collect::<Vec<_>>();
 
     // We want to delete files from the server that are no longer used by any profile
     let hashes_to_delete = deleted_hashes
@@ -1285,8 +1308,5 @@ pub async fn client_profile_remove_overrides(
             .await?;
     }
 
-    database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
-        .await?;
-
-    Ok(HttpResponse::NoContent().body(""))
+    Ok(())
 }
