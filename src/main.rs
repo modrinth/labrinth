@@ -47,6 +47,9 @@ async fn main() -> std::io::Result<()> {
         error!("Some environment variables are missing!");
     }
 
+    #[cfg(feature = "jemalloc")]
+    println!("JEMMALLOC");
+
     // DSN is from SENTRY_DSN env variable.
     // Has no effect if not set.
     let sentry = sentry::init(sentry::ClientOptions {

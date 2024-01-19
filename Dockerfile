@@ -5,7 +5,7 @@ WORKDIR /usr/src/labrinth
 # Download and compile deps
 COPY . .
 ARG SQLX_OFFLINE=true
-RUN cargo install --features jemalloc --path .
+RUN cargo build --release --features jemalloc
 
 # Final Stage
 FROM ubuntu:latest
@@ -17,7 +17,7 @@ RUN apt-get update \
 
 RUN update-ca-certificates
 
-COPY --from=builder  /usr/local/cargo/bin/labrinth /labrinth/labrinth
+COPY --from=build /usr/src/labrinth/target/release/labrinth /labrinth/labrinth
 COPY --from=builder /usr/src/labrinth/migrations/* /labrinth/migrations/
 COPY --from=builder /usr/src/labrinth/assets /labrinth/assets
 WORKDIR /labrinth
