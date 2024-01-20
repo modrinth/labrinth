@@ -42,8 +42,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(
                 web::scope("share")
                     .route("{id}", web::get().to(profile_get_share_link))
-                    .route("{id}/accept", web::post().to(accept_share_link))
-                    .route("{id}/files", web::get().to(profile_share_files)),
+                    .route("{id}/accept", web::post().to(accept_share_link)),
             )
             .service(
                 web::scope("profile")
@@ -182,7 +181,6 @@ pub async fn profile_create(
     .await
     .map_err(|_| CreateError::InvalidInput("Could not fetch submitted version ids".to_string()))?;
 
-    println!("Filtered versions: {:?}", versions);
     let profile_builder_actual = client_profile_item::ClientProfile {
         id: profile_id,
         name: profile_create_data.name.clone(),
@@ -769,68 +767,6 @@ pub async fn profile_files(
     // Fetch the profile information of the desired client profile
     let Some(profile) = database::models::client_profile_item::ClientProfile::get(
         profile_id.into(),
-        &**pool,
-        &redis,
-    )
-    .await?
-    else {
-        return Err(ApiError::NotFound);
-    };
-
-    // Check if this user is on the profile user list
-    if !profile.inner.users.contains(&user_option.1.id.into()) {
-        return Err(ApiError::CustomAuthentication(
-            "You are not on this profile's team".to_string(),
-        ));
-    }
-
-    let override_cdns = profile
-        .inner
-        .overrides
-        .into_iter()
-        .map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1))
-        .collect::<Vec<_>>();
-
-    Ok(HttpResponse::Ok().json(ProfileDownload {
-        version_ids: profile.inner.versions.iter().map(|x| (*x).into()).collect(),
-        override_cdns,
-    }))
-}
-
-// Download a client profile (gets files)
-// This one uses the share id, so fields can be accessed if you don't have the profile id directly
-// Only the owner of the profile or an invited user can download
-pub async fn profile_share_files(
-    req: HttpRequest,
-    info: web::Path<(ClientProfileLinkId,)>,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-) -> Result<HttpResponse, ApiError> {
-    let cdn_url = dotenvy::var("CDN_URL")?;
-    let share_link_id = info.into_inner().0;
-
-    // Must be logged in to download
-    let user_option = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::CLIENT_PROFILE_DOWNLOAD]),
-    )
-    .await?;
-
-    // Fetch client profile from link id
-    let link_data = database::models::client_profile_item::ClientProfileLink::get(
-        share_link_id.into(),
-        &**pool,
-    )
-    .await?
-    .ok_or_else(|| ApiError::NotFound)?;
-
-    // Fetch the profile information of the desired client profile
-    let Some(profile) = database::models::client_profile_item::ClientProfile::get(
-        link_data.shared_profile_id,
         &**pool,
         &redis,
     )

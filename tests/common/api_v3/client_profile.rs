@@ -109,6 +109,31 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
+    // Like get_client_profile, but via a share id
+    pub async fn get_client_profile_from_share_link(
+        &self,
+        url_identifier: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri(&format!("/_internal/client/share/{}", url_identifier))
+            .append_pat(pat)
+            .to_request();
+        self.call(req).await
+    }
+
+    pub async fn get_client_profile_from_share_link_deserialized(
+        &self,
+        url_identifier: &str,
+        pat: Option<&str>,
+    ) -> ClientProfile {
+        let resp = self
+            .get_client_profile_from_share_link(url_identifier, pat)
+            .await;
+        assert_status!(&resp, StatusCode::OK);
+        test::read_body_json(resp).await
+    }
+
     pub async fn delete_client_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
         let req = TestRequest::delete()
             .uri(&format!("/_internal/client/profile/{}", id))
@@ -254,31 +279,6 @@ impl ApiV3 {
     ) -> ProfileDownload {
         let resp = self
             .download_client_profile_from_profile_id(profile_id, pat)
-            .await;
-        assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
-    }
-
-    // Get links and token
-    pub async fn download_client_profile_from_link_id(
-        &self,
-        link_id: &str,
-        pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = TestRequest::get()
-            .uri(&format!("/_internal/client/share/{}/files", link_id))
-            .append_pat(pat)
-            .to_request();
-        self.call(req).await
-    }
-
-    pub async fn download_client_profile_from_link_id_deserialized(
-        &self,
-        link_id: &str,
-        pat: Option<&str>,
-    ) -> ProfileDownload {
-        let resp = self
-            .download_client_profile_from_link_id(link_id, pat)
             .await;
         assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await

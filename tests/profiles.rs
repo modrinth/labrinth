@@ -386,14 +386,10 @@ async fn delete_profile() {
             .generate_client_profile_share_link_deserialized(&id, USER_USER_PAT)
             .await;
 
-        // As friend, try to get the download links for the profile by both profile id and share link id
+        // As friend, try to get the download links for the profile
         // Not invited yet, should fail
         let resp = api
             .download_client_profile_from_profile_id(&id, FRIEND_USER_PAT)
-            .await;
-        assert_status!(&resp, StatusCode::UNAUTHORIZED);
-        let resp = api
-            .download_client_profile_from_link_id(&share_link.id.to_string(), FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
@@ -403,10 +399,18 @@ async fn delete_profile() {
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
+        // Get profile from share link
+        let profile = api
+            .get_client_profile_from_share_link_deserialized(
+                &share_link.id.to_string(),
+                FRIEND_USER_PAT,
+            )
+            .await;
+
         // Get a token as the friend, from the share link id
         let token = api
-            .download_client_profile_from_link_id_deserialized(
-                &share_link.id.to_string(),
+            .download_client_profile_from_profile_id_deserialized(
+                &profile.id.to_string(),
                 FRIEND_USER_PAT,
             )
             .await;
@@ -493,19 +497,12 @@ async fn download_profile() {
         // As 'friend', try to get the download links for the profile
         // Should succeed
         let mut download = api
-            .download_client_profile_from_link_id_deserialized(
-                &share_link.id.to_string(),
-                FRIEND_USER_PAT,
-            )
-            .await;
-        let download_clone = api
             .download_client_profile_from_profile_id_deserialized(&id, FRIEND_USER_PAT)
             .await;
-        assert_eq!(download, download_clone);
 
         // But enemy should fail
         let resp = api
-            .download_client_profile_from_link_id(&share_link.id.to_string(), ENEMY_USER_PAT)
+            .download_client_profile_from_profile_id(&id, ENEMY_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
@@ -578,7 +575,7 @@ async fn download_profile() {
 
         // Confirm friend can no longer download the profile
         let resp = api
-            .download_client_profile_from_link_id(&share_link.id.to_string(), FRIEND_USER_PAT)
+            .download_client_profile_from_profile_id(&id, FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
@@ -590,10 +587,7 @@ async fn download_profile() {
 
         // Confirm user can still download the profile
         let resp = api
-            .download_client_profile_from_link_id_deserialized(
-                &share_link.id.to_string(),
-                USER_USER_PAT,
-            )
+            .download_client_profile_from_profile_id_deserialized(&id, USER_USER_PAT)
             .await;
         assert_eq!(resp.override_cdns.len(), 1);
     })
@@ -923,6 +917,41 @@ async fn add_remove_profile_versions() {
             )
             .await;
         assert_eq!(profile_downloads.version_ids, vec![]);
+    })
+    .await;
+}
+
+// Profile gotten from share link vs profile gotten from profile id should be the same
+#[actix_rt::test]
+async fn share_link_profile_same_as_profile_id_profile() {
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+        // Get download links for a created profile (including failure), create a share link, and create the correct number of tokens based on that
+        // They should expire after a time
+        let api = &test_env.api;
+
+        // Create a simple profile
+        let profile = api
+            .create_client_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
+            .await;
+        assert_status!(&profile, StatusCode::OK);
+        let profile: ClientProfile = test::read_body_json(profile).await;
+        let id = profile.id.to_string();
+
+        // Create a share link for the profile
+        let share_link = api
+            .generate_client_profile_share_link_deserialized(&id, USER_USER_PAT)
+            .await;
+
+        // Get the profile from the share link
+        for pat in [USER_USER_PAT, FRIEND_USER_PAT].iter() {
+            let profile_from_share_link = api
+                .get_client_profile_from_share_link_deserialized(&share_link.id.to_string(), *pat)
+                .await;
+
+            let profile_from_profile_id = api.get_client_profile_deserialized(&id, *pat).await;
+
+            assert_eq!(profile_from_share_link, profile_from_profile_id);
+        }
     })
     .await;
 }

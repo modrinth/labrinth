@@ -19,7 +19,7 @@ pub struct ClientProfileId(pub u64);
 pub struct ClientProfileLinkId(pub u64);
 
 /// A project returned from the API
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct ClientProfile {
     /// The ID of the profile, encoded as a base62 string.
     pub id: ClientProfileId,
@@ -49,7 +49,7 @@ pub struct ClientProfile {
     pub users: Option<Vec<UserId>>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(tag = "game")]
 pub enum ClientProfileMetadata {
     #[serde(rename = "minecraft-java")]
@@ -108,7 +108,7 @@ impl ClientProfile {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct ClientProfileShareLink {
     pub id: ClientProfileLinkId, // The url identifier, encoded as base62
     pub profile_id: ClientProfileId,
