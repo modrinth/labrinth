@@ -1,11 +1,9 @@
-use std::path::PathBuf;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     database,
-    models::ids::{Base62Id, UserId, VersionId},
+    models::ids::{Base62Id, UserId},
 };
 
 /// The ID of a specific profile, encoded as base62 for usage in the API
@@ -37,10 +35,6 @@ pub struct ClientProfile {
     /// The icon of the project.
     pub icon_url: Option<String>,
 
-    // Users that are associated with this profile
-    // Hidden if the user is not the owner
-    pub users: Option<Vec<UserId>>,
-
     /// The loader
     pub loader: String,
 
@@ -48,11 +42,11 @@ pub struct ClientProfile {
     #[serde(flatten)]
     pub game: ClientProfileMetadata,
 
-    /// Modrinth-associated versions
-    pub versions: Vec<VersionId>,
-    /// Overrides for this profile- only install paths are given,
-    /// hashes are looked up in the CDN by the client
-    pub override_install_paths: Vec<PathBuf>,
+    // The following fields are hidden if the user is not the owner
+    /// The share links for this profile
+    pub share_links: Option<Vec<ClientProfileShareLink>>,
+    // Users that are associated with this profile
+    pub users: Option<Vec<UserId>>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -89,27 +83,27 @@ impl From<database::models::client_profile_item::ClientProfileMetadata> for Clie
 
 impl ClientProfile {
     pub fn from(
-        profile: database::models::client_profile_item::ClientProfile,
+        profile: database::models::client_profile_item::QueryClientProfile,
         current_user_id: Option<database::models::ids::UserId>,
     ) -> Self {
-        let users = if Some(profile.owner_id) == current_user_id {
-            Some(profile.users.into_iter().map(|v| v.into()).collect())
-        } else {
-            None
+        let mut users = None;
+        let mut share_links = None;
+        if Some(profile.inner.owner_id) == current_user_id {
+            users = Some(profile.inner.users.into_iter().map(|v| v.into()).collect());
+            share_links = Some(profile.links.into_iter().map(|v| v.into()).collect());
         };
 
         Self {
-            id: profile.id.into(),
-            owner_id: profile.owner_id.into(),
-            name: profile.name,
-            created: profile.created,
-            updated: profile.updated,
-            icon_url: profile.icon_url,
+            id: profile.inner.id.into(),
+            owner_id: profile.inner.owner_id.into(),
+            name: profile.inner.name,
+            created: profile.inner.created,
+            updated: profile.inner.updated,
+            icon_url: profile.inner.icon_url,
             users,
-            loader: profile.loader,
-            game: profile.metadata.into(),
-            versions: profile.versions.into_iter().map(Into::into).collect(),
-            override_install_paths: profile.overrides.into_iter().map(|(_, v)| v).collect(),
+            loader: profile.inner.loader,
+            game: profile.inner.metadata.into(),
+            share_links,
         }
     }
 }

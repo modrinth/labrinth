@@ -25,7 +25,6 @@ async fn create_modify_profile() {
         // Check that the properties are correct
         let api = &test_env.api;
         let alpha_version_id = test_env.dummy.project_alpha.version_id.to_string();
-        let alpha_version_id_parsed = test_env.dummy.project_alpha.version_id_parsed;
 
         // Attempt to create a simple profile with invalid data, these should fail.
         // - fake loader
@@ -92,7 +91,7 @@ async fn create_modify_profile() {
         assert_eq!(profile.loader, "fabric");
         assert_eq!(loader_version, "1.0.0");
         assert_eq!(game_version, "1.20.1");
-        assert_eq!(profile.versions, vec![]);
+        assert_eq!(profile.share_links.unwrap().len(), 0); // No links yet
         assert_eq!(profile.icon_url, None);
 
         // Modify the profile illegally in the same ways
@@ -101,6 +100,7 @@ async fn create_modify_profile() {
                 &profile.id.to_string(),
                 None,
                 Some("fake-loader"),
+                None,
                 None,
                 None,
                 None,
@@ -130,6 +130,7 @@ async fn create_modify_profile() {
                 None,
                 Some(vec!["unparseable-version"]),
                 None,
+                None,
                 USER_USER_PAT,
             )
             .await;
@@ -141,6 +142,7 @@ async fn create_modify_profile() {
                 &profile.id.to_string(),
                 None,
                 Some("fabric"),
+                None,
                 None,
                 None,
                 None,
@@ -164,7 +166,7 @@ async fn create_modify_profile() {
         };
         assert_eq!(loader_version, "1.0.0");
         assert_eq!(game_version, "1.20.1");
-        assert_eq!(profile.versions, vec![]);
+        assert_eq!(profile.share_links.unwrap().len(), 0);
         assert_eq!(profile.icon_url, None);
         assert_eq!(profile.updated, updated);
 
@@ -176,6 +178,7 @@ async fn create_modify_profile() {
                 Some("forge"),
                 Some("1.0.1"),
                 Some(vec![&alpha_version_id]),
+                None,
                 None,
                 USER_USER_PAT,
             )
@@ -197,7 +200,6 @@ async fn create_modify_profile() {
         };
         assert_eq!(loader_version, "1.0.1");
         assert_eq!(game_version, "1.20.1");
-        assert_eq!(profile.versions, vec![alpha_version_id_parsed]);
         assert_eq!(profile.icon_url, None);
         assert!(profile.updated > updated);
         let updated = profile.updated;
@@ -210,6 +212,7 @@ async fn create_modify_profile() {
                 Some("fabric"),
                 Some("1.0.0"),
                 Some(vec![]),
+                None,
                 None,
                 USER_USER_PAT,
             )
@@ -232,7 +235,6 @@ async fn create_modify_profile() {
         };
         assert_eq!(loader_version, "1.0.0");
         assert_eq!(game_version, "1.20.1");
-        assert_eq!(profile.versions, vec![]);
         assert_eq!(profile.icon_url, None);
         assert!(profile.updated > updated);
     })
@@ -251,13 +253,21 @@ async fn accept_share_link() {
             .create_client_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
             .await;
         assert_status!(&profile, StatusCode::OK);
-        let profile: ClientProfile = test::read_body_json(profile).await;
-        let id = profile.id.to_string();
+        let id = test::read_body_json::<ClientProfile, _>(profile)
+            .await
+            .id
+            .to_string();
+
+        // get the profile
+        let profile = api
+            .get_client_profile_deserialized(&id, USER_USER_PAT)
+            .await;
+        assert_eq!(profile.share_links.unwrap().len(), 0);
         let users: Vec<UserId> = profile.users.unwrap();
         assert_eq!(users.len(), 1);
         assert_eq!(users[0].0, USER_USER_ID_PARSED as u64);
 
-        // Friend can't see the profile user yet, but can see the profile
+        // Friend can't see the profile users, links, versions, install paths yet, but can see the profile
         let profile = api
             .get_client_profile_deserialized(&id, FRIEND_USER_PAT)
             .await;
@@ -268,10 +278,16 @@ async fn accept_share_link() {
             .generate_client_profile_share_link_deserialized(&id, USER_USER_PAT)
             .await;
 
+        // Get profile again
+        let profile = api
+            .get_client_profile_deserialized(&id, USER_USER_PAT)
+            .await;
+        assert_eq!(profile.share_links.unwrap().len(), 1); // Now has a share link
+
         // Link is an 'accept' link, when visited using any user token using POST, it should add the user to the profile
         // As 'friend', accept the share link
         let resp = api
-            .accept_client_profile_share_link(&id, &share_link.id.to_string(), FRIEND_USER_PAT)
+            .accept_client_profile_share_link(&share_link.id.to_string(), FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
@@ -296,7 +312,7 @@ async fn accept_share_link() {
         ];
         for (i, pat) in dummy_user_pats.iter().enumerate().take(4 + 1) {
             let resp = api
-                .accept_client_profile_share_link(&id, &share_link.id.to_string(), *pat)
+                .accept_client_profile_share_link(&share_link.id.to_string(), *pat)
                 .await;
             if i == 0 || i == 1 {
                 assert_status!(&resp, StatusCode::BAD_REQUEST);
@@ -304,6 +320,27 @@ async fn accept_share_link() {
                 assert_status!(&resp, StatusCode::NO_CONTENT);
             }
         }
+
+        // As user, remove share link
+        let resp = api
+            .edit_client_profile(
+                &id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(vec![&share_link.id.to_string()]),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // Confirm share link is gone
+        let profile = api
+            .get_client_profile_deserialized(&id, USER_USER_PAT)
+            .await;
+        assert_eq!(profile.share_links.unwrap().len(), 0);
     })
     .await;
 }
@@ -344,18 +381,34 @@ async fn delete_profile() {
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
-        // Invite a friend to the profile and accept it
+        // Invite a friend to the profile
         let share_link = api
             .generate_client_profile_share_link_deserialized(&id, USER_USER_PAT)
             .await;
+
+        // As friend, try to get the download links for the profile by both profile id and share link id
+        // Not invited yet, should fail
         let resp = api
-            .accept_client_profile_share_link(&id, &share_link.id.to_string(), FRIEND_USER_PAT)
+            .download_client_profile_from_profile_id(&id, FRIEND_USER_PAT)
+            .await;
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
+        let resp = api
+            .download_client_profile_from_link_id(&share_link.id.to_string(), FRIEND_USER_PAT)
+            .await;
+        assert_status!(&resp, StatusCode::UNAUTHORIZED);
+
+        // Accept
+        let resp = api
+            .accept_client_profile_share_link(&share_link.id.to_string(), FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
-        // Get a token as the friend
+        // Get a token as the friend, from the share link id
         let token = api
-            .download_client_profile_deserialized(&id, FRIEND_USER_PAT)
+            .download_client_profile_from_link_id_deserialized(
+                &share_link.id.to_string(),
+                FRIEND_USER_PAT,
+            )
             .await;
 
         // Confirm it works
@@ -416,12 +469,16 @@ async fn download_profile() {
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // As 'user', try to generate a download link for the profile
-        let resp = api.download_client_profile(&id, USER_USER_PAT).await;
+        let resp = api
+            .download_client_profile_from_profile_id(&id, USER_USER_PAT)
+            .await;
         assert_status!(&resp, StatusCode::OK);
 
         // As 'friend', try to get the download links for the profile
         // Not invited yet, should fail
-        let resp = api.download_client_profile(&id, FRIEND_USER_PAT).await;
+        let resp = api
+            .download_client_profile_from_profile_id(&id, FRIEND_USER_PAT)
+            .await;
         assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // As 'user', try to generate a share link for the profile, and accept it as 'friend'
@@ -429,18 +486,27 @@ async fn download_profile() {
             .generate_client_profile_share_link_deserialized(&id, USER_USER_PAT)
             .await;
         let resp = api
-            .accept_client_profile_share_link(&id, &share_link.id.to_string(), FRIEND_USER_PAT)
+            .accept_client_profile_share_link(&share_link.id.to_string(), FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // As 'friend', try to get the download links for the profile
         // Should succeed
         let mut download = api
-            .download_client_profile_deserialized(&id, FRIEND_USER_PAT)
+            .download_client_profile_from_link_id_deserialized(
+                &share_link.id.to_string(),
+                FRIEND_USER_PAT,
+            )
             .await;
+        let download_clone = api
+            .download_client_profile_from_profile_id_deserialized(&id, FRIEND_USER_PAT)
+            .await;
+        assert_eq!(download, download_clone);
 
         // But enemy should fail
-        let resp = api.download_client_profile(&id, ENEMY_USER_PAT).await;
+        let resp = api
+            .download_client_profile_from_link_id(&share_link.id.to_string(), ENEMY_USER_PAT)
+            .await;
         assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // Download url should be:
@@ -498,6 +564,7 @@ async fn download_profile() {
                 None,
                 None,
                 Some(vec![FRIEND_USER_ID]),
+                None,
                 USER_USER_PAT,
             )
             .await;
@@ -510,7 +577,9 @@ async fn download_profile() {
         assert_eq!(profile.users.unwrap().len(), 1);
 
         // Confirm friend can no longer download the profile
-        let resp = api.download_client_profile(&id, FRIEND_USER_PAT).await;
+        let resp = api
+            .download_client_profile_from_link_id(&share_link.id.to_string(), FRIEND_USER_PAT)
+            .await;
         assert_status!(&resp, StatusCode::UNAUTHORIZED);
 
         // Confirm token invalidation
@@ -521,7 +590,10 @@ async fn download_profile() {
 
         // Confirm user can still download the profile
         let resp = api
-            .download_client_profile_deserialized(&id, USER_USER_PAT)
+            .download_client_profile_from_link_id_deserialized(
+                &share_link.id.to_string(),
+                USER_USER_PAT,
+            )
             .await;
         assert_eq!(resp.override_cdns.len(), 1);
     })
@@ -595,6 +667,7 @@ async fn add_remove_profile_versions() {
                 None,
                 Some(vec![&alpha_version_id]),
                 None,
+                None,
                 USER_USER_PAT,
             )
             .await;
@@ -627,20 +700,32 @@ async fn add_remove_profile_versions() {
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Get the profile and check the versions
-        let profile = api
-            .get_client_profile_deserialized(&profile.id.to_string(), USER_USER_PAT)
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(
+                &profile.id.to_string(),
+                USER_USER_PAT,
+            )
             .await;
         assert_eq!(
-            profile.versions,
+            profile_downloads.version_ids,
             vec![test_env.dummy.project_alpha.version_id_parsed]
         );
         assert_eq!(
-            profile.override_install_paths,
+            profile_downloads
+                .override_cdns
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
             vec![
                 PathBuf::from("mods/test.jar"),
                 PathBuf::from("mods/test_different.jar")
             ]
         );
+
+        // Get profile again to confirm update
+        let profile = api
+            .get_client_profile_deserialized(&profile.id.to_string(), USER_USER_PAT)
+            .await;
         assert!(profile.updated > updated);
         let updated = profile.updated;
 
@@ -667,10 +752,15 @@ async fn add_remove_profile_versions() {
 
         // Get the profile and check the versions
         let profile_enemy = api
-            .get_client_profile_deserialized(&id_enemy, ENEMY_USER_PAT)
+            .download_client_profile_from_profile_id_deserialized(&id_enemy, ENEMY_USER_PAT)
             .await;
+
         assert_eq!(
-            profile_enemy.override_install_paths,
+            profile_enemy
+                .override_cdns
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
             vec![PathBuf::from("mods/test.jar")]
         );
 
@@ -687,21 +777,37 @@ async fn add_remove_profile_versions() {
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Should still exist in the enemy's profile, but not the user's
-        let profile_enemy = api
-            .get_client_profile_deserialized(&id_enemy, ENEMY_USER_PAT)
+        let profile_enemy_downloads = api
+            .download_client_profile_from_profile_id_deserialized(&id_enemy, ENEMY_USER_PAT)
             .await;
         assert_eq!(
-            profile_enemy.override_install_paths,
+            profile_enemy_downloads
+                .override_cdns
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
             vec![PathBuf::from("mods/test.jar")]
         );
 
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(
+                &profile.id.to_string(),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(
+            profile_downloads
+                .override_cdns
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
+            vec![PathBuf::from("mods/test_different.jar")]
+        );
+
+        // Get profile again to confirm update
         let profile = api
             .get_client_profile_deserialized(&profile.id.to_string(), USER_USER_PAT)
             .await;
-        assert_eq!(
-            profile.override_install_paths,
-            vec![PathBuf::from("mods/test_different.jar")]
-        );
         assert!(profile.updated > updated);
         let updated = profile.updated;
 
@@ -737,11 +843,18 @@ async fn add_remove_profile_versions() {
         assert_status!(&resp, StatusCode::NO_CONTENT); // Allow failure to return success, it just doesn't delete anything
 
         // Confirm user still has it
-        let profile = api
-            .get_client_profile_deserialized(&profile.id.to_string(), USER_USER_PAT)
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(
+                &profile.id.to_string(),
+                USER_USER_PAT,
+            )
             .await;
         assert_eq!(
-            profile.override_install_paths,
+            profile_downloads
+                .override_cdns
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
             vec![PathBuf::from("mods/test_different.jar")]
         );
 
@@ -765,10 +878,25 @@ async fn add_remove_profile_versions() {
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm user no longer has it
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(
+                &profile.id.to_string(),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(
+            profile_downloads
+                .override_cdns
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
+            Vec::<PathBuf>::new()
+        );
+
+        // Get profile again to confirm update
         let profile = api
             .get_client_profile_deserialized(&profile.id.to_string(), USER_USER_PAT)
             .await;
-        assert_eq!(profile.override_install_paths, Vec::<PathBuf>::new());
         assert!(profile.updated > updated);
 
         // In addition, delete "alpha_version_id" from the user's profile
@@ -781,16 +909,20 @@ async fn add_remove_profile_versions() {
                 None,
                 Some(vec![]),
                 None,
+                None,
                 USER_USER_PAT,
             )
             .await;
         assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Confirm user no longer has it
-        let profile = api
-            .get_client_profile_deserialized(&profile.id.to_string(), USER_USER_PAT)
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(
+                &profile.id.to_string(),
+                USER_USER_PAT,
+            )
             .await;
-        assert_eq!(profile.versions, vec![]);
+        assert_eq!(profile_downloads.version_ids, vec![]);
     })
     .await;
 }
@@ -819,7 +951,13 @@ async fn hidden_versions_are_forbidden() {
             .await;
         assert_status!(&profile, StatusCode::OK);
         let profile: ClientProfile = test::read_body_json(profile).await;
-        assert_eq!(profile.versions, vec![alpha_version_id_parsed]);
+        let id = profile.id.to_string();
+
+        // Get the profile and check the versions
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(&id, FRIEND_USER_PAT)
+            .await;
+        assert_eq!(profile_downloads.version_ids, vec![alpha_version_id_parsed]);
 
         // Edit profile, as FRIEND, with beta version, which is not visible to FRIEND
         // This should fail
@@ -831,6 +969,7 @@ async fn hidden_versions_are_forbidden() {
                 None,
                 Some(vec![&beta_version_id]),
                 None,
+                None,
                 FRIEND_USER_PAT,
             )
             .await;
@@ -838,10 +977,10 @@ async fn hidden_versions_are_forbidden() {
 
         // Get the profile and check the versions
         // Empty, because alpha is removed, and beta is not visible
-        let profile = api
-            .get_client_profile_deserialized(&profile.id.to_string(), FRIEND_USER_PAT)
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(&id, FRIEND_USER_PAT)
             .await;
-        assert_eq!(profile.versions, vec![]);
+        assert_eq!(profile_downloads.version_ids, vec![]);
     })
     .await;
 }

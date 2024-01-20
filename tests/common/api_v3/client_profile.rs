@@ -73,6 +73,7 @@ impl ApiV3 {
         loader_version: Option<&str>,
         versions: Option<Vec<&str>>,
         remove_users: Option<Vec<&str>>,
+        remove_links: Option<Vec<&str>>,
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = test::TestRequest::patch()
@@ -83,7 +84,8 @@ impl ApiV3 {
                 "loader": loader,
                 "loader_version": loader_version,
                 "versions": versions,
-                "remove_users": remove_users
+                "remove_users": remove_users,
+                "remove_links": remove_links
             }))
             .to_request();
         self.call(req).await
@@ -200,7 +202,7 @@ impl ApiV3 {
         id: &str,
         pat: Option<&str>,
     ) -> ServiceResponse {
-        let req = TestRequest::get()
+        let req = TestRequest::post()
             .uri(&format!("/_internal/client/profile/{}/share", id))
             .append_pat(pat)
             .to_request();
@@ -217,45 +219,15 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
-    pub async fn get_client_profile_share_link(
-        &self,
-        profile_id: &str,
-        url_identifier: &str,
-        pat: Option<&str>,
-    ) -> ServiceResponse {
-        let req = TestRequest::get()
-            .uri(&format!(
-                "/_internal/client/profile/{}/share/{}",
-                profile_id, url_identifier
-            ))
-            .append_pat(pat)
-            .to_request();
-        self.call(req).await
-    }
-
-    pub async fn get_client_profile_share_link_deserialized(
-        &self,
-        profile_id: &str,
-        url_identifier: &str,
-        pat: Option<&str>,
-    ) -> ClientProfileShareLink {
-        let resp = self
-            .get_client_profile_share_link(profile_id, url_identifier, pat)
-            .await;
-        assert_status!(&resp, StatusCode::OK);
-        test::read_body_json(resp).await
-    }
-
     pub async fn accept_client_profile_share_link(
         &self,
-        profile_id: &str,
         url_identifier: &str,
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::post()
             .uri(&format!(
-                "/_internal/client/profile/{}/accept/{}",
-                profile_id, url_identifier
+                "/_internal/client/share/{}/accept",
+                url_identifier
             ))
             .append_pat(pat)
             .to_request();
@@ -263,27 +235,51 @@ impl ApiV3 {
     }
 
     // Get links and token
-    pub async fn download_client_profile(
+    pub async fn download_client_profile_from_profile_id(
         &self,
         profile_id: &str,
         pat: Option<&str>,
     ) -> ServiceResponse {
         let req = TestRequest::get()
-            .uri(&format!(
-                "/_internal/client/profile/{}/download",
-                profile_id
-            ))
+            .uri(&format!("/_internal/client/profile/{}/files", profile_id))
             .append_pat(pat)
             .to_request();
         self.call(req).await
     }
 
-    pub async fn download_client_profile_deserialized(
+    pub async fn download_client_profile_from_profile_id_deserialized(
         &self,
         profile_id: &str,
         pat: Option<&str>,
     ) -> ProfileDownload {
-        let resp = self.download_client_profile(profile_id, pat).await;
+        let resp = self
+            .download_client_profile_from_profile_id(profile_id, pat)
+            .await;
+        assert_status!(&resp, StatusCode::OK);
+        test::read_body_json(resp).await
+    }
+
+    // Get links and token
+    pub async fn download_client_profile_from_link_id(
+        &self,
+        link_id: &str,
+        pat: Option<&str>,
+    ) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri(&format!("/_internal/client/share/{}/files", link_id))
+            .append_pat(pat)
+            .to_request();
+        self.call(req).await
+    }
+
+    pub async fn download_client_profile_from_link_id_deserialized(
+        &self,
+        link_id: &str,
+        pat: Option<&str>,
+    ) -> ProfileDownload {
+        let resp = self
+            .download_client_profile_from_link_id(link_id, pat)
+            .await;
         assert_status!(&resp, StatusCode::OK);
         test::read_body_json(resp).await
     }

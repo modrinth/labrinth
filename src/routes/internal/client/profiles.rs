@@ -40,25 +40,23 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("profile", web::post().to(profile_create))
             .route("check_token", web::get().to(profile_token_check))
             .service(
+                web::scope("share")
+                    .route("{id}", web::get().to(profile_get_share_link))
+                    .route("{id}/accept", web::post().to(accept_share_link))
+                    .route("{id}/files", web::get().to(profile_share_files)),
+            )
+            .service(
                 web::scope("profile")
                     .route("{id}", web::get().to(profile_get))
                     .route("{id}", web::patch().to(profile_edit))
                     .route("{id}", web::delete().to(profile_delete))
+                    .route("{id}/files", web::get().to(profile_files))
                     .route("{id}/override", web::post().to(client_profile_add_override))
                     .route(
                         "{id}/override",
                         web::delete().to(client_profile_remove_overrides),
                     )
-                    .route("{id}/share", web::get().to(profile_share))
-                    .route(
-                        "{id}/share/{url_identifier}",
-                        web::get().to(profile_link_get),
-                    )
-                    .route(
-                        "{id}/accept/{url_identifier}",
-                        web::post().to(accept_share_link),
-                    )
-                    .route("{id}/download", web::get().to(profile_download))
+                    .route("{id}/share", web::post().to(profile_share))
                     .route("{id}/icon", web::patch().to(profile_icon_edit))
                     .route("{id}/icon", web::delete().to(delete_profile_icon)),
             ),
@@ -184,6 +182,7 @@ pub async fn profile_create(
     .await
     .map_err(|_| CreateError::InvalidInput("Could not fetch submitted version ids".to_string()))?;
 
+    println!("Filtered versions: {:?}", versions);
     let profile_builder_actual = client_profile_item::ClientProfile {
         id: profile_id,
         name: profile_create_data.name.clone(),
@@ -204,8 +203,13 @@ pub async fn profile_create(
     profile_builder_actual.insert(&mut transaction).await?;
     transaction.commit().await?;
 
+    let profile = client_profile_item::QueryClientProfile {
+        inner: profile_builder,
+        links: Vec::new(),
+    };
+
     let profile =
-        models::client::profile::ClientProfile::from(profile_builder, Some(current_user.id.into()));
+        models::client::profile::ClientProfile::from(profile, Some(current_user.id.into()));
     Ok(HttpResponse::Ok().json(profile))
 }
 
@@ -300,6 +304,8 @@ pub struct EditClientProfile {
     pub versions: Option<Vec<VersionId>>,
     // You can remove users from your invite list here
     pub remove_users: Option<Vec<UserId>>,
+    // You can remove share links here (by id)
+    pub remove_links: Option<Vec<ClientProfileLinkId>>,
 
     // As these fields affect metadata but do not yet use the 'loader_fields' system,
     // we simply list them here and compare them to the existing metadata.
@@ -338,13 +344,13 @@ pub async fn profile_edit(
             .await?;
 
     if let Some(data) = profile_data {
-        if data.owner_id == user_option.1.id.into() {
+        if data.inner.owner_id == user_option.1.id.into() {
             // Edit the profile
             if let Some(name) = edit_data.name {
                 sqlx::query!(
                     "UPDATE shared_profiles SET name = $1 WHERE id = $2",
                     name,
-                    data.id.0
+                    data.inner.id.0
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -361,7 +367,7 @@ pub async fn profile_edit(
                 sqlx::query!(
                     "UPDATE shared_profiles SET loader_id = $1 WHERE id = $2",
                     loader_id.0,
-                    data.id.0
+                    data.inner.id.0
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -390,7 +396,7 @@ pub async fn profile_edit(
                 // Remove all shared profile mods of this profile where version_id is set
                 sqlx::query!(
                     "DELETE FROM shared_profiles_mods WHERE shared_profile_id = $1 AND version_id IS NOT NULL",
-                    data.id.0
+                    data.inner.id.0
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -399,7 +405,7 @@ pub async fn profile_edit(
                 for v in versions {
                     sqlx::query!(
                         "INSERT INTO shared_profiles_mods (shared_profile_id, version_id) VALUES ($1, $2)",
-                        data.id.0,
+                        data.inner.id.0,
                         v.0
                     )
                     .execute(&mut *transaction)
@@ -413,7 +419,7 @@ pub async fn profile_edit(
                         SET updated = NOW()
                         WHERE id = $1
                         ",
-                    data.id.0,
+                    data.inner.id.0,
                 )
                 .execute(&mut *transaction)
                 .await?;
@@ -423,8 +429,23 @@ pub async fn profile_edit(
                     // Remove user from list
                     sqlx::query!(
                         "DELETE FROM shared_profiles_users WHERE shared_profile_id = $1 AND user_id = $2",
-                        data.id.0 as i64,
+                        data.inner.id.0 as i64,
                         user.0 as i64
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+                }
+            }
+
+            if let Some(remove_links) = edit_data.remove_links {
+                println!("remove links: {:?}", remove_links);
+                for link in remove_links {
+                    println!("Removing link: {:?}", link);
+                    // Remove link from list
+                    sqlx::query!(
+                        "DELETE FROM shared_profiles_links WHERE shared_profile_id = $1 AND id = $2",
+                        data.inner.id.0 as i64,
+                        link.0 as i64
                     )
                     .execute(&mut *transaction)
                     .await?;
@@ -433,7 +454,7 @@ pub async fn profile_edit(
 
             // Edit the metadata fields
             if edit_data.loader_version.is_some() || edit_data.game_version.is_some() {
-                let mut metadata = data.metadata.clone();
+                let mut metadata = data.inner.metadata.clone();
 
                 match &mut metadata {
                     client_profile_item::ClientProfileMetadata::Minecraft {
@@ -474,14 +495,14 @@ pub async fn profile_edit(
                 sqlx::query!(
                     "UPDATE shared_profiles SET metadata = $1 WHERE id = $2",
                     serde_json::to_value(metadata)?,
-                    data.id.0
+                    data.inner.id.0
                 )
                 .execute(&mut *transaction)
                 .await?;
             }
 
             transaction.commit().await?;
-            client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
+            client_profile_item::ClientProfile::clear_cache(data.inner.id, &redis).await?;
             return Ok(HttpResponse::NoContent().finish());
         } else {
             return Err(ApiError::CustomAuthentication(
@@ -518,23 +539,23 @@ pub async fn profile_delete(
     let profile_data =
         database::models::client_profile_item::ClientProfile::get(id, &**pool, &redis).await?;
     if let Some(data) = profile_data {
-        if data.owner_id == user_option.1.id.into() {
+        if data.inner.owner_id == user_option.1.id.into() {
             let mut transaction = pool.begin().await?;
 
             let deleted_hashes = database::models::client_profile_item::ClientProfile::remove(
-                data.id,
+                data.inner.id,
                 &mut transaction,
                 &redis,
             )
             .await?;
             transaction.commit().await?;
-            client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
+            client_profile_item::ClientProfile::clear_cache(data.inner.id, &redis).await?;
 
             // Delete the files from the CDN if they are no longer used by any profile
             delete_unused_files_from_host(deleted_hashes, &pool, &file_host).await?;
 
             return Ok(HttpResponse::NoContent().finish());
-        } else if data.users.contains(&user_option.1.id.into()) {
+        } else if data.inner.users.contains(&user_option.1.id.into()) {
             // We know it exists, but still can't delete it
             return Err(ApiError::CustomAuthentication(
                 "You are not the owner of this profile".to_string(),
@@ -574,7 +595,7 @@ pub async fn profile_share(
         database::models::client_profile_item::ClientProfile::get(id, &**pool, &redis).await?;
 
     if let Some(data) = profile_data {
-        if data.owner_id == user_option.1.id.into() {
+        if data.inner.owner_id == user_option.1.id.into() {
             // Generate a share link identifier
             let _identifier = ChaCha20Rng::from_entropy()
                 .sample_iter(&Alphanumeric)
@@ -588,30 +609,30 @@ pub async fn profile_share(
 
             let link = database::models::client_profile_item::ClientProfileLink {
                 id: profile_link_id,
-                shared_profile_id: data.id,
+                shared_profile_id: data.inner.id,
                 created: Utc::now(),
                 expires: Utc::now() + chrono::Duration::days(7),
             };
             link.insert(&mut transaction).await?;
             transaction.commit().await?;
-            client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
+            client_profile_item::ClientProfile::clear_cache(data.inner.id, &redis).await?;
             return Ok(HttpResponse::Ok().json(ClientProfileShareLink::from(link)));
         }
     }
     Err(ApiError::NotFound)
 }
 
-// See the status of a link to a profile by its id
-// This is used by the to check if the link is expired, etc.
-pub async fn profile_link_get(
+// Get a profile's basic information by its share link id
+pub async fn profile_get_share_link(
     req: HttpRequest,
-    info: web::Path<(String, ClientProfileLinkId)>,
+    info: web::Path<(ClientProfileLinkId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let url_identifier = info.into_inner().1;
-    // Must be logged in to check
+    let url_identifier = info.into_inner().0;
+
+    // Must be logged
     let user_option = get_user_from_headers(
         &req,
         &**pool,
@@ -619,9 +640,10 @@ pub async fn profile_link_get(
         &session_queue,
         None, // No scopes required to read your own links
     )
-    .await?;
+    .await?
+    .1;
 
-    // Confirm this is our project, then if so, share
+    // Fetch the profile information of the desired client profile
     let link_data = database::models::client_profile_item::ClientProfileLink::get(
         url_identifier.into(),
         &**pool,
@@ -637,12 +659,8 @@ pub async fn profile_link_get(
     .await?
     .ok_or_else(|| ApiError::NotFound)?;
 
-    // Only view link meta information if the user is the owner of the profile
-    if data.owner_id == user_option.1.id.into() {
-        Ok(HttpResponse::Ok().json(ClientProfileShareLink::from(link_data)))
-    } else {
-        Err(ApiError::NotFound)
-    }
+    // Return the profile information
+    Ok(HttpResponse::Ok().json(ClientProfile::from(data, Some(user_option.id.into()))))
 }
 
 // Accept a share link to a profile
@@ -650,12 +668,12 @@ pub async fn profile_link_get(
 // TODO: With above change, this is the API link that is translated from a modrinth:// link by the launcher, which would then download it
 pub async fn accept_share_link(
     req: HttpRequest,
-    info: web::Path<(ClientProfileId, ClientProfileLinkId)>,
+    info: web::Path<(ClientProfileLinkId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let (profile_id, url_identifier) = info.into_inner();
+    let url_identifier = info.into_inner().0;
 
     // Must be logged in to accept
     let user_option = get_user_from_headers(
@@ -675,11 +693,6 @@ pub async fn accept_share_link(
     .await?
     .ok_or_else(|| ApiError::NotFound)?;
 
-    // Confirm it matches the profile id
-    if link_data.shared_profile_id != profile_id.into() {
-        return Err(ApiError::NotFound);
-    }
-
     let data = database::models::client_profile_item::ClientProfile::get(
         link_data.shared_profile_id,
         &**pool,
@@ -689,14 +702,19 @@ pub async fn accept_share_link(
     .ok_or_else(|| ApiError::NotFound)?;
 
     // Confirm this is not our profile
-    if data.owner_id == user_option.1.id.into() {
+    if data.inner.owner_id == user_option.1.id.into() {
         return Err(ApiError::InvalidInput(
             "You cannot accept your own share link".to_string(),
         ));
     }
 
     // Confirm we are not already on the team
-    if data.users.iter().any(|x| *x == user_option.1.id.into()) {
+    if data
+        .inner
+        .users
+        .iter()
+        .any(|x| *x == user_option.1.id.into())
+    {
         return Err(ApiError::InvalidInput(
             "You are already on this profile's team".to_string(),
         ));
@@ -705,17 +723,17 @@ pub async fn accept_share_link(
     // Add the user to the team
     sqlx::query!(
         "INSERT INTO shared_profiles_users (shared_profile_id, user_id) VALUES ($1, $2)",
-        data.id.0 as i64,
+        data.inner.id.0 as i64,
         user_option.1.id.0 as i64
     )
     .execute(&**pool)
     .await?;
-    client_profile_item::ClientProfile::clear_cache(data.id, &redis).await?;
+    client_profile_item::ClientProfile::clear_cache(data.inner.id, &redis).await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
 pub struct ProfileDownload {
     // Version ids for modrinth-hosted versions
     pub version_ids: Vec<VersionId>,
@@ -725,9 +743,10 @@ pub struct ProfileDownload {
     pub override_cdns: Vec<(String, PathBuf)>,
 }
 
-// Download a client profile
+// Download a client profile (gets files)
+// This one can use profile id, so fields can be accessed if no share link is available
 // Only the owner of the profile or an invited user can download
-pub async fn profile_download(
+pub async fn profile_files(
     req: HttpRequest,
     info: web::Path<(ClientProfileId,)>,
     pool: web::Data<PgPool>,
@@ -759,20 +778,83 @@ pub async fn profile_download(
     };
 
     // Check if this user is on the profile user list
-    if !profile.users.contains(&user_option.1.id.into()) {
+    if !profile.inner.users.contains(&user_option.1.id.into()) {
         return Err(ApiError::CustomAuthentication(
             "You are not on this profile's team".to_string(),
         ));
     }
 
     let override_cdns = profile
+        .inner
         .overrides
         .into_iter()
         .map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1))
         .collect::<Vec<_>>();
 
     Ok(HttpResponse::Ok().json(ProfileDownload {
-        version_ids: profile.versions.iter().map(|x| (*x).into()).collect(),
+        version_ids: profile.inner.versions.iter().map(|x| (*x).into()).collect(),
+        override_cdns,
+    }))
+}
+
+// Download a client profile (gets files)
+// This one uses the share id, so fields can be accessed if you don't have the profile id directly
+// Only the owner of the profile or an invited user can download
+pub async fn profile_share_files(
+    req: HttpRequest,
+    info: web::Path<(ClientProfileLinkId,)>,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let cdn_url = dotenvy::var("CDN_URL")?;
+    let share_link_id = info.into_inner().0;
+
+    // Must be logged in to download
+    let user_option = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::CLIENT_PROFILE_DOWNLOAD]),
+    )
+    .await?;
+
+    // Fetch client profile from link id
+    let link_data = database::models::client_profile_item::ClientProfileLink::get(
+        share_link_id.into(),
+        &**pool,
+    )
+    .await?
+    .ok_or_else(|| ApiError::NotFound)?;
+
+    // Fetch the profile information of the desired client profile
+    let Some(profile) = database::models::client_profile_item::ClientProfile::get(
+        link_data.shared_profile_id,
+        &**pool,
+        &redis,
+    )
+    .await?
+    else {
+        return Err(ApiError::NotFound);
+    };
+
+    // Check if this user is on the profile user list
+    if !profile.inner.users.contains(&user_option.1.id.into()) {
+        return Err(ApiError::CustomAuthentication(
+            "You are not on this profile's team".to_string(),
+        ));
+    }
+
+    let override_cdns = profile
+        .inner
+        .overrides
+        .into_iter()
+        .map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1))
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(ProfileDownload {
+        version_ids: profile.inner.versions.iter().map(|x| (*x).into()).collect(),
         override_cdns,
     }))
 }
@@ -821,7 +903,7 @@ pub async fn profile_token_check(
 
     let all_allowed_urls = profiles
         .into_iter()
-        .flat_map(|x| x.overrides.into_iter().map(|x| x.0))
+        .flat_map(|x| x.inner.overrides.into_iter().map(|x| x.0))
         .collect::<Vec<_>>();
 
     // Check the token is valid for the requested file
@@ -876,13 +958,13 @@ pub async fn profile_icon_edit(
                     ApiError::InvalidInput("The specified profile does not exist!".to_string())
                 })?;
 
-        if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
+        if !user.role.is_mod() && profile_item.inner.owner_id != user.id.into() {
             return Err(ApiError::CustomAuthentication(
                 "You don't have permission to edit this profile's icon.".to_string(),
             ));
         }
 
-        if let Some(icon) = profile_item.icon_url {
+        if let Some(icon) = profile_item.inner.icon_url {
             let name = icon.split(&format!("{cdn_url}/")).nth(1);
 
             if let Some(icon_path) = name {
@@ -896,7 +978,7 @@ pub async fn profile_icon_edit(
         let color = crate::util::img::get_color_from_img(&bytes)?;
 
         let hash = format!("{:x}", sha2::Sha512::digest(&bytes));
-        let id: ClientProfileId = profile_item.id.into();
+        let id: ClientProfileId = profile_item.inner.id.into();
         let upload_data = file_host
             .upload_file(
                 content_type,
@@ -915,14 +997,17 @@ pub async fn profile_icon_edit(
             ",
             format!("{}/{}", cdn_url, upload_data.file_name),
             color.map(|x| x as i32),
-            profile_item.id as database::models::ids::ClientProfileId,
+            profile_item.inner.id as database::models::ids::ClientProfileId,
         )
         .execute(&mut *transaction)
         .await?;
 
         transaction.commit().await?;
-        database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
-            .await?;
+        database::models::client_profile_item::ClientProfile::clear_cache(
+            profile_item.inner.id,
+            &redis,
+        )
+        .await?;
 
         Ok(HttpResponse::NoContent().body(""))
     } else {
@@ -959,14 +1044,14 @@ pub async fn delete_profile_icon(
                 ApiError::InvalidInput("The specified profile does not exist!".to_string())
             })?;
 
-    if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
+    if !user.role.is_mod() && profile_item.inner.owner_id != user.id.into() {
         return Err(ApiError::CustomAuthentication(
             "You don't have permission to edit this profile's icon.".to_string(),
         ));
     }
 
     let cdn_url = dotenvy::var("CDN_URL")?;
-    if let Some(icon) = profile_item.icon_url {
+    if let Some(icon) = profile_item.inner.icon_url {
         let name = icon.split(&format!("{cdn_url}/")).nth(1);
 
         if let Some(icon_path) = name {
@@ -982,15 +1067,18 @@ pub async fn delete_profile_icon(
         SET icon_url = NULL, color = NULL
         WHERE (id = $1)
         ",
-        profile_item.id as database::models::ids::ClientProfileId,
+        profile_item.inner.id as database::models::ids::ClientProfileId,
     )
     .execute(&mut *transaction)
     .await?;
 
     transaction.commit().await?;
 
-    database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
-        .await?;
+    database::models::client_profile_item::ClientProfile::clear_cache(
+        profile_item.inner.id,
+        &redis,
+    )
+    .await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -1039,7 +1127,7 @@ pub async fn client_profile_add_override(
         CreateError::InvalidInput("The specified profile does not exist!".to_string())
     })?;
 
-    if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
+    if !user.role.is_mod() && profile_item.inner.owner_id != user.id.into() {
         return Err(CreateError::CustomAuthenticationError(
             "You don't have permission to add overrides.".to_string(),
         ));
@@ -1140,7 +1228,7 @@ pub async fn client_profile_add_override(
 
     let (ids, hashes, install_paths): (Vec<_>, Vec<_>, Vec<_>) = uploaded_files
         .into_iter()
-        .map(|f| (profile_item.id.0, f.hash, f.install_path))
+        .map(|f| (profile_item.inner.id.0, f.hash, f.install_path))
         .multiunzip();
 
     sqlx::query!(
@@ -1162,15 +1250,18 @@ pub async fn client_profile_add_override(
             SET updated = NOW()
             WHERE id = $1
             ",
-        profile_item.id.0,
+        profile_item.inner.id.0,
     )
     .execute(&mut *transaction)
     .await?;
 
     transaction.commit().await?;
 
-    database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
-        .await?;
+    database::models::client_profile_item::ClientProfile::clear_cache(
+        profile_item.inner.id,
+        &redis,
+    )
+    .await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -1209,11 +1300,9 @@ pub async fn client_profile_remove_overrides(
         &redis,
     )
     .await?
-    .ok_or_else(|| {
-        ApiError::InvalidInput("The specified profile does not exist!".to_string())
-    })?;
+    .ok_or_else(|| ApiError::InvalidInput("The specified profile does not exist!".to_string()))?;
 
-    if !user.role.is_mod() && profile_item.owner_id != user.id.into() {
+    if !user.role.is_mod() && profile_item.inner.owner_id != user.id.into() {
         return Err(ApiError::CustomAuthentication(
             "You don't have permission to remove  overrides.".to_string(),
         ));
@@ -1223,6 +1312,7 @@ pub async fn client_profile_remove_overrides(
     let delete_install_paths = data.install_paths.clone().unwrap_or_default();
 
     let overrides = profile_item
+        .inner
         .overrides
         .into_iter()
         .filter(|(hash, path)| delete_hashes.contains(hash) || delete_install_paths.contains(path))
@@ -1241,7 +1331,7 @@ pub async fn client_profile_remove_overrides(
             WHERE (shared_profile_id = $1 AND (file_hash = ANY($2::text[]) OR install_path = ANY($3::text[])))
             RETURNING file_hash
             ",
-        profile_item.id.0,
+        profile_item.inner.id.0,
         &delete_hashes[..],
         &delete_install_paths[..],
     )
@@ -1255,15 +1345,18 @@ pub async fn client_profile_remove_overrides(
             SET updated = NOW()
             WHERE id = $1
             ",
-        profile_item.id.0,
+        profile_item.inner.id.0,
     )
     .execute(&mut *transaction)
     .await?;
 
     transaction.commit().await?;
 
-    database::models::client_profile_item::ClientProfile::clear_cache(profile_item.id, &redis)
-        .await?;
+    database::models::client_profile_item::ClientProfile::clear_cache(
+        profile_item.inner.id,
+        &redis,
+    )
+    .await?;
 
     // Delete the files from the CDN if they are no longer used by any profile
     delete_unused_files_from_host(deleted_hashes, &pool, &file_host).await?;
@@ -1271,10 +1364,9 @@ pub async fn client_profile_remove_overrides(
     Ok(HttpResponse::NoContent().body(""))
 }
 
-
 // For a list of deleted hashes, delete the files from the CDN if they are no longer used by any profile
 async fn delete_unused_files_from_host(
-    deleted_hashes : Vec<String>,
+    deleted_hashes: Vec<String>,
     pool: &PgPool,
     file_host: &Arc<dyn FileHost + Send + Sync>,
 ) -> Result<(), ApiError> {
@@ -1286,7 +1378,7 @@ async fn delete_unused_files_from_host(
             ",
         &deleted_hashes[..],
     )
-    .fetch_all(&*pool)
+    .fetch_all(pool)
     .await?
     .into_iter()
     .filter_map(|x| x.file_hash)
