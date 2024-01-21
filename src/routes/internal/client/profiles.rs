@@ -1,8 +1,9 @@
 use crate::auth::checks::filter_visible_version_ids;
 use crate::auth::{get_user_from_headers, AuthenticationError};
+use crate::database::models::file_item::ClientProfileFileBuilder;
 use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
 use crate::database::models::{
-    client_profile_item, generate_client_profile_id, generate_client_profile_link_id, version_item,
+    client_profile_item, file_item, generate_client_profile_id, generate_client_profile_link_id, version_item, FileId
 };
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -12,8 +13,11 @@ use crate::models::client::profile::{
 use crate::models::ids::base62_impl::parse_base62;
 use crate::models::ids::{UserId, VersionId};
 use crate::models::pats::Scopes;
+use crate::models::projects::FileType;
 use crate::queue::session::AuthQueue;
-use crate::routes::v3::project_creation::CreateError;
+use crate::routes::v3::project_creation::{CreateError, UploadedFile};
+use crate::routes::v3::version_creation::get_name_ext;
+use crate::routes::v3::version_file::default_algorithm_from_hashes;
 use crate::routes::ApiError;
 use crate::util::routes::{read_from_field, read_from_payload};
 use crate::util::validate::validation_errors_to_string;
@@ -195,7 +199,6 @@ pub async fn profile_create(
         loader: profile_create_data.loader,
         users: vec![current_user.id.into()],
         versions,
-        overrides: Vec::new(),
     };
     let profile_builder = profile_builder_actual.clone();
     profile_builder_actual.insert(&mut transaction).await?;
@@ -204,6 +207,7 @@ pub async fn profile_create(
     let profile = client_profile_item::QueryClientProfile {
         inner: profile_builder,
         links: Vec::new(),
+        override_files: Vec::new(),
     };
 
     let profile =
@@ -391,9 +395,9 @@ pub async fn profile_edit(
                     ApiError::InvalidInput("Could not fetch submitted version ids".to_string())
                 })?;
 
-                // Remove all shared profile mods of this profile where version_id is set
+                // Remove all shared profile versions of this profile
                 sqlx::query!(
-                    "DELETE FROM shared_profiles_mods WHERE shared_profile_id = $1 AND version_id IS NOT NULL",
+                    "DELETE FROM shared_profiles_versions WHERE shared_profile_id = $1",
                     data.inner.id.0
                 )
                 .execute(&mut *transaction)
@@ -402,7 +406,7 @@ pub async fn profile_edit(
                 // Insert all new shared profile mods
                 for v in versions {
                     sqlx::query!(
-                        "INSERT INTO shared_profiles_mods (shared_profile_id, version_id) VALUES ($1, $2)",
+                        "INSERT INTO shared_profiles_versions (shared_profile_id, version_id) VALUES ($1, $2)",
                         data.inner.id.0,
                         v.0
                     )
@@ -783,10 +787,9 @@ pub async fn profile_files(
     }
 
     let override_cdns = profile
-        .inner
-        .overrides
+        .override_files
         .into_iter()
-        .map(|x| (format!("{}/custom_files/{}", cdn_url, x.0), x.1))
+        .map(|x| (x.url, x.install_path))
         .collect::<Vec<_>>();
 
     Ok(HttpResponse::Ok().json(ProfileDownload {
@@ -839,16 +842,17 @@ pub async fn profile_token_check(
 
     let all_allowed_urls = profiles
         .into_iter()
-        .flat_map(|x| x.inner.overrides.into_iter().map(|x| x.0))
+        .flat_map(|x| 
+            x.override_files
+            .into_iter().map(|x| x.url))
         .collect::<Vec<_>>();
 
-    // Check the token is valid for the requested file
-    let file_url_hash = file_url
-        .split(&format!("{cdn_url}/custom_files/"))
-        .nth(1)
-        .ok_or_else(|| ApiError::Authentication(AuthenticationError::InvalidAuthMethod))?;
+    println!("All allowed urls: {:?}", all_allowed_urls);
 
-    let valid = all_allowed_urls.iter().any(|x| x == file_url_hash);
+    // Check the token is valid for the requested file
+    let valid = all_allowed_urls.iter().any(|x| x == &file_url);
+
+    println!("Valid: {:?}", valid);
     if !valid {
         Err(ApiError::Authentication(
             AuthenticationError::InvalidAuthMethod,
@@ -1102,6 +1106,9 @@ pub async fn client_profile_add_override(
         }
     };
 
+    let mut client_profile_files = Vec::new();
+    let mut transaction = pool.begin().await?;
+
     while let Some(item) = payload.next().await {
         let mut field: Field = item?;
         if error.is_some() {
@@ -1109,44 +1116,10 @@ pub async fn client_profile_add_override(
         }
         let result = async {
             let content_disposition = field.content_disposition().clone();
-            let content_type = field
-                .content_type()
-                .map(|x| x.essence_str())
-                .unwrap_or_else(|| "application/octet-stream")
-                .to_string();
-            // Allow any content type
-            let name = content_disposition.get_name().ok_or_else(|| {
-                CreateError::InvalidInput(String::from("Upload must have a name"))
-            })?;
+            let cdn_url = dotenvy::var("CDN_URL")?;
 
-            let data = read_from_field(
-                &mut field, 500 * (1 << 20),
-                "Project file exceeds the maximum of 500MiB. Contact a moderator or admin to request permission to upload larger files."
-            ).await?;
-
-            let install_path = files
-                .iter()
-                .find(|x| x.file_name == name)
-                .ok_or_else(|| {
-                    CreateError::InvalidInput(format!(
-                        "No matching file name in `data` for file '{}'",
-                        name
-                    ))
-                })?
-                .install_path
-                .clone();
-
-            let hash = format!("{:x}", sha2::Sha512::digest(&data));
-
-            file_host
-                .upload_file(
-                    &content_type,
-                    &format!("custom_files/{hash}"),
-                    data.freeze(),
-                )
-                .await?;
-
-            uploaded_files.push(UploadedFile { install_path, hash });
+            // Upload file to CDN and get hash
+            upload_file(&mut field, &files, &***file_host, &content_disposition, &cdn_url, None, &mut client_profile_files, &mut uploaded_files, &mut transaction).await?;
             Ok(())
         }
         .await;
@@ -1160,24 +1133,9 @@ pub async fn client_profile_add_override(
         return Err(error);
     }
 
-    let mut transaction = pool.begin().await?;
-
-    let (ids, hashes, install_paths): (Vec<_>, Vec<_>, Vec<_>) = uploaded_files
-        .into_iter()
-        .map(|f| (profile_item.inner.id.0, f.hash, f.install_path))
-        .multiunzip();
-
-    sqlx::query!(
-        "
-            INSERT INTO shared_profiles_mods (shared_profile_id, file_hash, install_path)
-            SELECT * FROM UNNEST($1::bigint[], $2::text[], $3::text[])
-            ",
-        &ids[..],
-        &hashes[..],
-        &install_paths[..],
-    )
-    .execute(&mut *transaction)
-    .await?;
+    for file in client_profile_files {
+        file.insert(profile_item.inner.id, &mut transaction).await?;
+    }
 
     // Set updated
     sqlx::query!(
@@ -1206,6 +1164,7 @@ pub async fn client_profile_add_override(
 pub struct RemoveOverrides {
     // Either will work, or some combination, to identify the overrides to remove
     pub install_paths: Option<Vec<PathBuf>>,
+    pub algorithm: Option<String>,
     pub hashes: Option<Vec<String>>,
 }
 
@@ -1229,6 +1188,7 @@ pub async fn client_profile_remove_overrides(
     .await?
     .1;
 
+
     // Check if this is our profile
     let profile_item = database::models::client_profile_item::ClientProfile::get(
         client_id.into(),
@@ -1243,36 +1203,59 @@ pub async fn client_profile_remove_overrides(
             "You don't have permission to remove  overrides.".to_string(),
         ));
     }
-
+    
     let delete_hashes = data.hashes.clone().unwrap_or_default();
+    let algorithm = data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&delete_hashes));
     let delete_install_paths = data.install_paths.clone().unwrap_or_default();
 
+    // TODO: ensure tested well
     let overrides = profile_item
-        .inner
-        .overrides
+        .override_files
         .into_iter()
-        .filter(|(hash, path)| delete_hashes.contains(hash) || delete_install_paths.contains(path))
+        .map(|x| (x.hashes, x.install_path))
+        .map(|(hashes, install_paths)| 
+            (hashes.get(&algorithm).map(|x| x.clone()), install_paths)
+        )
+        .filter(|(hash, path)| hash.as_ref().map(|h| delete_hashes.contains(&h)).unwrap_or(false) || delete_install_paths.contains(path))
         .collect::<Vec<(_, _)>>();
 
-    let delete_hashes = overrides.iter().map(|x| x.0.clone()).collect::<Vec<_>>();
+    let delete_hashes = overrides.iter().filter_map(|x| x.0.as_ref().map(|x| x.as_bytes().to_vec())).collect::<Vec<_>>();
     let delete_install_paths = overrides
         .iter()
         .map(|x| x.1.to_string_lossy().to_string())
         .collect::<Vec<_>>();
 
     let mut transaction = pool.begin().await?;
-    let deleted_hashes = sqlx::query!(
+    
+    let files_to_delete = sqlx::query!(
         "
-            DELETE FROM shared_profiles_mods
-            WHERE (shared_profile_id = $1 AND (file_hash = ANY($2::text[]) OR install_path = ANY($3::text[])))
-            RETURNING file_hash
+            SELECT spf.file_id 
+            FROM shared_profiles_files spf
+            INNER JOIN files f ON f.id = spf.file_id
+            INNER JOIN hashes h ON h.file_id = f.id
+            WHERE (shared_profile_id = $1 AND (h.hash = ANY($2) OR install_path = ANY($3::text[])))
             ",
         profile_item.inner.id.0,
         &delete_hashes[..],
         &delete_install_paths[..],
     )
     .fetch_all(&mut *transaction)
-    .await?.into_iter().filter_map(|x| x.file_hash).collect::<Vec<_>>();
+    .await?.into_iter().map(|x| FileId(x.file_id)).collect::<Vec<_>>();
+
+    sqlx::query!(
+        "
+            DELETE FROM shared_profiles_files
+            WHERE file_id = ANY($1::bigint[]) AND shared_profile_id = $2
+            ",
+        &files_to_delete.iter().map(|x| x.0).collect::<Vec<_>>()[..],
+        profile_item.inner.id.0,
+    )
+    .execute(&mut *transaction)
+    .await?;
+
+    // Check if any versions_files or shared_profiles_files still reference the file- these files should not be deleted
+    // Delete the files that are not referenced
+    let deleted_hashes = file_item::remove_unreferenced_files(files_to_delete, &mut transaction).await?;
 
     // Set updated
     sqlx::query!(
@@ -1306,18 +1289,23 @@ async fn delete_unused_files_from_host(
     pool: &PgPool,
     file_host: &Arc<dyn FileHost + Send + Sync>,
 ) -> Result<(), ApiError> {
-    // Get all hashes that are still used by any profile
+
+    // Confirm hashes no longer exist in any profile (for sureness)
+    let deleted_hashes_bytes = deleted_hashes
+        .iter()
+        .map(|x| x.as_bytes().to_vec())
+        .collect::<Vec<_>>();
     let still_existing_hashes = sqlx::query!(
         "
-            SELECT file_hash FROM shared_profiles_mods
-            WHERE file_hash = ANY($1::text[])
-            ",
-        &deleted_hashes[..],
+            SELECT encode(hash, 'escape') hash FROM hashes
+            WHERE hash = ANY($1)
+        ",
+        &deleted_hashes_bytes
     )
-    .fetch_all(pool)
+    .fetch_all(&*pool)
     .await?
     .into_iter()
-    .filter_map(|x| x.file_hash)
+    .filter_map(|x| x.hash)
     .collect::<Vec<_>>();
 
     // We want to delete files from the server that are no longer used by any profile
@@ -1335,6 +1323,111 @@ async fn delete_unused_files_from_host(
             .delete_file_version("", &format!("custom_files/{}", hash))
             .await?;
     }
+
+    Ok(())
+}
+
+// This function is used for adding an override file to a pack
+#[allow(clippy::too_many_arguments)]
+pub async fn upload_file(
+    field: &mut Field,
+    multipart_files: &Vec<MultipartFile>,
+    file_host: &dyn FileHost,
+    content_disposition: &actix_web::http::header::ContentDisposition,
+    cdn_url: &str,
+    file_type: Option<FileType>,
+    client_profile_files: &mut Vec<ClientProfileFileBuilder>,
+    uploaded_files: &mut Vec<UploadedFile>,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), CreateError> {
+    let (file_name, file_extension) = get_name_ext(content_disposition)?;
+
+    if file_name.contains('/') {
+        return Err(CreateError::InvalidInput(
+            "File names must not contain slashes!".to_string(),
+        ));
+    }
+
+    let content_type = crate::util::ext::project_file_type(file_extension)
+        .ok_or_else(|| CreateError::InvalidFileType(file_extension.to_string()))?;
+
+    let data = read_from_field(
+        field, 500 * (1 << 20),
+        "Project file exceeds the maximum of 500MiB. Contact a moderator or admin to request permission to upload larger files."
+    ).await?;
+
+    let name = content_disposition.get_name().ok_or_else(|| {
+        CreateError::InvalidInput(String::from("Upload must have a name"))
+    })?;
+
+    let install_path = multipart_files
+    .iter()
+    .find(|x| x.file_name == name)
+    .ok_or_else(|| {
+        CreateError::InvalidInput(format!(
+            "No matching file name in `data` for file '{}'",
+            name
+        ))
+    })?
+    .install_path
+    .clone();
+
+    let hash = format!("{:x}", sha2::Sha512::digest(&data));
+
+    // Allow uploading the same file multiple times, but 
+    // we'll connect them to the same file in the database/CDN
+    let existing_file = sqlx::query!(
+        "
+        SELECT f.id
+        FROM hashes h
+        INNER JOIN files f ON f.id = h.file_id
+        WHERE h.algorithm = $2 AND h.hash = $1
+        ",
+        hash.as_bytes(),
+        "sha1",
+    )
+    .fetch_optional(&mut **transaction)
+    .await?
+    .map(|x| FileId(x.id));
+
+    let data = data.freeze();
+    let file_path = format!("custom_files/{hash}");
+
+    let upload_data = file_host
+        .upload_file(content_type, &file_path, data)
+        .await?;
+
+    let sha1_bytes = upload_data.content_sha1.into_bytes();
+    let sha512_bytes = upload_data.content_sha512.into_bytes();
+
+
+    client_profile_files.push(ClientProfileFileBuilder {
+        filename: file_name.to_string(),
+        url: format!("{}/{}", cdn_url, upload_data.file_name),
+        hashes: vec![
+            file_item::HashBuilder {
+                algorithm: "sha1".to_string(),
+                // This is an invalid cast - the database expects the hash's
+                // bytes, but this is the string version.
+                hash: sha1_bytes,
+            },
+            file_item::HashBuilder {
+                algorithm: "sha512".to_string(),
+                // This is an invalid cast - the database expects the hash's
+                // bytes, but this is the string version.
+                hash: sha512_bytes,
+            },
+        ],
+        install_path: install_path.into(),
+        size: upload_data.content_length,
+        existing_file,
+        file_type,
+    });
+
+    uploaded_files.push(UploadedFile { 
+        file_id: upload_data.file_id,
+        file_name: file_path,
+     });
 
     Ok(())
 }

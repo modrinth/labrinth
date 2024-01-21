@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use actix_http::StatusCode;
@@ -709,11 +710,11 @@ async fn add_remove_profile_versions() {
                 .override_cdns
                 .into_iter()
                 .map(|(_, path)| path)
-                .collect::<Vec<_>>(),
-            vec![
+                .collect::<HashSet<_>>(),
+            [
                 PathBuf::from("mods/test.jar"),
                 PathBuf::from("mods/test_different.jar")
-            ]
+            ].iter().cloned().collect::<HashSet<_>>()
         );
 
         // Get profile again to confirm update

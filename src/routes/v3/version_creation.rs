@@ -1,9 +1,10 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
+use crate::database::models::file_item::VersionFileBuilder;
 use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::version_item::{
-    DependencyBuilder, VersionBuilder, VersionFileBuilder,
+    DependencyBuilder, VersionBuilder,
 };
 use crate::database::models::{self, image_item, Organization};
 use crate::database::redis::RedisPool;
@@ -783,7 +784,8 @@ pub async fn upload_file(
         "
         SELECT EXISTS(SELECT 1 FROM hashes h
         INNER JOIN files f ON f.id = h.file_id
-        INNER JOIN versions v ON v.id = f.version_id
+        INNER JOIN versions_files vf on vf.file_id = f.id
+        INNER JOIN versions v ON v.id = vf.version_id
         WHERE h.algorithm = $2 AND h.hash = $1 AND v.mod_id != $3)
         ",
         hash.as_bytes(),
@@ -829,7 +831,8 @@ pub async fn upload_file(
                 "
                     SELECT v.id version_id, v.mod_id project_id, h.hash hash FROM hashes h
                     INNER JOIN files f on h.file_id = f.id
-                    INNER JOIN versions v on f.version_id = v.id
+                    INNER JOIN versions_files vf on vf.file_id = f.id
+                    INNER JOIN versions v on v.id = vf.version_id
                     WHERE h.algorithm = 'sha1' AND h.hash = ANY($1)
                     ",
                 &*hashes
@@ -915,13 +918,13 @@ pub async fn upload_file(
         filename: file_name.to_string(),
         url: format!("{cdn_url}/{file_path_encode}"),
         hashes: vec![
-            models::version_item::HashBuilder {
+            models::file_item::HashBuilder {
                 algorithm: "sha1".to_string(),
                 // This is an invalid cast - the database expects the hash's
                 // bytes, but this is the string version.
                 hash: sha1_bytes,
             },
-            models::version_item::HashBuilder {
+            models::file_item::HashBuilder {
                 algorithm: "sha512".to_string(),
                 // This is an invalid cast - the database expects the hash's
                 // bytes, but this is the string version.

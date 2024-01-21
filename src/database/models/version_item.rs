@@ -1,4 +1,5 @@
-use super::ids::*;
+use super::file_item::VersionFileBuilder;
+use super::{file_item, ids::*};
 use super::loader_fields::VersionField;
 use super::DatabaseError;
 use crate::database::models::loader_fields::{
@@ -113,64 +114,6 @@ impl DependencyBuilder {
             None
         })
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct VersionFileBuilder {
-    pub url: String,
-    pub filename: String,
-    pub hashes: Vec<HashBuilder>,
-    pub primary: bool,
-    pub size: u32,
-    pub file_type: Option<FileType>,
-}
-
-impl VersionFileBuilder {
-    pub async fn insert(
-        self,
-        version_id: VersionId,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<FileId, DatabaseError> {
-        let file_id = generate_file_id(&mut *transaction).await?;
-
-        sqlx::query!(
-            "
-            INSERT INTO files (id, version_id, url, filename, is_primary, size, file_type)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ",
-            file_id as FileId,
-            version_id as VersionId,
-            self.url,
-            self.filename,
-            self.primary,
-            self.size as i32,
-            self.file_type.map(|x| x.as_str()),
-        )
-        .execute(&mut **transaction)
-        .await?;
-
-        for hash in self.hashes {
-            sqlx::query!(
-                "
-                INSERT INTO hashes (file_id, algorithm, hash)
-                VALUES ($1, $2, $3)
-                ",
-                file_id as FileId,
-                hash.algorithm,
-                hash.hash,
-            )
-            .execute(&mut **transaction)
-            .await?;
-        }
-
-        Ok(file_id)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct HashBuilder {
-    pub algorithm: String,
-    pub hash: Vec<u8>,
 }
 
 impl VersionBuilder {
@@ -362,29 +305,23 @@ impl Version {
         .execute(&mut **transaction)
         .await?;
 
-        sqlx::query!(
+        let files = sqlx::query!(
             "
-            DELETE FROM hashes
-            WHERE EXISTS(
-                SELECT 1 FROM files WHERE
-                    (files.version_id = $1) AND
-                    (hashes.file_id = files.id)
-            )
-            ",
-            id as VersionId
-        )
-        .execute(&mut **transaction)
-        .await?;
-
-        sqlx::query!(
-            "
-            DELETE FROM files
-            WHERE files.version_id = $1
+            DELETE FROM versions_files
+            WHERE versions_files.version_id = $1
+            RETURNING file_id
             ",
             id as VersionId,
         )
-        .execute(&mut **transaction)
-        .await?;
+        .fetch_all(&mut **transaction)
+        .await?
+        .into_iter()
+        .map(|x| FileId(x.file_id))
+        .collect::<Vec<_>>();
+
+        // Check if any versions_files or shared_profiles_files still reference the file- these files should not be deleted
+        // Delete the files that are not referenced
+        file_item::remove_unreferenced_files(files, transaction).await?;
 
         // Sync dependencies
 
@@ -658,9 +595,10 @@ impl Version {
             let reverse_file_map = DashMap::new();
             let files : DashMap<VersionId, Vec<File>> = sqlx::query!(
                 "
-                SELECT DISTINCT version_id, f.id, f.url, f.filename, f.is_primary, f.size, f.file_type
+                SELECT DISTINCT vf.version_id, f.id, f.url, f.filename, vf.is_primary, f.size, f.file_type
                 FROM files f
-                WHERE f.version_id = ANY($1)
+                INNER JOIN versions_files vf ON vf.file_id = f.id
+                WHERE vf.version_id = ANY($1)
                 ",
                 &version_ids_parsed
             ).fetch(&mut *exec)
@@ -793,7 +731,7 @@ impl Version {
                                         }
                                     }
 
-                                    QueryFile {
+                                    QueryVersionFile {
                                         id: x.id,
                                         url: x.url.clone(),
                                         filename: x.filename.clone(),
@@ -904,13 +842,14 @@ impl Version {
         if !file_ids_parsed.is_empty() {
             let db_files: Vec<SingleFile> = sqlx::query!(
                 "
-                SELECT f.id, f.version_id, v.mod_id, f.url, f.filename, f.is_primary, f.size, f.file_type,
+                SELECT f.id, vf.version_id, v.mod_id, f.url, f.filename, vf.is_primary, f.size, f.file_type,
                 JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'))) filter (where h.hash is not null) hashes
                 FROM files f
-                INNER JOIN versions v on v.id = f.version_id
+                INNER JOIN versions_files vf on vf.file_id = f.id
+                INNER JOIN versions v on v.id = vf.version_id
                 INNER JOIN hashes h on h.file_id = f.id
                 WHERE h.algorithm = $1 AND h.hash = ANY($2)
-                GROUP BY f.id, v.mod_id, v.date_published
+                GROUP BY f.id, v.mod_id, v.date_published, vf.version_id, vf.is_primary
                 ORDER BY v.date_published
                 ",
                 algorithm,
@@ -997,7 +936,7 @@ impl Version {
 pub struct QueryVersion {
     pub inner: Version,
 
-    pub files: Vec<QueryFile>,
+    pub files: Vec<QueryVersionFile>,
     pub version_fields: Vec<VersionField>,
     pub loaders: Vec<String>,
     pub project_types: Vec<String>,
@@ -1014,7 +953,7 @@ pub struct QueryDependency {
 }
 
 #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct QueryFile {
+pub struct QueryVersionFile {
     pub id: FileId,
     pub url: String,
     pub filename: String,

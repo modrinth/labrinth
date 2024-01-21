@@ -2,7 +2,7 @@ use crate::auth::checks::{is_visible_project, is_visible_version};
 use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
 use crate::database::models::loader_fields::Loader;
 use crate::database::models::project_item::QueryProject;
-use crate::database::models::version_item::{QueryFile, QueryVersion};
+use crate::database::models::version_item::{QueryVersionFile, QueryVersion};
 use crate::database::redis::RedisPool;
 use crate::models::pats::Scopes;
 use crate::models::projects::{ProjectId, VersionId};
@@ -230,7 +230,7 @@ fn find_file<'a>(
     vcoords: &str,
     version: &'a QueryVersion,
     file: &str,
-) -> Option<&'a QueryFile> {
+) -> Option<&'a QueryVersionFile> {
     if let Some(selected_file) = version.files.iter().find(|x| x.filename == file) {
         return Some(selected_file);
     }

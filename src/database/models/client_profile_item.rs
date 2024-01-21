@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
-use super::ids::*;
-use crate::database::models::DatabaseError;
+use super::{file_item, ids::*};
+use crate::{database::models::DatabaseError, models::projects::FileType};
 use crate::database::redis::RedisPool;
 use chrono::{DateTime, Utc};
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 
@@ -33,13 +34,24 @@ pub struct ClientProfile {
     pub loader: String,
 
     pub versions: Vec<VersionId>,
-    pub overrides: Vec<Override>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QueryClientProfile {
     pub inner: ClientProfile,
     pub links: Vec<ClientProfileLink>,
+    pub override_files: Vec<QueryClientProfileFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Debug)]
+pub struct QueryClientProfileFile {
+    pub id: FileId,
+    pub url: String,
+    pub filename: String,
+    pub hashes: HashMap<String, String>,
+    pub install_path: PathBuf,
+    pub size: u32,
+    pub file_type: Option<FileType>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -110,7 +122,7 @@ impl ClientProfile {
         for version_id in &self.versions {
             sqlx::query!(
                 "
-                INSERT INTO shared_profiles_mods (
+                INSERT INTO shared_profiles_versions (
                     shared_profile_id, version_id
                 )
                 VALUES (
@@ -155,20 +167,35 @@ impl ClientProfile {
         .execute(&mut **transaction)
         .await?;
 
-        // Deletes attached files- we return the hashes so we can delete them from the file host if needed
-        let deleted_hashes = sqlx::query!(
+        // Deletes attached versions
+        sqlx::query!(
             "
-            DELETE FROM shared_profiles_mods
+            DELETE FROM shared_profiles_versions
             WHERE shared_profile_id = $1
-            RETURNING file_hash
+            ",
+            id as ClientProfileId,
+        )
+        .execute(&mut **transaction)
+        .await?;
+
+        // Deletes attached files- we return the hashes so we can delete them from the file host if needed
+        let deleted_ids = sqlx::query!(
+            "
+            DELETE FROM shared_profiles_files
+            WHERE shared_profile_id = $1
+            RETURNING file_id
             ",
             id as ClientProfileId,
         )
         .fetch_all(&mut **transaction)
         .await?
         .into_iter()
-        .filter_map(|x| x.file_hash)
+        .map(|x| FileId(x.file_id))
         .collect::<Vec<_>>();
+
+        // Check if any versions_files or shared_profiles_files still reference the file- these files should not be deleted
+        // Delete the files that are not referenced
+        let removed_hashes = file_item::remove_unreferenced_files(deleted_ids, transaction).await?;
 
         sqlx::query!(
             "
@@ -192,7 +219,7 @@ impl ClientProfile {
 
         ClientProfile::clear_cache(id, redis).await?;
 
-        Ok(deleted_hashes)
+        Ok(removed_hashes)
     }
 
     pub async fn get<'a, 'b, E>(
@@ -266,42 +293,101 @@ impl ClientProfile {
         }
 
         if !remaining_ids.is_empty() {
-            type AttachedProjectsMap = (
-                DashMap<ClientProfileId, Vec<VersionId>>,
-                DashMap<ClientProfileId, Vec<Override>>,
-            );
-            let shared_profiles_mods: AttachedProjectsMap = sqlx::query!(
+
+            let shared_profiles_versions: DashMap<ClientProfileId, Vec<VersionId>> = sqlx::query!(
                 "
-                SELECT shared_profile_id, version_id, file_hash, install_path
-                FROM shared_profiles_mods spm
-                WHERE spm.shared_profile_id = ANY($1)
+                SELECT shared_profile_id, version_id
+                FROM shared_profiles_versions spv
+                WHERE spv.shared_profile_id = ANY($1)
                 ",
                 &remaining_ids.iter().map(|x| x.0).collect::<Vec<i64>>()
             )
             .fetch(&mut *exec)
             .try_fold(
-                (DashMap::new(), DashMap::new()),
-                |(acc_versions, acc_overrides): AttachedProjectsMap, m| {
+                DashMap::new(),
+                |acc: DashMap<ClientProfileId, Vec<VersionId>>, m| {
                     let version_id = m.version_id.map(VersionId);
-                    let file_hash = m.file_hash;
-                    let install_path = m.install_path;
                     if let Some(version_id) = version_id {
-                        acc_versions
-                            .entry(ClientProfileId(m.shared_profile_id))
+                        acc.entry(ClientProfileId(m.shared_profile_id))
                             .or_default()
                             .push(version_id);
                     }
-
-                    if let (Some(install_path), Some(file_hash)) = (install_path, file_hash) {
-                        acc_overrides
-                            .entry(ClientProfileId(m.shared_profile_id))
-                            .or_default()
-                            .push((file_hash, PathBuf::from(install_path)));
-                    }
-
-                    async move { Ok((acc_versions, acc_overrides)) }
+                    async move { Ok(acc) }
                 },
             )
+            .await?;
+
+            #[derive(Deserialize)]
+            struct Hash {
+                pub file_id: FileId,
+                pub algorithm: String,
+                pub hash: String,
+            }
+
+            #[derive(Deserialize)]
+            struct File {
+                pub id: FileId,
+                pub url: String,
+                pub filename: String,
+                pub install_path: PathBuf,
+                pub size: u32,
+                pub file_type: Option<FileType>,
+            }
+
+            let file_ids = DashSet::new();
+            let reverse_file_map = DashMap::new();
+            let files : DashMap<ClientProfileId, Vec<File>> = sqlx::query!(
+                "
+                SELECT DISTINCT shared_profile_id, f.id, f.url, f.filename, spf.install_path, f.size, f.file_type
+                FROM files f
+                INNER JOIN shared_profiles_files spf ON spf.file_id = f.id
+                WHERE spf.shared_profile_id = ANY($1)
+                ",
+                &remaining_ids.iter().map(|x| x.0).collect::<Vec<i64>>()
+            ).fetch(&mut *exec)
+            .try_fold(DashMap::new(), |acc : DashMap<ClientProfileId, Vec<File>>, m| {
+                    let file = File {
+                        id: FileId(m.id),
+                        url: m.url,
+                        filename: m.filename,
+                        install_path: m.install_path.into(),
+                        size: m.size as u32,
+                        file_type: m.file_type.map(|x| FileType::from_string(&x)),
+                    };
+
+                    file_ids.insert(FileId(m.id));
+                    reverse_file_map.insert(FileId(m.id), ClientProfileId(m.shared_profile_id));
+
+                    acc.entry(ClientProfileId(m.shared_profile_id))
+                        .or_default()
+                        .push(file);
+                    async move { Ok(acc) }
+                }
+            ).await?;
+
+            let hashes: DashMap<ClientProfileId, Vec<Hash>> = sqlx::query!(
+                "
+                SELECT DISTINCT file_id, algorithm, encode(hash, 'escape') hash
+                FROM hashes
+                WHERE file_id = ANY($1)
+                ",
+                &file_ids.iter().map(|x| x.0).collect::<Vec<_>>()
+            )
+            .fetch(&mut *exec)
+            .try_fold(DashMap::new(), |acc: DashMap<ClientProfileId, Vec<Hash>>, m| {
+                if let Some(found_hash) = m.hash {
+                    let hash = Hash {
+                        file_id: FileId(m.file_id),
+                        algorithm: m.algorithm,
+                        hash: found_hash,
+                    };
+
+                    if let Some(profile_id) = reverse_file_map.get(&FileId(m.file_id)) {
+                        acc.entry(*profile_id).or_default().push(hash);
+                    }
+                }
+                async move { Ok(acc) }
+            })
             .await?;
 
             let shared_profiles_links: DashMap<ClientProfileId, Vec<ClientProfileLink>> =
@@ -353,11 +439,40 @@ impl ClientProfile {
                 .try_filter_map(|e| async {
                     Ok(e.right().map(|m| {
                         let id = ClientProfileId(m.id);
-                        let versions = shared_profiles_mods.0.get(&id).map(|x| x.value().clone()).unwrap_or_default();
-                        let files = shared_profiles_mods.1.get(&id).map(|x| x.value().clone()).unwrap_or_default();
+                        let versions = shared_profiles_versions
+                            .remove(&id)
+                            .map(|(_, x)| x)
+                            .unwrap_or_default();
+                        let files = files.remove(&id).map(|(_,x)| x).unwrap_or_default();
+                        let hashes = hashes.remove(&id).map(|x|x.1).unwrap_or_default();
+
                         let links = shared_profiles_links.remove(&id).map(|x| x.1).unwrap_or_default();
                         let game_id = GameId(m.game_id);
                         let metadata = serde_json::from_value::<ClientProfileMetadata>(m.metadata).unwrap_or(ClientProfileMetadata::Unknown);
+                        
+                        let mut files = files.into_iter().map(|x| {
+                            let mut file_hashes = HashMap::new();
+
+                            for hash in hashes.iter() {
+                                if hash.file_id == x.id {
+                                    file_hashes.insert(
+                                        hash.algorithm.clone(),
+                                        hash.hash.clone(),
+                                    );
+                                }
+                            }
+
+                            QueryClientProfileFile {
+                                id: x.id,
+                                url: x.url.clone(),
+                                filename: x.filename.clone(),
+                                hashes: file_hashes,
+                                install_path: x.install_path,
+                                size: x.size,
+                                file_type: x.file_type,
+                            }
+                        }).collect::<Vec<_>>();
+
                         QueryClientProfile {
                             inner: ClientProfile {
                                 id,
@@ -373,9 +488,9 @@ impl ClientProfile {
                                 metadata,
                                 loader: m.loader,
                                 versions,
-                                overrides: files
                             },
-                            links
+                            links,
+                            override_files: files,
                         }
                     }))
                 })

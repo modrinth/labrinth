@@ -3,6 +3,7 @@ use thiserror::Error;
 pub mod categories;
 pub mod client_profile_item;
 pub mod collection_item;
+pub mod file_item;
 pub mod flow_item;
 pub mod ids;
 pub mod image_item;
