@@ -628,7 +628,7 @@ pub async fn delete_file(
         )
         .execute(&mut *transaction)
         .await?;
-    
+
         // Check if any versions_files or shared_profiles_files still reference the file- these files should not be deleted
         // Delete the files that are not referenced
         file_item::remove_unreferenced_files(vec![row.id], &mut transaction).await?;

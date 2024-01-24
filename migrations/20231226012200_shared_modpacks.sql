@@ -54,3 +54,6 @@ SELECT version_id, id, is_primary FROM files;
 -- Drop the version_id and is_primary columns from the files table
 ALTER TABLE files DROP COLUMN version_id;
 ALTER TABLE files DROP COLUMN is_primary;
+
+-- Adds a unique index based on the 'algorithm' and 'hash' pair on the hashes table
+CREATE UNIQUE INDEX hashes_algorithm_hash_unique ON hashes (algorithm, hash);

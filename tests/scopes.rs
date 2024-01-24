@@ -379,6 +379,29 @@ pub async fn project_version_reads_scopes() {
             .await
             .unwrap();
 
+        // As moderator, approve the project then set it to private
+        // We need to approve it to claim the hash for 'get_version_from_hash' and such to work.
+        // We end with private, and the version remains 'draft' later so we can test the scope.
+        let resp = test_env
+            .api
+            .edit_project(
+                beta_project_id,
+                json!({ "status": "approved" }),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        let resp = test_env
+            .api
+            .edit_project(
+                beta_project_id,
+                json!({ "status": "private" }),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
         // Version reading
         // First, set version to hidden (which is when the scope is required to read it)
         let read_version = Scopes::VERSION_READ;

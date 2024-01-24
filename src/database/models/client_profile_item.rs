@@ -2,15 +2,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::{file_item, ids::*};
-use crate::{database::models::DatabaseError, models::projects::FileType};
 use crate::database::redis::RedisPool;
+use crate::{database::models::DatabaseError, models::projects::FileType};
 use chrono::{DateTime, Utc};
 use dashmap::{DashMap, DashSet};
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
-
-// Hash and install path
-type Override = (String, PathBuf);
 
 pub const CLIENT_PROFILES_NAMESPACE: &str = "client_profiles";
 
@@ -293,7 +290,6 @@ impl ClientProfile {
         }
 
         if !remaining_ids.is_empty() {
-
             let shared_profiles_versions: DashMap<ClientProfileId, Vec<VersionId>> = sqlx::query!(
                 "
                 SELECT shared_profile_id, version_id
@@ -374,20 +370,23 @@ impl ClientProfile {
                 &file_ids.iter().map(|x| x.0).collect::<Vec<_>>()
             )
             .fetch(&mut *exec)
-            .try_fold(DashMap::new(), |acc: DashMap<ClientProfileId, Vec<Hash>>, m| {
-                if let Some(found_hash) = m.hash {
-                    let hash = Hash {
-                        file_id: FileId(m.file_id),
-                        algorithm: m.algorithm,
-                        hash: found_hash,
-                    };
+            .try_fold(
+                DashMap::new(),
+                |acc: DashMap<ClientProfileId, Vec<Hash>>, m| {
+                    if let Some(found_hash) = m.hash {
+                        let hash = Hash {
+                            file_id: FileId(m.file_id),
+                            algorithm: m.algorithm,
+                            hash: found_hash,
+                        };
 
-                    if let Some(profile_id) = reverse_file_map.get(&FileId(m.file_id)) {
-                        acc.entry(*profile_id).or_default().push(hash);
+                        if let Some(profile_id) = reverse_file_map.get(&FileId(m.file_id)) {
+                            acc.entry(*profile_id).or_default().push(hash);
+                        }
                     }
-                }
-                async move { Ok(acc) }
-            })
+                    async move { Ok(acc) }
+                },
+            )
             .await?;
 
             let shared_profiles_links: DashMap<ClientProfileId, Vec<ClientProfileLink>> =
@@ -449,8 +448,7 @@ impl ClientProfile {
                         let links = shared_profiles_links.remove(&id).map(|x| x.1).unwrap_or_default();
                         let game_id = GameId(m.game_id);
                         let metadata = serde_json::from_value::<ClientProfileMetadata>(m.metadata).unwrap_or(ClientProfileMetadata::Unknown);
-                        
-                        let mut files = files.into_iter().map(|x| {
+                        let files = files.into_iter().map(|x| {
                             let mut file_hashes = HashMap::new();
 
                             for hash in hashes.iter() {

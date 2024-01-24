@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO shared_profiles_versions (shared_profile_id, version_id)\n        SELECT * FROM UNNEST($1::bigint[], $2::bigint[])\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "11239992f6177b638bcf48d416cd9f506c076ea43212fe02321d3d7b192eebea"
+}

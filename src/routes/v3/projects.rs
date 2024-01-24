@@ -6,7 +6,7 @@ use crate::auth::{filter_visible_projects, get_user_from_headers};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
 use crate::database::models::thread_item::ThreadMessageBuilder;
-use crate::database::models::{ids as db_ids, image_item, TeamMember};
+use crate::database::models::{file_item, ids as db_ids, image_item, TeamMember};
 use crate::database::redis::RedisPool;
 use crate::database::{self, models as db_models};
 use crate::file_hosting::FileHost;
@@ -374,6 +374,28 @@ pub async fn project_edit(
                         id as db_ids::ProjectId,
                     )
                     .execute(&mut *transaction)
+                    .await?;
+
+                    // On approval, all versions become unique 'owners' of their files
+                    // Get them directly rather than use project_item.versions (which is missing hidden versions)
+                    // TODO: this can be simplified when .versions field on the Project struct is revised
+                    let version_ids = sqlx::query!(
+                        "
+                        SELECT id FROM versions
+                        WHERE mod_id = $1
+                        ",
+                        id as db_ids::ProjectId,
+                    )
+                    .fetch_many(&mut *transaction)
+                    .try_filter_map(|e| async { Ok(e.right().map(|c| db_ids::VersionId(c.id))) })
+                    .try_collect::<Vec<_>>()
+                    .await?;
+
+                    file_item::convert_hash_collisions_to_versions::<ApiError>(
+                        &version_ids,
+                        &mut transaction,
+                        &redis,
+                    )
                     .await?;
                 }
                 if status.is_searchable() && !project_item.inner.webhook_sent {

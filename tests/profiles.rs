@@ -9,10 +9,14 @@ use common::environment::with_test_environment;
 use common::environment::TestEnvironment;
 use labrinth::models::client::profile::ClientProfile;
 use labrinth::models::client::profile::ClientProfileMetadata;
+use labrinth::models::projects::Project;
 use labrinth::models::users::UserId;
 use sha2::Digest;
 
+use crate::common::api_common::ApiProject;
+use crate::common::api_common::ApiVersion;
 use crate::common::api_v3::client_profile::ClientProfileOverride;
+use crate::common::api_v3::request_data::get_public_project_creation_data;
 use crate::common::dummy_data::DummyImage;
 use crate::common::dummy_data::TestFile;
 
@@ -714,7 +718,10 @@ async fn add_remove_profile_versions() {
             [
                 PathBuf::from("mods/test.jar"),
                 PathBuf::from("mods/test_different.jar")
-            ].iter().cloned().collect::<HashSet<_>>()
+            ]
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>()
         );
 
         // Get profile again to confirm update
@@ -1015,5 +1022,463 @@ async fn hidden_versions_are_forbidden() {
     .await;
 }
 
-// try all file system related thinghs
-// go thru all the stuff in the linear issue
+#[actix_rt::test]
+async fn verison_file_hash_collisions_with_shared_profiles() {
+    // Test setup and dummy data
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+        let api = &test_env.api;
+
+        let test_file_hash_xxx = TestFile::build_random_jar();
+        let test_file_hash_yyy = TestFile::build_random_jar();
+        let test_file_hash_zzz = TestFile::build_random_jar();
+
+        // Define some comparison projects/profiles that already have these files
+        // unapproved project has xxx
+        let creation_data =
+            get_public_project_creation_data("unapproved", Some(test_file_hash_xxx.clone()), None);
+        let unapproved_project = api.create_project(creation_data, USER_USER_PAT).await;
+        assert_status!(&unapproved_project, StatusCode::OK);
+
+        // approved project has yyy
+        let creation_data =
+            get_public_project_creation_data("approved", Some(test_file_hash_yyy.clone()), None);
+        let approved_project = api.create_project(creation_data, USER_USER_PAT).await;
+        assert_status!(&approved_project, StatusCode::OK);
+
+        // Approve as a moderator.
+        let resp = api
+            .edit_project(
+                "approved",
+                serde_json::json!({"status": "approved"}),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // shared profile has zzz
+        let existing_profile = api
+            .create_client_profile(
+                "existing",
+                "fabric",
+                "1.0.0",
+                "1.20.1",
+                vec![],
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&existing_profile, StatusCode::OK);
+        let existing_profile: ClientProfile = test::read_body_json(existing_profile).await;
+        let resp = api
+            .add_client_profile_overrides(
+                &existing_profile.id.to_string(),
+                vec![ClientProfileOverride::new(
+                    test_file_hash_zzz.clone(),
+                    "mods/test0.jar",
+                )],
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        let test_data = get_public_project_creation_data("test", None, None);
+        let test_project = api.create_project(test_data, USER_USER_PAT).await;
+        assert_status!(&test_project, StatusCode::OK);
+        let project = test::read_body_json::<Project, _>(test_project).await;
+
+        let test_profile = api
+            .create_client_profile("test", "fabric", "1.0.0", "1.20.1", vec![], USER_USER_PAT)
+            .await;
+        assert_status!(&test_profile, StatusCode::OK);
+        let test_profile: ClientProfile = test::read_body_json(test_profile).await;
+
+        // 1. Existing unapproved version file, and we upload a version file with the same hash
+        // -> Should succeed- OK to have two unapproved version files with the same hash
+        let test_version = api
+            .add_public_version(
+                project.id,
+                "1.0.0",
+                test_file_hash_xxx.clone(),
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&test_version, StatusCode::OK);
+
+        // 2. Existing approved version file, and we upload a version file with the same hash
+        // -> Should fail, cannot have two approved version files with the same hash
+        let test_version = api
+            .add_public_version(
+                project.id,
+                "1.0.1",
+                test_file_hash_yyy.clone(),
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&test_version, StatusCode::BAD_REQUEST);
+
+        // 3. Existing unapproved version file, and we upload a shared profile override file
+        // -> Should succeed- OK, but they should attach to the same file id
+        let resp = api
+            .add_client_profile_overrides(
+                &test_profile.id.to_string(),
+                vec![ClientProfileOverride::new(
+                    test_file_hash_xxx.clone(),
+                    "mods/test1.jar",
+                )],
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        let resp = api
+            .delete_client_profile_overrides(
+                &test_profile.id.to_string(),
+                None,
+                Some(&[&"mods/test1.jar"]),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // 4. Existing approved version file, and we upload a shared profile override file
+        // -> Should fail, tell user to attach as version instead of an override
+        let resp = api
+            .add_client_profile_overrides(
+                &test_profile.id.to_string(),
+                vec![ClientProfileOverride::new(
+                    test_file_hash_yyy.clone(),
+                    "mods/test2.jar",
+                )],
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
+
+        // 5. Existing shared profile override file, and we upload a shared profile override file
+        // -> Should suceced, and they should attach to the same file id
+        let resp = api
+            .add_client_profile_overrides(
+                &test_profile.id.to_string(),
+                vec![ClientProfileOverride::new(
+                    test_file_hash_zzz.clone(),
+                    "mods/test3.jar",
+                )],
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // 6. Existing shared profile override file, and we upload a version file (as of yet unapproved)
+        // -> Should succeed, and they should attach to the same file id
+        // difficulty comes in on approval, which is tested in 'version_file_hash_collisions_approving'
+        let test_version = api
+            .add_public_version(
+                project.id,
+                "1.0.2",
+                test_file_hash_zzz.clone(),
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&test_version, StatusCode::OK);
+    })
+    .await;
+}
+
+#[actix_rt::test]
+async fn version_file_hash_collisions_approving() {
+    // Test setup and dummy data
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+        let api = &test_env.api;
+        let test_file_hash_xxx = TestFile::build_random_jar();
+        let test_file_hash_yyy = TestFile::build_random_jar();
+
+        // Set up four projects with colliding hashes
+        // A: unapproved version file with XXX hash
+        // B: unapproved version file with XXX hash
+        // C: unapproved version file with YYY hash
+        // C: approved project with no versions (but will contain YYY hash)
+
+        let unapproved_project_a = api
+            .create_project(
+                get_public_project_creation_data(
+                    "unapproved_a",
+                    Some(test_file_hash_xxx.clone()),
+                    None,
+                ),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&unapproved_project_a, StatusCode::OK);
+        let unapproved_project_a = api
+            .get_project_deserialized("unapproved_a", USER_USER_PAT)
+            .await;
+
+        let unapproved_project_b = api
+            .create_project(
+                get_public_project_creation_data(
+                    "unapproved_b",
+                    Some(test_file_hash_xxx.clone()),
+                    None,
+                ),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&unapproved_project_b, StatusCode::OK);
+        let unapproved_project_b = api
+            .get_project_deserialized("unapproved_b", USER_USER_PAT)
+            .await;
+
+        let unapproved_project_c = api
+            .create_project(
+                get_public_project_creation_data(
+                    "unapproved_c",
+                    Some(test_file_hash_yyy.clone()),
+                    None,
+                ),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&unapproved_project_c, StatusCode::OK);
+        let unapproved_project_c = api
+            .get_project_deserialized("unapproved_c", USER_USER_PAT)
+            .await;
+
+        let approved_project_d = api
+            .create_project(
+                get_public_project_creation_data("approved_d", None, None),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&approved_project_d, StatusCode::OK);
+        let approved_project_d = api
+            .get_project_deserialized("approved_d", USER_USER_PAT)
+            .await;
+
+        // Approve as a moderator.
+        let resp = api
+            .edit_project(
+                &approved_project_d.id.to_string(),
+                serde_json::json!({"status": "approved"}),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // 1. Approve one of the projects (A), should succeed
+        let resp = api
+            .edit_project(
+                &unapproved_project_a.id.to_string(),
+                serde_json::json!({"status": "approved"}),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // 2. Approve the other project (B), should fail- hash collision!
+        let resp = api
+            .edit_project(
+                &unapproved_project_b.id.to_string(),
+                serde_json::json!({"status": "approved"}),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
+
+        // 3. Attempt to add a version with XXX to the approved project (D), should fail- hash collision!
+        let resp = api
+            .add_public_version(
+                approved_project_d.id,
+                "1.0.0",
+                test_file_hash_xxx.clone(),
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
+
+        // 4. Attempt to add a version with YYY to the approved project (D), should succeed
+        let resp = api
+            .add_public_version(
+                approved_project_d.id,
+                "1.0.0",
+                test_file_hash_yyy.clone(),
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::OK);
+
+        // 5. Approve the other project (C), should fail- hash collision!
+        let resp = api
+            .edit_project(
+                &unapproved_project_c.id.to_string(),
+                serde_json::json!({"status": "approved"}),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::BAD_REQUEST);
+    })
+    .await;
+}
+
+// Has some redundant testing with version_file_hash_collisions_approving, but tests the profile side of things
+#[actix_rt::test]
+async fn version_file_hash_collisions_approving_with_profile() {
+    // Test setup and dummy data
+    with_test_environment(None, |test_env: TestEnvironment<ApiV3>| async move {
+        // Set up three projects with colliding hashes
+        // A: unapproved version file with XXX hash
+        // C: approved project with no versions (but will contain YYY hash)
+        // Also, set up a shared profile that contains an overrides with XXX hash and YYY hash
+        let api = &test_env.api;
+        let test_file_hash_xxx = TestFile::build_random_jar();
+        let test_file_hash_yyy = TestFile::build_random_jar();
+
+        let unapproved_project_a = api
+            .create_project(
+                get_public_project_creation_data(
+                    "unapproved_a",
+                    Some(test_file_hash_xxx.clone()),
+                    None,
+                ),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&unapproved_project_a, StatusCode::OK);
+        let unapproved_project_a = api
+            .get_project_deserialized("unapproved_a", USER_USER_PAT)
+            .await;
+
+        let approved_project_c = api
+            .create_project(
+                get_public_project_creation_data("approved_c", None, None),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&approved_project_c, StatusCode::OK);
+        let approved_project_c = api
+            .get_project_deserialized("approved_c", USER_USER_PAT)
+            .await;
+
+        // Approve as a moderator.
+        let resp = api
+            .edit_project(
+                "approved_c",
+                serde_json::json!({"status": "approved"}),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        let existing_profile = api
+            .create_client_profile(
+                "existing",
+                "fabric",
+                "1.0.0",
+                "1.20.1",
+                vec![],
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&existing_profile, StatusCode::OK);
+        let existing_profile: ClientProfile = test::read_body_json(existing_profile).await;
+
+        // Attempt to add overrides for XXX and YYY to the shared profile, should succeed
+        let resp = api
+            .add_client_profile_overrides(
+                &existing_profile.id.to_string(),
+                vec![
+                    ClientProfileOverride::new(test_file_hash_xxx.clone(), "mods/test0.jar"),
+                    ClientProfileOverride::new(test_file_hash_yyy.clone(), "mods/test1.jar"),
+                ],
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // Approve one of the projects (A), should succeed
+        let resp = api
+            .edit_project(
+                "unapproved_a",
+                serde_json::json!({"status": "approved"}),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // Shared profile should have its XXX override file removed and converted to a version matching
+        let version_for_a = api
+            .get_version_deserialized(&unapproved_project_a.versions[0].to_string(), USER_USER_PAT)
+            .await;
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(
+                &existing_profile.id.to_string(),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(
+            profile_downloads
+                .override_cdns
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect::<HashSet<_>>(),
+            [PathBuf::from("mods/test1.jar")]
+                .iter()
+                .cloned()
+                .collect::<HashSet<_>>()
+        );
+        assert_eq!(profile_downloads.version_ids, vec![version_for_a.id]);
+
+        // Attempt to add a version with YYY to the approved project (C), should succeed
+        let resp = api
+            .add_public_version(
+                approved_project_c.id,
+                "1.0.0",
+                test_file_hash_yyy.clone(),
+                None,
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::OK);
+
+        // Get the profile again, should have a version now
+        let approved_project_c = api
+            .get_project_deserialized(&approved_project_c.slug.unwrap(), USER_USER_PAT)
+            .await;
+
+        // Shared profile should have its YYY override file removed and converted to a version matching
+        let version_for_c = api
+            .get_version_deserialized(&approved_project_c.versions[0].to_string(), USER_USER_PAT)
+            .await;
+        let profile_downloads = api
+            .download_client_profile_from_profile_id_deserialized(
+                &existing_profile.id.to_string(),
+                USER_USER_PAT,
+            )
+            .await;
+        assert_eq!(
+            profile_downloads
+                .override_cdns
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect::<HashSet<_>>(),
+            HashSet::<PathBuf>::new()
+        );
+        assert_eq!(
+            profile_downloads.version_ids,
+            vec![version_for_a.id, version_for_c.id]
+        );
+    })
+    .await;
+}
+
+// TODO: Should we allow multiple overrides at the same path?
+// TODO: Potentially setup a filesystem test to ensure that the files are actually being uploaded to the CDN

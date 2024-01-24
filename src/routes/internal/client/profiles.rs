@@ -3,7 +3,8 @@ use crate::auth::{get_user_from_headers, AuthenticationError};
 use crate::database::models::file_item::ClientProfileFileBuilder;
 use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
 use crate::database::models::{
-    client_profile_item, file_item, generate_client_profile_id, generate_client_profile_link_id, version_item, FileId
+    client_profile_item, file_item, generate_client_profile_id, generate_client_profile_link_id,
+    version_item, FileId,
 };
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
@@ -26,6 +27,7 @@ use actix_multipart::{Field, Multipart};
 use actix_web::web::Data;
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::Utc;
+use database::models::ids::ClientProfileId as DBClientProfileId;
 use futures::StreamExt;
 use itertools::Itertools;
 use rand::distributions::Alphanumeric;
@@ -440,9 +442,7 @@ pub async fn profile_edit(
             }
 
             if let Some(remove_links) = edit_data.remove_links {
-                println!("remove links: {:?}", remove_links);
                 for link in remove_links {
-                    println!("Removing link: {:?}", link);
                     // Remove link from list
                     sqlx::query!(
                         "DELETE FROM shared_profiles_links WHERE shared_profile_id = $1 AND id = $2",
@@ -755,7 +755,6 @@ pub async fn profile_files(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let cdn_url = dotenvy::var("CDN_URL")?;
     let profile_id = info.into_inner().0;
 
     // Must be logged in to download
@@ -813,7 +812,6 @@ pub async fn profile_token_check(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    let cdn_url = dotenvy::var("CDN_URL")?;
     let file_url = file_url.into_inner().url;
 
     let user = get_user_from_headers(
@@ -842,17 +840,12 @@ pub async fn profile_token_check(
 
     let all_allowed_urls = profiles
         .into_iter()
-        .flat_map(|x| 
-            x.override_files
-            .into_iter().map(|x| x.url))
+        .flat_map(|x| x.override_files.into_iter().map(|x| x.url))
         .collect::<Vec<_>>();
-
-    println!("All allowed urls: {:?}", all_allowed_urls);
 
     // Check the token is valid for the requested file
     let valid = all_allowed_urls.iter().any(|x| x == &file_url);
 
-    println!("Valid: {:?}", valid);
     if !valid {
         Err(ApiError::Authentication(
             AuthenticationError::InvalidAuthMethod,
@@ -937,7 +930,7 @@ pub async fn profile_icon_edit(
             ",
             format!("{}/{}", cdn_url, upload_data.file_name),
             color.map(|x| x as i32),
-            profile_item.inner.id as database::models::ids::ClientProfileId,
+            profile_item.inner.id as DBClientProfileId,
         )
         .execute(&mut *transaction)
         .await?;
@@ -1007,7 +1000,7 @@ pub async fn delete_profile_icon(
         SET icon_url = NULL, color = NULL
         WHERE (id = $1)
         ",
-        profile_item.inner.id as database::models::ids::ClientProfileId,
+        profile_item.inner.id as DBClientProfileId,
     )
     .execute(&mut *transaction)
     .await?;
@@ -1030,7 +1023,7 @@ pub async fn delete_profile_icon(
 // install_path: String
 // The rest of the parts are files, and their install paths are matched to the install paths in the data field
 #[derive(Serialize, Deserialize)]
-struct MultipartFile {
+pub struct MultipartFile {
     pub file_name: String,
     pub install_path: String,
 }
@@ -1071,11 +1064,6 @@ pub async fn client_profile_add_override(
         return Err(CreateError::CustomAuthenticationError(
             "You don't have permission to add overrides.".to_string(),
         ));
-    }
-
-    struct UploadedFile {
-        pub install_path: String,
-        pub hash: String,
     }
 
     let mut error = None;
@@ -1119,7 +1107,18 @@ pub async fn client_profile_add_override(
             let cdn_url = dotenvy::var("CDN_URL")?;
 
             // Upload file to CDN and get hash
-            upload_file(&mut field, &files, &***file_host, &content_disposition, &cdn_url, None, &mut client_profile_files, &mut uploaded_files, &mut transaction).await?;
+            upload_file(
+                &mut field,
+                &files,
+                &***file_host,
+                &content_disposition,
+                &cdn_url,
+                None,
+                &mut client_profile_files,
+                &mut uploaded_files,
+                &mut transaction,
+            )
+            .await?;
             Ok(())
         }
         .await;
@@ -1188,7 +1187,6 @@ pub async fn client_profile_remove_overrides(
     .await?
     .1;
 
-
     // Check if this is our profile
     let profile_item = database::models::client_profile_item::ClientProfile::get(
         client_id.into(),
@@ -1203,9 +1201,12 @@ pub async fn client_profile_remove_overrides(
             "You don't have permission to remove  overrides.".to_string(),
         ));
     }
-    
+
     let delete_hashes = data.hashes.clone().unwrap_or_default();
-    let algorithm = data.algorithm.clone().unwrap_or_else(|| default_algorithm_from_hashes(&delete_hashes));
+    let algorithm = data
+        .algorithm
+        .clone()
+        .unwrap_or_else(|| default_algorithm_from_hashes(&delete_hashes));
     let delete_install_paths = data.install_paths.clone().unwrap_or_default();
 
     // TODO: ensure tested well
@@ -1213,20 +1214,26 @@ pub async fn client_profile_remove_overrides(
         .override_files
         .into_iter()
         .map(|x| (x.hashes, x.install_path))
-        .map(|(hashes, install_paths)| 
-            (hashes.get(&algorithm).map(|x| x.clone()), install_paths)
-        )
-        .filter(|(hash, path)| hash.as_ref().map(|h| delete_hashes.contains(&h)).unwrap_or(false) || delete_install_paths.contains(path))
+        .map(|(hashes, install_paths)| (hashes.get(&algorithm).cloned(), install_paths))
+        .filter(|(hash, path)| {
+            hash.as_ref()
+                .map(|h| delete_hashes.contains(h))
+                .unwrap_or(false)
+                || delete_install_paths.contains(path)
+        })
         .collect::<Vec<(_, _)>>();
 
-    let delete_hashes = overrides.iter().filter_map(|x| x.0.as_ref().map(|x| x.as_bytes().to_vec())).collect::<Vec<_>>();
+    let delete_hashes = overrides
+        .iter()
+        .filter_map(|x| x.0.as_ref().map(|x| x.as_bytes().to_vec()))
+        .collect::<Vec<_>>();
     let delete_install_paths = overrides
         .iter()
         .map(|x| x.1.to_string_lossy().to_string())
         .collect::<Vec<_>>();
 
     let mut transaction = pool.begin().await?;
-    
+
     let files_to_delete = sqlx::query!(
         "
             SELECT spf.file_id 
@@ -1240,7 +1247,10 @@ pub async fn client_profile_remove_overrides(
         &delete_install_paths[..],
     )
     .fetch_all(&mut *transaction)
-    .await?.into_iter().map(|x| FileId(x.file_id)).collect::<Vec<_>>();
+    .await?
+    .into_iter()
+    .map(|x| FileId(x.file_id))
+    .collect::<Vec<_>>();
 
     sqlx::query!(
         "
@@ -1255,7 +1265,8 @@ pub async fn client_profile_remove_overrides(
 
     // Check if any versions_files or shared_profiles_files still reference the file- these files should not be deleted
     // Delete the files that are not referenced
-    let deleted_hashes = file_item::remove_unreferenced_files(files_to_delete, &mut transaction).await?;
+    let deleted_hashes =
+        file_item::remove_unreferenced_files(files_to_delete, &mut transaction).await?;
 
     // Set updated
     sqlx::query!(
@@ -1289,7 +1300,6 @@ async fn delete_unused_files_from_host(
     pool: &PgPool,
     file_host: &Arc<dyn FileHost + Send + Sync>,
 ) -> Result<(), ApiError> {
-
     // Confirm hashes no longer exist in any profile (for sureness)
     let deleted_hashes_bytes = deleted_hashes
         .iter()
@@ -1302,7 +1312,7 @@ async fn delete_unused_files_from_host(
         ",
         &deleted_hashes_bytes
     )
-    .fetch_all(&*pool)
+    .fetch_all(pool)
     .await?
     .into_iter()
     .filter_map(|x| x.hash)
@@ -1331,7 +1341,7 @@ async fn delete_unused_files_from_host(
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
     field: &mut Field,
-    multipart_files: &Vec<MultipartFile>,
+    multipart_files: &[MultipartFile],
     file_host: &dyn FileHost,
     content_disposition: &actix_web::http::header::ContentDisposition,
     cdn_url: &str,
@@ -1356,25 +1366,53 @@ pub async fn upload_file(
         "Project file exceeds the maximum of 500MiB. Contact a moderator or admin to request permission to upload larger files."
     ).await?;
 
-    let name = content_disposition.get_name().ok_or_else(|| {
-        CreateError::InvalidInput(String::from("Upload must have a name"))
-    })?;
+    let name = content_disposition
+        .get_name()
+        .ok_or_else(|| CreateError::InvalidInput(String::from("Upload must have a name")))?;
 
     let install_path = multipart_files
-    .iter()
-    .find(|x| x.file_name == name)
-    .ok_or_else(|| {
-        CreateError::InvalidInput(format!(
-            "No matching file name in `data` for file '{}'",
-            name
-        ))
-    })?
-    .install_path
-    .clone();
+        .iter()
+        .find(|x| x.file_name == name)
+        .ok_or_else(|| {
+            CreateError::InvalidInput(format!(
+                "No matching file name in `data` for file '{}'",
+                name
+            ))
+        })?
+        .install_path
+        .clone();
 
     let hash = format!("{:x}", sha2::Sha512::digest(&data));
 
-    // Allow uploading the same file multiple times, but 
+    // First, check if this file already exists with an approved project's version
+    let existing_collision = sqlx::query!(
+        "
+        SELECT m.slug FROM hashes h
+        INNER JOIN files f ON f.id = h.file_id
+        INNER JOIN versions_files vf on vf.file_id = f.id
+        INNER JOIN versions v ON v.id = vf.version_id
+        INNER JOIN mods m ON m.id = v.mod_id AND m.status = ANY($3)
+        WHERE h.algorithm = $2 AND h.hash = $1
+        ",
+        hash.as_bytes(),
+        "sha512",
+        &*crate::models::projects::ProjectStatus::iterator()
+            .filter(|x| x.is_approved())
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
+    )
+    .fetch_optional(&mut **transaction)
+    .await?
+    .and_then(|x| x.slug);
+
+    if let Some(existing_collision) = existing_collision {
+        return Err(CreateError::InvalidInput(format!(
+            "Override file at path '{}' already exists in Modrinth for mod '{}'",
+            install_path, existing_collision
+        )));
+    }
+
+    // Allow uploading the same file multiple times, if none are for approved versions, but
     // we'll connect them to the same file in the database/CDN
     let existing_file = sqlx::query!(
         "
@@ -1384,7 +1422,7 @@ pub async fn upload_file(
         WHERE h.algorithm = $2 AND h.hash = $1
         ",
         hash.as_bytes(),
-        "sha1",
+        "sha512",
     )
     .fetch_optional(&mut **transaction)
     .await?
@@ -1399,7 +1437,6 @@ pub async fn upload_file(
 
     let sha1_bytes = upload_data.content_sha1.into_bytes();
     let sha512_bytes = upload_data.content_sha512.into_bytes();
-
 
     client_profile_files.push(ClientProfileFileBuilder {
         filename: file_name.to_string(),
@@ -1424,10 +1461,10 @@ pub async fn upload_file(
         file_type,
     });
 
-    uploaded_files.push(UploadedFile { 
+    uploaded_files.push(UploadedFile {
         file_id: upload_data.file_id,
         file_name: file_path,
-     });
+    });
 
     Ok(())
 }

@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM shared_profiles_files\n        WHERE file_id = ANY($1::bigint[])\n        RETURNING shared_profile_id, file_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "shared_profile_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "file_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f6395015c3287dbfebcf9f3e0e852fb5320e093d09a42ebcb5b44fdad0860cde"
+}

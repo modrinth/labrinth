@@ -21,6 +21,7 @@ mod not_found;
 mod updates;
 
 pub use self::not_found::not_found;
+use self::v3::project_creation::CreateError;
 
 pub fn root_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -185,5 +186,23 @@ impl actix_web::ResponseError for ApiError {
             },
             description: &self.to_string(),
         })
+    }
+}
+
+// A simple trait that allows helper functions to return ApiError or CreateError,
+// while keeping the ability to generate InvalidInput(String)
+pub trait CommonError {
+    fn invalid_input(s: String) -> Self;
+}
+
+impl CommonError for ApiError {
+    fn invalid_input(s: String) -> Self {
+        ApiError::InvalidInput(s)
+    }
+}
+
+impl CommonError for CreateError {
+    fn invalid_input(s: String) -> Self {
+        CreateError::InvalidInput(s)
     }
 }

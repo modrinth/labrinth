@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    UPDATE versions_files\n                    SET is_primary = TRUE\n                    WHERE (file_id = $1 AND version_id = $2)\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ae06d55081b25a05297d8468dc473f498564809f66b08e3ca63b4d4db32ebfa3"
+}

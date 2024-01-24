@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT version_id, file_id\n        FROM versions_files vf\n        LEFT JOIN versions v ON v.id = vf.version_id\n        LEFT JOIN mods m ON m.id = v.mod_id\n        WHERE m.status = ANY($1) AND file_id = ANY($2::bigint[])\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "file_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "dd8a0e5976094bc3285326dd78f92a502d56763d737d0c9927b8ae4dcbbabf24"
+}

@@ -1,7 +1,7 @@
 use super::file_item::VersionFileBuilder;
-use super::{file_item, ids::*};
 use super::loader_fields::VersionField;
 use super::DatabaseError;
+use super::{file_item, ids::*};
 use crate::database::models::loader_fields::{
     QueryLoaderField, QueryLoaderFieldEnumValue, QueryVersionField,
 };
@@ -847,6 +847,7 @@ impl Version {
                 FROM files f
                 INNER JOIN versions_files vf on vf.file_id = f.id
                 INNER JOIN versions v on v.id = vf.version_id
+                INNER JOIN mods m on m.id = v.mod_id AND m.status = ANY($3)
                 INNER JOIN hashes h on h.file_id = f.id
                 WHERE h.algorithm = $1 AND h.hash = ANY($2)
                 GROUP BY f.id, v.mod_id, v.date_published, vf.version_id, vf.is_primary
@@ -854,6 +855,10 @@ impl Version {
                 ",
                 algorithm,
                 &file_ids_parsed.into_iter().map(|x| x.as_bytes().to_vec()).collect::<Vec<_>>(),
+                &*crate::models::projects::ProjectStatus::iterator()
+                .filter(|x| x.is_approved())
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>(),
             )
                 .fetch_many(executor)
                 .try_filter_map(|e| async {

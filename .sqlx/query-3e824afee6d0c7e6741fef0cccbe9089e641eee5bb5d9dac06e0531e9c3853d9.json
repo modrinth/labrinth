@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM hashes\n        WHERE EXISTS(\n            SELECT 1 FROM files WHERE\n                (files.id = ANY($1) AND hashes.file_id = files.id)\n        )\n        RETURNING encode(hashes.hash, 'escape') hash\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "hash",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3e824afee6d0c7e6741fef0cccbe9089e641eee5bb5d9dac06e0531e9c3853d9"
+}
