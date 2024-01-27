@@ -364,7 +364,8 @@ fn authenticate_client_token_request(
     req: &HttpRequest,
     client: &DBOAuthClient,
 ) -> Result<(), OAuthError> {
-    let client_secret = extract_authorization_header(req)?;
+    let header = extract_authorization_header(req)?;
+    let client_secret = header.as_str();
     let hashed_client_secret = DBOAuthClient::hash_secret(client_secret);
     if client.secret_hash != hashed_client_secret {
         Err(OAuthError::error(
