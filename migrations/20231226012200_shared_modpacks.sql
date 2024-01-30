@@ -49,11 +49,16 @@ CREATE TABLE versions_files (
 
 -- Populate with the previously named 'version_id' column of the files table
 INSERT INTO versions_files (version_id, file_id, is_primary)
-SELECT version_id, id, is_primary FROM files;
+-- NOTE: Temporarily disabled due to unexpected data issue with staging data. Should be enabled before merging, and the issue should be resolved.
+--SELECT version_id, id, is_primary FROM files;
+SELECT v.id, f.id, is_primary FROM files f LEFT JOIN versions v ON f.version_id = v.id WHERE v.id is not null;
+
 
 -- Drop the version_id and is_primary columns from the files table
 ALTER TABLE files DROP COLUMN version_id;
 ALTER TABLE files DROP COLUMN is_primary;
 
 -- Adds a unique index based on the 'algorithm' and 'hash' pair on the hashes table
-CREATE UNIQUE INDEX hashes_algorithm_hash_unique ON hashes (algorithm, hash);
+-- NOTE: Temporarily disabled due to unexpected data issue with staging data. Should be enabled before merging, and the issue should be resolved.
+-- In essence, there are hash collisions where there shouldn't be- entire file duplicates where the file url, version_id, etc, all are the same except for the file_id.
+-- CREATE UNIQUE INDEX hashes_algorithm_hash_unique ON hashes (algorithm, hash);
