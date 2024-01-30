@@ -477,7 +477,7 @@ async fn delete_profile() {
 
         // Confirm it works
         let resp = api
-            .check_download_client_profile_token(&token.override_cdns[0].0, FRIEND_USER_PAT)
+            .check_download_client_profile_token(&token.override_cdns[0].url, FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::OK);
 
@@ -497,7 +497,7 @@ async fn delete_profile() {
 
         // Confirm the token is gone
         let resp = api
-            .check_download_client_profile_token(&token.override_cdns[0].0, FRIEND_USER_PAT)
+            .check_download_client_profile_token(&token.override_cdns[0].url, FRIEND_USER_PAT)
             .await;
         assert_status!(&resp, StatusCode::UNAUTHORIZED);
     })
@@ -571,7 +571,7 @@ async fn download_profile() {
         // "custom_files"
         // - hash
         assert_eq!(download.override_cdns.len(), 1);
-        let override_file_url = download.override_cdns.remove(0).0;
+        let override_file_url = download.override_cdns.remove(0).url;
         let hash = format!("{:x}", sha2::Sha512::digest(&TestFile::BasicMod.bytes()));
         assert_eq!(
             override_file_url,
@@ -768,7 +768,7 @@ async fn add_remove_profile_versions() {
             profile_downloads
                 .override_cdns
                 .into_iter()
-                .map(|(_, path)| path)
+                .map(|x| x.install_path)
                 .collect::<HashSet<_>>(),
             [
                 PathBuf::from("mods/test.jar"),
@@ -816,7 +816,7 @@ async fn add_remove_profile_versions() {
             profile_enemy
                 .override_cdns
                 .into_iter()
-                .map(|(_, path)| path)
+                .map(|x| x.install_path)
                 .collect::<Vec<_>>(),
             vec![PathBuf::from("mods/test.jar")]
         );
@@ -841,7 +841,7 @@ async fn add_remove_profile_versions() {
             profile_enemy_downloads
                 .override_cdns
                 .into_iter()
-                .map(|(_, path)| path)
+                .map(|x| x.install_path)
                 .collect::<Vec<_>>(),
             vec![PathBuf::from("mods/test.jar")]
         );
@@ -856,7 +856,7 @@ async fn add_remove_profile_versions() {
             profile_downloads
                 .override_cdns
                 .into_iter()
-                .map(|(_, path)| path)
+                .map(|x| x.install_path)
                 .collect::<Vec<_>>(),
             vec![PathBuf::from("mods/test_different.jar")]
         );
@@ -910,7 +910,7 @@ async fn add_remove_profile_versions() {
             profile_downloads
                 .override_cdns
                 .into_iter()
-                .map(|(_, path)| path)
+                .map(|x| x.install_path)
                 .collect::<Vec<_>>(),
             vec![PathBuf::from("mods/test_different.jar")]
         );
@@ -945,7 +945,7 @@ async fn add_remove_profile_versions() {
             profile_downloads
                 .override_cdns
                 .into_iter()
-                .map(|(_, path)| path)
+                .map(|x| x.install_path)
                 .collect::<Vec<_>>(),
             Vec::<PathBuf>::new()
         );
@@ -1482,7 +1482,7 @@ async fn version_file_hash_collisions_approving_with_profile() {
             profile_downloads
                 .override_cdns
                 .into_iter()
-                .map(|(_, path)| path)
+                .map(|x| x.install_path)
                 .collect::<HashSet<_>>(),
             [PathBuf::from("mods/test1.jar")]
                 .iter()
@@ -1523,7 +1523,7 @@ async fn version_file_hash_collisions_approving_with_profile() {
             profile_downloads
                 .override_cdns
                 .into_iter()
-                .map(|(_, path)| path)
+                .map(|x| x.install_path)
                 .collect::<HashSet<_>>(),
             HashSet::<PathBuf>::new()
         );

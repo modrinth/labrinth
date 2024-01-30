@@ -36,6 +36,7 @@ use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use validator::Validate;
@@ -774,14 +775,21 @@ pub async fn accept_share_link(
     Ok(HttpResponse::NoContent().finish())
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 pub struct ProfileDownload {
     // Version ids for modrinth-hosted versions
     pub version_ids: Vec<VersionId>,
 
     // The override cdns for the profile:
     // (cdn url, install path)
-    pub override_cdns: Vec<(String, PathBuf)>,
+    pub override_cdns: Vec<ProfileOverride>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+pub struct ProfileOverride {
+    pub url: String,
+    pub install_path: PathBuf,
+    pub hashes: HashMap<String, String>,
 }
 
 // Download a client profile (gets files)
@@ -827,7 +835,11 @@ pub async fn profile_files(
     let override_cdns = profile
         .override_files
         .into_iter()
-        .map(|x| (x.url, x.install_path))
+        .map(|x| ProfileOverride {
+            url: x.url,
+            install_path: x.install_path,
+            hashes: x.hashes,
+        })
         .collect::<Vec<_>>();
 
     Ok(HttpResponse::Ok().json(ProfileDownload {
