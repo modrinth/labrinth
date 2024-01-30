@@ -44,6 +44,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("client")
             .route("profile", web::post().to(profile_create))
+            .route("profiles", web::get().to(profiles_get))
+            .route("user", web::get().to(user_profiles_get))
             .route("check_token", web::get().to(profile_token_check))
             .service(
                 web::scope("share")
@@ -250,6 +252,43 @@ pub async fn profiles_get(
     let profiles_data =
         database::models::client_profile_item::ClientProfile::get_many(&ids, &**pool, &redis)
             .await?;
+    let profiles = profiles_data
+        .into_iter()
+        .map(|x| ClientProfile::from(x, user_id))
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(profiles))
+}
+
+// Get all a user's client profiles
+pub async fn user_profiles_get(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+) -> Result<HttpResponse, ApiError> {
+    let user_id = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        None, // No scopes required to read your own links
+    )
+    .await
+    .ok()
+    .map(|x| x.1.id.into());
+
+    let profile_ids = database::models::client_profile_item::ClientProfile::get_ids_for_user(
+        user_id.unwrap(),
+        &**pool,
+    )
+    .await?;
+    let profiles_data = database::models::client_profile_item::ClientProfile::get_many(
+        &profile_ids,
+        &**pool,
+        &redis,
+    )
+    .await?;
     let profiles = profiles_data
         .into_iter()
         .map(|x| ClientProfile::from(x, user_id))

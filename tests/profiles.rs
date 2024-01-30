@@ -272,11 +272,25 @@ async fn accept_share_link() {
         assert_eq!(users.len(), 1);
         assert_eq!(users[0].0, USER_USER_ID_PARSED as u64);
 
+        // Getting user's profiles should return the profile
+        let profiles = api
+            .get_user_client_profiles_deserialized(USER_USER_PAT)
+            .await;
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].id.to_string(), id);
+        assert_eq!(profiles[0].owner_id.to_string(), USER_USER_ID);
+
         // Friend can't see the profile users, links, versions, install paths yet, but can see the profile
         let profile = api
             .get_client_profile_deserialized(&id, FRIEND_USER_PAT)
             .await;
         assert_eq!(profile.users, None);
+
+        // Getting friend's profiles should not return the profile
+        let profiles = api
+            .get_user_client_profiles_deserialized(FRIEND_USER_PAT)
+            .await;
+        assert_eq!(profiles.len(), 0);
 
         // As 'user', try to generate a download link for the profile
         let share_link = api
@@ -305,6 +319,12 @@ async fn accept_share_link() {
         assert_eq!(users.len(), 2);
         assert_eq!(users[0].0, USER_USER_ID_PARSED as u64);
         assert_eq!(users[1].0, FRIEND_USER_ID_PARSED as u64);
+
+        // Getting friend's profiles should return the profile
+        let profiles = api
+            .get_user_client_profiles_deserialized(FRIEND_USER_PAT)
+            .await;
+        assert_eq!(profiles.len(), 1);
 
         // Add all of test dummy users until we hit the limit
         let dummy_user_pats = [
@@ -346,6 +366,41 @@ async fn accept_share_link() {
             .get_client_profile_deserialized(&id, USER_USER_PAT)
             .await;
         assert_eq!(profile.share_links.unwrap().len(), 0);
+
+        // Friend still has the profile
+        let profiles = api
+            .get_user_client_profiles_deserialized(USER_USER_PAT)
+            .await;
+        assert_eq!(profiles.len(), 1);
+        let profiles = api
+            .get_user_client_profiles_deserialized(FRIEND_USER_PAT)
+            .await;
+        assert_eq!(profiles.len(), 1);
+
+        // Remove friend
+        let resp = api
+            .edit_client_profile(
+                &id,
+                None,
+                None,
+                None,
+                None,
+                Some(vec![FRIEND_USER_ID]),
+                None,
+                USER_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
+        // Confirm friend is no longer on the profile
+        let profiles = api
+            .get_user_client_profiles_deserialized(USER_USER_PAT)
+            .await;
+        assert_eq!(profiles.len(), 1);
+        let profiles = api
+            .get_user_client_profiles_deserialized(FRIEND_USER_PAT)
+            .await;
+        assert_eq!(profiles.len(), 0);
     })
     .await;
 }

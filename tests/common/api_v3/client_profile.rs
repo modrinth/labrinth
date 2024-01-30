@@ -134,6 +134,23 @@ impl ApiV3 {
         test::read_body_json(resp).await
     }
 
+    pub async fn get_user_client_profiles(&self, pat: Option<&str>) -> ServiceResponse {
+        let req = TestRequest::get()
+            .uri("/_internal/client/user")
+            .append_pat(pat)
+            .to_request();
+        self.call(req).await
+    }
+
+    pub async fn get_user_client_profiles_deserialized(
+        &self,
+        pat: Option<&str>,
+    ) -> Vec<ClientProfile> {
+        let resp = self.get_user_client_profiles(pat).await;
+        assert_status!(&resp, StatusCode::OK);
+        test::read_body_json(resp).await
+    }
+
     pub async fn delete_client_profile(&self, id: &str, pat: Option<&str>) -> ServiceResponse {
         let req = TestRequest::delete()
             .uri(&format!("/_internal/client/profile/{}", id))
