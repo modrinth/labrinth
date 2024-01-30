@@ -80,7 +80,7 @@ pub async fn version_project_get_helper(
     .ok();
 
     if let Some(project) = result {
-        if !is_visible_project(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -725,7 +725,7 @@ pub async fn version_list(
     .ok();
 
     if let Some(project) = result {
-        if !is_visible_project(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -839,7 +839,7 @@ pub async fn version_list(
 
 pub async fn version_delete(
     req: HttpRequest,
-    info: web::Path<(models::ids::VersionId,)>,
+    info: web::Path<(VersionId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
