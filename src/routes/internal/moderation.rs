@@ -10,6 +10,8 @@ use sqlx::PgPool;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("moderation/projects", web::get().to(get_projects));
+    cfg.route("moderation/project/{id}", web::get().to(get_project_meta));
+    cfg.route("moderation/project/{id}", web::post().to(set_project_meta));
 }
 
 #[derive(Deserialize)]
@@ -62,4 +64,53 @@ pub async fn get_projects(
         .collect();
 
     Ok(HttpResponse::Ok().json(projects))
+}
+
+// TODO: get judgements route
+// TODO: submit judgements route
+
+pub async fn get_project_meta(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+    project_id: web::Path<String>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_moderator_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await?;
+
+    // get project files metadata files
+    // return hashmap of metadata and version ids
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn set_project_meta(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+    project_id: web::Path<String>,
+) -> Result<HttpResponse, ApiError> {
+    check_is_moderator_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::PROJECT_READ]),
+    )
+    .await?;
+
+    // return mod message based on judgements
+    // in separate task:
+    // register judgements in DB
+    // update flame projects and put in db
+
+    Ok(HttpResponse::Ok().finish())
 }
