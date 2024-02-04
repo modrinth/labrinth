@@ -255,18 +255,10 @@ pub async fn update_files(
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let update_data = update_data.into_inner();
-    let mut loader_fields = HashMap::new();
-    let mut game_versions = vec![];
-    for gv in update_data.game_versions.into_iter().flatten() {
-        game_versions.push(serde_json::json!(gv.clone()));
-    }
-    if !game_versions.is_empty() {
-        loader_fields.insert("game_versions".to_string(), game_versions);
-    }
     let update_data = v3::version_file::ManyUpdateData {
         loaders: update_data.loaders.clone(),
         version_types: update_data.version_types.clone(),
-        loader_fields: Some(loader_fields),
+        game_versions: update_data.game_versions.clone(),
         algorithm: update_data.algorithm,
         hashes: update_data.hashes,
     };
