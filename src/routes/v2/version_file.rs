@@ -248,11 +248,9 @@ pub struct ManyUpdateData {
 
 #[post("update")]
 pub async fn update_files(
-    req: HttpRequest,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     update_data: web::Json<ManyUpdateData>,
-    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let update_data = update_data.into_inner();
     let update_data = v3::version_file::ManyUpdateData {
@@ -263,10 +261,9 @@ pub async fn update_files(
         hashes: update_data.hashes,
     };
 
-    let response =
-        v3::version_file::update_files(req, pool, redis, web::Json(update_data), session_queue)
-            .await
-            .or_else(v2_reroute::flatten_404_error)?;
+    let response = v3::version_file::update_files(pool, redis, web::Json(update_data))
+        .await
+        .or_else(v2_reroute::flatten_404_error)?;
 
     // Convert response to V2 format
     match v2_reroute::extract_ok_json::<HashMap<String, Version>>(response).await {

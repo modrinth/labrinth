@@ -9,6 +9,8 @@ use crate::models::teams::ProjectPermissions;
 use crate::queue::session::AuthQueue;
 use crate::{database, models};
 use actix_web::{web, HttpRequest, HttpResponse};
+use dashmap::DashMap;
+use futures::TryStreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -309,11 +311,9 @@ pub struct ManyUpdateData {
     pub version_types: Option<Vec<VersionType>>,
 }
 pub async fn update_files(
-    req: HttpRequest,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     update_data: web::Json<ManyUpdateData>,
-    session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let algorithm = update_data
         .algorithm
@@ -330,23 +330,32 @@ pub async fn update_files(
     // TODO: de-hardcode this and actually use version fields system
     let update_version_ids = sqlx::query!(
         "
-        SELECT v.id version_id FROM versions v
+        SELECT v.id version_id, v.mod_id mod_id FROM versions v
         INNER JOIN version_fields vf ON vf.field_id = 3
         INNER JOIN loader_field_enum_values lfev on lfev.enum_id = 2 AND (cardinality($2::varchar[]) = 0 OR lfev.value = ANY($2::varchar[]))
         INNER JOIN loaders_versions lv ON lv.version_id = v.id
         INNER JOIN loaders l on lv.loader_id = l.id AND (cardinality($3::varchar[]) = 0 OR l.loader = ANY($3::varchar[]))
         WHERE v.mod_id = ANY($1) AND (cardinality($4::varchar[]) = 0 OR v.version_type = ANY($4))
+        ORDER BY v.date_published ASC
         ",
         &files.iter().map(|x| x.project_id.0).collect::<Vec<_>>(),
         &update_data.game_versions.clone().unwrap_or_default(),
         &update_data.loaders.clone().unwrap_or_default(),
         &update_data.version_types.clone().unwrap_or_default().iter().map(|x| x.to_string()).collect::<Vec<_>>(),
-    ).fetch_all(&**pool).await?;
+    )
+        .fetch(&**pool)
+        .try_fold(DashMap::new(), |acc : DashMap<_,Vec<database::models::ids::VersionId>>, m| {
+            acc.entry(crate::database::models::ProjectId(m.mod_id))
+                .or_default()
+                .push(crate::database::models::VersionId(m.version_id));
+            async move { Ok(acc) }
+        })
+        .await?;
 
     let versions = database::models::Version::get_many(
         &update_version_ids
-            .iter()
-            .map(|x| database::models::VersionId(x.version_id))
+            .into_iter()
+            .filter_map(|x| x.1.last().copied())
             .collect::<Vec<_>>(),
         &**pool,
         &redis,
