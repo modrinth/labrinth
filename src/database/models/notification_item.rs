@@ -45,7 +45,8 @@ impl NotificationBuilder {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         redis: &RedisPool,
     ) -> Result<(), DatabaseError> {
-        let notification_ids = generate_many_notification_ids(users.len(), &mut *transaction).await?;
+        let notification_ids =
+            generate_many_notification_ids(users.len(), &mut *transaction).await?;
 
         let body = serde_json::value::to_value(&self.body)?;
         let bodies = notification_ids
@@ -60,18 +61,17 @@ impl NotificationBuilder {
             )
             SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::jsonb[])
             ",
-            &notification_ids.into_iter().map(|x| x.0).collect::<Vec<_>>()[..],
+            &notification_ids
+                .into_iter()
+                .map(|x| x.0)
+                .collect::<Vec<_>>()[..],
             &users.iter().map(|x| x.0).collect::<Vec<_>>()[..],
             &bodies[..],
         )
-            .execute(&mut **transaction)
-            .await?;
+        .execute(&mut **transaction)
+        .await?;
 
-        Notification::clear_user_notifications_cache(
-            &users,
-            redis,
-        )
-            .await?;
+        Notification::clear_user_notifications_cache(&users, redis).await?;
 
         Ok(())
     }

@@ -1,6 +1,6 @@
 use super::DatabaseError;
 use crate::models::ids::base62_impl::to_base62;
-use crate::models::ids::{random_base62_rng_range, random_base62_rng};
+use crate::models::ids::{random_base62_rng, random_base62_rng_range};
 use censor::Censor;
 use serde::{Deserialize, Serialize};
 use sqlx::sqlx_macros::Type;
