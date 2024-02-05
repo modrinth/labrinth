@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT DISTINCT shared_profile_id, f.id, f.url, f.filename, spf.install_path, f.size, f.file_type\n                FROM files f\n                INNER JOIN shared_profiles_files spf ON spf.file_id = f.id\n                WHERE spf.shared_profile_id = ANY($1)\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "shared_profile_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "filename",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "install_path",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "size",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "file_type",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "ca0dcd1c64488eda289f7344d2bb2b874e1ccbe696d1ad1d918adcf571cb05cd"
+}

@@ -1,6 +1,7 @@
 use super::ApiError;
 use crate::auth::checks::{filter_visible_versions, is_visible_version};
 use crate::auth::{filter_visible_projects, get_user_from_headers};
+use crate::database::models::file_item;
 use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
@@ -596,23 +597,17 @@ pub async fn delete_file(
 
         sqlx::query!(
             "
-            DELETE FROM hashes
-            WHERE file_id = $1
-            ",
-            row.id.0
+                DELETE FROM versions_files
+                WHERE file_id = $1
+                ",
+            &row.id.0
         )
         .execute(&mut *transaction)
         .await?;
 
-        sqlx::query!(
-            "
-            DELETE FROM files
-            WHERE files.id = $1
-            ",
-            row.id.0,
-        )
-        .execute(&mut *transaction)
-        .await?;
+        // Check if any versions_files or shared_profiles_files still reference the file- these files should not be deleted
+        // Delete the files that are not referenced
+        file_item::remove_unreferenced_files(vec![row.id], &mut transaction).await?;
 
         transaction.commit().await?;
 

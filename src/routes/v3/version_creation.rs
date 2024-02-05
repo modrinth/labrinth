@@ -1,11 +1,10 @@
 use super::project_creation::{CreateError, UploadedFile};
 use crate::auth::get_user_from_headers;
+use crate::database::models::file_item::{self, VersionFileBuilder};
 use crate::database::models::loader_fields::{LoaderField, LoaderFieldEnumValue, VersionField};
 use crate::database::models::notification_item::NotificationBuilder;
-use crate::database::models::version_item::{
-    DependencyBuilder, VersionBuilder, VersionFileBuilder,
-};
-use crate::database::models::{self, image_item, Organization};
+use crate::database::models::version_item::{DependencyBuilder, VersionBuilder};
+use crate::database::models::{self, image_item, FileId, Organization};
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::images::{Image, ImageContext, ImageId};
@@ -412,8 +411,9 @@ async fn version_create_inner(
             acc
         });
 
+    let version_id = builder.version_id;
     let response = Version {
-        id: builder.version_id.into(),
+        id: version_id.into(),
         project_id: builder.project_id.into(),
         author_id: user.id,
         featured: builder.featured,
@@ -494,6 +494,21 @@ async fn version_create_inner(
                 image_id
             )));
         }
+    }
+
+    // On version creation in to approved project, the version become unique 'owners' of its files
+    let project = models::Project::get_id(project_id, &mut **transaction, redis)
+        .await?
+        .ok_or_else(|| {
+            CreateError::InvalidInput("An invalid project id was supplied".to_string())
+        })?;
+    if project.inner.status.is_approved() {
+        file_item::convert_hash_collisions_to_versions::<CreateError>(
+            &[version_id],
+            &mut *transaction,
+            redis,
+        )
+        .await?;
     }
 
     models::Project::clear_cache(project_id, None, Some(true), redis).await?;
@@ -734,6 +749,21 @@ async fn upload_file_to_version_inner(
         }
     }
 
+    // On upload to approved project, the version become unique 'owner' of the file
+    let project = models::Project::get_id(version.inner.project_id, &mut **transaction, &redis)
+        .await?
+        .ok_or_else(|| {
+            CreateError::InvalidInput("An invalid project id was supplied".to_string())
+        })?;
+    if project.inner.status.is_approved() {
+        file_item::convert_hash_collisions_to_versions::<CreateError>(
+            &[version_id],
+            &mut *transaction,
+            &redis,
+        )
+        .await?;
+    }
+
     // Clear version cache
     models::Version::clear_cache(&version, &redis).await?;
 
@@ -779,27 +809,49 @@ pub async fn upload_file(
     ).await?;
 
     let hash = sha1::Sha1::from(&data).hexdigest();
-    let exists = sqlx::query!(
+    // First, check if this file already exists with an approved project's version
+    let existing_collision = sqlx::query!(
         "
-        SELECT EXISTS(SELECT 1 FROM hashes h
+        SELECT m.slug FROM hashes h
         INNER JOIN files f ON f.id = h.file_id
-        INNER JOIN versions v ON v.id = f.version_id
-        WHERE h.algorithm = $2 AND h.hash = $1 AND v.mod_id != $3)
+        INNER JOIN versions_files vf on vf.file_id = f.id
+        INNER JOIN versions v ON v.id = vf.version_id
+        INNER JOIN mods m ON m.id = v.mod_id AND m.status = ANY($3)
+        WHERE h.algorithm = $2 AND h.hash = $1
         ",
         hash.as_bytes(),
         "sha1",
-        project_id.0 as i64
+        &*crate::models::projects::ProjectStatus::iterator()
+            .filter(|x| x.is_approved())
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
     )
-    .fetch_one(&mut **transaction)
+    .fetch_optional(&mut **transaction)
     .await?
-    .exists
-    .unwrap_or(false);
+    .and_then(|x| x.slug);
 
-    if exists {
-        return Err(CreateError::InvalidInput(
-            "Duplicate files are not allowed to be uploaded to Modrinth!".to_string(),
-        ));
+    if let Some(existing_collision) = existing_collision {
+        return Err(CreateError::InvalidInput(format!(
+            "File '{}' already exists in Modrinth for mod '{}' by hash.",
+            file_name, existing_collision
+        )));
     }
+
+    // Allow uploading the same file multiple times, if none are for approved versions, but
+    // we'll connect them to the same file in the database/CDN
+    let existing_file = sqlx::query!(
+        "
+        SELECT f.id
+        FROM hashes h
+        INNER JOIN files f ON f.id = h.file_id
+        WHERE h.algorithm = $2 AND h.hash = $1
+        ",
+        hash.as_bytes(),
+        "sha1",
+    )
+    .fetch_optional(&mut **transaction)
+    .await?
+    .map(|x| FileId(x.id));
 
     let validation_result = validate_file(
         data.clone().into(),
@@ -829,7 +881,8 @@ pub async fn upload_file(
                 "
                     SELECT v.id version_id, v.mod_id project_id, h.hash hash FROM hashes h
                     INNER JOIN files f on h.file_id = f.id
-                    INNER JOIN versions v on f.version_id = v.id
+                    INNER JOIN versions_files vf on vf.file_id = f.id
+                    INNER JOIN versions v on v.id = vf.version_id
                     WHERE h.algorithm = 'sha1' AND h.hash = ANY($1)
                     ",
                 &*hashes
@@ -914,14 +967,15 @@ pub async fn upload_file(
     version_files.push(VersionFileBuilder {
         filename: file_name.to_string(),
         url: format!("{cdn_url}/{file_path_encode}"),
+        existing_file,
         hashes: vec![
-            models::version_item::HashBuilder {
+            models::file_item::HashBuilder {
                 algorithm: "sha1".to_string(),
                 // This is an invalid cast - the database expects the hash's
                 // bytes, but this is the string version.
                 hash: sha1_bytes,
             },
-            models::version_item::HashBuilder {
+            models::file_item::HashBuilder {
                 algorithm: "sha512".to_string(),
                 // This is an invalid cast - the database expects the hash's
                 // bytes, but this is the string version.

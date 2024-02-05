@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod client;
 pub mod collections;
 pub mod ids;
 pub mod images;

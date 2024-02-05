@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT f.id\n        FROM files f\n        LEFT JOIN versions_files vf ON vf.file_id = f.id\n        LEFT JOIN shared_profiles_files spf ON spf.file_id = f.id\n        WHERE f.id = ANY($1) AND (vf.version_id IS NOT NULL OR spf.shared_profile_id IS NOT NULL)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "4d784747f424af21136ea82dcf54ee5712e69ad609a030f207918c2e08b34c54"
+}

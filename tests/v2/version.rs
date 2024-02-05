@@ -145,7 +145,6 @@ async fn version_updates() {
             ..
         } = &test_env.dummy.project_alpha;
         let DummyProjectBeta {
-            version_id: beta_version_id,
             file_hash: beta_version_hash,
             ..
         } = &test_env.dummy.project_beta;
@@ -164,12 +163,11 @@ async fn version_updates() {
                 USER_USER_PAT,
             )
             .await;
-        assert_eq!(versions.len(), 2);
+        assert_eq!(versions.len(), 1); // Beta version should not be returned, not approved yet and hasn't claimed hash
         assert_eq!(
             &versions[alpha_version_hash].id.to_string(),
             alpha_version_id
         );
-        assert_eq!(&versions[beta_version_hash].id.to_string(), beta_version_id);
 
         // When there is only the one version, there should be no updates
         let version = api

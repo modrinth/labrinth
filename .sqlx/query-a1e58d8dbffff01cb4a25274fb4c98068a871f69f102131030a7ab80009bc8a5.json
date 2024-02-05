@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        UPDATE shared_profiles\n                        SET updated = NOW()\n                        WHERE id = $1\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a1e58d8dbffff01cb4a25274fb4c98068a871f69f102131030a7ab80009bc8a5"
+}

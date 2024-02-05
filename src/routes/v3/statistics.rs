@@ -66,7 +66,8 @@ pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError
     let files = sqlx::query!(
         "
         SELECT COUNT(f.id) FROM files f
-        INNER JOIN versions v on f.version_id = v.id AND v.status = ANY($2)
+        INNER JOIN versions_files vf ON vf.file_id = f.id
+        INNER JOIN versions v ON v.id = vf.version_id AND v.status = ANY($2)
         INNER JOIN mods m on v.mod_id = m.id AND m.status = ANY($1)
         ",
         &*crate::models::projects::ProjectStatus::iterator()

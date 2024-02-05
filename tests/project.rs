@@ -176,6 +176,18 @@ async fn test_add_remove_project() {
         assert!(project.versions.len() == 1);
         let uploaded_version_id = project.versions[0];
 
+        // Approve the project, which 'claims' the hash
+        let resp = api
+            .edit_project(
+                "demo",
+                json!({
+                    "status": "approved",
+                }),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
+
         // Checks files to ensure they were uploaded and correctly identify the file
         let hash = sha1::Sha1::from(basic_mod_file.bytes())
             .digest()
@@ -190,7 +202,7 @@ async fn test_add_remove_project() {
         let resp = api
             .create_project(
                 ProjectCreationRequestData {
-                    slug: "demo".to_string(),
+                    slug: "".to_string(), // Slug not needed at this point
                     segment_data: vec![
                         json_diff_slug_file_segment.clone(),
                         file_diff_name_segment.clone(),
@@ -206,7 +218,7 @@ async fn test_add_remove_project() {
         let resp = api
             .create_project(
                 ProjectCreationRequestData {
-                    slug: "demo".to_string(),
+                    slug: "".to_string(), // Slug not needed at this point
                     segment_data: vec![
                         json_diff_file_segment.clone(),
                         file_diff_name_content_segment.clone(),
@@ -222,7 +234,7 @@ async fn test_add_remove_project() {
         let resp = api
             .create_project(
                 ProjectCreationRequestData {
-                    slug: "demo".to_string(),
+                    slug: "".to_string(), // Slug not needed at this point
                     segment_data: vec![
                         json_diff_slug_file_segment.clone(),
                         file_diff_name_content_segment.clone(),

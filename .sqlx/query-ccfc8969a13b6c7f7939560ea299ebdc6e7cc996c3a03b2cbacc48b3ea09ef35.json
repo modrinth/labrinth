@@ -1,0 +1,94 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT sp.id, sp.name, sp.owner_id, sp.icon_url, sp.created, sp.updated, sp.loader_id,\n                l.loader, g.name as game_name, g.id as game_id, sp.metadata,\n                ARRAY_AGG(DISTINCT spu.user_id) filter (WHERE spu.user_id IS NOT NULL) as users,\n                ARRAY_AGG(DISTINCT spl.id) filter (WHERE spl.id IS NOT NULL) as links\n                FROM shared_profiles sp                \n                LEFT JOIN shared_profiles_links spl ON spl.shared_profile_id = sp.id\n                LEFT JOIN loaders l ON l.id = sp.loader_id\n                LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id\n                INNER JOIN games g ON g.id = sp.game_id\n                WHERE sp.id = ANY($1)\n                GROUP BY sp.id, l.id, g.id\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "owner_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "icon_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "created",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "loader_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "loader",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "game_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "game_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 11,
+        "name": "users",
+        "type_info": "Int8Array"
+      },
+      {
+        "ordinal": 12,
+        "name": "links",
+        "type_info": "Int8Array"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "ccfc8969a13b6c7f7939560ea299ebdc6e7cc996c3a03b2cbacc48b3ea09ef35"
+}

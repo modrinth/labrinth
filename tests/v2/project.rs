@@ -6,7 +6,8 @@ use crate::{
         api_common::{ApiProject, ApiVersion, AppendsOptionalPat},
         api_v2::{request_data::get_public_project_creation_data_json, ApiV2},
         database::{
-            generate_random_name, ADMIN_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, USER_USER_PAT,
+            generate_random_name, ADMIN_USER_PAT, FRIEND_USER_ID, FRIEND_USER_PAT, MOD_USER_PAT,
+            USER_USER_PAT,
         },
         dummy_data::TestFile,
         environment::{with_test_environment, TestEnvironment},
@@ -173,6 +174,18 @@ async fn test_add_remove_project() {
         let project = api.get_project_deserialized("demo", USER_USER_PAT).await;
         assert!(project.versions.len() == 1);
         let uploaded_version_id = project.versions[0];
+
+        // Approve the project, which 'claims' the hash
+        let resp = api
+            .edit_project(
+                "demo",
+                json!({
+                    "status": "approved",
+                }),
+                MOD_USER_PAT,
+            )
+            .await;
+        assert_status!(&resp, StatusCode::NO_CONTENT);
 
         // Checks files to ensure they were uploaded and correctly identify the file
         let hash = sha1::Sha1::from(basic_mod_file.bytes())

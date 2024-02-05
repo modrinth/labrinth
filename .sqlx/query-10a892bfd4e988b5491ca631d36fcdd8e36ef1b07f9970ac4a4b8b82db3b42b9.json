@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM shared_profiles_links WHERE shared_profile_id = $1 AND id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "10a892bfd4e988b5491ca631d36fcdd8e36ef1b07f9970ac4a4b8b82db3b42b9"
+}

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT sp.id\n            FROM shared_profiles sp                \n            LEFT JOIN shared_profiles_users spu ON spu.shared_profile_id = sp.id\n            WHERE spu.user_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f5e2e1cb44e42aca9ea0edb8b8f39e33614c2b53ff3b4c1124d0a2e9da53f9ea"
+}

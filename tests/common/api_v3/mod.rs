@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use labrinth::LabrinthConfig;
 use std::rc::Rc;
 
+pub mod client_profile;
 pub mod collections;
 pub mod oauth;
 pub mod oauth_clients;

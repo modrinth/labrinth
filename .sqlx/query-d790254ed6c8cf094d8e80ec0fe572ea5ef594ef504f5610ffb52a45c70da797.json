@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO shared_profiles_users (\n                    shared_profile_id, user_id\n                )\n                VALUES (\n                    $1, $2\n                )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d790254ed6c8cf094d8e80ec0fe572ea5ef594ef504f5610ffb52a45c70da797"
+}

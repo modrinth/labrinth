@@ -7,7 +7,7 @@ use labrinth::models::{
     oauth_clients::OAuthClient,
     organizations::Organization,
     pats::Scopes,
-    projects::{Project, ProjectId, Version},
+    projects::{Project, ProjectId, Version, VersionId},
 };
 use serde_json::json;
 use sqlx::Executor;
@@ -192,6 +192,7 @@ impl DummyData {
                 project_slug: project_alpha.slug.unwrap(),
                 project_id_parsed: project_alpha.id,
                 version_id: project_alpha_version.id.to_string(),
+                version_id_parsed: project_alpha_version.id,
                 thread_id: project_alpha.thread_id.to_string(),
                 file_hash: project_alpha_version.files[0].hashes["sha1"].clone(),
             },
@@ -202,6 +203,7 @@ impl DummyData {
                 project_slug: project_beta.slug.unwrap(),
                 project_id_parsed: project_beta.id,
                 version_id: project_beta_version.id.to_string(),
+                version_id_parsed: project_beta_version.id,
                 thread_id: project_beta.thread_id.to_string(),
                 file_hash: project_beta_version.files[0].hashes["sha1"].clone(),
             },
@@ -232,6 +234,7 @@ pub struct DummyProjectAlpha {
     pub project_slug: String,
     pub project_id_parsed: ProjectId,
     pub version_id: String,
+    pub version_id_parsed: VersionId,
     pub thread_id: String,
     pub file_hash: String,
     pub team_id: String,
@@ -243,6 +246,7 @@ pub struct DummyProjectBeta {
     pub project_slug: String,
     pub project_id_parsed: ProjectId,
     pub version_id: String,
+    pub version_id_parsed: VersionId,
     pub thread_id: String,
     pub file_hash: String,
     pub team_id: String,

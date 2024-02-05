@@ -66,8 +66,10 @@ pub async fn count_download(
 
     let (version_id, project_id) = if let Some(version) = sqlx::query!(
         "
-            SELECT v.id id, v.mod_id mod_id FROM files f
-            INNER JOIN versions v ON v.id = f.version_id
+            SELECT v.id id, v.mod_id mod_id 
+            FROM files f
+            INNER JOIN versions_files vf ON vf.file_id = f.id
+            INNER JOIN versions v ON v.id = vf.version_id
             WHERE f.url = $1
             ",
         download_body.url,

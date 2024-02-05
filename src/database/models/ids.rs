@@ -230,6 +230,22 @@ generate_ids!(
     PayoutId
 );
 
+generate_ids!(
+    pub generate_client_profile_id,
+    ClientProfileId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM shared_profiles WHERE id=$1)",
+    ClientProfileId
+);
+
+generate_ids!(
+    pub generate_client_profile_link_id,
+    ClientProfileLinkId,
+    8,
+    "SELECT EXISTS(SELECT 1 FROM shared_profiles_links WHERE id=$1)",
+    ClientProfileLinkId
+);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Type, Hash, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct UserId(pub i64);
@@ -348,6 +364,14 @@ pub struct OAuthAccessTokenId(pub i64);
 #[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[sqlx(transparent)]
 pub struct PayoutId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct ClientProfileId(pub i64);
+
+#[derive(Copy, Clone, Debug, Type, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[sqlx(transparent)]
+pub struct ClientProfileLinkId(pub i64);
 
 use crate::models::ids;
 
@@ -500,5 +524,27 @@ impl From<ids::PayoutId> for PayoutId {
 impl From<PayoutId> for ids::PayoutId {
     fn from(id: PayoutId) -> Self {
         ids::PayoutId(id.0 as u64)
+    }
+}
+
+impl From<ids::ClientProfileId> for ClientProfileId {
+    fn from(id: ids::ClientProfileId) -> Self {
+        ClientProfileId(id.0 as i64)
+    }
+}
+
+impl From<ClientProfileId> for ids::ClientProfileId {
+    fn from(id: ClientProfileId) -> Self {
+        ids::ClientProfileId(id.0 as u64)
+    }
+}
+impl From<ids::ClientProfileLinkId> for ClientProfileLinkId {
+    fn from(id: ids::ClientProfileLinkId) -> Self {
+        ClientProfileLinkId(id.0 as i64)
+    }
+}
+impl From<ClientProfileLinkId> for ids::ClientProfileLinkId {
+    fn from(id: ClientProfileLinkId) -> Self {
+        ids::ClientProfileLinkId(id.0 as u64)
     }
 }

@@ -6,6 +6,8 @@ use crate::common::dummy_data::{DummyProjectAlpha, DummyProjectBeta, TestFile};
 use crate::common::get_json_val_str;
 use actix_http::StatusCode;
 use actix_web::test;
+use common::api_common::ApiProject;
+use common::api_v3::request_data::get_public_project_creation_data;
 use common::api_v3::ApiV3;
 use common::asserts::assert_common_version_ids;
 use common::database::USER_USER_PAT;
@@ -14,7 +16,7 @@ use futures::StreamExt;
 use labrinth::database::models::version_item::VERSIONS_NAMESPACE;
 use labrinth::models::ids::base62_impl::parse_base62;
 use labrinth::models::projects::{
-    Dependency, DependencyType, VersionId, VersionStatus, VersionType,
+    Dependency, DependencyType, Project, VersionId, VersionStatus, VersionType,
 };
 use labrinth::routes::v3::version_file::FileUpdateData;
 use serde_json::json;
@@ -82,6 +84,138 @@ async fn test_get_version() {
 }
 
 #[actix_rt::test]
+async fn version_updates_non_public_is_nothing() {
+    // Test setup and dummy data
+    with_test_environment(
+        None,
+        |test_env: common::environment::TestEnvironment<ApiV3>| async move {
+            // Confirm that hash-finding functions return nothing for versions attached to non-public projects
+            // This is a necessity because now hashes do not uniquely identify versions, and these functions expect being able to find a single version from a hash
+            // This is the case even if we are the owner of the project/versions
+            let api = &test_env.api;
+
+            // First, create project gamma, which is private
+            let gamma_creation_data = get_public_project_creation_data("gamma", None, None);
+            let gamma_project = api.create_project(gamma_creation_data, USER_USER_PAT).await;
+            let gamma_project: Project = test::read_body_json(gamma_project).await;
+
+            let mut sha1_hashes = vec![];
+            // Create 5 versions, and we will add them to both beta and gamma
+            for i in 0..5 {
+                let file = TestFile::build_random_jar();
+                let version = api
+                    .add_public_version_deserialized(
+                        gamma_project.id,
+                        &format!("1.2.3.{}", i),
+                        file.clone(),
+                        None,
+                        None,
+                        USER_USER_PAT,
+                    )
+                    .await;
+
+                api.add_public_version_deserialized(
+                    test_env.dummy.project_beta.project_id_parsed,
+                    &format!("1.2.3.{}", i),
+                    file.clone(),
+                    None,
+                    None,
+                    USER_USER_PAT,
+                )
+                .await;
+
+                sha1_hashes.push(version.files[0].hashes["sha1"].clone());
+            }
+
+            for approved in [false, true] {
+                // get_version_from_hash
+                let resp = api
+                    .get_version_from_hash(&sha1_hashes[0], "sha1", USER_USER_PAT)
+                    .await;
+                if approved {
+                    assert_status!(&resp, StatusCode::OK);
+                } else {
+                    assert_status!(&resp, StatusCode::NOT_FOUND);
+                }
+
+                // get_versions_from_hashes
+                let resp = api
+                    .get_versions_from_hashes(&[&sha1_hashes[0]], "sha1", USER_USER_PAT)
+                    .await;
+                assert_status!(&resp, StatusCode::OK);
+                let body: HashMap<String, serde_json::Value> = test::read_body_json(resp).await;
+                if approved {
+                    assert_eq!(body.len(), 1);
+                } else {
+                    assert_eq!(body.len(), 0);
+                }
+
+                // get_update_from_hash
+                let resp = api
+                    .get_update_from_hash(&sha1_hashes[0], "sha1", None, None, None, USER_USER_PAT)
+                    .await;
+                if approved {
+                    assert_status!(&resp, StatusCode::OK);
+                } else {
+                    assert_status!(&resp, StatusCode::NOT_FOUND);
+                }
+
+                // update_files
+                let resp = api
+                    .update_files(
+                        "sha1",
+                        vec![sha1_hashes[0].clone()],
+                        None,
+                        None,
+                        None,
+                        USER_USER_PAT,
+                    )
+                    .await;
+                assert_status!(&resp, StatusCode::OK);
+                let body: HashMap<String, serde_json::Value> = test::read_body_json(resp).await;
+                if approved {
+                    assert_eq!(body.len(), 1);
+                } else {
+                    assert_eq!(body.len(), 0);
+                }
+
+                // update_individual_files
+                let hashes = vec![FileUpdateData {
+                    hash: sha1_hashes[0].clone(),
+                    loaders: None,
+                    loader_fields: None,
+                    version_types: None,
+                }];
+                let resp = api
+                    .update_individual_files("sha1", hashes, USER_USER_PAT)
+                    .await;
+                assert_status!(&resp, StatusCode::OK);
+
+                let body: HashMap<String, serde_json::Value> = test::read_body_json(resp).await;
+                if approved {
+                    assert_eq!(body.len(), 1);
+                } else {
+                    assert_eq!(body.len(), 0);
+                }
+
+                // Now, make the project public for the next loop, and confirm that the functions work
+                if !approved {
+                    api.edit_project(
+                        &gamma_project.id.to_string(),
+                        json!({
+                            "status": "approved",
+                        }),
+                        MOD_USER_PAT,
+                    )
+                    .await;
+                }
+            }
+        },
+    )
+    .await;
+}
+
+#[actix_rt::test]
 async fn version_updates() {
     // Test setup and dummy data
     with_test_environment(
@@ -96,7 +230,6 @@ async fn version_updates() {
                 ..
             } = &test_env.dummy.project_alpha;
             let DummyProjectBeta {
-                version_id: beta_version_id,
                 file_hash: beta_version_hash,
                 ..
             } = &test_env.dummy.project_beta;
@@ -119,12 +252,11 @@ async fn version_updates() {
                     USER_USER_PAT,
                 )
                 .await;
-            assert_eq!(versions.len(), 2);
+            assert_eq!(versions.len(), 1); // Beta version should not be returned, not approved yet and hasn't claimed hash
             assert_eq!(
                 &versions[alpha_version_hash].id.to_string(),
                 alpha_version_id
             );
-            assert_eq!(&versions[beta_version_hash].id.to_string(), beta_version_id);
 
             // When there is only the one version, there should be no updates
             let version = api
@@ -182,11 +314,12 @@ async fn version_updates() {
             ]
             .iter()
             {
+                let file = TestFile::build_random_jar();
                 let version = api
                     .add_public_version_deserialized(
                         *alpha_project_id_parsed,
                         version_number,
-                        TestFile::build_random_jar(),
+                        file.clone(),
                         None,
                         None,
                         USER_USER_PAT,
