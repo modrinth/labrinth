@@ -330,9 +330,10 @@ pub async fn update_files(
     // TODO: de-hardcode this and actually use version fields system
     let update_version_ids = sqlx::query!(
         "
-        SELECT v.id version_id, v.mod_id mod_id FROM versions v
-        INNER JOIN version_fields vf ON vf.field_id = 3
-        INNER JOIN loader_field_enum_values lfev on lfev.enum_id = 2 AND (cardinality($2::varchar[]) = 0 OR lfev.value = ANY($2::varchar[]))
+        SELECT v.id version_id, v.mod_id mod_id
+        FROM versions v
+        INNER JOIN version_fields vf ON vf.field_id = 3 AND v.id = vf.version_id
+        INNER JOIN loader_field_enum_values lfev ON vf.enum_value = lfev.id AND (cardinality($2::varchar[]) = 0 OR lfev.value = ANY($2::varchar[]))
         INNER JOIN loaders_versions lv ON lv.version_id = v.id
         INNER JOIN loaders l on lv.loader_id = l.id AND (cardinality($3::varchar[]) = 0 OR l.loader = ANY($3::varchar[]))
         WHERE v.mod_id = ANY($1) AND (cardinality($4::varchar[]) = 0 OR v.version_type = ANY($4))
@@ -345,9 +346,9 @@ pub async fn update_files(
     )
         .fetch(&**pool)
         .try_fold(DashMap::new(), |acc : DashMap<_,Vec<database::models::ids::VersionId>>, m| {
-            acc.entry(crate::database::models::ProjectId(m.mod_id))
+            acc.entry(database::models::ProjectId(m.mod_id))
                 .or_default()
-                .push(crate::database::models::VersionId(m.version_id));
+                .push(database::models::VersionId(m.version_id));
             async move { Ok(acc) }
         })
         .await?;
