@@ -346,8 +346,14 @@ impl PayoutsQueue {
                     "OEFTMSBA5ELH",
                     "A3CQK6UHNV27",
                 ];
-                const SUPPORTED_METHODS: &[&str] =
-                    &["merchant_cards", "visa", "bank", "ach", "visa_card"];
+                const SUPPORTED_METHODS: &[&str] = &[
+                    "merchant_cards",
+                    "merchant_card",
+                    "visa",
+                    "bank",
+                    "ach",
+                    "visa_card",
+                ];
 
                 if !SUPPORTED_METHODS.contains(&&*product.category)
                     || BLACKLISTED_IDS.contains(&&*product.id)
