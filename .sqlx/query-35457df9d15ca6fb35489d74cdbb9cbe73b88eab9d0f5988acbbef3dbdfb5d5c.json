@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT v.id version_id, v.version_number, f.metadata\n            FROM versions v\n            INNER JOIN files f ON f.version_id = v.id\n            WHERE v.mod_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "version_number",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "35457df9d15ca6fb35489d74cdbb9cbe73b88eab9d0f5988acbbef3dbdfb5d5c"
+}
