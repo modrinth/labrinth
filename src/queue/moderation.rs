@@ -231,7 +231,7 @@ impl AutomatedModerationQueue {
                                 version_specific: HashMap::new(),
                             };
 
-                            if project.inner.license == "LicenseRef-Unknown" {
+                            if project.inner.license == "LicenseRef-Unknown" || project.inner.license == "LicenseRef-" {
                                 mod_messages.messages.push(ModerationMessage::MissingLicense);
                             } else if project.inner.license.starts_with("LicenseRef-") && project.inner.license != "LicenseRef-All-Rights-Reserved" && project.inner.license_url.is_none() {
                                 mod_messages.messages.push(ModerationMessage::MissingCustomLicenseUrl { license: project.inner.license.clone() });
