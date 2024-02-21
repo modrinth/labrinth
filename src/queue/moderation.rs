@@ -79,6 +79,7 @@ impl ModerationMessages {
 pub enum ModerationMessage {
     MissingGalleryImage,
     NoPrimaryFile,
+    NoSideTypes,
     PackFilesNotAllowed {
         files: HashMap<String, IdentifiedFile>,
         incomplete: bool,
@@ -107,6 +108,7 @@ impl ModerationMessage {
             ModerationMessage::MissingGalleryImage => true,
             ModerationMessage::MissingLicense => true,
             ModerationMessage::MissingCustomLicenseUrl { .. } => true,
+            ModerationMessage::NoSideTypes => true,
         }
     }
 
@@ -119,6 +121,7 @@ impl ModerationMessage {
             ModerationMessage::MissingGalleryImage => false,
             ModerationMessage::MissingLicense => false,
             ModerationMessage::MissingCustomLicenseUrl { .. } => false,
+            ModerationMessage::NoSideTypes => false,
         }
     }
 
@@ -129,6 +132,7 @@ impl ModerationMessage {
             ModerationMessage::MissingGalleryImage => "Missing Gallery Images",
             ModerationMessage::MissingLicense => "Missing License",
             ModerationMessage::MissingCustomLicenseUrl { .. } => "Missing License URL",
+            ModerationMessage::NoSideTypes => "Missing Environment Information",
         }
     }
 
@@ -196,7 +200,8 @@ Keep in mind that you should:\n
 - Ensure all your images have titles that accurately label the image, and optionally, details on the contents of the image in the images Description.
 - Upload any relevant images in your Description to your Gallery tab for best results.".to_string(),
             ModerationMessage::MissingLicense => "You must select a License before your project can be published publicly, having a License associated with your project is important to protecting your rights and allowing others to use your content as you intend. For more information, you can see our [Guide to Licensing Mods](<https://blog.modrinth.com/licensing-guide/>).".to_string(),
-            ModerationMessage::MissingCustomLicenseUrl { license } => format!("It looks like you've selected the License \"{license}\" without providing a valid License link. When using a custom License you must provide a link directly to the License in the License Link field.")
+            ModerationMessage::MissingCustomLicenseUrl { license } => format!("It looks like you've selected the License \"{license}\" without providing a valid License link. When using a custom License you must provide a link directly to the License in the License Link field."),
+            ModerationMessage::NoSideTypes => "Your project's side types are currently set to Unknown on both sides. Please set accurate side types!".to_string(),
         }
     }
 }
@@ -230,6 +235,10 @@ impl AutomatedModerationQueue {
                                 messages: vec![],
                                 version_specific: HashMap::new(),
                             };
+
+                            if project.project_types.iter().any(|x| ["mod", "modpack"].contains(&&**x)) && !project.aggregate_version_fields.iter().any(|x| ["server_only", "client_only", "client_and_server", "singleplayer"].contains(&&*x.field_name)) {
+                                mod_messages.messages.push(ModerationMessage::NoSideTypes);
+                            }
 
                             if project.inner.license == "LicenseRef-Unknown" || project.inner.license == "LicenseRef-" {
                                 mod_messages.messages.push(ModerationMessage::MissingLicense);
@@ -404,7 +413,7 @@ impl AutomatedModerationQueue {
                                     for row in rows {
                                         if let Some(sha1) = row.sha1 {
                                             if let Some((index, (sha1, _, file_name, _))) = hashes.iter().enumerate().find(|(_, (value, _, _, _))| value == &sha1) {
-                                                final_hashes.insert(sha1.clone(), IdentifiedFile { file_name: file_name.clone(), status: ApprovalType::from_str(&row.status).unwrap_or(ApprovalType::Unidentified) });
+                                                final_hashes.insert(sha1.clone(), IdentifiedFile { file_name: file_name.clone(), status: ApprovalType::from_string(&row.status).unwrap_or(ApprovalType::Unidentified) });
                                                 hashes.remove(index);
                                             }
                                         }
@@ -485,7 +494,7 @@ impl AutomatedModerationQueue {
                                             if let Some((index, (sha1, _, file_name, _))) = hashes.iter().enumerate().find(|(_, (value, _, _, _))| value == hash) {
                                                 final_hashes.insert(sha1.clone(), IdentifiedFile {
                                                     file_name: file_name.clone(),
-                                                    status: ApprovalType::from_str(&row.status).unwrap_or(ApprovalType::Unidentified),
+                                                    status: ApprovalType::from_string(&row.status).unwrap_or(ApprovalType::Unidentified),
                                                 });
 
                                                 insert_hashes.push(hash.clone().as_bytes().to_vec());
@@ -788,7 +797,7 @@ impl ApprovalType {
         }
     }
 
-    fn from_str(string: &str) -> Option<Self> {
+    pub fn from_string(string: &str) -> Option<Self> {
         match string {
             "yes" => Some(ApprovalType::Yes),
             "with-attribution-and-source" => Some(ApprovalType::WithAttributionAndSource),
