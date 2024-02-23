@@ -617,6 +617,7 @@ async fn version_ordering_for_specified_orderings_orders_lower_order_first() {
                 USER_USER_PAT,
             )
             .await;
+
         assert_common_version_ids(&versions, vec![new_version_id, alpha_version_id]);
     })
     .await;

@@ -17,7 +17,7 @@ const LOADERS_LIST_NAMESPACE: &str = "loaders";
 const LOADER_FIELDS_NAMESPACE: &str = "loader_fields";
 const LOADER_FIELDS_NAMESPACE_ALL: &str = "loader_fields_all";
 const LOADER_FIELD_ENUMS_ID_NAMESPACE: &str = "loader_field_enums";
-const LOADER_FIELD_ENUM_VALUES_NAMESPACE: &str = "loader_field_enum_values";
+pub const LOADER_FIELD_ENUM_VALUES_NAMESPACE: &str = "loader_field_enum_values";
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Game {
@@ -385,7 +385,7 @@ impl LoaderField {
 
         let val = redis.get_cached_keys_raw(
             LOADER_FIELDS_NAMESPACE,
-            &loader_ids.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+            &loader_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
             |loader_ids| async move {
                 let result = sqlx::query!(
                     "
@@ -580,7 +580,7 @@ impl LoaderFieldEnumValue {
 
         let val = redis.get_cached_keys_raw(
             LOADER_FIELD_ENUM_VALUES_NAMESPACE,
-            &loader_field_enum_ids.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+            &loader_field_enum_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
             |loader_field_enum_ids| async move {
                 let values = sqlx::query!(
                     "

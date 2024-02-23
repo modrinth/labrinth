@@ -185,7 +185,7 @@ impl Image {
 
         let val = redis.get_cached_keys(
             IMAGES_NAMESPACE,
-            &image_ids.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+            &image_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
             |image_ids| async move {
                 let images = sqlx::query!(
                     "

@@ -147,7 +147,7 @@ impl Session {
                     .collect();
                 let slugs = ids
                     .into_iter()
-                    .map(|x| x.to_string().to_lowercase())
+                    .map(|x| x.to_string())
                     .collect::<Vec<_>>();
                 let db_sessions = sqlx::query!(
                     "

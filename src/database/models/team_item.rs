@@ -213,7 +213,7 @@ impl TeamMember {
 
         let val = redis.get_cached_keys(
             TEAMS_NAMESPACE,
-            &team_ids.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+            &team_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
             |team_ids| async move {
                 let teams = sqlx::query!(
                     "

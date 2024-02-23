@@ -472,9 +472,9 @@ impl Version {
     {
         let mut redis = redis.connect().await?;
 
-        let val = redis.get_cached_keys(
+        let mut val = redis.get_cached_keys(
             VERSIONS_NAMESPACE,
-            &version_ids.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+            &version_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
             |version_ids| async move {
                 let mut exec = exec.acquire().await?;
 
@@ -706,8 +706,7 @@ impl Version {
                     v.changelog changelog, v.date_published date_published, v.downloads downloads,
                     v.version_type version_type, v.featured featured, v.status status, v.requested_status requested_status, v.ordering ordering
                     FROM versions v
-                    WHERE v.id = ANY($1)
-                    ORDER BY v.ordering ASC NULLS LAST, v.date_published ASC;
+                    WHERE v.id = ANY($1);
                     ",
                     &version_ids
                 )
@@ -798,6 +797,8 @@ impl Version {
             },
         ).await?;
 
+        val.sort();
+
         Ok(val)
     }
 
@@ -830,106 +831,66 @@ impl Version {
     {
         let mut redis = redis.connect().await?;
 
-        if hashes.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let mut file_ids_parsed = hashes.to_vec();
-
-        let mut found_files = Vec::new();
-
-        let files = redis
-            .multi_get::<String>(
-                VERSION_FILES_NAMESPACE,
-                file_ids_parsed
-                    .iter()
-                    .map(|hash| format!("{}_{}", algorithm, hash))
-                    .collect::<Vec<_>>(),
-            )
-            .await?;
-        for file in files {
-            if let Some(mut file) =
-                file.and_then(|x| serde_json::from_str::<Vec<SingleFile>>(&x).ok())
-            {
-                file_ids_parsed.retain(|x| {
-                    !file
-                        .iter()
-                        .any(|y| y.hashes.iter().any(|z| z.0 == &algorithm && z.1 == x))
-                });
-                found_files.append(&mut file);
-                continue;
-            }
-        }
-
-        if !file_ids_parsed.is_empty() {
-            let db_files: Vec<SingleFile> = sqlx::query!(
-                "
-                SELECT f.id, f.version_id, v.mod_id, f.url, f.filename, f.is_primary, f.size, f.file_type,
-                JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'))) filter (where h.hash is not null) hashes
-                FROM files f
-                INNER JOIN versions v on v.id = f.version_id
-                INNER JOIN hashes h on h.file_id = f.id
-                WHERE h.algorithm = $1 AND h.hash = ANY($2)
-                GROUP BY f.id, v.mod_id, v.date_published
-                ORDER BY v.date_published
-                ",
-                algorithm,
-                &file_ids_parsed.into_iter().map(|x| x.as_bytes().to_vec()).collect::<Vec<_>>(),
-            )
-                .fetch_many(executor)
-                .try_filter_map(|e| async {
-                    Ok(e.right().map(|f| {
+        let val = redis.get_cached_keys(
+            VERSION_FILES_NAMESPACE,
+            &hashes.iter().map(|x| format!("{algorithm}_{x}")).collect::<Vec<_>>(),
+            |file_ids| async move {
+                let files = sqlx::query!(
+                    "
+                    SELECT f.id, f.version_id, v.mod_id, f.url, f.filename, f.is_primary, f.size, f.file_type,
+                    JSONB_AGG(DISTINCT jsonb_build_object('algorithm', h.algorithm, 'hash', encode(h.hash, 'escape'))) filter (where h.hash is not null) hashes
+                    FROM files f
+                    INNER JOIN versions v on v.id = f.version_id
+                    INNER JOIN hashes h on h.file_id = f.id
+                    WHERE h.algorithm = $1 AND h.hash = ANY($2)
+                    GROUP BY f.id, v.mod_id, v.date_published
+                    ORDER BY v.date_published
+                    ",
+                    algorithm,
+                    &file_ids.into_iter().flat_map(|x| x.split('_').last().map(|x| x.as_bytes().to_vec())).collect::<Vec<_>>(),
+                )
+                    .fetch(executor)
+                    .try_fold(DashMap::new(), |acc, f| {
                         #[derive(Deserialize)]
                         struct Hash {
                             pub algorithm: String,
                             pub hash: String,
                         }
 
-                        SingleFile {
-                            id: FileId(f.id),
-                            version_id: VersionId(f.version_id),
-                            project_id: ProjectId(f.mod_id),
-                            url: f.url,
-                            filename: f.filename,
-                            hashes: serde_json::from_value::<Vec<Hash>>(
-                                f.hashes.unwrap_or_default(),
-                            )
-                                .ok()
-                                .unwrap_or_default().into_iter().map(|x| (x.algorithm, x.hash)).collect(),
-                            primary: f.is_primary,
-                            size: f.size as u32,
-                            file_type: f.file_type.map(|x| FileType::from_string(&x)),
+                        let hashes = serde_json::from_value::<Vec<Hash>>(
+                            f.hashes.unwrap_or_default(),
+                        )
+                            .ok()
+                            .unwrap_or_default().into_iter().map(|x| (x.algorithm, x.hash))
+                            .collect::<HashMap<_, _>>();
+
+                        if let Some(hash) = hashes.get(&algorithm) {
+                            let key = format!("{algorithm}_{hash}");
+
+                            let file = SingleFile {
+                                id: FileId(f.id),
+                                version_id: VersionId(f.version_id),
+                                project_id: ProjectId(f.mod_id),
+                                url: f.url,
+                                filename: f.filename,
+                                hashes,
+                                primary: f.is_primary,
+                                size: f.size as u32,
+                                file_type: f.file_type.map(|x| FileType::from_string(&x)),
+                            };
+
+                            acc.insert(key, file);
                         }
-                    }
-                    ))
-                })
-                .try_collect::<Vec<SingleFile>>()
-                .await?;
 
-            let mut save_files: HashMap<String, Vec<SingleFile>> = HashMap::new();
-
-            for file in db_files {
-                for (algo, hash) in &file.hashes {
-                    let key = format!("{}_{}", algo, hash);
-
-                    if let Some(files) = save_files.get_mut(&key) {
-                        files.push(file.clone());
-                    } else {
-                        save_files.insert(key, vec![file.clone()]);
-                    }
-                }
-            }
-
-            for (key, mut files) in save_files {
-                redis
-                    .set_serialized_to_json(VERSION_FILES_NAMESPACE, key, &files, None)
+                        async move { Ok(acc) }
+                    })
                     .await?;
 
-                found_files.append(&mut files);
+                Ok(files)
             }
-        }
+        ).await?;
 
-        Ok(found_files)
+        Ok(val)
     }
 
     pub async fn clear_cache(

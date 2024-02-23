@@ -1,9 +1,8 @@
 use super::models::DatabaseError;
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
 use dashmap::DashMap;
 use deadpool_redis::{Config, Runtime};
-use itertools::Itertools;
-use redis::{cmd, Cmd, FromRedisValue};
+use redis::{cmd, Cmd, ExistenceCheck, SetExpiry, SetOptions};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,7 +10,8 @@ use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::hash::Hash;
 
-const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
+const DEFAULT_EXPIRY: i64 = 60 * 60 * 12; // 12 hours
+const ACTUAL_EXPIRY: i64 = 60 * 30; // 30 minutes
 
 #[derive(Clone)]
 pub struct RedisPool {
@@ -127,26 +127,6 @@ impl RedisConnection {
             .and_then(|x| serde_json::from_str(&x).ok()))
     }
 
-    pub async fn multi_get<R>(
-        &mut self,
-        namespace: &str,
-        ids: impl IntoIterator<Item = impl Display>,
-    ) -> Result<Vec<Option<R>>, DatabaseError>
-    where
-        R: FromRedisValue,
-    {
-        let mut cmd = cmd("MGET");
-
-        let ids = ids.into_iter().map(|x| x.to_string()).collect_vec();
-        redis_args(
-            &mut cmd,
-            &ids.into_iter()
-                .map(|x| format!("{}_{}:{}", self.meta_namespace, namespace, x))
-                .collect_vec(),
-        );
-        Ok(redis_execute(&mut cmd, &mut self.connection).await?)
-    }
-
     pub async fn delete<T1>(&mut self, namespace: &str, id: T1) -> Result<(), DatabaseError>
     where
         T1: Display,
@@ -215,15 +195,14 @@ impl RedisConnection {
         T: Serialize + DeserializeOwned,
         K: Display + Hash + Eq + PartialEq + Clone + DeserializeOwned + Serialize + Debug,
     {
-        Ok(self
-            .get_cached_keys_raw_with_slug(namespace, None, false, keys, |ids| async move {
-                Ok(closure(ids)
-                    .await?
-                    .into_iter()
-                    .map(|(key, val)| (key, (None::<String>, val)))
-                    .collect())
-            })
-            .await?)
+        self.get_cached_keys_raw_with_slug(namespace, None, false, keys, |ids| async move {
+            Ok(closure(ids)
+                .await?
+                .into_iter()
+                .map(|(key, val)| (key, (None::<String>, val)))
+                .collect())
+        })
+        .await
     }
 
     pub async fn get_cached_keys_with_slug<F, Fut, T, I, K, S>(
@@ -273,16 +252,13 @@ impl RedisConnection {
         S: Display + Clone + DeserializeOwned + Serialize + Debug,
     {
         let mut ids = keys
-            .into_iter()
+            .iter()
             .map(|x| (x.to_string(), x.clone()))
             .collect::<HashMap<String, I>>();
 
         if ids.is_empty() {
             return Ok(HashMap::new());
         }
-
-        println!("{}", ids.len());
-        println!("{:?}", ids);
 
         let slug_ids = if let Some(slug_namespace) = slug_namespace {
             cmd("MGET")
@@ -310,7 +286,8 @@ impl RedisConnection {
             Vec::new()
         };
 
-        println!("slug ids: {:?}", slug_ids);
+        let current_time = Utc::now();
+        let mut expired_values = Vec::new();
 
         let mut cached_values = cmd("MGET")
             .arg(
@@ -327,23 +304,56 @@ impl RedisConnection {
                 if let Some(val) =
                     x.and_then(|val| serde_json::from_str::<RedisValue<T, K, S>>(&val).ok())
                 {
-                    ids.remove(&val.key.to_string());
-                    if let Some(ref alias) = val.alias {
-                        ids.remove(&alias.to_string());
+                    if Utc.timestamp(val.iat + ACTUAL_EXPIRY, 0) < current_time {
+                        expired_values.push(val);
+
+                        None
+                    } else {
+                        ids.remove(&val.key.to_string());
+                        if let Some(ref alias) = val.alias {
+                            ids.remove(&alias.to_string());
+                        }
+
+                        Some((val.key.clone(), val))
                     }
-
-                    println!("found: {}", val.key);
-
-                    Some((val.key.clone(), val))
                 } else {
                     None
                 }
             })
             .collect::<HashMap<_, _>>();
 
-        if !ids.is_empty() {
-            // todo: aqquire lock here as well and see if present
+        if !expired_values.is_empty() {
+            let mut pipe = redis::pipe();
+            expired_values.iter().for_each(|val| {
+                pipe.atomic().set_options(
+                    format!("{}_{namespace}:{}/lock", self.meta_namespace, val.key),
+                    100,
+                    SetOptions::default()
+                        .get(true)
+                        .conditional_set(ExistenceCheck::NX)
+                        .with_expiration(SetExpiry::EX(10)),
+                );
+            });
+            let results = pipe
+                .query_async::<_, Vec<Option<i32>>>(&mut self.connection)
+                .await?;
 
+            for (idx, val) in expired_values.into_iter().enumerate() {
+                if let Some(locked) = results.get(idx) {
+                    if locked.is_none() {
+                        continue;
+                    }
+                }
+
+                ids.remove(&val.key.to_string());
+                if let Some(ref alias) = val.alias {
+                    ids.remove(&alias.to_string());
+                }
+                cached_values.insert(val.key.clone(), val);
+            }
+        }
+
+        if !ids.is_empty() {
             let ids = ids.into_iter().map(|x| x.1).collect::<Vec<_>>();
 
             let vals = closure(ids).await?;
@@ -352,7 +362,6 @@ impl RedisConnection {
                 let mut pipe = redis::pipe();
 
                 for (key, (slug, value)) in vals {
-                    println!("db found: {} {:?}", key, slug);
                     let value = RedisValue {
                         key: key.clone(),
                         iat: Utc::now().timestamp(),
@@ -383,6 +392,9 @@ impl RedisConnection {
                             );
                         }
                     }
+
+                    pipe.atomic()
+                        .del(format!("{}_{namespace}:{key}/lock", self.meta_namespace));
 
                     cached_values.insert(key, value);
                 }

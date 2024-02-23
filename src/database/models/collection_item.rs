@@ -162,7 +162,7 @@ impl Collection {
         let val = redis
             .get_cached_keys(
                 COLLECTIONS_NAMESPACE,
-                &collection_ids.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+                &collection_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
                 |collection_ids| async move {
                     let collections = sqlx::query!(
                         "

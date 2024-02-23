@@ -105,10 +105,8 @@ impl PersonalAccessToken {
                         .flat_map(|x| parse_base62(&x.to_string()).ok())
                         .map(|x| x as i64)
                         .collect();
-                    let slugs = ids
-                        .into_iter()
-                        .map(|x| x.to_string().to_lowercase())
-                        .collect::<Vec<_>>();
+                    let slugs = ids.into_iter().map(|x| x.to_string()).collect::<Vec<_>>();
+
                     let pats = sqlx::query!(
                         "
                         SELECT id, name, access_token, scopes, user_id, created, expires, last_used
