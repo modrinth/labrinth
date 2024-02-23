@@ -1,8 +1,15 @@
 use super::models::DatabaseError;
+use chrono::Utc;
+use dashmap::DashMap;
 use deadpool_redis::{Config, Runtime};
 use itertools::Itertools;
 use redis::{cmd, Cmd, FromRedisValue};
-use std::fmt::Display;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt::{Debug, Display};
+use std::future::Future;
+use std::hash::Hash;
 
 const DEFAULT_EXPIRY: i64 = 1800; // 30 minutes
 
@@ -175,6 +182,226 @@ impl RedisConnection {
 
         Ok(())
     }
+
+    pub async fn get_cached_keys<F, Fut, T, K>(
+        &mut self,
+        namespace: &str,
+        keys: &[K],
+        closure: F,
+    ) -> Result<Vec<T>, DatabaseError>
+    where
+        F: FnOnce(Vec<K>) -> Fut,
+        Fut: Future<Output = Result<DashMap<K, T>, DatabaseError>>,
+        T: Serialize + DeserializeOwned,
+        K: Display + Hash + Eq + PartialEq + Clone + DeserializeOwned + Serialize + Debug,
+    {
+        Ok(self
+            .get_cached_keys_raw(namespace, keys, closure)
+            .await?
+            .into_iter()
+            .map(|x| x.1)
+            .collect())
+    }
+
+    pub async fn get_cached_keys_raw<F, Fut, T, K>(
+        &mut self,
+        namespace: &str,
+        keys: &[K],
+        closure: F,
+    ) -> Result<HashMap<K, T>, DatabaseError>
+    where
+        F: FnOnce(Vec<K>) -> Fut,
+        Fut: Future<Output = Result<DashMap<K, T>, DatabaseError>>,
+        T: Serialize + DeserializeOwned,
+        K: Display + Hash + Eq + PartialEq + Clone + DeserializeOwned + Serialize + Debug,
+    {
+        Ok(self
+            .get_cached_keys_raw_with_slug(namespace, None, false, keys, |ids| async move {
+                Ok(closure(ids)
+                    .await?
+                    .into_iter()
+                    .map(|(key, val)| (key, (None::<String>, val)))
+                    .collect())
+            })
+            .await?)
+    }
+
+    pub async fn get_cached_keys_with_slug<F, Fut, T, I, K, S>(
+        &mut self,
+        namespace: &str,
+        slug_namespace: &str,
+        case_sensitive: bool,
+        keys: &[I],
+        closure: F,
+    ) -> Result<Vec<T>, DatabaseError>
+    where
+        F: FnOnce(Vec<I>) -> Fut,
+        Fut: Future<Output = Result<DashMap<K, (Option<S>, T)>, DatabaseError>>,
+        T: Serialize + DeserializeOwned,
+        I: Display + Hash + Eq + PartialEq + Clone + Debug,
+        K: Display + Hash + Eq + PartialEq + Clone + DeserializeOwned + Serialize,
+        S: Display + Clone + DeserializeOwned + Serialize + Debug,
+    {
+        Ok(self
+            .get_cached_keys_raw_with_slug(
+                namespace,
+                Some(slug_namespace),
+                case_sensitive,
+                keys,
+                closure,
+            )
+            .await?
+            .into_iter()
+            .map(|x| x.1)
+            .collect())
+    }
+
+    pub async fn get_cached_keys_raw_with_slug<F, Fut, T, I, K, S>(
+        &mut self,
+        namespace: &str,
+        slug_namespace: Option<&str>,
+        case_sensitive: bool,
+        keys: &[I],
+        closure: F,
+    ) -> Result<HashMap<K, T>, DatabaseError>
+    where
+        F: FnOnce(Vec<I>) -> Fut,
+        Fut: Future<Output = Result<DashMap<K, (Option<S>, T)>, DatabaseError>>,
+        T: Serialize + DeserializeOwned,
+        I: Display + Hash + Eq + PartialEq + Clone + Debug,
+        K: Display + Hash + Eq + PartialEq + Clone + DeserializeOwned + Serialize,
+        S: Display + Clone + DeserializeOwned + Serialize + Debug,
+    {
+        let mut ids = keys
+            .into_iter()
+            .map(|x| (x.to_string(), x.clone()))
+            .collect::<HashMap<String, I>>();
+
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        println!("{}", ids.len());
+        println!("{:?}", ids);
+
+        let slug_ids = if let Some(slug_namespace) = slug_namespace {
+            cmd("MGET")
+                .arg(
+                    ids.iter()
+                        .map(|x| {
+                            format!(
+                                "{}_{slug_namespace}:{}",
+                                self.meta_namespace,
+                                if case_sensitive {
+                                    x.1.to_string()
+                                } else {
+                                    x.1.to_string().to_lowercase()
+                                }
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .query_async::<_, Vec<Option<String>>>(&mut self.connection)
+                .await?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        println!("slug ids: {:?}", slug_ids);
+
+        let mut cached_values = cmd("MGET")
+            .arg(
+                ids.iter()
+                    .map(|x| x.1.to_string())
+                    .chain(slug_ids)
+                    .map(|x| format!("{}_{namespace}:{x}", self.meta_namespace))
+                    .collect::<Vec<_>>(),
+            )
+            .query_async::<_, Vec<Option<String>>>(&mut self.connection)
+            .await?
+            .into_iter()
+            .filter_map(|x| {
+                if let Some(val) =
+                    x.and_then(|val| serde_json::from_str::<RedisValue<T, K, S>>(&val).ok())
+                {
+                    ids.remove(&val.key.to_string());
+                    if let Some(ref alias) = val.alias {
+                        ids.remove(&alias.to_string());
+                    }
+
+                    println!("found: {}", val.key);
+
+                    Some((val.key.clone(), val))
+                } else {
+                    None
+                }
+            })
+            .collect::<HashMap<_, _>>();
+
+        if !ids.is_empty() {
+            // todo: aqquire lock here as well and see if present
+
+            let ids = ids.into_iter().map(|x| x.1).collect::<Vec<_>>();
+
+            let vals = closure(ids).await?;
+
+            if !vals.is_empty() {
+                let mut pipe = redis::pipe();
+
+                for (key, (slug, value)) in vals {
+                    println!("db found: {} {:?}", key, slug);
+                    let value = RedisValue {
+                        key: key.clone(),
+                        iat: Utc::now().timestamp(),
+                        val: value,
+                        alias: slug.clone(),
+                    };
+
+                    pipe.atomic().set_ex(
+                        format!("{}_{namespace}:{key}", self.meta_namespace),
+                        serde_json::to_string(&value)?,
+                        DEFAULT_EXPIRY as u64,
+                    );
+
+                    if let Some(slug) = slug {
+                        if let Some(slug_namespace) = slug_namespace {
+                            pipe.atomic().set_ex(
+                                format!(
+                                    "{}_{slug_namespace}:{}",
+                                    self.meta_namespace,
+                                    if case_sensitive {
+                                        slug.to_string()
+                                    } else {
+                                        slug.to_string().to_lowercase()
+                                    }
+                                ),
+                                key.to_string(),
+                                DEFAULT_EXPIRY as u64,
+                            );
+                        }
+                    }
+
+                    cached_values.insert(key, value);
+                }
+
+                pipe.query_async(&mut self.connection).await?;
+            }
+        }
+
+        Ok(cached_values.into_iter().map(|x| (x.0, x.1.val)).collect())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RedisValue<T, K, S> {
+    key: K,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alias: Option<S>,
+    iat: i64,
+    val: T,
 }
 
 pub fn redis_args(cmd: &mut Cmd, args: &[String]) {

@@ -42,6 +42,7 @@ pub async fn init_client_with_database(
 
                 user_id UInt64,
                 project_id UInt64,
+                monetized UInt8,
 
                 ip IPv6,
                 country String,

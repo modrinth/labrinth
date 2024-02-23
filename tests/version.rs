@@ -55,7 +55,7 @@ async fn test_get_version() {
             .unwrap();
         let cached_project: serde_json::Value = serde_json::from_str(&cached_project).unwrap();
         assert_eq!(
-            cached_project["inner"]["project_id"],
+            cached_project["val"]["inner"]["project_id"],
             json!(parse_base62(alpha_project_id).unwrap())
         );
 
