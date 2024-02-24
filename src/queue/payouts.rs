@@ -548,7 +548,7 @@ pub async fn process_payout(
                 r#"
                 SELECT COUNT(1) page_views, project_id
                 FROM views
-                WHERE (recorded BETWEEN ? AND ?) AND (project_id != 0)
+                WHERE (recorded BETWEEN ? AND ?) AND (project_id != 0) AND (monetized = TRUE)
                 GROUP BY project_id
                 ORDER BY page_views DESC
                 "#,
@@ -557,7 +557,7 @@ pub async fn process_payout(
             .bind(end.timestamp())
             .fetch_all::<ProjectMultiplier>(),
         client
-            .query("SELECT COUNT(1) FROM views WHERE (recorded BETWEEN ? AND ?) AND (project_id != 0)")
+            .query("SELECT COUNT(1) FROM views WHERE (recorded BETWEEN ? AND ?) AND (project_id != 0) AND (monetized = TRUE)")
             .bind(start.timestamp())
             .bind(end.timestamp())
             .fetch_one::<u64>(),

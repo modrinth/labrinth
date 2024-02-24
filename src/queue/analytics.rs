@@ -5,12 +5,14 @@ use crate::routes::ApiError;
 use dashmap::{DashMap, DashSet};
 use redis::cmd;
 use sqlx::PgPool;
+use std::net::Ipv6Addr;
 
 const DOWNLOADS_NAMESPACE: &str = "downloads";
+const VIEWS_NAMESPACE: &str = "views";
 
 pub struct AnalyticsQueue {
-    views_queue: DashSet<PageView>,
-    downloads_queue: DashMap<String, Download>,
+    views_queue: DashMap<(u32, u64), Vec<PageView>>,
+    downloads_queue: DashMap<(u32, u64), Download>,
     playtime_queue: DashSet<Playtime>,
 }
 
@@ -24,26 +26,35 @@ impl Default for AnalyticsQueue {
 impl AnalyticsQueue {
     pub fn new() -> Self {
         AnalyticsQueue {
-            views_queue: DashSet::with_capacity(1000),
+            views_queue: DashMap::with_capacity(1000),
             downloads_queue: DashMap::with_capacity(1000),
             playtime_queue: DashSet::with_capacity(1000),
         }
     }
 
+    fn strip_ip(ip: Ipv6Addr) -> u32 {
+        if let Some(ip) = ip.to_ipv4_mapped() {
+            let octets = ip.octets();
+            u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]])
+        } else {
+            let octets = ip.octets();
+            u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]])
+        }
+    }
+
     pub fn add_view(&self, page_view: PageView) {
-        self.views_queue.insert(page_view);
+        let ip_stripped = Self::strip_ip(page_view.ip);
+
+        self.views_queue
+            .entry((ip_stripped, page_view.project_id))
+            .or_default()
+            .push(page_view);
     }
 
     pub fn add_download(&self, download: Download) {
-        let ip_stripped = if let Some(ip) = download.ip.to_ipv4_mapped() {
-            let octets = ip.octets();
-            u64::from_be_bytes([0, 0, 0, 0, octets[0], octets[1], octets[2], octets[3]])
-        } else {
-            let octets = download.ip.octets();
-            u64::from_be_bytes([0, 0, 0, 0, octets[0], octets[1], octets[2], octets[3]])
-        };
+        let ip_stripped = Self::strip_ip(download.ip);
         self.downloads_queue
-            .insert(format!("{}-{}", ip_stripped, download.project_id), download);
+            .insert((ip_stripped, download.project_id), download);
     }
 
     pub fn add_playtime(&self, playtime: Playtime) {
@@ -65,16 +76,6 @@ impl AnalyticsQueue {
         let playtime_queue = self.playtime_queue.clone();
         self.playtime_queue.clear();
 
-        if !views_queue.is_empty() {
-            let mut views = client.insert("views")?;
-
-            for view in views_queue {
-                views.write(&view).await?;
-            }
-
-            views.end().await?;
-        }
-
         if !playtime_queue.is_empty() {
             let mut playtimes = client.insert("playtime")?;
 
@@ -85,13 +86,77 @@ impl AnalyticsQueue {
             playtimes.end().await?;
         }
 
+        if !views_queue.is_empty() {
+            let mut views_keys = Vec::new();
+            let mut raw_views = Vec::new();
+
+            for (key, views) in views_queue {
+                views_keys.push(key);
+                raw_views.push((views, true));
+            }
+
+            let mut redis = redis.pool.get().await.map_err(DatabaseError::RedisPool)?;
+
+            let results = cmd("MGET")
+                .arg(
+                    views_keys
+                        .iter()
+                        .map(|x| format!("{}:{}-{}", VIEWS_NAMESPACE, x.0, x.1))
+                        .collect::<Vec<_>>(),
+                )
+                .query_async::<_, Vec<Option<u32>>>(&mut redis)
+                .await
+                .map_err(DatabaseError::CacheError)?;
+
+            let mut pipe = redis::pipe();
+            for (idx, count) in results.into_iter().enumerate() {
+                let key = &views_keys[idx];
+
+                let new_count = if let Some(count) = count {
+                    if count > 3 {
+                        if let Some(raw_view) = raw_views.get_mut(idx) {
+                            raw_view.1 = false;
+                        }
+                        continue;
+                    }
+
+                    count + 1
+                } else {
+                    1
+                };
+
+                pipe.atomic().set_ex(
+                    format!("{}:{}-{}", VIEWS_NAMESPACE, key.0, key.1),
+                    new_count,
+                    6 * 60 * 60,
+                );
+            }
+            pipe.query_async(&mut *redis)
+                .await
+                .map_err(DatabaseError::CacheError)?;
+
+            let mut views = client.insert("views")?;
+
+            for (all_views, monetized) in raw_views {
+                for (idx, mut view) in all_views.into_iter().enumerate() {
+                    if idx != 0 || !monetized {
+                        view.monetized = monetized;
+                    }
+
+                    views.write(&view).await?;
+                }
+            }
+
+            views.end().await?;
+        }
+
         if !downloads_queue.is_empty() {
             let mut downloads_keys = Vec::new();
-            let raw_downloads = DashMap::new();
+            let mut raw_downloads = Vec::new();
 
-            for (index, (key, download)) in downloads_queue.into_iter().enumerate() {
+            for (key, download) in downloads_queue {
                 downloads_keys.push(key);
-                raw_downloads.insert(index, download);
+                raw_downloads.push(download);
             }
 
             let mut redis = redis.pool.get().await.map_err(DatabaseError::RedisPool)?;
@@ -100,7 +165,7 @@ impl AnalyticsQueue {
                 .arg(
                     downloads_keys
                         .iter()
-                        .map(|x| format!("{}:{}", DOWNLOADS_NAMESPACE, x))
+                        .map(|x| format!("{}:{}-{}", DOWNLOADS_NAMESPACE, x.0, x.1))
                         .collect::<Vec<_>>(),
                 )
                 .query_async::<_, Vec<Option<u32>>>(&mut redis)
@@ -113,7 +178,7 @@ impl AnalyticsQueue {
 
                 let new_count = if let Some(count) = count {
                     if count > 5 {
-                        raw_downloads.remove(&idx);
+                        raw_downloads.remove(idx);
                         continue;
                     }
 
@@ -123,7 +188,7 @@ impl AnalyticsQueue {
                 };
 
                 pipe.atomic().set_ex(
-                    format!("{}:{}", DOWNLOADS_NAMESPACE, key),
+                    format!("{}:{}-{}", DOWNLOADS_NAMESPACE, key.0, key.1),
                     new_count,
                     6 * 60 * 60,
                 );
@@ -144,7 +209,7 @@ impl AnalyticsQueue {
             let mut transaction = pool.begin().await?;
             let mut downloads = client.insert("downloads")?;
 
-            for (_, download) in raw_downloads {
+            for download in raw_downloads {
                 downloads.write(&download).await?;
             }
 
