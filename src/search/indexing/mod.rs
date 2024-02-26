@@ -1,9 +1,6 @@
 /// This module is used for the indexing from any source.
 pub mod local_import;
 
-use itertools::Itertools;
-use std::collections::HashMap;
-
 use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::to_base62;
 use crate::search::{SearchConfig, UploadSearchProject};
@@ -12,11 +9,9 @@ use log::info;
 use meilisearch_sdk::client::Client;
 use meilisearch_sdk::indexes::Index;
 use meilisearch_sdk::settings::{PaginationSetting, Settings};
+use meilisearch_sdk::SwapIndexes;
 use sqlx::postgres::PgPool;
 use thiserror::Error;
-
-use self::local_import::get_all_ids;
-
 #[derive(Error, Debug)]
 pub enum IndexingError {
     #[error("Error while connecting to the MeiliSearch database")]
@@ -36,16 +31,16 @@ pub enum IndexingError {
 // The chunk size for adding projects to the indexing database. If the request size
 // is too large (>10MiB) then the request fails with an error.  This chunk size
 // assumes a max average size of 4KiB per project to avoid this cap.
-const MEILISEARCH_CHUNK_SIZE: usize = 2500; // Should be less than FETCH_PROJECT_SIZE
-const FETCH_PROJECT_SIZE: usize = 5000;
-
+const MEILISEARCH_CHUNK_SIZE: usize = 10000000;
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub async fn remove_documents(
     ids: &[crate::models::ids::VersionId],
     config: &SearchConfig,
 ) -> Result<(), meilisearch_sdk::errors::Error> {
-    let indexes = get_indexes(config).await?;
+    let mut indexes = get_indexes_for_indexing(config, false).await?;
+    let mut indexes_next = get_indexes_for_indexing(config, true).await?;
+    indexes.append(&mut indexes_next);
 
     for index in indexes {
         index
@@ -63,53 +58,76 @@ pub async fn index_projects(
 ) -> Result<(), IndexingError> {
     info!("Indexing projects.");
 
-    let indices = get_indexes(config).await?;
+    // First, ensure current index exists (so no error happens- current index should be worst-case empty, not missing)
+    get_indexes_for_indexing(config, false).await?;
 
-    let all_ids = get_all_ids(pool.clone()).await?;
-    let all_ids_len = all_ids.len();
-    info!("Got all ids, indexing {} projects", all_ids_len);
+    // Then, delete the next index if it still exists
+    let indices = get_indexes_for_indexing(config, true).await?;
+    for index in indices {
+        index.delete().await?;
+    }
+    // Recreate the next index for indexing
+    let indices = get_indexes_for_indexing(config, true).await?;
 
-    let mut so_far = 0;
-    let as_chunks: Vec<_> = all_ids
-        .into_iter()
-        .chunks(FETCH_PROJECT_SIZE)
-        .into_iter()
-        .map(|x| x.collect::<Vec<_>>())
-        .collect();
-
-    for id_chunk in as_chunks {
-        info!(
-            "Fetching chunk {}-{}/{}, size: {}",
-            so_far,
-            so_far + FETCH_PROJECT_SIZE,
-            all_ids_len,
-            id_chunk.len()
-        );
-        so_far += FETCH_PROJECT_SIZE;
-
-        let id_chunk = id_chunk
+    let all_loader_fields =
+        crate::database::models::loader_fields::LoaderField::get_fields_all(&pool, &redis)
+            .await?
             .into_iter()
-            .map(|(version_id, project_id, owner_username)| {
-                (version_id, (project_id, owner_username.to_lowercase()))
-            })
-            .collect::<HashMap<_, _>>();
-        let (uploads, loader_fields) = index_local(&pool, &redis, id_chunk).await?;
+            .map(|x| x.field)
+            .collect::<Vec<_>>();
 
-        info!("Got chunk, adding to docs_to_add");
-        add_projects(&indices, uploads, loader_fields, config).await?;
+    let uploads = index_local(&pool).await?;
+    add_projects(&indices, uploads, all_loader_fields.clone(), config).await?;
+
+    // Swap the index
+    swap_index(config, "projects").await?;
+    swap_index(config, "projects_filtered").await?;
+
+    // Delete the now-old index
+    for index in indices {
+        index.delete().await?;
     }
 
     info!("Done adding projects.");
     Ok(())
 }
 
-pub async fn get_indexes(
+pub async fn swap_index(config: &SearchConfig, index_name: &str) -> Result<(), IndexingError> {
+    let client = config.make_client();
+    let index_name_next = config.get_index_name(index_name, true);
+    let index_name = config.get_index_name(index_name, false);
+    let swap_indices = SwapIndexes {
+        indexes: (index_name_next, index_name),
+    };
+    client
+        .swap_indexes([&swap_indices])
+        .await?
+        .wait_for_completion(&client, None, Some(TIMEOUT))
+        .await?;
+
+    Ok(())
+}
+
+pub async fn get_indexes_for_indexing(
     config: &SearchConfig,
+    next: bool, // Get the 'next' one
 ) -> Result<Vec<Index>, meilisearch_sdk::errors::Error> {
     let client = config.make_client();
-    let project_name = config.get_index_name("projects");
-    let project_filtered_name = config.get_index_name("projects_filtered");
-    let projects_index = create_or_update_index(&client, &project_name, None).await?;
+    let project_name = config.get_index_name("projects", next);
+    let project_filtered_name = config.get_index_name("projects_filtered", next);
+    let projects_index = create_or_update_index(
+        &client,
+        &project_name,
+        Some(&[
+            "words",
+            "typo",
+            "proximity",
+            "attribute",
+            "exactness",
+            "sort",
+        ]),
+    )
+    .await?;
     let projects_filtered_index = create_or_update_index(
         &client,
         &project_filtered_name,
@@ -132,13 +150,11 @@ async fn create_or_update_index(
     name: &str,
     custom_rules: Option<&'static [&'static str]>,
 ) -> Result<Index, meilisearch_sdk::errors::Error> {
-    info!("Updating/creating index.");
+    info!("Updating/creating index {}", name);
 
     match client.get_index(name).await {
         Ok(index) => {
             info!("Updating index settings.");
-
-            let old_settings = index.get_settings().await?;
 
             let mut settings = default_settings();
 
@@ -146,89 +162,13 @@ async fn create_or_update_index(
                 settings = settings.with_ranking_rules(custom_rules);
             }
 
-            let old_settings = Settings {
-                synonyms: None, // We don't use synonyms right now
-                stop_words: if settings.stop_words.is_none() {
-                    None
-                } else {
-                    old_settings.stop_words.map(|mut x| {
-                        x.sort();
-                        x
-                    })
-                },
-                ranking_rules: if settings.ranking_rules.is_none() {
-                    None
-                } else {
-                    old_settings.ranking_rules
-                },
-                filterable_attributes: if settings.filterable_attributes.is_none() {
-                    None
-                } else {
-                    old_settings.filterable_attributes.map(|mut x| {
-                        x.sort();
-                        x
-                    })
-                },
-                sortable_attributes: if settings.sortable_attributes.is_none() {
-                    None
-                } else {
-                    old_settings.sortable_attributes.map(|mut x| {
-                        x.sort();
-                        x
-                    })
-                },
-                distinct_attribute: if settings.distinct_attribute.is_none() {
-                    None
-                } else {
-                    old_settings.distinct_attribute
-                },
-                searchable_attributes: if settings.searchable_attributes.is_none() {
-                    None
-                } else {
-                    old_settings.searchable_attributes
-                },
-                displayed_attributes: if settings.displayed_attributes.is_none() {
-                    None
-                } else {
-                    old_settings.displayed_attributes.map(|mut x| {
-                        x.sort();
-                        x
-                    })
-                },
-                pagination: if settings.pagination.is_none() {
-                    None
-                } else {
-                    old_settings.pagination
-                },
-                faceting: if settings.faceting.is_none() {
-                    None
-                } else {
-                    old_settings.faceting
-                },
-                typo_tolerance: None, // We don't use typo tolerance right now
-                dictionary: None,     // We don't use dictionary right now
-            };
-            if old_settings.synonyms != settings.synonyms
-                || old_settings.stop_words != settings.stop_words
-                || old_settings.ranking_rules != settings.ranking_rules
-                || old_settings.filterable_attributes != settings.filterable_attributes
-                || old_settings.sortable_attributes != settings.sortable_attributes
-                || old_settings.distinct_attribute != settings.distinct_attribute
-                || old_settings.searchable_attributes != settings.searchable_attributes
-                || old_settings.displayed_attributes != settings.displayed_attributes
-                || old_settings.pagination != settings.pagination
-                || old_settings.faceting != settings.faceting
-                || old_settings.typo_tolerance != settings.typo_tolerance
-                || old_settings.dictionary != settings.dictionary
-            {
-                info!("Performing index settings set.");
-                index
-                    .set_settings(&settings)
-                    .await?
-                    .wait_for_completion(client, None, Some(TIMEOUT))
-                    .await?;
-                info!("Done performing index settings set.");
-            }
+            info!("Performing index settings set.");
+            index
+                .set_settings(&settings)
+                .await?
+                .wait_for_completion(client, None, Some(TIMEOUT))
+                .await?;
+            info!("Done performing index settings set.");
 
             Ok(index)
         }
@@ -286,26 +226,39 @@ async fn update_and_add_to_index(
     client: &Client,
     index: &Index,
     projects: &[UploadSearchProject],
-    additional_fields: &[String],
+    _additional_fields: &[String],
 ) -> Result<(), IndexingError> {
-    let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
-    let mut new_displayed_attributes = index.get_displayed_attributes().await?;
+    // TODO: Uncomment this- hardcoding loader_fields is a band-aid fix, and will be fixed soon
+    // let mut new_filterable_attributes: Vec<String> = index.get_filterable_attributes().await?;
+    // let mut new_displayed_attributes = index.get_displayed_attributes().await?;
 
-    new_filterable_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
-    new_displayed_attributes.extend(additional_fields.iter().map(|s| s.to_string()));
-    info!("add attributes.");
-    let filterable_task = index
-        .set_filterable_attributes(new_filterable_attributes)
-        .await?;
-    let displayable_task = index
-        .set_displayed_attributes(new_displayed_attributes)
-        .await?;
-    filterable_task
-        .wait_for_completion(client, None, Some(TIMEOUT))
-        .await?;
-    displayable_task
-        .wait_for_completion(client, None, Some(TIMEOUT))
-        .await?;
+    // // Check if any 'additional_fields' are not already in the index
+    // // Only add if they are not already in the index
+    // let new_fields = additional_fields
+    //     .iter()
+    //     .filter(|x| !new_filterable_attributes.contains(x))
+    //     .collect::<Vec<_>>();
+    // if !new_fields.is_empty() {
+    //     info!("Adding new fields to index: {:?}", new_fields);
+    //     new_filterable_attributes.extend(new_fields.iter().map(|s: &&String| s.to_string()));
+    //     new_displayed_attributes.extend(new_fields.iter().map(|s| s.to_string()));
+
+    //     // Adds new fields to the index
+    //     let filterable_task = index
+    //         .set_filterable_attributes(new_filterable_attributes)
+    //         .await?;
+    //     let displayable_task = index
+    //         .set_displayed_attributes(new_displayed_attributes)
+    //         .await?;
+
+    //     // Allow a long timeout for adding new attributes- it only needs to happen the once
+    //     filterable_task
+    //         .wait_for_completion(client, None, Some(TIMEOUT * 100))
+    //         .await?;
+    //     displayable_task
+    //         .wait_for_completion(client, None, Some(TIMEOUT * 100))
+    //         .await?;
+    // }
 
     info!("Adding to index.");
 
@@ -329,18 +282,12 @@ pub async fn add_projects(
 }
 
 fn default_settings() -> Settings {
-    let mut sorted_display = DEFAULT_DISPLAYED_ATTRIBUTES.to_vec();
-    sorted_display.sort();
-    let mut sorted_sortable = DEFAULT_SORTABLE_ATTRIBUTES.to_vec();
-    sorted_sortable.sort();
-    let mut sorted_attrs = DEFAULT_ATTRIBUTES_FOR_FACETING.to_vec();
-    sorted_attrs.sort();
     Settings::new()
         .with_distinct_attribute("project_id")
-        .with_displayed_attributes(sorted_display)
+        .with_displayed_attributes(DEFAULT_DISPLAYED_ATTRIBUTES)
         .with_searchable_attributes(DEFAULT_SEARCHABLE_ATTRIBUTES)
-        .with_sortable_attributes(sorted_sortable)
-        .with_filterable_attributes(sorted_attrs)
+        .with_sortable_attributes(DEFAULT_SORTABLE_ATTRIBUTES)
+        .with_filterable_attributes(DEFAULT_ATTRIBUTES_FOR_FACETING)
         .with_pagination(PaginationSetting {
             max_total_hits: 2147483647,
         })
@@ -367,7 +314,16 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "featured_gallery",
     "color",
     // Note: loader fields are not here, but are added on as they are needed (so they can be dynamically added depending on which exist).
-
+    // TODO: remove these- as they should be automatically populated. This is a band-aid fix.
+    "server_only",
+    "client_only",
+    "game_versions",
+    "singleplayer",
+    "client_and_server",
+    "mrpack_loaders",
+    // V2 legacy fields for logical consistency
+    "client_side",
+    "server_side",
     // Non-searchable fields for filling out the Project model.
     "license_url",
     "monetization_status",
@@ -383,6 +339,7 @@ const DEFAULT_DISPLAYED_ATTRIBUTES: &[&str] = &[
     "links",
     "gallery_items",
     "loaders", // search uses loaders as categories- this is purely for the Project model.
+    "project_loader_fields",
 ];
 
 const DEFAULT_SEARCHABLE_ATTRIBUTES: &[&str] = &["name", "summary", "author", "slug"];
@@ -402,6 +359,17 @@ const DEFAULT_ATTRIBUTES_FOR_FACETING: &[&str] = &[
     "project_id",
     "open_source",
     "color",
+    // Note: loader fields are not here, but are added on as they are needed (so they can be dynamically added depending on which exist).
+    // TODO: remove these- as they should be automatically populated. This is a band-aid fix.
+    "server_only",
+    "client_only",
+    "game_versions",
+    "singleplayer",
+    "client_and_server",
+    "mrpack_loaders",
+    // V2 legacy fields for logical consistency
+    "client_side",
+    "server_side",
 ];
 
 const DEFAULT_SORTABLE_ATTRIBUTES: &[&str] =

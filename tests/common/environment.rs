@@ -4,11 +4,10 @@ use super::{
     api_common::{generic::GenericApi, Api, ApiBuildable},
     api_v2::ApiV2,
     api_v3::ApiV3,
-    asserts::assert_status,
     database::{TemporaryDatabase, FRIEND_USER_ID, USER_USER_PAT},
     dummy_data,
 };
-use crate::common::setup;
+use crate::{assert_status, common::setup};
 use actix_http::StatusCode;
 use actix_web::dev::ServiceResponse;
 use futures::Future;
@@ -26,9 +25,6 @@ pub async fn with_test_environment<Fut, A>(
     db.cleanup().await;
 }
 
-// TODO: This needs to be slightly redesigned in order to do both V2 and v3 tests.
-// TODO: Most tests, since they use API functions, can be applied to both. The ones that weren't are in v2/, but
-// all tests that can be applied to both should use both v2 and v3 (extract api to a trait  with all the API functions and call both).
 pub async fn with_test_environment_all<Fut, F>(max_connections: Option<u32>, f: F)
 where
     Fut: Future<Output = ()>,
@@ -112,7 +108,7 @@ impl<A: Api> TestEnvironment<A> {
                 USER_USER_PAT,
             )
             .await;
-        assert_status(&resp, StatusCode::NO_CONTENT);
+        assert_status!(&resp, StatusCode::NO_CONTENT);
     }
 
     // Setup data, assert that a user can read notifications
@@ -123,7 +119,7 @@ impl<A: Api> TestEnvironment<A> {
         status_code: StatusCode,
     ) {
         let resp = self.api.get_user_notifications(user_id, pat).await;
-        assert_status(&resp, status_code);
+        assert_status!(&resp, status_code);
     }
 
     // Setup data, assert that a user can read projects notifications
@@ -134,7 +130,7 @@ impl<A: Api> TestEnvironment<A> {
         status_code: StatusCode,
     ) {
         let resp = self.api.get_user_projects(user_id, pat).await;
-        assert_status(&resp, status_code);
+        assert_status!(&resp, status_code);
     }
 }
 

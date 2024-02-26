@@ -80,7 +80,7 @@ pub async fn version_project_get_helper(
     .ok();
 
     if let Some(project) = result {
-        if !is_visible_project(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -202,8 +202,12 @@ pub struct EditVersion {
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
     pub file_types: Option<Vec<EditVersionFileType>>,
-
-    pub ordering: Option<Option<i32>>, //TODO: How do you actually pass this in json?
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub ordering: Option<Option<i32>>,
 
     // Flattened loader fields
     // All other fields are loader-specific VersionFields
@@ -220,8 +224,6 @@ pub struct EditVersionFileType {
     pub file_type: Option<FileType>,
 }
 
-// TODO: Avoid this 'helper' pattern here and similar fnunctoins- a macro might be the best bet here to ensure it's callable from both v2 and v3
-// (web::Path can't be recreated naturally)
 pub async fn version_edit(
     req: HttpRequest,
     info: web::Path<(VersionId,)>,
@@ -722,7 +724,7 @@ pub async fn version_list(
     .ok();
 
     if let Some(project) = result {
-        if !is_visible_project(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -773,40 +775,48 @@ pub async fn version_list(
             .cloned()
             .collect::<Vec<_>>();
 
-        versions.sort();
+        versions.sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
 
         // Attempt to populate versions with "auto featured" versions
         if response.is_empty() && !versions.is_empty() && filters.featured.unwrap_or(false) {
-            // TODO: Re-implement this
-            // let (loaders, game_versions) = futures::future::try_join(
-            //     database::models::loader_fields::Loader::list(&**pool, &redis),
-            //     database::models::loader_fields::GameVersion::list_filter(
-            //         None,
-            //         Some(true),
-            //         &**pool,
-            //         &redis,
-            //     ),
-            // )
-            // .await?;
+            // TODO: This is a bandaid fix for detecting auto-featured versions.
+            // In the future, not all versions will have 'game_versions' fields, so this will need to be changed.
+            let (loaders, game_versions) = futures::future::try_join(
+                database::models::loader_fields::Loader::list(&**pool, &redis),
+                database::models::legacy_loader_fields::MinecraftGameVersion::list(
+                    None,
+                    Some(true),
+                    &**pool,
+                    &redis,
+                ),
+            )
+            .await?;
 
-            // let mut joined_filters = Vec::new();
-            // for game_version in &game_versions {
-            //     for loader in &loaders {
-            //         joined_filters.push((game_version, loader))
-            //     }
-            // }
+            let mut joined_filters = Vec::new();
+            for game_version in &game_versions {
+                for loader in &loaders {
+                    joined_filters.push((game_version, loader))
+                }
+            }
 
-            // joined_filters.into_iter().for_each(|filter| {
-            //     versions
-            //         .iter()
-            //         .find(|version| {
-            //             // version.game_versions.contains(&filter.0.version)
-            //                 // &&
-            //                 version.loaders.contains(&filter.1.loader)
-            //         })
-            //         .map(|version| response.push(version.clone()))
-            //         .unwrap_or(());
-            // });
+            joined_filters.into_iter().for_each(|filter| {
+                versions
+                    .iter()
+                    .find(|version| {
+                        // TODO: This is the bandaid fix for detecting auto-featured versions.
+                        let game_versions = version
+                            .version_fields
+                            .iter()
+                            .find(|vf| vf.field_name == "game_versions")
+                            .map(|vf| vf.value.clone())
+                            .map(|v| v.as_strings())
+                            .unwrap_or_default();
+                        game_versions.contains(&filter.0.version)
+                            && version.loaders.contains(&filter.1.loader)
+                    })
+                    .map(|version| response.push(version.clone()))
+                    .unwrap_or(());
+            });
 
             if response.is_empty() {
                 versions
@@ -815,7 +825,7 @@ pub async fn version_list(
             }
         }
 
-        response.sort();
+        response.sort_by(|a, b| b.inner.date_published.cmp(&a.inner.date_published));
         response.dedup_by(|a, b| a.inner.id == b.inner.id);
 
         let response = filter_visible_versions(response, &user_option, &pool, &redis).await?;
@@ -828,7 +838,7 @@ pub async fn version_list(
 
 pub async fn version_delete(
     req: HttpRequest,
-    info: web::Path<(models::ids::VersionId,)>,
+    info: web::Path<(VersionId,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,

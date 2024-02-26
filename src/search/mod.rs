@@ -1,6 +1,5 @@
-use crate::database::models::project_item::{GalleryItem, LinkUrl};
 use crate::models::error::ApiError;
-use crate::models::projects::{MonetizationStatus, ProjectStatus, SearchRequest};
+use crate::models::projects::SearchRequest;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use chrono::{DateTime, Utc};
@@ -9,7 +8,6 @@ use meilisearch_sdk::client::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
-use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt::Write;
 use thiserror::Error;
@@ -54,12 +52,12 @@ impl actix_web::ResponseError for SearchError {
                 SearchError::InvalidIndex(..) => "invalid_input",
                 SearchError::FormatError(..) => "invalid_input",
             },
-            description: &self.to_string(),
+            description: self.to_string(),
         })
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct SearchConfig {
     pub address: String,
     pub key: String,
@@ -84,8 +82,10 @@ impl SearchConfig {
         Client::new(self.address.as_str(), Some(self.key.as_str()))
     }
 
-    pub fn get_index_name(&self, index: &str) -> String {
-        format!("{}_{}", self.meta_namespace, index)
+    // Next: true if we want the next index (we are preparing the next swap), false if we want the current index (searching)
+    pub fn get_index_name(&self, index: &str, next: bool) -> String {
+        let alt = if next { "_alt" } else { "" };
+        format!("{}_{}_{}", self.meta_namespace, index, alt)
     }
 }
 
@@ -95,6 +95,7 @@ impl SearchConfig {
 pub struct UploadSearchProject {
     pub version_id: String,
     pub project_id: String,
+    //
     pub project_types: Vec<String>,
     pub slug: Option<String>,
     pub author: String,
@@ -120,20 +121,8 @@ pub struct UploadSearchProject {
     pub color: Option<u32>,
 
     // Hidden fields to get the Project model out of the search results.
-    pub license_url: Option<String>,
-    pub monetization_status: Option<MonetizationStatus>,
-    pub team_id: String,
-    pub thread_id: String,
-    pub versions: Vec<String>,
-    pub date_published: DateTime<Utc>,
-    pub date_queued: Option<DateTime<Utc>>,
-    pub status: ProjectStatus,
-    pub requested_status: Option<ProjectStatus>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
-    pub links: Vec<LinkUrl>,
-    pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
-    pub games: Vec<String>,              // Todo: in future, could be a searchable field.
-    pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
+    pub project_loader_fields: HashMap<String, Vec<serde_json::Value>>, // Aggregation of loader_fields from all versions of the project, allowing for reconstruction of the Project model.
 
     #[serde(flatten)]
     pub loader_fields: HashMap<String, Vec<serde_json::Value>>,
@@ -142,8 +131,8 @@ pub struct UploadSearchProject {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SearchResults {
     pub hits: Vec<ResultSearchProject>,
-    pub offset: usize,
-    pub limit: usize,
+    pub page: usize,
+    pub hits_per_page: usize,
     pub total_hits: usize,
 }
 
@@ -171,20 +160,8 @@ pub struct ResultSearchProject {
     pub color: Option<u32>,
 
     // Hidden fields to get the Project model out of the search results.
-    pub license_url: Option<String>,
-    pub monetization_status: Option<String>,
-    pub team_id: String,
-    pub thread_id: String,
-    pub versions: Vec<String>,
-    pub date_published: String,
-    pub date_queued: Option<String>,
-    pub status: String,
-    pub requested_status: Option<String>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
-    pub links: Vec<LinkUrl>,
-    pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
-    pub games: Vec<String>,              // Todo: in future, could be a searchable field.
-    pub organization_id: Option<String>, // Todo: in future, could be a searchable field.
+    pub project_loader_fields: HashMap<String, Vec<serde_json::Value>>, // Aggregation of loader_fields from all versions of the project, allowing for reconstruction of the Project model.
 
     #[serde(flatten)]
     pub loader_fields: HashMap<String, Vec<serde_json::Value>>,
@@ -194,8 +171,8 @@ pub fn get_sort_index(
     config: &SearchConfig,
     index: &str,
 ) -> Result<(String, [&'static str; 1]), SearchError> {
-    let projects_name = config.get_index_name("projects");
-    let projects_filtered_name = config.get_index_name("projects_filtered");
+    let projects_name = config.get_index_name("projects", false);
+    let projects_filtered_name = config.get_index_name("projects_filtered", false);
     Ok(match index {
         "relevance" => (projects_name, ["downloads:desc"]),
         "downloads" => (projects_filtered_name, ["downloads:desc"]),
@@ -212,7 +189,7 @@ pub async fn search_for_project(
 ) -> Result<SearchResults, SearchError> {
     let client = Client::new(&*config.address, Some(&*config.key));
 
-    let offset = info.offset.as_deref().unwrap_or("0").parse()?;
+    let offset: usize = info.offset.as_deref().unwrap_or("0").parse()?;
     let index = info.index.as_deref().unwrap_or("relevance");
     let limit = info.limit.as_deref().unwrap_or("10").parse()?;
 
@@ -221,12 +198,15 @@ pub async fn search_for_project(
 
     let mut filter_string = String::new();
 
+    // Convert offset and limit to page and hits_per_page
+    let hits_per_page = limit;
+    let page = offset / limit + 1;
+
     let results = {
         let mut query = meilisearch_index.search();
-
         query
-            .with_limit(min(100, limit))
-            .with_offset(offset)
+            .with_page(page)
+            .with_hits_per_page(hits_per_page)
             .with_query(info.query.as_deref().unwrap_or_default())
             .with_sort(&sort.1);
 
@@ -312,8 +292,8 @@ pub async fn search_for_project(
 
     Ok(SearchResults {
         hits: results.hits.into_iter().map(|r| r.result).collect(),
-        offset: results.offset.unwrap_or_default(),
-        limit: results.limit.unwrap_or_default(),
-        total_hits: results.estimated_total_hits.unwrap_or_default(),
+        page: results.page.unwrap_or_default(),
+        hits_per_page: results.hits_per_page.unwrap_or_default(),
+        total_hits: results.total_hits.unwrap_or_default(),
     })
 }

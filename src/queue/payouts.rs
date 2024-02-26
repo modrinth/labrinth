@@ -1,4 +1,3 @@
-use crate::models::ids::UserId;
 use crate::models::payouts::{
     PayoutDecimal, PayoutInterval, PayoutMethod, PayoutMethodFee, PayoutMethodType,
 };
@@ -7,7 +6,6 @@ use crate::util::env::parse_var;
 use crate::{database::redis::RedisPool, models::projects::MonetizationStatus};
 use base64::Engine;
 use chrono::{DateTime, Datelike, Duration, Utc, Weekday};
-use dashmap::DashMap;
 use reqwest::Method;
 use rust_decimal::Decimal;
 use serde::de::DeserializeOwned;
@@ -16,13 +14,12 @@ use serde_json::Value;
 use sqlx::postgres::PgQueryResult;
 use sqlx::PgPool;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 pub struct PayoutsQueue {
     credential: RwLock<Option<PayPalCredentials>>,
     payout_options: RwLock<Option<PayoutMethods>>,
-    payouts_locks: DashMap<UserId, Arc<Mutex<()>>>,
+    pub payouts_locks: Mutex<()>,
 }
 
 #[derive(Clone)]
@@ -49,7 +46,7 @@ impl PayoutsQueue {
         PayoutsQueue {
             credential: RwLock::new(None),
             payout_options: RwLock::new(None),
-            payouts_locks: DashMap::new(),
+            payouts_locks: Mutex::new(()),
         }
     }
 
@@ -346,8 +343,14 @@ impl PayoutsQueue {
                     "OEFTMSBA5ELH",
                     "A3CQK6UHNV27",
                 ];
-                const SUPPORTED_METHODS: &[&str] =
-                    &["merchant_cards", "visa", "bank", "ach", "visa_card"];
+                const SUPPORTED_METHODS: &[&str] = &[
+                    "merchant_cards",
+                    "merchant_card",
+                    "visa",
+                    "bank",
+                    "ach",
+                    "visa_card",
+                ];
 
                 if !SUPPORTED_METHODS.contains(&&*product.category)
                     || BLACKLISTED_IDS.contains(&&*product.id)
@@ -506,13 +509,6 @@ impl PayoutsQueue {
 
         Ok(options.options)
     }
-
-    pub fn lock_user_payouts(&self, user_id: UserId) -> Arc<Mutex<()>> {
-        self.payouts_locks
-            .entry(user_id)
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
-    }
 }
 
 pub async fn process_payout(
@@ -619,40 +615,84 @@ pub async fn process_payout(
 
     let mut projects_map: HashMap<i64, Project> = HashMap::new();
 
-    use futures::TryStreamExt;
+    let project_ids = multipliers
+        .values
+        .keys()
+        .map(|x| *x as i64)
+        .collect::<Vec<i64>>();
 
-    sqlx::query!(
+    let project_org_members = sqlx::query!(
+        "
+        SELECT m.id id, tm.user_id user_id, tm.payouts_split payouts_split
+        FROM mods m
+        INNER JOIN organizations o ON m.organization_id = o.id
+        INNER JOIN team_members tm on o.team_id = tm.team_id AND tm.accepted = TRUE
+        WHERE m.id = ANY($1) AND m.monetization_status = $2 AND m.status = ANY($3) AND m.organization_id IS NOT NULL
+        ",
+        &project_ids,
+        MonetizationStatus::Monetized.as_str(),
+        &*crate::models::projects::ProjectStatus::iterator()
+            .filter(|x| !x.is_hidden())
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
+    )
+    .fetch_all(&mut *transaction)
+    .await?;
+
+    let project_team_members = sqlx::query!(
         "
         SELECT m.id id, tm.user_id user_id, tm.payouts_split payouts_split
         FROM mods m
         INNER JOIN team_members tm on m.team_id = tm.team_id AND tm.accepted = TRUE
-        WHERE m.id = ANY($1) AND m.monetization_status = $2
+        WHERE m.id = ANY($1) AND m.monetization_status = $2 AND m.status = ANY($3)
         ",
-        &multipliers
-            .values
-            .keys()
-            .map(|x| *x as i64)
-            .collect::<Vec<i64>>(),
+        &project_ids,
         MonetizationStatus::Monetized.as_str(),
+        &*crate::models::projects::ProjectStatus::iterator()
+            .filter(|x| !x.is_hidden())
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
     )
-    .fetch_many(&mut *transaction)
-    .try_for_each(|e| {
-        if let Some(row) = e.right() {
-            if let Some(project) = projects_map.get_mut(&row.id) {
-                project.team_members.push((row.user_id, row.payouts_split));
-            } else {
-                projects_map.insert(
-                    row.id,
-                    Project {
-                        team_members: vec![(row.user_id, row.payouts_split)],
-                    },
-                );
+    .fetch_all(&mut *transaction)
+    .await?;
+
+    for project_id in project_ids {
+        let team_members: HashMap<i64, Decimal> = project_team_members
+            .iter()
+            .filter(|r| r.id == project_id)
+            .map(|r| (r.user_id, r.payouts_split))
+            .collect();
+        let org_team_members: HashMap<i64, Decimal> = project_org_members
+            .iter()
+            .filter(|r| r.id == project_id)
+            .map(|r| (r.user_id, r.payouts_split))
+            .collect();
+
+        let mut all_team_members = vec![];
+
+        for (user_id, payouts_split) in org_team_members {
+            if !team_members.contains_key(&user_id) {
+                all_team_members.push((user_id, payouts_split));
             }
         }
+        for (user_id, payouts_split) in team_members {
+            all_team_members.push((user_id, payouts_split));
+        }
 
-        futures::future::ready(Ok(()))
-    })
-    .await?;
+        // if all team members are set to zero, we treat as an equal revenue distribution
+        if all_team_members.iter().all(|x| x.1 == Decimal::ZERO) {
+            all_team_members
+                .iter_mut()
+                .for_each(|x| x.1 = Decimal::from(1));
+        }
+
+        projects_map.insert(
+            project_id,
+            Project {
+                team_members: all_team_members,
+            },
+        );
+    }
 
     let amount = Decimal::from(parse_var::<u64>("PAYOUTS_BUDGET").unwrap_or(0));
 

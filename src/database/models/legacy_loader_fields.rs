@@ -5,6 +5,7 @@
 // These fields only apply to minecraft-java, and are hardcoded to the minecraft-java game.
 
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -34,41 +35,41 @@ impl MinecraftGameVersion {
     }
 
     pub async fn list<'a, E>(
+        version_type_option: Option<&str>,
+        major_option: Option<bool>,
         exec: E,
         redis: &RedisPool,
     ) -> Result<Vec<MinecraftGameVersion>, DatabaseError>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+        E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
-        let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, exec, redis)
+        let mut exec = exec.acquire().await?;
+        let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, &mut *exec, redis)
             .await?
             .ok_or_else(|| {
                 DatabaseError::SchemaError("Could not find game version enum.".to_string())
             })?;
         let game_version_enum_values =
-            LoaderFieldEnumValue::list(game_version_enum.id, exec, redis).await?;
-        Ok(game_version_enum_values
-            .into_iter()
-            .map(MinecraftGameVersion::from_enum_value)
-            .collect())
-    }
+            LoaderFieldEnumValue::list(game_version_enum.id, &mut *exec, redis).await?;
 
-    // TODO: remove this
-    pub async fn list_transaction(
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        redis: &RedisPool,
-    ) -> Result<Vec<MinecraftGameVersion>, DatabaseError> {
-        let game_version_enum = LoaderFieldEnum::get(Self::FIELD_NAME, &mut **transaction, redis)
-            .await?
-            .ok_or_else(|| {
-                DatabaseError::SchemaError("Could not find game version enum.".to_string())
-            })?;
-        let game_version_enum_values =
-            LoaderFieldEnumValue::list(game_version_enum.id, &mut **transaction, redis).await?;
-        Ok(game_version_enum_values
+        let game_versions = game_version_enum_values
             .into_iter()
             .map(MinecraftGameVersion::from_enum_value)
-            .collect())
+            .filter(|x| {
+                let mut bool = true;
+
+                if let Some(version_type) = version_type_option {
+                    bool &= &*x.type_ == version_type;
+                }
+                if let Some(major) = major_option {
+                    bool &= x.major == major;
+                }
+
+                bool
+            })
+            .collect_vec();
+
+        Ok(game_versions)
     }
 
     // Tries to create a MinecraftGameVersion from a VersionField
@@ -191,8 +192,12 @@ impl<'a> MinecraftGameVersionBuilder<'a> {
                 INSERT INTO loader_field_enum_values (enum_id, value, created, metadata)
                 VALUES ($1, $2, COALESCE($3, timezone('utc', now())), $4)
                 ON CONFLICT (enum_id, value) DO UPDATE
-                    SET metadata = COALESCE($4, loader_field_enum_values.metadata),
-                        created = COALESCE($3, loader_field_enum_values.created)
+                    SET metadata = jsonb_set(
+                        COALESCE(loader_field_enum_values.metadata, $4),
+                        '{type}', 
+                        COALESCE($4->'type', loader_field_enum_values.metadata->'type')
+                    ),
+                    created = COALESCE($3, loader_field_enum_values.created)
                 RETURNING id
                 ",
             game_versions_enum.id.0,

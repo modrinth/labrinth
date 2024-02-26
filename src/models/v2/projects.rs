@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use super::super::ids::OrganizationId;
 use super::super::teams::TeamId;
 use super::super::users::UserId;
-use crate::database::models::legacy_loader_fields::MinecraftGameVersion;
 use crate::database::models::{version_item, DatabaseError};
 use crate::database::redis::RedisPool;
 use crate::models::ids::{ProjectId, VersionId};
@@ -71,21 +70,14 @@ pub struct LegacyProject {
 }
 
 impl LegacyProject {
-    // Convert from a standard V3 project to a V2 project
-    // Requires any queried versions to be passed in, to get access to certain version fields contained within.
-    // - This can be any version, because the fields are ones that used to be on the project itself.
-    // - Its conceivable that certain V3 projects that have many different ones may not have the same fields on all of them.
-    // TODO: Should this return an error instead for v2 users?
-    // It's safe to use a db version_item for this as the only info is side types, game versions, and loader fields (for loaders), which used to be public on project anyway.
-    pub fn from(data: Project, versions_item: Option<version_item::QueryVersion>) -> Self {
-        let mut client_side = LegacySideType::Unknown;
-        let mut server_side = LegacySideType::Unknown;
-        let mut game_versions = Vec::new();
-
+    // Returns visible v2 project_type and also 'og' selected project type
+    // These are often identical, but we want to display 'mod' for datapacks and plugins
+    // The latter can be used for further processing, such as determining side types of plugins
+    pub fn get_project_type(project_types: &[String]) -> (String, String) {
         // V2 versions only have one project type- v3 versions can rarely have multiple.
         // We'll prioritize 'modpack' first, and if neither are found, use the first one.
         // If there are no project types, default to 'project'
-        let mut project_types = data.project_types;
+        let mut project_types = project_types.to_vec();
         if project_types.contains(&"modpack".to_string()) {
             project_types = vec!["modpack".to_string()];
         }
@@ -95,24 +87,43 @@ impl LegacyProject {
             .cloned()
             .unwrap_or("project".to_string()); // Default to 'project' if none are found
 
-        let mut project_type = if og_project_type == "datapack" || og_project_type == "plugin" {
+        let project_type = if og_project_type == "datapack" || og_project_type == "plugin" {
             // These are not supported in V2, so we'll just use 'mod' instead
             "mod".to_string()
         } else {
             og_project_type.clone()
         };
 
+        (project_type, og_project_type)
+    }
+
+    // Convert from a standard V3 project to a V2 project
+    // Requires any queried versions to be passed in, to get access to certain version fields contained within.
+    // - This can be any version, because the fields are ones that used to be on the project itself.
+    // - Its conceivable that certain V3 projects that have many different ones may not have the same fields on all of them.
+    // It's safe to use a db version_item for this as the only info is side types, game versions, and loader fields (for loaders), which used to be public on project anyway.
+    pub fn from(data: Project, versions_item: Option<version_item::QueryVersion>) -> Self {
+        let mut client_side = LegacySideType::Unknown;
+        let mut server_side = LegacySideType::Unknown;
+
+        // V2 versions only have one project type- v3 versions can rarely have multiple.
+        // We'll prioritize 'modpack' first, and if neither are found, use the first one.
+        // If there are no project types, default to 'project'
+        let project_types = data.project_types;
+        let (mut project_type, og_project_type) = Self::get_project_type(&project_types);
+
         let mut loaders = data.loaders;
 
-        if let Some(versions_item) = versions_item {
-            game_versions = versions_item
-                .version_fields
-                .iter()
-                .find(|f| f.field_name == "game_versions")
-                .and_then(|f| MinecraftGameVersion::try_from_version_field(f).ok())
-                .map(|v| v.into_iter().map(|v| v.version).collect())
-                .unwrap_or(Vec::new());
+        let game_versions = data
+            .fields
+            .get("game_versions")
+            .unwrap_or(&Vec::new())
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(|v| v.to_string())
+            .collect();
 
+        if let Some(versions_item) = versions_item {
             // Extract side types from remaining fields (singleplayer, client_only, etc)
             let fields = versions_item
                 .version_fields
@@ -277,10 +288,6 @@ pub struct LegacyVersion {
     /// A list of loaders this project supports (has a newtype struct)
     pub loaders: Vec<Loader>,
 
-    // TODO: should we remove this? as this is a v3 field and tests for it should be isolated to v3
-    // it allows us to keep tests that use this struct in common
-    pub ordering: Option<i32>,
-
     pub id: VersionId,
     pub project_id: ProjectId,
     pub author_id: UserId,
@@ -342,7 +349,6 @@ impl From<Version> for LegacyVersion {
             files: data.files,
             dependencies: data.dependencies,
             game_versions,
-            ordering: data.ordering,
             loaders,
         }
     }

@@ -7,12 +7,12 @@ use crate::models::projects::{
 };
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType, LegacyVersion};
 use crate::models::v2::search::LegacySearchResults;
+use crate::queue::moderation::AutomatedModerationQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::ProjectIds;
 use crate::routes::{v2_reroute, v3, ApiError};
 use crate::search::{search_for_project, SearchConfig, SearchError};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -53,33 +53,16 @@ pub async fn project_search(
     web::Query(info): web::Query<SearchRequest>,
     config: web::Data<SearchConfig>,
 ) -> Result<HttpResponse, SearchError> {
-    // TODO: make this nicer
     // Search now uses loader_fields instead of explicit 'client_side' and 'server_side' fields
     // While the backend for this has changed, it doesnt affect much
     // in the API calls except that 'versions:x' is now 'game_versions:x'
-    let facets: Option<Vec<Vec<Vec<String>>>> = if let Some(facets) = info.facets {
-        let facets = serde_json::from_str::<Vec<Vec<serde_json::Value>>>(&facets)?;
-        // Search can now *optionally* have a third inner array: So Vec(AND)<Vec(OR)<Vec(AND)< _ >>>
-        // For every inner facet, we will check if it can be deserialized into a Vec<&str>, and do so.
-        // If not, we will assume it is a single facet and wrap it in a Vec.
-        let facets: Vec<Vec<Vec<String>>> = facets
-            .into_iter()
-            .map(|facets| {
-                facets
-                    .into_iter()
-                    .map(|facet| {
-                        if facet.is_array() {
-                            serde_json::from_value::<Vec<String>>(facet).unwrap_or_default()
-                        } else {
-                            vec![serde_json::from_value::<String>(facet).unwrap_or_default()]
-                        }
-                    })
-                    .collect_vec()
-            })
-            .collect_vec();
+    let facets: Option<Vec<Vec<String>>> = if let Some(facets) = info.facets {
+        let facets = serde_json::from_str::<Vec<Vec<String>>>(&facets)?;
 
-        // We will now convert side_types to their new boolean format
-        let facets = v2_reroute::convert_side_type_facets_v3(facets);
+        // These loaders specifically used to be combined with 'mod' to be a plugin, but now
+        // they are their own loader type. We will convert 'mod' to 'mod' OR 'plugin'
+        // as it essentially was before.
+        let facets = v2_reroute::convert_plugin_loader_facets_v3(facets);
 
         Some(
             facets
@@ -87,26 +70,22 @@ pub async fn project_search(
                 .map(|facet| {
                     facet
                         .into_iter()
-                        .map(|facets| {
-                            facets
-                                .into_iter()
-                                .map(|facet| {
-                                    let val = match facet.split(':').nth(1) {
-                                        Some(val) => val,
-                                        None => return facet.to_string(),
-                                    };
-
-                                    if facet.starts_with("versions:") {
-                                        format!("game_versions:{}", val)
-                                    } else if facet.starts_with("project_type:") {
-                                        format!("project_types:{}", val)
-                                    } else if facet.starts_with("title:") {
-                                        format!("name:{}", val)
-                                    } else {
-                                        facet.to_string()
-                                    }
-                                })
-                                .collect::<Vec<_>>()
+                        .map(|facet| {
+                            if let Some((key, operator, val)) = parse_facet(&facet) {
+                                format!(
+                                    "{}{}{}",
+                                    match key.as_str() {
+                                        "versions" => "game_versions",
+                                        "project_type" => "project_types",
+                                        "title" => "name",
+                                        x => x,
+                                    },
+                                    operator,
+                                    val
+                                )
+                            } else {
+                                facet.to_string()
+                            }
                         })
                         .collect::<Vec<_>>()
                 })
@@ -126,6 +105,40 @@ pub async fn project_search(
     let results = LegacySearchResults::from(results);
 
     Ok(HttpResponse::Ok().json(results))
+}
+
+/// Parses a facet into a key, operator, and value
+fn parse_facet(facet: &str) -> Option<(String, String, String)> {
+    let mut key = String::new();
+    let mut operator = String::new();
+    let mut val = String::new();
+
+    let mut iterator = facet.chars();
+    while let Some(char) = iterator.next() {
+        match char {
+            ':' | '=' => {
+                operator.push(char);
+                val = iterator.collect::<String>();
+                return Some((key, operator, val));
+            }
+            '<' | '>' => {
+                operator.push(char);
+                if let Some(next_char) = iterator.next() {
+                    if next_char == '=' {
+                        operator.push(next_char);
+                    } else {
+                        val.push(next_char);
+                    }
+                }
+                val.push_str(&iterator.collect::<String>());
+                return Some((key, operator, val));
+            }
+            ' ' => continue,
+            _ => key.push(char),
+        }
+    }
+
+    None
 }
 
 #[derive(Deserialize, Validate)]
@@ -368,14 +381,16 @@ pub struct EditProject {
 }
 
 #[patch("{id}")]
+#[allow(clippy::too_many_arguments)]
 pub async fn project_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    config: web::Data<SearchConfig>,
+    search_config: web::Data<SearchConfig>,
     new_project: web::Json<EditProject>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
+    moderation_queue: web::Data<AutomatedModerationQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let v2_new_project = new_project.into_inner();
     let client_side = v2_new_project.client_side;
@@ -478,10 +493,11 @@ pub async fn project_edit(
         req.clone(),
         info,
         pool.clone(),
-        config,
+        search_config,
         web::Json(new_project),
         redis.clone(),
         session_queue.clone(),
+        moderation_queue,
     )
     .await
     .or_else(v2_reroute::flatten_404_error)?;
@@ -853,11 +869,11 @@ pub async fn project_delete(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
-    config: web::Data<SearchConfig>,
+    search_config: web::Data<SearchConfig>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so no need to convert
-    v3::projects::project_delete(req, info, pool, redis, config, session_queue)
+    v3::projects::project_delete(req, info, pool, redis, search_config, session_queue)
         .await
         .or_else(v2_reroute::flatten_404_error)
 }

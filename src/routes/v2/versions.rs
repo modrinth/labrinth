@@ -46,6 +46,17 @@ pub async fn version_list(
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
+    let loaders = if let Some(loaders) = filters.loaders {
+        if let Ok(mut loaders) = serde_json::from_str::<Vec<String>>(&loaders) {
+            loaders.push("mrpack".to_string());
+            Some(loaders)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let loader_fields = if let Some(game_versions) = filters.game_versions {
         // TODO: extract this logic which is similar to the other v2->v3 version_file functions
         let mut loader_fields = HashMap::new();
@@ -57,6 +68,17 @@ pub async fn version_list(
                     game_versions.push(serde_json::json!(gv.clone()));
                 }
                 loader_fields.insert("game_versions".to_string(), game_versions);
+
+                if let Some(ref loaders) = loaders {
+                    loader_fields.insert(
+                        "loaders".to_string(),
+                        loaders
+                            .iter()
+                            .map(|x| serde_json::json!(x.clone()))
+                            .collect(),
+                    );
+                }
+
                 serde_json::to_string(&loader_fields).ok()
             })
     } else {
@@ -65,7 +87,7 @@ pub async fn version_list(
 
     let filters = v3::versions::VersionListFilters {
         loader_fields,
-        loaders: filters.loaders,
+        loaders: loaders.and_then(|x| serde_json::to_string(&x).ok()),
         featured: filters.featured,
         version_type: filters.version_type,
         limit: filters.limit,
@@ -193,7 +215,6 @@ pub struct EditVersion {
     pub downloads: Option<u32>,
     pub status: Option<VersionStatus>,
     pub file_types: Option<Vec<EditVersionFileType>>,
-    pub ordering: Option<Option<i32>>, //TODO: How do you actually pass this in json?
 }
 
 #[derive(Serialize, Deserialize)]
@@ -222,13 +243,40 @@ pub async fn version_edit(
         );
     }
 
+    // Get the older version to get info from
+    let old_version = v3::versions::version_get_helper(
+        req.clone(),
+        (*info).0,
+        pool.clone(),
+        redis.clone(),
+        session_queue.clone(),
+    )
+    .await
+    .or_else(v2_reroute::flatten_404_error)?;
+    let old_version = match v2_reroute::extract_ok_json::<Version>(old_version).await {
+        Ok(version) => version,
+        Err(response) => return Ok(response),
+    };
+
+    // If this has 'mrpack_loaders' as a loader field previously, this is a modpack.
+    // Therefore, if we are modifying the 'loader' field in this case,
+    // we are actually modifying the 'mrpack_loaders' loader field
+    let mut loaders = new_version.loaders.clone();
+    if old_version.fields.contains_key("mrpack_loaders") && new_version.loaders.is_some() {
+        fields.insert(
+            "mrpack_loaders".to_string(),
+            serde_json::json!(new_version.loaders),
+        );
+        loaders = None;
+    }
+
     let new_version = v3::versions::EditVersion {
         name: new_version.name,
         version_number: new_version.version_number,
         changelog: new_version.changelog,
         version_type: new_version.version_type,
         dependencies: new_version.dependencies,
-        loaders: new_version.loaders,
+        loaders,
         featured: new_version.featured,
         primary_file: new_version.primary_file,
         downloads: new_version.downloads,
@@ -242,7 +290,7 @@ pub async fn version_edit(
                 })
                 .collect::<Vec<_>>()
         }),
-        ordering: new_version.ordering,
+        ordering: None,
         fields,
     };
 
