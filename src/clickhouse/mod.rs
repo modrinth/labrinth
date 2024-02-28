@@ -42,7 +42,7 @@ pub async fn init_client_with_database(
 
                 user_id UInt64,
                 project_id UInt64,
-                monetized Bool,
+                monetized Bool DEFAULT True,
 
                 ip IPv6,
                 country String,
@@ -50,7 +50,7 @@ pub async fn init_client_with_database(
                 headers Array(Tuple(String, String)),
             )
             ENGINE = MergeTree()
-            PRIMARY KEY (project_id, recorded)
+            PRIMARY KEY (project_id, recorded, ip)
             "
         ))
         .execute()
@@ -75,7 +75,7 @@ pub async fn init_client_with_database(
                 headers Array(Tuple(String, String)),
             )
             ENGINE = MergeTree()
-            PRIMARY KEY (project_id, recorded)
+            PRIMARY KEY (project_id, recorded, ip)
             "
         ))
         .execute()
@@ -98,7 +98,7 @@ pub async fn init_client_with_database(
                 parent UInt64,
             )
             ENGINE = MergeTree()
-            PRIMARY KEY (project_id, recorded)
+            PRIMARY KEY (project_id, recorded, user_id)
             "
         ))
         .execute()
