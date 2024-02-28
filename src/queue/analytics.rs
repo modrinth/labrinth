@@ -11,8 +11,8 @@ const DOWNLOADS_NAMESPACE: &str = "downloads";
 const VIEWS_NAMESPACE: &str = "views";
 
 pub struct AnalyticsQueue {
-    views_queue: DashMap<(u32, u64), Vec<PageView>>,
-    downloads_queue: DashMap<(u32, u64), Download>,
+    views_queue: DashMap<(u64, u64), Vec<PageView>>,
+    downloads_queue: DashMap<(u64, u64), Download>,
     playtime_queue: DashSet<Playtime>,
 }
 
@@ -32,13 +32,16 @@ impl AnalyticsQueue {
         }
     }
 
-    fn strip_ip(ip: Ipv6Addr) -> u32 {
+    fn strip_ip(ip: Ipv6Addr) -> u64 {
         if let Some(ip) = ip.to_ipv4_mapped() {
             let octets = ip.octets();
-            u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]])
+            u64::from_be_bytes([octets[0], octets[1], octets[2], octets[3], 0, 0, 0, 0])
         } else {
             let octets = ip.octets();
-            u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]])
+            u64::from_be_bytes([
+                octets[0], octets[1], octets[2], octets[3], octets[4], octets[5], octets[6],
+                octets[7],
+            ])
         }
     }
 
@@ -50,7 +53,6 @@ impl AnalyticsQueue {
             .or_default()
             .push(page_view);
     }
-
     pub fn add_download(&self, download: Download) {
         let ip_stripped = Self::strip_ip(download.ip);
         self.downloads_queue
