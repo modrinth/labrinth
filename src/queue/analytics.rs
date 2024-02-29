@@ -5,6 +5,7 @@ use crate::routes::ApiError;
 use dashmap::{DashMap, DashSet};
 use redis::cmd;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::net::Ipv6Addr;
 
 const DOWNLOADS_NAMESPACE: &str = "downloads";
@@ -207,37 +208,46 @@ impl AnalyticsQueue {
                 .await
                 .map_err(DatabaseError::CacheError)?;
 
-            let version_ids = raw_downloads
-                .iter()
-                .map(|x| x.version_id as i64)
-                .collect::<Vec<_>>();
-            let project_ids = raw_downloads
-                .iter()
-                .map(|x| x.project_id as i64)
-                .collect::<Vec<_>>();
-
             let mut transaction = pool.begin().await?;
             let mut downloads = client.insert("downloads")?;
 
+            let mut version_downloads: HashMap<i64, i32> = HashMap::new();
+            let mut project_downloads: HashMap<i64, i32> = HashMap::new();
+
             for (_, download) in raw_downloads {
+                *version_downloads
+                    .entry(download.version_id as i64)
+                    .or_default() += 1;
+                *project_downloads
+                    .entry(download.project_id as i64)
+                    .or_default() += 1;
+
                 downloads.write(&download).await?;
             }
 
-            sqlx::query!(
-                "UPDATE versions
-                SET downloads = downloads + 1
-                WHERE id = ANY($1)",
-                &version_ids
+            sqlx::query(
+                "
+                UPDATE versions v
+                SET downloads = v.downloads + x.amount
+                FROM unnest($1::BIGINT[], $2::int[]) AS x(id, amount)
+                WHERE v.id = x.id
+                ",
             )
+            .bind(version_downloads.keys().copied().collect::<Vec<_>>())
+            .bind(version_downloads.values().copied().collect::<Vec<_>>())
             .execute(&mut *transaction)
             .await?;
 
-            sqlx::query!(
-                "UPDATE mods
-                SET downloads = downloads + 1
-                WHERE id = ANY($1)",
-                &project_ids
+            sqlx::query(
+                "
+                    UPDATE mods m
+                    SET downloads = m.downloads + x.amount
+                    FROM unnest($1::BIGINT[], $2::int[]) AS x(id, amount)
+                    WHERE m.id = x.id
+                    ",
             )
+            .bind(project_downloads.keys().copied().collect::<Vec<_>>())
+            .bind(project_downloads.values().copied().collect::<Vec<_>>())
             .execute(&mut *transaction)
             .await?;
 
