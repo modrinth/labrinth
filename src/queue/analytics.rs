@@ -114,15 +114,23 @@ impl AnalyticsQueue {
             for (idx, count) in results.into_iter().enumerate() {
                 let key = &views_keys[idx];
 
-                let new_count = if let Some(count) = count {
-                    if count > 3 {
-                        if let Some(raw_view) = raw_views.get_mut(idx) {
-                            raw_view.1 = false;
-                        }
-                        continue;
-                    }
+                let new_count = if let Some((views, monetized)) = raw_views.get_mut(idx) {
+                    if let Some(count) = count {
+                        println!("len: {} count: {}", views.len(), count);
 
-                    count + 1
+                        if count > 3 {
+                            *monetized = false;
+                            continue;
+                        }
+
+                        if (count + views.len() as u32) > 3 {
+                            *monetized = false;
+                        }
+
+                        count + (views.len() as u32)
+                    } else {
+                        views.len() as u32
+                    }
                 } else {
                     1
                 };
@@ -142,7 +150,7 @@ impl AnalyticsQueue {
             for (all_views, monetized) in raw_views {
                 for (idx, mut view) in all_views.into_iter().enumerate() {
                     if idx != 0 || !monetized {
-                        view.monetized = monetized;
+                        view.monetized = false;
                     }
 
                     views.write(&view).await?;
@@ -154,11 +162,11 @@ impl AnalyticsQueue {
 
         if !downloads_queue.is_empty() {
             let mut downloads_keys = Vec::new();
-            let mut raw_downloads = Vec::new();
+            let raw_downloads = DashMap::new();
 
-            for (key, download) in downloads_queue {
+            for (index, (key, download)) in downloads_queue.into_iter().enumerate() {
                 downloads_keys.push(key);
-                raw_downloads.push(download);
+                raw_downloads.insert(index, download);
             }
 
             let mut redis = redis.pool.get().await.map_err(DatabaseError::RedisPool)?;
@@ -180,7 +188,7 @@ impl AnalyticsQueue {
 
                 let new_count = if let Some(count) = count {
                     if count > 5 {
-                        raw_downloads.remove(idx);
+                        raw_downloads.remove(&idx);
                         continue;
                     }
 
@@ -211,7 +219,7 @@ impl AnalyticsQueue {
             let mut transaction = pool.begin().await?;
             let mut downloads = client.insert("downloads")?;
 
-            for download in raw_downloads {
+            for (_, download) in raw_downloads {
                 downloads.write(&download).await?;
             }
 

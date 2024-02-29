@@ -15,7 +15,6 @@ use clickhouse_crate::Client;
 use util::cors::default_cors;
 
 use crate::queue::moderation::AutomatedModerationQueue;
-use crate::queue::payouts::process_payout;
 use crate::{
     // queue::payouts::process_payout,
     search::indexing::index_projects,
