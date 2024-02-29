@@ -25,6 +25,7 @@ pub fn project_file_type(ext: &str) -> Option<&str> {
         "jar" => Some("application/java-archive"),
         "zip" | "litemod" => Some("application/zip"),
         "mrpack" => Some("application/x-modrinth-modpack+zip"),
+        "pom" => Some("text/xml"),
         _ => None,
     }
 }
