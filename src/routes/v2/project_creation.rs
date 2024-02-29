@@ -3,17 +3,16 @@ use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models;
 use crate::models::ids::ImageId;
-use crate::models::projects::{Loader, Project, ProjectStatus};
+use crate::models::projects::{Project, ProjectStatus};
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType};
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::project_creation::default_project_type;
-use crate::routes::v3::project_creation::{CreateError, NewGalleryItem};
+use crate::routes::v3::project_creation::CreateError;
 use crate::routes::{v2_reroute, v3};
 use actix_multipart::Multipart;
 use actix_web::web::Data;
 use actix_web::{post, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::postgres::PgPool;
 
 use std::collections::HashMap;
@@ -111,6 +110,7 @@ struct ProjectCreateData {
     pub donation_urls: Option<Vec<DonationLink>>,
 
     /// An optional boolean. If true, the project will be created as a draft.
+    /// This is now explicitly ignored, as it was deprecated for a while.
     pub is_draft: Option<bool>,
 
     /// The license id that the project follows
@@ -148,50 +148,50 @@ pub async fn project_create(
         req.headers().clone(),
         |legacy_create: ProjectCreateData, _| async move {
             // Side types will be applied to each version
-            let client_side = legacy_create.client_side;
-            let server_side = legacy_create.server_side;
+            // let client_side = legacy_create.client_side;
+            // let server_side = legacy_create.server_side;
 
-            let project_type = legacy_create.project_type;
+            // let project_type = legacy_create.project_type;
 
-            let initial_versions = legacy_create
-                .initial_versions
-                .into_iter()
-                .map(|v| {
-                    let mut fields = HashMap::new();
-                    fields.extend(v2_reroute::convert_side_types_v3(client_side, server_side));
-                    fields.insert("game_versions".to_string(), json!(v.game_versions));
+            // let initial_versions = legacy_create
+            //     .initial_versions
+            //     .into_iter()
+            //     .map(|v| {
+            //         let mut fields = HashMap::new();
+            //         fields.extend(v2_reroute::convert_side_types_v3(client_side, server_side));
+            //         fields.insert("game_versions".to_string(), json!(v.game_versions));
 
-                    // Modpacks now use the "mrpack" loader, and loaders are converted to loader fields.
-                    // Setting of 'project_type' directly is removed, it's loader-based now.
-                    if project_type == "modpack" {
-                        fields.insert("mrpack_loaders".to_string(), json!(v.loaders));
-                    }
+            //         // Modpacks now use the "mrpack" loader, and loaders are converted to loader fields.
+            //         // Setting of 'project_type' directly is removed, it's loader-based now.
+            //         if project_type == "modpack" {
+            //             fields.insert("mrpack_loaders".to_string(), json!(v.loaders));
+            //         }
 
-                    let loaders = if project_type == "modpack" {
-                        vec![Loader("mrpack".to_string())]
-                    } else {
-                        v.loaders
-                    };
+            //         let loaders = if project_type == "modpack" {
+            //             vec![Loader("mrpack".to_string())]
+            //         } else {
+            //             v.loaders
+            //         };
 
-                    v3::version_creation::InitialVersionData {
-                        project_id: v.project_id,
-                        file_parts: v.file_parts,
-                        version_number: v.version_number,
-                        version_title: v.version_title,
-                        version_body: v.version_body,
-                        dependencies: v.dependencies,
-                        release_channel: v.release_channel,
-                        loaders,
-                        featured: v.featured,
-                        primary_file: v.primary_file,
-                        status: v.status,
-                        file_types: v.file_types,
-                        uploaded_images: v.uploaded_images,
-                        ordering: v.ordering,
-                        fields,
-                    }
-                })
-                .collect();
+            //         v3::version_creation::InitialVersionData {
+            //             project_id: v.project_id,
+            //             file_parts: v.file_parts,
+            //             version_number: v.version_number,
+            //             version_title: v.version_title,
+            //             version_body: v.version_body,
+            //             dependencies: v.dependencies,
+            //             release_channel: v.release_channel,
+            //             loaders,
+            //             featured: v.featured,
+            //             primary_file: v.primary_file,
+            //             status: v.status,
+            //             file_types: v.file_types,
+            //             uploaded_images: v.uploaded_images,
+            //             ordering: v.ordering,
+            //             fields,
+            //         }
+            //     })
+            //     .collect();
 
             let mut link_urls = HashMap::new();
             if let Some(issue_url) = legacy_create.issues_url {
@@ -217,14 +217,11 @@ pub async fn project_create(
                 slug: legacy_create.slug,
                 summary: legacy_create.description, // Description becomes summary
                 description: legacy_create.body,    // Body becomes description
-                initial_versions,
                 categories: legacy_create.categories,
                 additional_categories: legacy_create.additional_categories,
                 license_url: legacy_create.license_url,
                 link_urls,
-                is_draft: legacy_create.is_draft,
                 license_id: legacy_create.license_id,
-                gallery_items: legacy_create.gallery_items,
                 requested_status: legacy_create.requested_status,
                 uploaded_images: legacy_create.uploaded_images,
                 organization_id: legacy_create.organization_id,
@@ -256,4 +253,19 @@ pub async fn project_create(
         }
         Err(response) => Ok(response),
     }
+}
+
+#[derive(Serialize, Deserialize, Validate, Clone)]
+pub struct NewGalleryItem {
+    /// The name of the multipart item where the gallery media is located
+    pub item: String,
+    /// Whether the gallery item should show in search or not
+    pub featured: bool,
+    #[validate(length(min = 1, max = 2048))]
+    /// The title of the gallery item
+    pub name: Option<String>,
+    #[validate(length(min = 1, max = 2048))]
+    /// The description of the gallery item
+    pub description: Option<String>,
+    pub ordering: i64,
 }

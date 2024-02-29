@@ -1,6 +1,4 @@
-use super::version_creation::{try_create_version_fields, InitialVersionData};
 use crate::auth::{get_user_from_headers, AuthenticationError};
-use crate::database::models::loader_fields::{Loader, LoaderField, LoaderFieldEnumValue};
 use crate::database::models::thread_item::ThreadBuilder;
 use crate::database::models::{self, image_item, User};
 use crate::database::redis::RedisPool;
@@ -9,12 +7,9 @@ use crate::models::error::ApiError;
 use crate::models::ids::{ImageId, OrganizationId};
 use crate::models::images::{Image, ImageContext};
 use crate::models::pats::Scopes;
-use crate::models::projects::{
-    License, Link, MonetizationStatus, ProjectId, ProjectStatus, VersionId, VersionStatus,
-};
+use crate::models::projects::{License, Link, MonetizationStatus, ProjectId, ProjectStatus};
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::ThreadType;
-use crate::models::users::UserId;
 use crate::queue::session::AuthQueue;
 use crate::search::indexing::IndexingError;
 use crate::util::routes::read_from_field;
@@ -26,7 +21,6 @@ use actix_web::{HttpRequest, HttpResponse};
 use chrono::Utc;
 use futures::stream::StreamExt;
 use image::ImageError;
-use itertools::Itertools;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
@@ -175,10 +169,6 @@ pub struct ProjectCreateData {
     /// A long description of the project, in markdown.
     pub description: String,
 
-    #[validate(length(max = 32))]
-    #[validate]
-    /// A list of initial versions to upload with the created project
-    pub initial_versions: Vec<InitialVersionData>,
     #[validate(length(max = 3))]
     /// A list of the categories that the project is in.
     pub categories: Vec<String>,
@@ -194,16 +184,9 @@ pub struct ProjectCreateData {
     #[serde(default)]
     pub link_urls: HashMap<String, String>,
 
-    /// An optional boolean. If true, the project will be created as a draft.
-    pub is_draft: Option<bool>,
-
     /// The license id that the project follows
     pub license_id: String,
 
-    #[validate(length(max = 64))]
-    #[validate]
-    /// The multipart names of the gallery items to upload
-    pub gallery_items: Option<Vec<NewGalleryItem>>,
     #[serde(default = "default_requested_status")]
     /// The status of the mod to be set once it is approved
     pub requested_status: ProjectStatus,
@@ -215,21 +198,6 @@ pub struct ProjectCreateData {
 
     /// The id of the organization to create the project in
     pub organization_id: Option<OrganizationId>,
-}
-
-#[derive(Serialize, Deserialize, Validate, Clone)]
-pub struct NewGalleryItem {
-    /// The name of the multipart item where the gallery media is located
-    pub item: String,
-    /// Whether the gallery item should show in search or not
-    pub featured: bool,
-    #[validate(length(min = 1, max = 2048))]
-    /// The title of the gallery item
-    pub name: Option<String>,
-    #[validate(length(min = 1, max = 2048))]
-    /// The description of the gallery item
-    pub description: Option<String>,
-    pub ordering: i64,
 }
 
 pub struct UploadedFile {
@@ -290,26 +258,16 @@ pub async fn project_create(
 
 Project Creation Steps:
 Get logged in user
-    Must match the author in the version creation
+    Must match the author in the creation
 
 1. Data
     - Gets "data" field from multipart form; must be first
     - Verification: string lengths
-    - Create versions
-        - Some shared logic with version creation
-        - Create list of VersionBuilders
     - Create ProjectBuilder
 
 2. Upload
     - Icon: check file format & size
         - Upload to backblaze & record URL
-    - Project files
-        - Check for matching version
-        - File size limits?
-        - Check file type
-            - Eventually, malware scan
-        - Upload to backblaze & create VersionFileBuilder
-    -
 
 3. Creation
     - Database stuff
@@ -342,12 +300,8 @@ async fn project_create_inner(
     .1;
 
     let project_id: ProjectId = models::generate_project_id(transaction).await?.into();
-    let all_loaders = models::loader_fields::Loader::list(&mut **transaction, redis).await?;
 
     let project_create_data: ProjectCreateData;
-    let mut versions;
-    let mut versions_map = std::collections::HashMap::new();
-    let mut gallery_urls = Vec::new();
     {
         // The first multipart field must be named "data" and contain a
         // JSON `ProjectCreateData` object.
@@ -419,31 +373,6 @@ async fn project_create_inner(
             }
         }
 
-        // Create VersionBuilders for the versions specified in `initial_versions`
-        versions = Vec::with_capacity(create_data.initial_versions.len());
-        for (i, data) in create_data.initial_versions.iter().enumerate() {
-            // Create a map of multipart field names to version indices
-            for name in &data.file_parts {
-                if versions_map.insert(name.to_owned(), i).is_some() {
-                    // If the name is already used
-                    return Err(CreateError::InvalidInput(String::from(
-                        "Duplicate multipart field name",
-                    )));
-                }
-            }
-            versions.push(
-                create_initial_version(
-                    data,
-                    project_id,
-                    current_user.id,
-                    &all_loaders,
-                    transaction,
-                    redis,
-                )
-                .await?,
-            );
-        }
-
         project_create_data = create_data;
     }
 
@@ -451,7 +380,7 @@ async fn project_create_inner(
 
     let mut error = None;
     while let Some(item) = payload.next().await {
-        let mut field: Field = item?;
+        let field: Field = item?;
 
         if error.is_some() {
             continue;
@@ -487,80 +416,9 @@ async fn project_create_inner(
                 );
                 return Ok(());
             }
-            if let Some(gallery_items) = &project_create_data.gallery_items {
-                if gallery_items.iter().filter(|a| a.featured).count() > 1 {
-                    return Err(CreateError::InvalidInput(String::from(
-                        "Only one gallery image can be featured.",
-                    )));
-                }
-                if let Some(item) = gallery_items.iter().find(|x| x.item == name) {
-                    let data = read_from_field(
-                        &mut field,
-                        5 * (1 << 20),
-                        "Gallery image exceeds the maximum of 5MiB.",
-                    )
-                    .await?;
-                    let hash = sha1::Sha1::from(&data).hexdigest();
-                    let (_, file_extension) =
-                        super::version_creation::get_name_ext(&content_disposition)?;
-                    let content_type = crate::util::ext::get_image_content_type(file_extension)
-                        .ok_or_else(|| {
-                            CreateError::InvalidIconFormat(file_extension.to_string())
-                        })?;
-                    let url = format!("data/{project_id}/images/{hash}.{file_extension}");
-                    let upload_data = file_host
-                        .upload_file(content_type, &url, data.freeze())
-                        .await?;
-                    uploaded_files.push(UploadedFile {
-                        file_id: upload_data.file_id,
-                        file_name: upload_data.file_name,
-                    });
-                    gallery_urls.push(crate::models::projects::GalleryItem {
-                        url: format!("{cdn_url}/{url}"),
-                        featured: item.featured,
-                        name: item.name.clone(),
-                        description: item.description.clone(),
-                        created: Utc::now(),
-                        ordering: item.ordering,
-                    });
-                    return Ok(());
-                }
-            }
-            let index = if let Some(i) = versions_map.get(name) {
-                *i
-            } else {
-                return Err(CreateError::InvalidInput(format!(
-                    "File `{file_name}` (field {name}) isn't specified in the versions data"
-                )));
-            };
-            // `index` is always valid for these lists
-            let created_version = versions.get_mut(index).unwrap();
-            let version_data = project_create_data.initial_versions.get(index).unwrap();
-            // TODO: maybe redundant is this calculation done elsewhere?
-
-            // Upload the new jar file
-            super::version_creation::upload_file(
-                &mut field,
-                file_host,
-                version_data.file_parts.len(),
-                uploaded_files,
-                &mut created_version.files,
-                &mut created_version.dependencies,
-                &cdn_url,
-                &content_disposition,
-                project_id,
-                created_version.version_id.into(),
-                &created_version.version_fields,
-                version_data.loaders.clone(),
-                version_data.primary_file.is_some(),
-                version_data.primary_file.as_deref() == Some(name),
-                None,
-                transaction,
-                redis,
-            )
-            .await?;
-
-            Ok(())
+            Err(CreateError::InvalidInput(format!(
+                "File `{file_name}` (field {name}) isn't recognized. If it's a version, please use the version creation route after creating your project."
+            )))
         }
         .await;
 
@@ -574,19 +432,6 @@ async fn project_create_inner(
     }
 
     {
-        // Check to make sure that all specified files were uploaded
-        for (version_data, builder) in project_create_data
-            .initial_versions
-            .iter()
-            .zip(versions.iter())
-        {
-            if version_data.file_parts.len() != builder.files.len() {
-                return Err(CreateError::InvalidInput(String::from(
-                    "Some files were specified in initial_versions but not uploaded",
-                )));
-            }
-        }
-
         // Convert the list of category names to actual categories
         let mut categories = Vec::with_capacity(project_create_data.categories.len());
         for category in &project_create_data.categories {
@@ -630,18 +475,6 @@ async fn project_create_inner(
         let team = models::team_item::TeamBuilder { members };
 
         let team_id = team.insert(&mut *transaction).await?;
-
-        let status;
-        if project_create_data.is_draft.unwrap_or(false) {
-            status = ProjectStatus::Draft;
-        } else {
-            status = ProjectStatus::Processing;
-            if project_create_data.initial_versions.is_empty() {
-                return Err(CreateError::InvalidInput(String::from(
-                    "Project submitted for review with no initial versions",
-                )));
-            }
-        }
 
         let license_id =
             spdx::Expression::parse(&project_create_data.license_id).map_err(|err| {
@@ -691,23 +524,11 @@ async fn project_create_inner(
             license_url: project_create_data.license_url,
             categories,
             additional_categories,
-            initial_versions: versions,
-            status,
+            status: ProjectStatus::Draft,
             requested_status: Some(project_create_data.requested_status),
             license: license_id.to_string(),
             slug: Some(project_create_data.slug),
             link_urls,
-            gallery_items: gallery_urls
-                .iter()
-                .map(|x| models::project_item::GalleryItem {
-                    image_url: x.url.clone(),
-                    featured: x.featured,
-                    name: x.name.clone(),
-                    description: x.description.clone(),
-                    created: x.created,
-                    ordering: x.ordering,
-                })
-                .collect(),
             color: icon_data.and_then(|x| x.1),
             monetization_status: MonetizationStatus::Monetized,
         };
@@ -762,31 +583,11 @@ async fn project_create_inner(
         .insert(&mut *transaction)
         .await?;
 
-        let loaders = project_builder
-            .initial_versions
-            .iter()
-            .flat_map(|v| v.loaders.clone())
-            .unique()
-            .collect::<Vec<_>>();
-        let (project_types, games) = Loader::list(&mut **transaction, redis)
-            .await?
-            .into_iter()
-            .fold(
-                (Vec::new(), Vec::new()),
-                |(mut project_types, mut games), loader| {
-                    if loaders.contains(&loader.id) {
-                        project_types.extend(loader.supported_project_types);
-                        games.extend(loader.supported_games);
-                    }
-                    (project_types, games)
-                },
-            );
-
         let response = crate::models::projects::Project {
             id: project_id,
             slug: project_builder.slug.clone(),
-            project_types,
-            games,
+            project_types: vec![],
+            games: vec![],
             team_id: team_id.into(),
             organization: project_create_data.organization_id,
             name: project_builder.name.clone(),
@@ -796,7 +597,7 @@ async fn project_create_inner(
             updated: now,
             approved: None,
             queued: None,
-            status,
+            status: ProjectStatus::Draft,
             requested_status: project_builder.requested_status,
             moderator_message: None,
             license: License {
@@ -809,11 +610,7 @@ async fn project_create_inner(
             categories: project_create_data.categories,
             additional_categories: project_create_data.additional_categories,
             loaders: vec![],
-            versions: project_builder
-                .initial_versions
-                .iter()
-                .map(|v| v.version_id.into())
-                .collect::<Vec<_>>(),
+            versions: vec![],
             icon_url: project_builder.icon_url.clone(),
             link_urls: project_builder
                 .link_urls
@@ -821,7 +618,7 @@ async fn project_create_inner(
                 .into_iter()
                 .map(|x| (x.platform_name.clone(), Link::from(x)))
                 .collect(),
-            gallery: gallery_urls,
+            gallery: vec![], // Gallery items instantiate to empty
             color: project_builder.color,
             thread_id: thread_id.into(),
             monetization_status: MonetizationStatus::Monetized,
@@ -830,83 +627,6 @@ async fn project_create_inner(
 
         Ok(HttpResponse::Ok().json(response))
     }
-}
-
-async fn create_initial_version(
-    version_data: &InitialVersionData,
-    project_id: ProjectId,
-    author: UserId,
-    all_loaders: &[models::loader_fields::Loader],
-    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    redis: &RedisPool,
-) -> Result<models::version_item::VersionBuilder, CreateError> {
-    if version_data.project_id.is_some() {
-        return Err(CreateError::InvalidInput(String::from(
-            "Found project id in initial version for new project",
-        )));
-    }
-
-    version_data
-        .validate()
-        .map_err(|err| CreateError::ValidationError(validation_errors_to_string(err, None)))?;
-
-    // Randomly generate a new id to be used for the version
-    let version_id: VersionId = models::generate_version_id(transaction).await?.into();
-
-    let loaders = version_data
-        .loaders
-        .iter()
-        .map(|x| {
-            all_loaders
-                .iter()
-                .find(|y| y.loader == x.0)
-                .ok_or_else(|| CreateError::InvalidLoader(x.0.clone()))
-                .map(|y| y.id)
-        })
-        .collect::<Result<Vec<models::LoaderId>, CreateError>>()?;
-
-    let loader_fields = LoaderField::get_fields(&loaders, &mut **transaction, redis).await?;
-    let mut loader_field_enum_values =
-        LoaderFieldEnumValue::list_many_loader_fields(&loader_fields, &mut **transaction, redis)
-            .await?;
-
-    let version_fields = try_create_version_fields(
-        version_id,
-        &version_data.fields,
-        &loader_fields,
-        &mut loader_field_enum_values,
-    )?;
-
-    let dependencies = version_data
-        .dependencies
-        .iter()
-        .map(|d| models::version_item::DependencyBuilder {
-            version_id: d.version_id.map(|x| x.into()),
-            project_id: d.project_id.map(|x| x.into()),
-            dependency_type: d.dependency_type.to_string(),
-            file_name: None,
-        })
-        .collect::<Vec<_>>();
-
-    let version = models::version_item::VersionBuilder {
-        version_id: version_id.into(),
-        project_id: project_id.into(),
-        author_id: author.into(),
-        name: version_data.version_title.clone(),
-        version_number: version_data.version_number.clone(),
-        changelog: version_data.version_body.clone().unwrap_or_default(),
-        files: Vec::new(),
-        dependencies,
-        loaders,
-        version_fields,
-        featured: version_data.featured,
-        status: VersionStatus::Listed,
-        version_type: version_data.release_channel.to_string(),
-        requested_status: None,
-        ordering: version_data.ordering,
-    };
-
-    Ok(version)
 }
 
 async fn process_icon_upload(
