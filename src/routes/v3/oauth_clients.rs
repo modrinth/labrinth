@@ -81,9 +81,6 @@ pub async fn get_user_clients(
 
     if let Some(target_user) = target_user {
         let clients = OAuthClient::get_all_user_clients(target_user.id, &**pool).await?;
-        clients
-            .iter()
-            .validate_all_authorized(Some(&current_user))?;
 
         let response = clients
             .into_iter()
@@ -600,9 +597,6 @@ pub async fn get_clients_inner(
 
     let ids: Vec<OAuthClientId> = ids.iter().map(|i| (*i).into()).collect();
     let clients = OAuthClient::get_many(&ids, &**pool).await?;
-    clients
-        .iter()
-        .validate_all_authorized(Some(&current_user))?;
 
     Ok(clients.into_iter().map(|c| c.into()).collect_vec())
 }
