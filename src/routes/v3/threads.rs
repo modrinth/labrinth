@@ -3,12 +3,15 @@ use std::sync::Arc;
 use crate::auth::get_user_from_headers;
 use crate::database;
 use crate::database::models::image_item;
+use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::thread_item::ThreadMessageBuilder;
 use crate::database::redis::RedisPool;
 use crate::file_hosting::FileHost;
 use crate::models::ids::ThreadMessageId;
 use crate::models::images::{Image, ImageContext};
+use crate::models::notifications::NotificationBody;
 use crate::models::pats::Scopes;
+use crate::models::projects::ProjectStatus;
 use crate::models::threads::{MessageBody, Thread, ThreadId, ThreadType};
 use crate::models::users::User;
 use crate::queue::session::AuthQueue;
@@ -432,7 +435,7 @@ pub async fn thread_send_message(
 
         let mut transaction = pool.begin().await?;
 
-        ThreadMessageBuilder {
+        let id = ThreadMessageBuilder {
             author_id: Some(user.id.into()),
             body: new_message.body.clone(),
             thread_id: thread.id,
@@ -440,6 +443,59 @@ pub async fn thread_send_message(
         }
         .insert(&mut transaction)
         .await?;
+
+        if let Some(project_id) = thread.project_id {
+            let project = database::models::Project::get_id(project_id, &**pool, &redis).await?;
+
+            if let Some(project) = project {
+                if project.inner.status != ProjectStatus::Processing && user.role.is_mod() {
+                    let members = database::models::TeamMember::get_from_team_full(
+                        project.inner.team_id,
+                        &**pool,
+                        &redis,
+                    )
+                    .await?;
+
+                    NotificationBuilder {
+                        body: NotificationBody::ModeratorMessage {
+                            thread_id: thread.id.into(),
+                            message_id: id.into(),
+                            project_id: Some(project.inner.id.into()),
+                            report_id: None,
+                        },
+                    }
+                    .insert_many(
+                        members.into_iter().map(|x| x.user_id).collect(),
+                        &mut transaction,
+                        &redis,
+                    )
+                    .await?;
+                }
+            }
+        } else if let Some(report_id) = thread.report_id {
+            let report = database::models::report_item::Report::get(report_id, &**pool).await?;
+
+            if let Some(report) = report {
+                if report.closed && !user.role.is_mod() {
+                    return Err(ApiError::InvalidInput(
+                        "You may not reply to a closed report".to_string(),
+                    ));
+                }
+
+                if user.id != report.reporter.into() {
+                    NotificationBuilder {
+                        body: NotificationBody::ModeratorMessage {
+                            thread_id: thread.id.into(),
+                            message_id: id.into(),
+                            project_id: None,
+                            report_id: Some(report.id.into()),
+                        },
+                    }
+                    .insert(report.reporter, &mut transaction, &redis)
+                    .await?;
+                }
+            }
+        }
 
         if let MessageBody::Text {
             associated_images, ..
