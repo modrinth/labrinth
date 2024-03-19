@@ -247,7 +247,13 @@ pub async fn filter_authorized_threads(
             &mut thread
                 .messages
                 .iter()
-                .filter_map(|x| x.author_id)
+                .filter_map(|x| {
+                    if x.hide_identity && !user.role.is_mod() {
+                        None
+                    } else {
+                        x.author_id
+                    }
+                })
                 .collect::<Vec<_>>(),
         );
 
