@@ -71,13 +71,13 @@ impl super::Validator for LegacyForgeValidator {
 
     fn validate(
         &self,
-        archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
+        _archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        if archive.by_name("mcmod.info").is_err() {
-            return Ok(ValidationResult::Warning(
-                "Forge mod file does not contain mcmod.info!",
-            ));
-        };
+        // if archive.by_name("mcmod.info").is_err() {
+        //     return Ok(ValidationResult::Warning(
+        //         "Forge mod file does not contain mcmod.info!",
+        //     ));
+        // };
 
         //TODO: Check if file is a dev JAR?
 
