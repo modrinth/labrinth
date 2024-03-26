@@ -470,8 +470,6 @@ impl Version {
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.connect().await?;
-
         let mut val = redis.get_cached_keys(
             VERSIONS_NAMESPACE,
             &version_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
@@ -829,8 +827,6 @@ impl Version {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
     {
-        let mut redis = redis.connect().await?;
-
         let val = redis.get_cached_keys(
             VERSION_FILES_NAMESPACE,
             &hashes.iter().map(|x| format!("{algorithm}_{x}")).collect::<Vec<_>>(),

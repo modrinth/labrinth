@@ -209,8 +209,6 @@ impl TeamMember {
             return Ok(Vec::new());
         }
 
-        let mut redis = redis.connect().await?;
-
         let val = redis.get_cached_keys(
             TEAMS_NAMESPACE,
             &team_ids.iter().map(|x| x.0).collect::<Vec<_>>(),

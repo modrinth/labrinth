@@ -133,7 +133,6 @@ impl Session {
     {
         use futures::TryStreamExt;
 
-        let mut redis = redis.connect().await?;
         let val = redis.get_cached_keys_with_slug(
             SESSIONS_NAMESPACE,
             SESSIONS_IDS_NAMESPACE,

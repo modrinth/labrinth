@@ -381,8 +381,6 @@ impl LoaderField {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.connect().await?;
-
         let val = redis.get_cached_keys_raw(
             LOADER_FIELDS_NAMESPACE,
             &loader_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
@@ -576,8 +574,6 @@ impl LoaderFieldEnumValue {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.connect().await?;
-
         let val = redis.get_cached_keys_raw(
             LOADER_FIELD_ENUM_VALUES_NAMESPACE,
             &loader_field_enum_ids.iter().map(|x| x.0).collect::<Vec<_>>(),

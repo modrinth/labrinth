@@ -145,8 +145,6 @@ impl User {
     {
         use futures::TryStreamExt;
 
-        let mut redis = redis.connect().await?;
-
         let val = redis.get_cached_keys_with_slug(
             USERS_NAMESPACE,
             USER_USERNAMES_NAMESPACE,

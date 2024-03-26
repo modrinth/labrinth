@@ -515,8 +515,6 @@ impl Project {
     where
         E: sqlx::Acquire<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.connect().await?;
-
         let val = redis.get_cached_keys_with_slug(
             PROJECTS_NAMESPACE,
             PROJECTS_SLUGS_NAMESPACE,

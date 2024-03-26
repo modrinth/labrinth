@@ -157,8 +157,6 @@ impl Collection {
     where
         E: sqlx::Executor<'a, Database = sqlx::Postgres>,
     {
-        let mut redis = redis.connect().await?;
-
         let val = redis
             .get_cached_keys(
                 COLLECTIONS_NAMESPACE,

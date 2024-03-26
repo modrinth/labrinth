@@ -181,8 +181,6 @@ impl Image {
     {
         use futures::TryStreamExt;
 
-        let mut redis = redis.connect().await?;
-
         let val = redis.get_cached_keys(
             IMAGES_NAMESPACE,
             &image_ids.iter().map(|x| x.0).collect::<Vec<_>>(),
