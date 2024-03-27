@@ -1,24 +1,52 @@
-use std::time::Duration;
+use actix_rt::Arbiter;
+use futures::StreamExt;
 
-pub fn schedule<F, R>(interval: Duration, mut task: F)
-where
-    F: FnMut() -> R + Send + 'static,
-    R: std::future::Future<Output = ()> + Send + 'static,
-{
-    tokio::task::spawn(async move {
-        let mut interval_stream = tokio::time::interval(interval);
-        loop {
-            interval_stream.tick().await;
-            task().await;
-        }
-    });
+pub struct Scheduler {
+    arbiter: Arbiter,
 }
 
-pub fn schedule_versions(pool: sqlx::Pool<sqlx::Postgres>, redis: RedisPool) {
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Scheduler {
+    pub fn new() -> Self {
+        Scheduler {
+            arbiter: Arbiter::new(),
+        }
+    }
+
+    pub fn run<F, R>(&mut self, interval: std::time::Duration, mut task: F)
+        where
+            F: FnMut() -> R + Send + 'static,
+            R: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let future = IntervalStream::new(actix_rt::time::interval(interval))
+            .for_each_concurrent(2, move |_| task());
+
+        self.arbiter.spawn(future);
+    }
+}
+
+impl Drop for Scheduler {
+    fn drop(&mut self) {
+        self.arbiter.stop();
+    }
+}
+
+use log::{info, warn};
+
+pub fn schedule_versions(
+    scheduler: &mut Scheduler,
+    pool: sqlx::Pool<sqlx::Postgres>,
+    redis: RedisPool,
+) {
     let version_index_interval =
         std::time::Duration::from_secs(parse_var("VERSION_INDEX_INTERVAL").unwrap_or(1800));
 
-    schedule(version_index_interval, move || {
+    scheduler.run(version_index_interval, move || {
         let pool_ref = pool.clone();
         let redis = redis.clone();
         async move {
@@ -47,8 +75,8 @@ use crate::{
     util::env::parse_var,
 };
 use chrono::{DateTime, Utc};
-use log::{info, warn};
 use serde::Deserialize;
+use tokio_stream::wrappers::IntervalStream;
 
 #[derive(Deserialize)]
 struct InputFormat<'a> {

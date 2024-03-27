@@ -1,4 +1,6 @@
+use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::web;
 use database::redis::RedisPool;
@@ -11,15 +13,17 @@ use tokio::sync::RwLock;
 
 extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;
+use governor::{Quota, RateLimiter};
+use governor::middleware::StateInformationMiddleware;
 use util::cors::default_cors;
 
 use crate::queue::moderation::AutomatedModerationQueue;
-use crate::scheduler::schedule;
 use crate::{
     queue::payouts::process_payout,
     search::indexing::index_projects,
     util::env::{parse_strings_from_var, parse_var},
 };
+use crate::util::ratelimit::KeyedRateLimiter;
 
 pub mod auth;
 pub mod clickhouse;
@@ -45,6 +49,7 @@ pub struct LabrinthConfig {
     pub clickhouse: Client,
     pub file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
     pub maxmind: Arc<queue::maxmind::MaxMindIndexer>,
+    pub scheduler: Arc<scheduler::Scheduler>,
     pub ip_salt: Pepper,
     pub search_config: search::SearchConfig,
     pub session_queue: web::Data<AuthQueue>,
@@ -52,6 +57,7 @@ pub struct LabrinthConfig {
     pub analytics_queue: Arc<AnalyticsQueue>,
     pub active_sockets: web::Data<RwLock<ActiveSockets>>,
     pub automated_moderation_queue: web::Data<AutomatedModerationQueue>,
+    pub rate_limiter: KeyedRateLimiter,
 }
 
 pub fn app_setup(
@@ -78,6 +84,27 @@ pub fn app_setup(
             .await;
     });
 
+    let mut scheduler = scheduler::Scheduler::new();
+
+    let limiter: KeyedRateLimiter = Arc::new(
+        RateLimiter::keyed(Quota::per_minute(NonZeroU32::new(300).unwrap()))
+            .with_middleware::<StateInformationMiddleware>(),
+    );
+    let limiter_clone = Arc::clone(&limiter);
+    scheduler.run(Duration::from_secs(60), move || {
+        info!(
+            "Clearing ratelimiter, storage size: {}",
+            limiter_clone.len()
+        );
+        limiter_clone.retain_recent();
+        info!(
+            "Done clearing ratelimiter, storage size: {}",
+            limiter_clone.len()
+        );
+
+        async move {}
+    });
+
     // The interval in seconds at which the local database is indexed
     // for searching.  Defaults to 1 hour if unset.
     let local_index_interval =
@@ -86,7 +113,7 @@ pub fn app_setup(
     let pool_ref = pool.clone();
     let search_config_ref = search_config.clone();
     let redis_pool_ref = redis_pool.clone();
-    schedule(local_index_interval, move || {
+    scheduler.run(local_index_interval, move || {
         let pool_ref = pool_ref.clone();
         let redis_pool_ref = redis_pool_ref.clone();
         let search_config_ref = search_config_ref.clone();
@@ -103,7 +130,7 @@ pub fn app_setup(
     // Changes statuses of scheduled projects/versions
     let pool_ref = pool.clone();
     // TODO: Clear cache when these are run
-    schedule(std::time::Duration::from_secs(60 * 5), move || {
+    scheduler.run(std::time::Duration::from_secs(60 * 5), move || {
         let pool_ref = pool_ref.clone();
         info!("Releasing scheduled versions/projects!");
 
@@ -142,14 +169,14 @@ pub fn app_setup(
         }
     });
 
-    scheduler::schedule_versions(pool.clone(), redis_pool.clone());
+    scheduler::schedule_versions(&mut scheduler, pool.clone(), redis_pool.clone());
 
     let session_queue = web::Data::new(AuthQueue::new());
 
     let pool_ref = pool.clone();
     let redis_ref = redis_pool.clone();
     let session_queue_ref = session_queue.clone();
-    schedule(std::time::Duration::from_secs(60 * 30), move || {
+    scheduler.run(std::time::Duration::from_secs(60 * 30), move || {
         let pool_ref = pool_ref.clone();
         let redis_ref = redis_ref.clone();
         let session_queue_ref = session_queue_ref.clone();
@@ -167,7 +194,7 @@ pub fn app_setup(
     let reader = maxmind.clone();
     {
         let reader_ref = reader;
-        schedule(std::time::Duration::from_secs(60 * 60 * 24), move || {
+        scheduler.run(std::time::Duration::from_secs(60 * 60 * 24), move || {
             let reader_ref = reader_ref.clone();
 
             async move {
@@ -191,7 +218,7 @@ pub fn app_setup(
         let analytics_queue_ref = analytics_queue.clone();
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
-        schedule(std::time::Duration::from_secs(15), move || {
+        scheduler.run(std::time::Duration::from_secs(15), move || {
             let client_ref = client_ref.clone();
             let analytics_queue_ref = analytics_queue_ref.clone();
             let pool_ref = pool_ref.clone();
@@ -214,7 +241,7 @@ pub fn app_setup(
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
         let client_ref = clickhouse.clone();
-        schedule(std::time::Duration::from_secs(60 * 60 * 6), move || {
+        scheduler.run(std::time::Duration::from_secs(60 * 60 * 6), move || {
             let pool_ref = pool_ref.clone();
             let redis_ref = redis_ref.clone();
             let client_ref = client_ref.clone();
@@ -243,6 +270,7 @@ pub fn app_setup(
         clickhouse: clickhouse.clone(),
         file_host,
         maxmind,
+        scheduler: Arc::new(scheduler),
         ip_salt,
         search_config,
         session_queue,
@@ -250,6 +278,7 @@ pub fn app_setup(
         analytics_queue,
         active_sockets,
         automated_moderation_queue,
+        rate_limiter: limiter,
     }
 }
 

@@ -5,7 +5,6 @@ use governor::middleware::StateInformationMiddleware;
 use governor::{Quota, RateLimiter};
 use labrinth::database::redis::RedisPool;
 use labrinth::file_hosting::S3Host;
-use labrinth::scheduler::schedule;
 use labrinth::search;
 use labrinth::util::ratelimit::{KeyedRateLimiter, RateLimit};
 use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
@@ -99,26 +98,7 @@ async fn main() -> std::io::Result<()> {
 
     let search_config = search::SearchConfig::new(None);
 
-    let limiter: KeyedRateLimiter = Arc::new(
-        RateLimiter::keyed(Quota::per_minute(NonZeroU32::new(300).unwrap()))
-            .with_middleware::<StateInformationMiddleware>(),
-    );
-    let limiter_clone = Arc::clone(&limiter);
-    schedule(Duration::from_secs(60), move || {
-        info!(
-            "Clearing ratelimiter, storage size: {}",
-            limiter_clone.len()
-        );
-        limiter_clone.retain_recent();
-        info!(
-            "Done clearing ratelimiter, storage size: {}",
-            limiter_clone.len()
-        );
-
-        async move {}
-    });
-
-    let labrinth_config = labrinth::app_setup(
+    let mut labrinth_config = labrinth::app_setup(
         pool.clone(),
         redis_pool.clone(),
         search_config.clone(),
@@ -133,7 +113,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(prometheus.clone())
-            .wrap(RateLimit(Arc::clone(&limiter)))
+            .wrap(RateLimit(Arc::clone(&labrinth_config.rate_limiter)))
             .wrap(actix_web::middleware::Compress::default())
             .wrap(sentry_actix::Sentry::new())
             .configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()))
