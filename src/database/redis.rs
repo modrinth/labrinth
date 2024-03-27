@@ -1,8 +1,10 @@
 use super::models::DatabaseError;
+use crate::models::ids::base62_impl::{parse_base62, to_base62};
+use crate::models::ids::random_base62;
 use chrono::{TimeZone, Utc};
 use dashmap::DashMap;
 use deadpool_redis::{Config, Runtime};
-use redis::{cmd, Cmd, ExistenceCheck, SetExpiry, SetOptions, Value};
+use redis::{cmd, Cmd, ExistenceCheck, SetExpiry, SetOptions};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -145,75 +147,98 @@ impl RedisPool {
         K: Display + Hash + Eq + PartialEq + Clone + DeserializeOwned + Serialize,
         S: Display + Clone + DeserializeOwned + Serialize + Debug,
     {
-        let mut connection = self.connect().await?.connection;
+        let request_id = random_base62(8);
+
+        let connection = self.connect().await?.connection;
 
         let ids = keys
             .iter()
             .map(|x| (x.to_string(), x.clone()))
             .collect::<DashMap<String, I>>();
 
+        println!(
+            "{request_id} getting keys with namespace {namespace}, keys: {}",
+            ids.iter()
+                .map(|x| x.key().clone())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+
         if ids.is_empty() {
             return Ok(HashMap::new());
         }
 
-        let slug_ids = if let Some(slug_namespace) = slug_namespace {
-            cmd("MGET")
-                .arg(
-                    ids.iter()
-                        .map(|x| {
-                            format!(
-                                "{}_{slug_namespace}:{}",
-                                self.meta_namespace,
-                                if case_sensitive {
-                                    x.value().to_string()
-                                } else {
-                                    x.value().to_string().to_lowercase()
-                                }
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .query_async::<_, Vec<Option<String>>>(&mut connection)
-                .await?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
+        let get_cached_values =
+            |ids: DashMap<String, I>, mut connection: deadpool_redis::Connection| async move {
+                let slug_ids = if let Some(slug_namespace) = slug_namespace {
+                    cmd("MGET")
+                        .arg(
+                            ids.iter()
+                                .map(|x| {
+                                    format!(
+                                        "{}_{slug_namespace}:{}",
+                                        self.meta_namespace,
+                                        if case_sensitive {
+                                            x.value().to_string()
+                                        } else {
+                                            x.value().to_string().to_lowercase()
+                                        }
+                                    )
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                        .query_async::<_, Vec<Option<String>>>(&mut connection)
+                        .await?
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+
+                let cached_values = cmd("MGET")
+                    .arg(
+                        ids.iter()
+                            .map(|x| x.value().to_string())
+                            .chain(ids.iter().filter_map(|x| {
+                                parse_base62(&x.value().to_string())
+                                    .ok()
+                                    .map(|x| x.to_string())
+                            }))
+                            .chain(slug_ids)
+                            .map(|x| format!("{}_{namespace}:{x}", self.meta_namespace))
+                            .collect::<Vec<_>>(),
+                    )
+                    .query_async::<_, Vec<Option<String>>>(&mut connection)
+                    .await?
+                    .into_iter()
+                    .filter_map(|x| {
+                        x.and_then(|val| serde_json::from_str::<RedisValue<T, K, S>>(&val).ok())
+                            .map(|val| (val.key.clone(), val))
+                    })
+                    .collect::<HashMap<_, _>>();
+
+                Ok::<_, DatabaseError>((cached_values, connection, ids))
+            };
 
         let current_time = Utc::now();
         let mut expired_values = HashMap::new();
 
-        let mut cached_values = cmd("MGET")
-            .arg(
-                ids.iter()
-                    .map(|x| x.value().to_string())
-                    .chain(slug_ids)
-                    .map(|x| format!("{}_{namespace}:{x}", self.meta_namespace))
-                    .collect::<Vec<_>>(),
-            )
-            .query_async::<_, Vec<Option<String>>>(&mut connection)
-            .await?
+        let (cached_values_raw, mut connection, ids) = get_cached_values(ids, connection).await?;
+        let mut cached_values = cached_values_raw
             .into_iter()
-            .filter_map(|x| {
-                if let Some(val) =
-                    x.and_then(|val| serde_json::from_str::<RedisValue<T, K, S>>(&val).ok())
-                {
-                    if Utc.timestamp(val.iat + ACTUAL_EXPIRY, 0) < current_time {
-                        expired_values.insert(val.key.to_string(), val);
+            .filter_map(|(key, val)| {
+                if Utc.timestamp(val.iat + ACTUAL_EXPIRY, 0) < current_time {
+                    expired_values.insert(val.key.to_string(), val);
 
-                        None
-                    } else {
-                        ids.remove(&val.key.to_string());
-                        if let Some(ref alias) = val.alias {
-                            ids.remove(&alias.to_string());
-                        }
-
-                        Some((val.key.clone(), val))
-                    }
-                } else {
                     None
+                } else {
+                    ids.remove(&val.key.to_string());
+                    if let Some(ref alias) = val.alias {
+                        ids.remove(&alias.to_string());
+                    }
+
+                    Some((key, val))
                 }
             })
             .collect::<HashMap<_, _>>();
@@ -222,6 +247,15 @@ impl RedisPool {
 
         if !ids.is_empty() {
             let mut pipe = redis::pipe();
+
+            println!(
+                "{request_id} remaining ids with namespace {namespace}, keys: {} {}",
+                ids.iter()
+                    .map(|x| x.key().clone())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                Utc::now()
+            );
 
             let fetch_ids = ids.iter().map(|x| x.key().clone()).collect::<Vec<_>>();
 
@@ -232,7 +266,7 @@ impl RedisPool {
                     SetOptions::default()
                         .get(true)
                         .conditional_set(ExistenceCheck::NX)
-                        .with_expiration(SetExpiry::EX(10)),
+                        .with_expiration(SetExpiry::EX(60)),
                 );
             });
             let results = pipe
@@ -242,12 +276,19 @@ impl RedisPool {
             for (idx, key) in fetch_ids.into_iter().enumerate() {
                 if let Some(locked) = results.get(idx) {
                     if locked.is_none() {
+                        println!(
+                            "{request_id} no lock on {key}, fetching from db {}",
+                            Utc::now()
+                        );
+
                         continue;
                     }
                 }
 
                 if let Some((key, raw_key)) = ids.remove(&key) {
                     if let Some(val) = expired_values.remove(&key) {
+                        println!("{request_id} serving expired value {key} {}", Utc::now());
+
                         if let Some(ref alias) = val.alias {
                             ids.remove(&alias.to_string());
                         }
@@ -264,10 +305,11 @@ impl RedisPool {
         let mut fetch_tasks: Vec<
             Pin<Box<dyn Future<Output = Result<HashMap<K, RedisValue<T, K, S>>, DatabaseError>>>>,
         > = Vec::new();
-        // let closure_lock = Arc::new(Mutex::new(closure));
 
         if !ids.is_empty() {
             fetch_tasks.push(Box::pin(async {
+                println!("{request_id} db fetch ids with namespace {namespace}, keys: {}", ids.iter().map(|x| x.key().clone()).collect::<Vec<_>>().join(","));
+
                 let fetch_ids = ids.iter().map(|x| x.value().clone()).collect::<Vec<_>>();
 
                 let vals = closure(fetch_ids).await?;
@@ -276,8 +318,6 @@ impl RedisPool {
                 let mut pipe = redis::pipe();
                 if !vals.is_empty() {
                     for (key, (slug, value)) in vals {
-                        ids.remove(&key.to_string());
-
                         let value = RedisValue {
                             key: key.clone(),
                             iat: Utc::now().timestamp(),
@@ -295,42 +335,42 @@ impl RedisPool {
                             ids.remove(&slug.to_string());
 
                             if let Some(slug_namespace) = slug_namespace {
+                                let actual_slug = if case_sensitive {
+                                    slug.to_string()
+                                } else {
+                                    slug.to_string().to_lowercase()
+                                };
+
                                 pipe.atomic().set_ex(
                                     format!(
                                         "{}_{slug_namespace}:{}",
                                         self.meta_namespace,
-                                        if case_sensitive {
-                                            slug.to_string()
-                                        } else {
-                                            slug.to_string().to_lowercase()
-                                        }
+                                        actual_slug
                                     ),
                                     key.to_string(),
                                     DEFAULT_EXPIRY as u64,
                                 );
 
-                                pipe.atomic().publish(
-                                    format!(
-                                        "{}_{namespace}:{}/channel",
-                                        self.meta_namespace,
-                                        if case_sensitive {
-                                            slug.to_string()
-                                        } else {
-                                            slug.to_string().to_lowercase()
-                                        }
-                                    ),
-                                    serde_json::to_string(&value)?,
-                                );
+                                pipe.atomic()
+                                    .del(format!("{}_{namespace}:{}/lock", self.meta_namespace, actual_slug));
                             }
+                        }
+
+                        let key_str = key.to_string();
+                        ids.remove(&key_str);
+
+                        if let Ok(value) = key_str.parse::<u64>() {
+                            let base62 = to_base62(value);
+                            ids.remove(&base62);
+
+                            pipe.atomic()
+                                .del(format!("{}_{namespace}:{base62}/lock", self.meta_namespace));
                         }
 
                         pipe.atomic()
                             .del(format!("{}_{namespace}:{key}/lock", self.meta_namespace));
 
-                        pipe.atomic().publish(
-                            format!("{}_{namespace}:{key}/channel", self.meta_namespace),
-                            serde_json::to_string(&value)?,
-                        );
+                        println!("{request_id} found key {key} in DB, clearing cache + sending channel {}", Utc::now());
 
                         return_values.insert(key, value);
                     }
@@ -340,10 +380,7 @@ impl RedisPool {
                     pipe.atomic()
                         .del(format!("{}_{namespace}:{key}/lock", self.meta_namespace));
 
-                    pipe.atomic().publish(
-                        format!("{}_{namespace}:{key}/channel", self.meta_namespace),
-                        serde_json::to_string(&None::<Option<()>>)?,
-                    );
+                    println!("{request_id} no key {key} in DB, clearing cache + sending channel");
                 }
 
                 pipe.query_async(&mut connection).await?;
@@ -354,66 +391,35 @@ impl RedisPool {
 
         if !subscribe_ids.is_empty() {
             fetch_tasks.push(Box::pin(async {
-                // Due to how deadpool_redis pools connections, pubsub connections must be taken from the pool
-                // This isn't great, as the pubsub connection will be dropped by the end of this and not returned to
-                // the pool. See: https://github.com/bikeshedder/deadpool/issues/226
-                let obj = deadpool_redis::Connection::take(self.pool.get().await?);
-                let mut pubsub = obj.into_pubsub();
+                let mut connection = self.pool.get().await?;
 
-                let mut return_values = HashMap::new();
-                let mut channels = HashMap::new();
-
-                for pair in &subscribe_ids {
-                    let channel = format!("{}_{namespace}:{}/channel", self.meta_namespace, pair.key());
-                    pubsub.subscribe(channel.clone()).await?;
-                    channels.insert(channel, pair.key().clone());
-
-                    if !case_sensitive && slug_namespace.is_some() {
-                        let channel = format!("{}_{namespace}:{}/channel", pair.key().to_lowercase(), self.meta_namespace);
-                        pubsub.subscribe(channel.clone()).await?;
-                        channels.insert(channel, pair.key().clone());
-                    }
-                }
-
-                let mut interval = tokio::time::interval(Duration::from_secs(5));
-                let mut stream = pubsub.on_message();
-
+                let mut interval = tokio::time::interval(Duration::from_millis(100));
+                let start = Utc::now();
                 loop {
-                    use futures::StreamExt;
-                    tokio::select! {
-                        msg = stream.next() => {
-                            match msg {
-                                Some(msg) => {
-                                    if let Some(key) = channels.remove(&msg.get_channel_name().to_string()) {
-                                        subscribe_ids.remove(&key);
-                                    }
+                    let results = cmd("MGET")
+                        .arg(
+                            subscribe_ids
+                                .iter()
+                                .map(|x| {
+                                    format!("{}_{namespace}:{}/lock", self.meta_namespace, x.key())
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                        .query_async::<_, Vec<Option<String>>>(&mut connection)
+                        .await?;
 
-                                    match msg.get_payload()? {
-                                        Value::Data(bytes) => {
-
-                                            if let Ok(val) = serde_json::from_slice::<RedisValue<T, K, S>>(&bytes) {
-                                                return_values.insert(val.key.clone(), val);
-                                            }
-                                        }
-                                        Value::Status(_) | Value::Okay | Value::Bulk(_) | Value::Int(_) | Value::Nil  => {}
-                                    }
-
-                                    if subscribe_ids.is_empty() {
-                                        break;
-                                    }
-                                },
-                                None => break,
-                            }
-                        }
-                        _ = interval.tick() => {
-                            return Err(DatabaseError::CacheTimeout);
-                        }
+                    if results.into_iter().all(|x| x.is_none()) {
+                        break;
                     }
+
+                    if (Utc::now() - start) > chrono::Duration::seconds(5) {
+                        return Err(DatabaseError::CacheTimeout);
+                    }
+
+                    interval.tick().await;
                 }
 
-                drop(stream);
-                // clears subscriptions
-                pubsub.into_connection().await;
+                let (return_values, _, _) = get_cached_values(subscribe_ids, connection).await?;
 
                 Ok(return_values)
             }));
