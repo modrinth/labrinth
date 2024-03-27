@@ -222,7 +222,14 @@ impl RedisPool {
 
                     None
                 } else {
-                    ids.remove(&val.key.to_string());
+                    let key_str = val.key.to_string();
+                    ids.remove(&key_str);
+
+                    if let Ok(value) = key_str.parse::<u64>() {
+                        let base62 = to_base62(value);
+                        ids.remove(&base62);
+                    }
+
                     if let Some(ref alias) = val.alias {
                         ids.remove(&alias.to_string());
                     }
@@ -264,6 +271,11 @@ impl RedisPool {
                     if let Some(val) = expired_values.remove(&key) {
                         if let Some(ref alias) = val.alias {
                             ids.remove(&alias.to_string());
+                        }
+
+                        if let Ok(value) = val.key.to_string().parse::<u64>() {
+                            let base62 = to_base62(value);
+                            ids.remove(&base62);
                         }
 
                         cached_values.insert(val.key.clone(), val);
