@@ -1,6 +1,5 @@
 use super::models::DatabaseError;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
-use crate::models::ids::random_base62;
 use chrono::{TimeZone, Utc};
 use dashmap::DashMap;
 use deadpool_redis::{Config, Runtime};
@@ -147,22 +146,12 @@ impl RedisPool {
         K: Display + Hash + Eq + PartialEq + Clone + DeserializeOwned + Serialize,
         S: Display + Clone + DeserializeOwned + Serialize + Debug,
     {
-        let request_id = random_base62(8);
-
         let connection = self.connect().await?.connection;
 
         let ids = keys
             .iter()
             .map(|x| (x.to_string(), x.clone()))
             .collect::<DashMap<String, I>>();
-
-        println!(
-            "{request_id} getting keys with namespace {namespace}, keys: {}",
-            ids.iter()
-                .map(|x| x.key().clone())
-                .collect::<Vec<_>>()
-                .join(",")
-        );
 
         if ids.is_empty() {
             return Ok(HashMap::new());
@@ -248,15 +237,6 @@ impl RedisPool {
         if !ids.is_empty() {
             let mut pipe = redis::pipe();
 
-            println!(
-                "{request_id} remaining ids with namespace {namespace}, keys: {} {}",
-                ids.iter()
-                    .map(|x| x.key().clone())
-                    .collect::<Vec<_>>()
-                    .join(","),
-                Utc::now()
-            );
-
             let fetch_ids = ids.iter().map(|x| x.key().clone()).collect::<Vec<_>>();
 
             fetch_ids.iter().for_each(|key| {
@@ -276,19 +256,12 @@ impl RedisPool {
             for (idx, key) in fetch_ids.into_iter().enumerate() {
                 if let Some(locked) = results.get(idx) {
                     if locked.is_none() {
-                        println!(
-                            "{request_id} no lock on {key}, fetching from db {}",
-                            Utc::now()
-                        );
-
                         continue;
                     }
                 }
 
                 if let Some((key, raw_key)) = ids.remove(&key) {
                     if let Some(val) = expired_values.remove(&key) {
-                        println!("{request_id} serving expired value {key} {}", Utc::now());
-
                         if let Some(ref alias) = val.alias {
                             ids.remove(&alias.to_string());
                         }
@@ -308,8 +281,6 @@ impl RedisPool {
 
         if !ids.is_empty() {
             fetch_tasks.push(Box::pin(async {
-                println!("{request_id} db fetch ids with namespace {namespace}, keys: {}", ids.iter().map(|x| x.key().clone()).collect::<Vec<_>>().join(","));
-
                 let fetch_ids = ids.iter().map(|x| x.value().clone()).collect::<Vec<_>>();
 
                 let vals = closure(fetch_ids).await?;
@@ -344,15 +315,16 @@ impl RedisPool {
                                 pipe.atomic().set_ex(
                                     format!(
                                         "{}_{slug_namespace}:{}",
-                                        self.meta_namespace,
-                                        actual_slug
+                                        self.meta_namespace, actual_slug
                                     ),
                                     key.to_string(),
                                     DEFAULT_EXPIRY as u64,
                                 );
 
-                                pipe.atomic()
-                                    .del(format!("{}_{namespace}:{}/lock", self.meta_namespace, actual_slug));
+                                pipe.atomic().del(format!(
+                                    "{}_{namespace}:{}/lock",
+                                    self.meta_namespace, actual_slug
+                                ));
                             }
                         }
 
@@ -370,8 +342,6 @@ impl RedisPool {
                         pipe.atomic()
                             .del(format!("{}_{namespace}:{key}/lock", self.meta_namespace));
 
-                        println!("{request_id} found key {key} in DB, clearing cache + sending channel {}", Utc::now());
-
                         return_values.insert(key, value);
                     }
                 }
@@ -379,8 +349,6 @@ impl RedisPool {
                 for (key, _) in ids {
                     pipe.atomic()
                         .del(format!("{}_{namespace}:{key}/lock", self.meta_namespace));
-
-                    println!("{request_id} no key {key} in DB, clearing cache + sending channel");
                 }
 
                 pipe.query_async(&mut connection).await?;

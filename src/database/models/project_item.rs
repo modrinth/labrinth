@@ -531,8 +531,6 @@ impl Project {
                     .into_iter()
                     .map(|x| x.to_string().to_lowercase())
                     .collect::<Vec<_>>();
-                println!("ids: {:?}", project_ids_parsed);
-                println!("slugs: {:?}", slugs);
 
                 let all_version_ids = DashSet::new();
                 let versions: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>> = sqlx::query!(
