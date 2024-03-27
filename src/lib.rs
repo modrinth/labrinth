@@ -6,7 +6,6 @@ use log::{info, warn};
 use queue::{
     analytics::AnalyticsQueue, payouts::PayoutsQueue, session::AuthQueue, socket::ActiveSockets,
 };
-use scheduler::Scheduler;
 use sqlx::Postgres;
 use tokio::sync::RwLock;
 
@@ -15,6 +14,7 @@ use clickhouse_crate::Client;
 use util::cors::default_cors;
 
 use crate::queue::moderation::AutomatedModerationQueue;
+use crate::scheduler::schedule;
 use crate::{
     queue::payouts::process_payout,
     search::indexing::index_projects,
@@ -27,7 +27,6 @@ pub mod database;
 pub mod file_hosting;
 pub mod models;
 pub mod queue;
-pub mod ratelimit;
 pub mod routes;
 pub mod scheduler;
 pub mod search;
@@ -46,7 +45,6 @@ pub struct LabrinthConfig {
     pub clickhouse: Client,
     pub file_host: Arc<dyn file_hosting::FileHost + Send + Sync>,
     pub maxmind: Arc<queue::maxmind::MaxMindIndexer>,
-    pub scheduler: Arc<Scheduler>,
     pub ip_salt: Pepper,
     pub search_config: search::SearchConfig,
     pub session_queue: web::Data<AuthQueue>,
@@ -80,8 +78,6 @@ pub fn app_setup(
             .await;
     });
 
-    let mut scheduler = scheduler::Scheduler::new();
-
     // The interval in seconds at which the local database is indexed
     // for searching.  Defaults to 1 hour if unset.
     let local_index_interval =
@@ -90,7 +86,7 @@ pub fn app_setup(
     let pool_ref = pool.clone();
     let search_config_ref = search_config.clone();
     let redis_pool_ref = redis_pool.clone();
-    scheduler.run(local_index_interval, move || {
+    schedule(local_index_interval, move || {
         let pool_ref = pool_ref.clone();
         let redis_pool_ref = redis_pool_ref.clone();
         let search_config_ref = search_config_ref.clone();
@@ -107,7 +103,7 @@ pub fn app_setup(
     // Changes statuses of scheduled projects/versions
     let pool_ref = pool.clone();
     // TODO: Clear cache when these are run
-    scheduler.run(std::time::Duration::from_secs(60 * 5), move || {
+    schedule(std::time::Duration::from_secs(60 * 5), move || {
         let pool_ref = pool_ref.clone();
         info!("Releasing scheduled versions/projects!");
 
@@ -146,14 +142,14 @@ pub fn app_setup(
         }
     });
 
-    scheduler::schedule_versions(&mut scheduler, pool.clone(), redis_pool.clone());
+    scheduler::schedule_versions(pool.clone(), redis_pool.clone());
 
     let session_queue = web::Data::new(AuthQueue::new());
 
     let pool_ref = pool.clone();
     let redis_ref = redis_pool.clone();
     let session_queue_ref = session_queue.clone();
-    scheduler.run(std::time::Duration::from_secs(60 * 30), move || {
+    schedule(std::time::Duration::from_secs(60 * 30), move || {
         let pool_ref = pool_ref.clone();
         let redis_ref = redis_ref.clone();
         let session_queue_ref = session_queue_ref.clone();
@@ -171,7 +167,7 @@ pub fn app_setup(
     let reader = maxmind.clone();
     {
         let reader_ref = reader;
-        scheduler.run(std::time::Duration::from_secs(60 * 60 * 24), move || {
+        schedule(std::time::Duration::from_secs(60 * 60 * 24), move || {
             let reader_ref = reader_ref.clone();
 
             async move {
@@ -195,7 +191,7 @@ pub fn app_setup(
         let analytics_queue_ref = analytics_queue.clone();
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
-        scheduler.run(std::time::Duration::from_secs(15), move || {
+        schedule(std::time::Duration::from_secs(15), move || {
             let client_ref = client_ref.clone();
             let analytics_queue_ref = analytics_queue_ref.clone();
             let pool_ref = pool_ref.clone();
@@ -218,7 +214,7 @@ pub fn app_setup(
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
         let client_ref = clickhouse.clone();
-        scheduler.run(std::time::Duration::from_secs(60 * 60 * 6), move || {
+        schedule(std::time::Duration::from_secs(60 * 60 * 6), move || {
             let pool_ref = pool_ref.clone();
             let redis_ref = redis_ref.clone();
             let client_ref = client_ref.clone();
@@ -247,7 +243,6 @@ pub fn app_setup(
         clickhouse: clickhouse.clone(),
         file_host,
         maxmind,
-        scheduler: Arc::new(scheduler),
         ip_salt,
         search_config,
         session_queue,
