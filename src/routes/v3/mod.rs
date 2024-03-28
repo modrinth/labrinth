@@ -1,7 +1,6 @@
 pub use super::ApiError;
 use crate::util::cors::default_cors;
-use actix_web::{web, HttpResponse};
-use serde_json::json;
+use actix_web::web;
 
 pub mod analytics_get;
 pub mod collections;
@@ -44,10 +43,4 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(payouts::config)
             .configure(versions::config),
     );
-}
-
-pub async fn hello_world() -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().json(json!({
-        "hello": "world",
-    })))
 }
