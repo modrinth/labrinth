@@ -121,7 +121,7 @@ async fn main() -> std::io::Result<()> {
         false,
     );
 
-    // let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
     let limiter: Arc<KeyedRateLimiter> = Arc::new(
         RateLimiter::keyed(Quota::per_minute(NonZeroU32::new(300).unwrap()))
@@ -146,8 +146,8 @@ async fn main() -> std::io::Result<()> {
     let app = labrinth::app_config(labrinth_config)
         .layer(axum::middleware::from_fn(ratelimit))
         .layer(Extension(limiter))
-        // .route("/metrics", get(|| async move { metric_handle.render() }))
-        // .layer(prometheus_layer)
+        .route("/metrics", get(|| async move { metric_handle.render() }))
+        .layer(prometheus_layer)
         .layer(
             CompressionLayer::new()
                 .br(true)
@@ -159,8 +159,8 @@ async fn main() -> std::io::Result<()> {
             AUTHORIZATION,
         )))
         .layer(TraceLayer::new_for_http())
-        // .layer(sentry::NewSentryLayer::new_from_top())
-        // .layer(sentry::SentryHttpLayer::with_transaction())
+        .layer(sentry_tower::NewSentryLayer::new_from_top())
+        .layer(sentry_tower::SentryHttpLayer::with_transaction())
         .into_make_service_with_connect_info::<SocketAddr>();
 
     // run our app with hyper, listening globally on port 3000

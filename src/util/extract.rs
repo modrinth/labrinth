@@ -1,8 +1,8 @@
+pub use axum::extract::ConnectInfo;
 use axum::extract::FromRequest;
 use axum::extract::FromRequestParts;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
-pub use axum::extract::ConnectInfo;
 
 #[derive(FromRequest, FromRequestParts)]
 #[from_request(via(axum::Json), rejection(crate::routes::ApiError))]

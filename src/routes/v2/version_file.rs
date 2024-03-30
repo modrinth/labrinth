@@ -263,12 +263,9 @@ pub async fn update_files(
         hashes: update_data.hashes,
     };
 
-    let Json(map) = v3::version_file::update_files(
-        Extension(pool),
-        Extension(redis),
-        Json(update_data),
-    )
-    .await?;
+    let Json(map) =
+        v3::version_file::update_files(Extension(pool), Extension(redis), Json(update_data))
+            .await?;
 
     // Convert response to V2 format
     let map = map

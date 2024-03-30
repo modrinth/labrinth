@@ -5,27 +5,25 @@ use crate::models::ids::random_base62;
 use crate::models::projects::{Project, ProjectStatus};
 use crate::queue::moderation::{ApprovalType, IdentifiedFile, MissingMetadata};
 use crate::queue::session::AuthQueue;
+use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use crate::{auth::check_is_moderator_from_headers, models::pats::Scopes};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{get, post};
+use axum::Router;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use axum::http::{HeaderMap, StatusCode};
-use axum::Router;
-use axum::routing::{get, post};
-use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
-
 
 pub fn config() -> Router {
-    Router::new()
-        .nest(
-            "/moderation",
-            Router::new()
-                .route("/projects", get(get_projects))
-                .route("/project/:id", get(get_project_meta))
-                .route("/project", post(set_project_meta)),
-        )
+    Router::new().nest(
+        "/moderation",
+        Router::new()
+            .route("/projects", get(get_projects))
+            .route("/project/:id", get(get_project_meta))
+            .route("/project", post(set_project_meta)),
+    )
 }
 
 #[derive(Deserialize)]
@@ -54,7 +52,7 @@ pub async fn get_projects(
         &session_queue,
         Some(&[Scopes::PROJECT_READ]),
     )
-        .await?;
+    .await?;
 
     use futures::stream::TryStreamExt;
 
@@ -98,7 +96,7 @@ pub async fn get_project_meta(
         &session_queue,
         Some(&[Scopes::PROJECT_READ]),
     )
-        .await?;
+    .await?;
 
     let project = database::models::Project::get(&project_id, &pool, &redis).await?;
 
@@ -249,7 +247,7 @@ pub async fn set_project_meta(
         &session_queue,
         Some(&[Scopes::PROJECT_WRITE]),
     )
-        .await?;
+    .await?;
 
     let mut transaction = pool.begin().await?;
 

@@ -19,8 +19,7 @@ pub fn config() -> Router {
     Router::new()
         .nest(
             "/thread",
-            Router::new()
-                .route("/:id", get(thread_get).post(thread_send_message))
+            Router::new().route("/:id", get(thread_get).post(thread_send_message)),
         )
         .nest(
             "/message",

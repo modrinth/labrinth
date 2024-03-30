@@ -288,7 +288,12 @@ impl RedisPool {
 
         #[allow(clippy::type_complexity)]
         let mut fetch_tasks: Vec<
-            Pin<Box<dyn Future<Output = Result<HashMap<K, RedisValue<T, K, S>>, DatabaseError>> + Send>>,
+            Pin<
+                Box<
+                    dyn Future<Output = Result<HashMap<K, RedisValue<T, K, S>>, DatabaseError>>
+                        + Send,
+                >,
+            >,
         > = Vec::new();
 
         if !ids.is_empty() {

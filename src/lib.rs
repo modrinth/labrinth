@@ -15,10 +15,10 @@ use tracing::{info, warn};
 extern crate clickhouse as clickhouse_crate;
 use clickhouse_crate::Client;
 
+use crate::queue::moderation::AutomatedModerationQueue;
 use crate::routes::not_found;
 use crate::scheduler::schedule;
 use crate::util::cors::default_cors;
-use crate::queue::moderation::AutomatedModerationQueue;
 use crate::{
     queue::payouts::process_payout,
     search::indexing::index_projects,
@@ -280,7 +280,9 @@ pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
         .layer(Extension(labrinth_config.clickhouse.clone()))
         .layer(Extension(labrinth_config.maxmind.clone()))
         .layer(Extension(labrinth_config.active_sockets.clone()))
-        .layer(Extension(labrinth_config.automated_moderation_queue.clone()))
+        .layer(Extension(
+            labrinth_config.automated_moderation_queue.clone(),
+        ))
         .layer(DefaultBodyLimit::max(5 * 1024 * 1024))
 }
 

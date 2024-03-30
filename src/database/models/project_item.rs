@@ -519,7 +519,12 @@ impl Project {
     }
 
     #[allow(clippy::manual_async_fn)]
-    pub fn get_many<'a, 'c, E, T: Display + Hash + Eq + PartialEq + Clone + Debug + std::marker::Sync + std::marker::Send>(
+    pub fn get_many<
+        'a,
+        'c,
+        E,
+        T: Display + Hash + Eq + PartialEq + Clone + Debug + std::marker::Sync + std::marker::Send,
+    >(
         project_strings: &'a [T],
         exec: E,
         redis: &'a RedisPool,
