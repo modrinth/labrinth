@@ -86,9 +86,9 @@ impl Report {
             ",
             &report_ids_parsed
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|x| QueryReport {
+        .fetch(exec)
+        .try_filter_map(|x| async {
+            Ok(Some(QueryReport {
                 id: ReportId(x.id),
                 report_type: x.name,
                 project_id: x.mod_id.map(ProjectId),

@@ -141,14 +141,12 @@ pub async fn filter_enlisted_projects_ids(
                 .collect::<Vec<_>>(),
             user_id as database::models::ids::UserId,
         )
-        .fetch_many(pool)
-        .try_for_each(|e| {
-            if let Some(row) = e.right() {
-                for x in projects.iter() {
-                    let bool = Some(x.id.0) == row.id && Some(x.team_id.0) == row.team_id;
-                    if bool {
-                        return_projects.push(x.id);
-                    }
+        .fetch(pool)
+        .try_for_each(|row| {
+            for x in projects.iter() {
+                let bool = Some(x.id.0) == row.id && Some(x.team_id.0) == row.team_id;
+                if bool {
+                    return_projects.push(x.id);
                 }
             }
 

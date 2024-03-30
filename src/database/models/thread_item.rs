@@ -144,9 +144,9 @@ impl Thread {
             ",
             &thread_ids_parsed
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|x| Thread {
+        .fetch(exec)
+        .try_filter_map(|x| async {
+            Ok(Some(Thread {
                 id: ThreadId(x.id),
                 project_id: x.mod_id.map(ProjectId),
                 report_id: x.report_id.map(ReportId),
@@ -236,9 +236,9 @@ impl ThreadMessage {
             ",
             &message_ids_parsed
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|x| ThreadMessage {
+        .fetch(exec)
+        .try_filter_map(|x| async {
+            Ok(Some(ThreadMessage {
                 id: ThreadMessageId(x.id),
                 thread_id: ThreadId(x.thread_id),
                 author_id: x.author_id.map(UserId),

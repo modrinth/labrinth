@@ -387,8 +387,8 @@ async fn version_create_inner(
         ",
         builder.project_id as crate::database::models::ids::ProjectId
     )
-    .fetch_many(&mut **transaction)
-    .try_filter_map(|e| async { Ok(e.right().map(|m| models::ids::UserId(m.follower_id))) })
+    .fetch(&mut **transaction)
+    .try_filter_map(|m| async move { Ok(Some(models::ids::UserId(m.follower_id))) })
     .try_collect::<Vec<models::ids::UserId>>()
     .await?;
 

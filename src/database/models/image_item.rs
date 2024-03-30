@@ -135,11 +135,11 @@ impl Image {
             report_id.map(|x| x.0),
 
         )
-        .fetch_many(&mut **transaction)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|row| {
-                let id = ImageId(row.id);
+        .fetch(&mut **transaction)
+        .try_filter_map(|row| async {
+            let id = ImageId(row.id);
 
+            Ok(Some(
                 Image {
                     id,
                     url: row.url,
@@ -152,7 +152,7 @@ impl Image {
                     thread_message_id: row.thread_message_id.map(ThreadMessageId),
                     report_id: row.report_id.map(ReportId),
                 }
-            }))
+            ))
         })
         .try_collect::<Vec<Image>>()
         .await

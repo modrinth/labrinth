@@ -74,9 +74,9 @@ impl Payout {
             ",
             &payout_ids.into_iter().map(|x| x.0).collect::<Vec<_>>()
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|r| Payout {
+        .fetch(exec)
+        .try_filter_map(|r| async {
+            Ok(Some(Payout {
                 id: PayoutId(r.id),
                 user_id: UserId(r.user_id),
                 created: r.created,

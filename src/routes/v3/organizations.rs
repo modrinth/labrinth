@@ -90,8 +90,8 @@ pub async fn organization_projects_get(
         possible_organization_id.map(|x| x as i64),
         info
     )
-    .fetch_many(&pool)
-    .try_filter_map(|e| async { Ok(e.right().map(|m| crate::database::models::ProjectId(m.id))) })
+    .fetch(&pool)
+    .try_filter_map(|m| async move { Ok(Some(crate::database::models::ProjectId(m.id))) })
     .try_collect::<Vec<database::models::ProjectId>>()
     .await?;
 
@@ -594,8 +594,8 @@ pub async fn organization_delete(
         ",
         organization.id as database::models::ids::OrganizationId
     )
-    .fetch_many(&mut *transaction)
-    .try_filter_map(|e| async { Ok(e.right().map(|c| crate::database::models::TeamId(c.id))) })
+    .fetch(&mut *transaction)
+    .try_filter_map(|c| async move { Ok(Some(crate::database::models::TeamId(c.id))) })
     .try_collect::<Vec<_>>()
     .await?;
 

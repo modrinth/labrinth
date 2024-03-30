@@ -131,19 +131,17 @@ pub async fn filter_authorized_threads(
                 &*project_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(pool)
-            .try_for_each(|e| {
-                if let Some(row) = e.right() {
-                    check_threads.retain(|x| {
-                        let bool = x.project_id.map(|x| x.0) == Some(row.id);
+            .fetch(pool)
+            .try_for_each(|row| {
+                check_threads.retain(|x| {
+                    let bool = x.project_id.map(|x| x.0) == Some(row.id);
 
-                        if bool {
-                            return_threads.push(x.clone());
-                        }
+                    if bool {
+                        return_threads.push(x.clone());
+                    }
 
-                        !bool
-                    });
-                }
+                    !bool
+                });
 
                 futures::future::ready(Ok(()))
             })
@@ -167,19 +165,17 @@ pub async fn filter_authorized_threads(
                 &*project_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(pool)
-            .try_for_each(|e| {
-                if let Some(row) = e.right() {
-                    check_threads.retain(|x| {
-                        let bool = x.project_id.map(|x| x.0) == Some(row.id);
+            .fetch(pool)
+            .try_for_each(|row| {
+                check_threads.retain(|x| {
+                    let bool = x.project_id.map(|x| x.0) == Some(row.id);
 
-                        if bool {
-                            return_threads.push(x.clone());
-                        }
+                    if bool {
+                        return_threads.push(x.clone());
+                    }
 
-                        !bool
-                    });
-                }
+                    !bool
+                });
 
                 futures::future::ready(Ok(()))
             })
@@ -201,19 +197,17 @@ pub async fn filter_authorized_threads(
                 &*report_thread_ids,
                 user_id as database::models::ids::UserId,
             )
-            .fetch_many(pool)
-            .try_for_each(|e| {
-                if let Some(row) = e.right() {
-                    check_threads.retain(|x| {
-                        let bool = x.report_id.map(|x| x.0) == Some(row.id);
+            .fetch(pool)
+            .try_for_each(|row| {
+                check_threads.retain(|x| {
+                    let bool = x.report_id.map(|x| x.0) == Some(row.id);
 
-                        if bool {
-                            return_threads.push(x.clone());
-                        }
+                    if bool {
+                        return_threads.push(x.clone());
+                    }
 
-                        !bool
-                    });
-                }
+                    !bool
+                });
 
                 futures::future::ready(Ok(()))
             })

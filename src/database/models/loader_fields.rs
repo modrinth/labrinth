@@ -60,9 +60,9 @@ impl Game {
             SELECT id, slug, name, icon_url, banner_url FROM games
             ",
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|x| Game {
+        .fetch(exec)
+        .try_filter_map(|x| async {
+            Ok(Some(Game {
                 id: GameId(x.id),
                 slug: x.slug,
                 name: x.name,
@@ -151,9 +151,9 @@ impl Loader {
             GROUP BY l.id;
             ",
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|x| Loader {
+        .fetch(exec)
+        .try_filter_map(|x| async {
+            Ok(Some(Loader {
                 id: LoaderId(x.id),
                 loader: x.loader,
                 icon: x.icon,
@@ -451,18 +451,20 @@ impl LoaderField {
             FROM loader_fields lf
             ",
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().and_then(|r| {
-                Some(LoaderField {
+        .fetch(exec)
+        .try_filter_map(|r| async {
+            if let Some(field_type) = LoaderFieldType::build(&r.field_type, r.enum_type) {
+                Ok(Some(LoaderField {
                     id: LoaderFieldId(r.id),
-                    field_type: LoaderFieldType::build(&r.field_type, r.enum_type)?,
+                    field_type,
                     field: r.field,
                     optional: r.optional,
                     min_val: r.min_val,
                     max_val: r.max_val,
-                })
-            }))
+                }))
+            } else {
+                Ok(None)
+            }
         })
         .try_collect::<Vec<LoaderField>>()
         .await?;

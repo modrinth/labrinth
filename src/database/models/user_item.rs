@@ -263,8 +263,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.id))) })
+        .fetch(exec)
+        .try_filter_map(|m| async move { Ok(Some(ProjectId(m.id))) })
         .try_collect::<Vec<ProjectId>>()
         .await?;
 
@@ -292,8 +292,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| OrganizationId(m.id))) })
+        .fetch(exec)
+        .try_filter_map(|m| async move { Ok(Some(OrganizationId(m.id))) })
         .try_collect::<Vec<OrganizationId>>()
         .await?;
 
@@ -316,8 +316,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| CollectionId(m.id))) })
+        .fetch(exec)
+        .try_filter_map(|m| async move { Ok(Some(CollectionId(m.id))) })
         .try_collect::<Vec<CollectionId>>()
         .await?;
 
@@ -340,8 +340,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| to_base62(m.code as u64))) })
+        .fetch(exec)
+        .try_filter_map(|m| async move { Ok(Some(to_base62(m.code as u64))) })
         .try_collect::<Vec<String>>()
         .await?;
 
@@ -429,8 +429,8 @@ impl User {
                 ",
                 id as UserId,
             )
-            .fetch_many(&mut **transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|m| m.id)) })
+            .fetch(&mut **transaction)
+            .try_filter_map(|m| async move { Ok(Some(m.id)) })
             .try_collect::<Vec<i64>>()
             .await?;
 

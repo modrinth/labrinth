@@ -108,9 +108,9 @@ impl Category {
             ORDER BY c.ordering, c.category
             "
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|c| Category {
+        .fetch(exec)
+        .try_filter_map(|c| async {
+            Ok(Some(Category {
                 id: CategoryId(c.id),
                 category: c.category,
                 project_type: c.project_type,
@@ -166,9 +166,9 @@ impl LinkPlatform {
             SELECT id, name, donation FROM link_platforms
             "
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async {
-            Ok(e.right().map(|c| LinkPlatform {
+        .fetch(exec)
+        .try_filter_map(|c| async {
+            Ok(Some(LinkPlatform {
                 id: LinkPlatformId(c.id),
                 name: c.name,
                 donation: c.donation,
@@ -222,8 +222,8 @@ impl ReportType {
             SELECT name FROM report_types
             "
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|c| c.name)) })
+        .fetch(exec)
+        .try_filter_map(|e| async { Ok(Some(e.name)) })
         .try_collect::<Vec<String>>()
         .await?;
 
@@ -272,8 +272,8 @@ impl ProjectType {
             SELECT name FROM project_types
             "
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|c| c.name)) })
+        .fetch(exec)
+        .try_filter_map(|c| async { Ok(Some(c.name)) })
         .try_collect::<Vec<String>>()
         .await?;
 
