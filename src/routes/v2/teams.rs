@@ -167,6 +167,7 @@ pub struct NewTeamMember {
     pub ordering: i64,
 }
 
+#[axum::debug_handler]
 pub async fn add_team_member(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,

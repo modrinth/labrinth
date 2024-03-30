@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, enum_id, value, ordering, metadata, created FROM loader_field_enum_values\n            WHERE enum_id = ANY($1)\n            ORDER BY enum_id, ordering, created DESC\n            ",
+  "query": "\n                    SELECT id, enum_id, value, ordering, metadata, created FROM loader_field_enum_values\n                    WHERE enum_id = ANY($1)\n                    ORDER BY enum_id, ordering, created DESC\n                    ",
   "describe": {
     "columns": [
       {
@@ -48,5 +48,5 @@
       false
     ]
   },
-  "hash": "603eaa54b3956d68f656008e9b04f1c352857cf2eb15874cee9d31f8d992ab77"
+  "hash": "04c04958c71c4fab903c46c9185286e7460a6ff7b03cbc90939ac6c7cb526433"
 }

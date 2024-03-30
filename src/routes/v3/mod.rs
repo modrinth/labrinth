@@ -5,7 +5,6 @@ use axum::Router;
 pub mod analytics_get;
 pub mod collections;
 pub mod images;
-pub mod moderation;
 pub mod notifications;
 pub mod organizations;
 pub mod payouts;
@@ -30,7 +29,6 @@ pub fn config() -> Router {
             .merge(analytics_get::config())
             .merge(collections::config())
             .merge(images::config())
-            .merge(moderation::config())
             .merge(notifications::config())
             .merge(organizations::config())
             .merge(project_creation::config())

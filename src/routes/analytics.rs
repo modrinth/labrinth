@@ -56,6 +56,7 @@ pub struct UrlInput {
 }
 
 //this route should be behind the cloudflare WAF to prevent non-browsers from calling it
+#[axum::debug_handler]
 pub async fn page_view_ingest(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -115,6 +116,7 @@ pub async fn page_view_ingest(
             .into_iter()
             .filter(|x| !FILTERED_HEADERS.contains(&&*x.0))
             .collect(),
+        monetized: true,
     };
 
     if let Some(segments) = url.path_segments() {

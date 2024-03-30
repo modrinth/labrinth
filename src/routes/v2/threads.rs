@@ -10,7 +10,7 @@ use crate::queue::session::AuthQueue;
 use crate::routes::{v3, ApiErrorV2};
 use crate::util::extract::{ConnectInfo, Extension, Json, Path, Query};
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get};
 use axum::Router;
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -20,9 +20,7 @@ pub fn config() -> Router {
         .nest(
             "/thread",
             Router::new()
-                .route("/inbox", get(moderation_inbox))
                 .route("/:id", get(thread_get).post(thread_send_message))
-                .route("/:id/read", post(thread_read)),
         )
         .nest(
             "/message",
@@ -31,6 +29,7 @@ pub fn config() -> Router {
         .route("/threads", get(threads_get))
 }
 
+#[axum::debug_handler]
 pub async fn thread_get(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -109,49 +108,6 @@ pub async fn thread_send_message(
         Json(v3::threads::NewThreadMessage {
             body: new_message.body,
         }),
-    )
-    .await?)
-}
-
-pub async fn moderation_inbox(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Extension(pool): Extension<PgPool>,
-    Extension(redis): Extension<RedisPool>,
-    Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<Json<Vec<LegacyThread>>, ApiErrorV2> {
-    let Json(threads) = v3::threads::moderation_inbox(
-        ConnectInfo(addr),
-        headers,
-        Extension(pool),
-        Extension(redis),
-        Extension(session_queue),
-    )
-    .await?;
-
-    // Convert response to V2 format
-    let threads = threads
-        .into_iter()
-        .map(LegacyThread::from)
-        .collect::<Vec<_>>();
-    Ok(Json(threads))
-}
-
-pub async fn thread_read(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Path(info): Path<ThreadId>,
-    Extension(pool): Extension<PgPool>,
-    Extension(redis): Extension<RedisPool>,
-    Extension(session_queue): Extension<Arc<AuthQueue>>,
-) -> Result<StatusCode, ApiErrorV2> {
-    Ok(v3::threads::thread_read(
-        ConnectInfo(addr),
-        headers,
-        Path(info),
-        Extension(pool),
-        Extension(redis),
-        Extension(session_queue),
     )
     .await?)
 }

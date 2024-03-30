@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::auth::checks::is_visible_project;
+use crate::auth::checks::{filter_visible_versions, is_visible_project};
 use crate::auth::{filter_visible_projects, get_user_from_headers};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
@@ -25,6 +25,7 @@ use crate::models::projects::{
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::MessageBody;
+use crate::queue::moderation::AutomatedModerationQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::search::indexing::remove_documents;
@@ -234,6 +235,7 @@ pub struct EditProject {
     pub monetization_status: Option<MonetizationStatus>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn project_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -242,6 +244,7 @@ pub async fn project_edit(
     Extension(search_config): Extension<SearchConfig>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(moderation_queue): Extension<Arc<AutomatedModerationQueue>>,
     Json(new_project): Json<EditProject>,
 ) -> Result<StatusCode, ApiError> {
     let user = get_user_from_headers(
@@ -358,16 +361,9 @@ pub async fn project_edit(
                     .execute(&mut *transaction)
                     .await?;
 
-                    sqlx::query!(
-                        "
-                        UPDATE threads
-                        SET show_in_mod_inbox = FALSE
-                        WHERE id = $1
-                        ",
-                        project_item.thread_id as db_ids::ThreadId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
+                    moderation_queue
+                        .projects
+                        .insert(project_item.inner.id.into());
                 }
 
                 if status.is_approved() && !project_item.inner.status.is_approved() {
@@ -463,6 +459,7 @@ pub async fn project_edit(
                         old_status: project_item.inner.status,
                     },
                     thread_id: project_item.thread_id,
+                    hide_identity: true,
                 }
                 .insert(&mut transaction)
                 .await?;
@@ -1008,14 +1005,10 @@ pub async fn dependency_list(
         )
         .await?;
 
-        let mut projects = projects_result
-            .into_iter()
-            .map(models::projects::Project::from)
-            .collect::<Vec<_>>();
-        let mut versions = versions_result
-            .into_iter()
-            .map(models::projects::Version::from)
-            .collect::<Vec<_>>();
+        let mut projects =
+            filter_visible_projects(projects_result, &user_option, &pool, false).await?;
+        let mut versions =
+            filter_visible_versions(versions_result, &user_option, &pool, &redis).await?;
 
         projects.sort_by(|a, b| b.published.cmp(&a.published));
         projects.dedup_by(|a, b| a.id == b.id);

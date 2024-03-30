@@ -98,6 +98,10 @@ pub enum ApiError {
     Mail(#[from] crate::auth::email::MailError),
     #[error("Error while rerouting request: {0}")]
     Reroute(#[from] reqwest::Error),
+    #[error("Unable to read Zip Archive: {0}")]
+    Zip(#[from] zip::result::ZipError),
+    #[error("IO Error: {0}")]
+    Io(#[from] std::io::Error),
     #[error("Resource not found")]
     NotFound,
     #[error("Could not read JSON body: {0}")]
@@ -120,6 +124,51 @@ pub enum ApiError {
     Multipart(#[from] MultipartRejection),
     #[error("You are being rate-limited. Please wait {0} milliseconds. 0/{1} remaining.")]
     RateLimitError(u128, u32),
+}
+
+impl ApiError {
+    pub fn as_api_error(&self) -> crate::models::error::ApiError {
+        crate::models::error::ApiError {
+            error: match &self {
+                ApiError::Env(..) => "environment_error",
+                ApiError::SqlxDatabase(..) => "database_error",
+                ApiError::Database(..) => "database_error",
+                ApiError::Authentication(..) => "unauthorized",
+                ApiError::CustomAuthentication(..) => "unauthorized",
+                ApiError::Xml(..) => "xml_error",
+                ApiError::Json(..) => "json_error",
+                ApiError::Search(..) => "search_error",
+                ApiError::Indexing(..) => "indexing_error",
+                ApiError::FileHosting(..) => "file_hosting_error",
+                ApiError::InvalidInput(..) => "invalid_input",
+                ApiError::Validation(..) => "invalid_input",
+                ApiError::Payments(..) => "payments_error",
+                ApiError::Discord(..) => "discord_error",
+                ApiError::Turnstile => "turnstile_error",
+                ApiError::Decoding(..) => "decoding_error",
+                ApiError::ImageParse(..) => "invalid_image",
+                ApiError::PasswordHashing(..) => "password_hashing_error",
+                ApiError::PasswordStrengthCheck(..) => "strength_check_error",
+                ApiError::Mail(..) => "mail_error",
+                ApiError::Clickhouse(..) => "clickhouse_error",
+                ApiError::Reroute(..) => "reroute_error",
+                ApiError::NotFound => "not_found",
+                ApiError::JsonBody(..) => "invalid_json_body",
+                ApiError::Form(..) => "invalid_form_body",
+                ApiError::Query(..) => "invalid_query",
+                ApiError::Path(..) => "invalid_path",
+                ApiError::Extension(..) => "extension_error",
+                ApiError::String(..) => "invalid_body",
+                ApiError::Bytes(..) => "invalid_body",
+                ApiError::WebSocket(..) => "websocket_error",
+                ApiError::Multipart(..) => "invalid_multipart_body",
+                ApiError::RateLimitError(..) => "ratelimit_error",
+                ApiError::Zip(..) => "zip_error",
+                ApiError::Io(..) => "io_error",
+            },
+            description: self.to_string(),
+        }
+    }
 }
 
 impl IntoResponse for ApiError {
@@ -158,46 +207,11 @@ impl IntoResponse for ApiError {
             ApiError::WebSocket(..) => StatusCode::BAD_REQUEST,
             ApiError::Multipart(..) => StatusCode::BAD_REQUEST,
             ApiError::RateLimitError(..) => StatusCode::TOO_MANY_REQUESTS,
+            ApiError::Zip(..) => StatusCode::BAD_REQUEST,
+            ApiError::Io(..) => StatusCode::BAD_REQUEST,
         };
 
-        let error_message = crate::models::error::ApiError {
-            error: match &self {
-                ApiError::Env(..) => "environment_error",
-                ApiError::SqlxDatabase(..) => "database_error",
-                ApiError::Database(..) => "database_error",
-                ApiError::Authentication(..) => "unauthorized",
-                ApiError::CustomAuthentication(..) => "unauthorized",
-                ApiError::Xml(..) => "xml_error",
-                ApiError::Json(..) => "json_error",
-                ApiError::Search(..) => "search_error",
-                ApiError::Indexing(..) => "indexing_error",
-                ApiError::FileHosting(..) => "file_hosting_error",
-                ApiError::InvalidInput(..) => "invalid_input",
-                ApiError::Validation(..) => "invalid_input",
-                ApiError::Payments(..) => "payments_error",
-                ApiError::Discord(..) => "discord_error",
-                ApiError::Turnstile => "turnstile_error",
-                ApiError::Decoding(..) => "decoding_error",
-                ApiError::ImageParse(..) => "invalid_image",
-                ApiError::PasswordHashing(..) => "password_hashing_error",
-                ApiError::PasswordStrengthCheck(..) => "strength_check_error",
-                ApiError::Mail(..) => "mail_error",
-                ApiError::Clickhouse(..) => "clickhouse_error",
-                ApiError::Reroute(..) => "reroute_error",
-                ApiError::NotFound => "not_found",
-                ApiError::JsonBody(..) => "invalid_json_body",
-                ApiError::Form(..) => "invalid_form_body",
-                ApiError::Query(..) => "invalid_query",
-                ApiError::Path(..) => "invalid_path",
-                ApiError::Extension(..) => "extension_error",
-                ApiError::String(..) => "invalid_body",
-                ApiError::Bytes(..) => "invalid_body",
-                ApiError::WebSocket(..) => "websocket_error",
-                ApiError::Multipart(..) => "invalid_multipart_body",
-                ApiError::RateLimitError(..) => "ratelimit_error",
-            },
-            description: &self.to_string(),
-        };
+        let error_message = self.as_api_error();
 
         (status_code, Json(error_message)).into_response()
     }

@@ -1,4 +1,3 @@
-mod moderation;
 mod notifications;
 pub(crate) mod project_creation;
 mod projects;
@@ -24,7 +23,6 @@ pub fn config() -> Router {
             .merge(super::internal::session::config())
             .merge(super::internal::flows::config())
             .merge(super::internal::pats::config())
-            .merge(moderation::config())
             .merge(notifications::config())
             .merge(project_creation::config())
             .merge(projects::config())

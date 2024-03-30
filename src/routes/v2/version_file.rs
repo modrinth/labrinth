@@ -251,35 +251,21 @@ pub struct ManyUpdateData {
 }
 
 pub async fn update_files(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
     Extension(redis): Extension<RedisPool>,
-    Extension(session_queue): Extension<Arc<AuthQueue>>,
     Json(update_data): Json<ManyUpdateData>,
 ) -> Result<Json<HashMap<String, LegacyVersion>>, ApiErrorV2> {
-    let mut loader_fields = HashMap::new();
-    let mut game_versions = vec![];
-    for gv in update_data.game_versions.into_iter().flatten() {
-        game_versions.push(serde_json::json!(gv.clone()));
-    }
-    if !game_versions.is_empty() {
-        loader_fields.insert("game_versions".to_string(), game_versions);
-    }
     let update_data = v3::version_file::ManyUpdateData {
         loaders: update_data.loaders.clone(),
         version_types: update_data.version_types.clone(),
-        loader_fields: Some(loader_fields),
+        game_versions: update_data.game_versions.clone(),
         algorithm: update_data.algorithm,
         hashes: update_data.hashes,
     };
 
     let Json(map) = v3::version_file::update_files(
-        ConnectInfo(addr),
-        headers,
         Extension(pool),
         Extension(redis),
-        Extension(session_queue),
         Json(update_data),
     )
     .await?;

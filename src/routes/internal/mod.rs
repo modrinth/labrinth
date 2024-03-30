@@ -1,5 +1,6 @@
 pub(crate) mod admin;
 pub mod flows;
+pub mod moderation;
 pub mod pats;
 pub mod session;
 
@@ -18,6 +19,7 @@ pub fn config() -> Router {
             .merge(session::config())
             .merge(flows::config())
             .merge(pats::config())
+            .merge(moderation::config())
             .layer(default_cors()),
     )
 }

@@ -5,6 +5,7 @@ use crate::file_hosting::FileHost;
 use crate::models::projects::{Link, MonetizationStatus, ProjectStatus, SearchRequest, Version};
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType, LegacyVersion};
 use crate::models::v2::search::LegacySearchResults;
+use crate::queue::moderation::AutomatedModerationQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::ProjectIds;
 use crate::routes::{v2_reroute, v3, ApiErrorV2};
@@ -378,6 +379,7 @@ pub struct EditProject {
     pub monetization_status: Option<MonetizationStatus>,
 }
 
+#[axum::debug_handler]
 pub async fn project_edit(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -386,6 +388,7 @@ pub async fn project_edit(
     Extension(search_config): Extension<SearchConfig>,
     Extension(redis): Extension<RedisPool>,
     Extension(session_queue): Extension<Arc<AuthQueue>>,
+    Extension(moderation_queue): Extension<Arc<AutomatedModerationQueue>>,
     Json(v2_new_project): Json<EditProject>,
 ) -> Result<StatusCode, ApiErrorV2> {
     let client_side = v2_new_project.client_side;
@@ -494,6 +497,7 @@ pub async fn project_edit(
         Extension(search_config.clone()),
         Extension(redis.clone()),
         Extension(session_queue.clone()),
+        Extension(moderation_queue.clone()),
         Json(new_project),
     )
     .await?;

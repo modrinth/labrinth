@@ -11,12 +11,11 @@ name = "labrinth"
 path = "src/main.rs"
 
 [dependencies]
-axum = { version = "0.7.4", features = ["json", "form", "multipart", "query", "ws", "macros"] }
-axum-prometheus = "0.5.0"
+axum = { version = "0.7.5", features = ["json", "form", "multipart", "query", "ws", "macros"] }
+axum-prometheus = "0.6.1"
 
 # middleware + utils
 sentry = { version = "0.32.1", features = ["tracing", "tower", "tower-http", "tower-axum-matched-path"] }
-sentry-tower = { verison = "0.32.1", features = ["axum-matched-path", "http"] }
 tower-http = {  version = "0.5.0", features = ["trace", "cors", "sensitive-headers", "fs", "compression-zstd", "compression-gzip", "compression-deflate", "compression-br"] }
 tower = "0.4.13"
 governor = "0.6.0"
@@ -57,6 +56,7 @@ sha1 = { version = "0.6.1", features = ["std"] }
 sha2 = "0.9.9"
 hmac = "0.11.0"
 argon2 = { version = "0.5.0", features = ["std"] }
+murmur2 = "0.1.0"
 bitflags = "2.4.0"
 hex = "0.4.3"
 zxcvbn = "2.2.2"

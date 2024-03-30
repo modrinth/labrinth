@@ -105,7 +105,7 @@ impl IntoResponse for OAuthError {
                 status_code,
                 Json(ApiError {
                     error: &self.error_type.error_name(),
-                    description: &self.error_type.to_string(),
+                    description: self.error_type.to_string(),
                 }),
             )
                 .into_response()

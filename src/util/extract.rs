@@ -2,6 +2,7 @@ use axum::extract::FromRequest;
 use axum::extract::FromRequestParts;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
+pub use axum::extract::ConnectInfo;
 
 #[derive(FromRequest, FromRequestParts)]
 #[from_request(via(axum::Json), rejection(crate::routes::ApiError))]
@@ -32,9 +33,9 @@ pub struct Query<T>(pub T);
 #[from_request(via(axum::Extension), rejection(crate::routes::ApiError))]
 pub struct Extension<T>(pub T);
 
-#[derive(FromRequest, FromRequestParts)]
-#[from_request(via(axum::extract::ConnectInfo), rejection(crate::routes::ApiError))]
-pub struct ConnectInfo<T>(pub T);
+// #[derive(FromRequest, FromRequestParts)]
+// #[from_request(via(axum::extract::ConnectInfo), rejection(crate::routes::ApiError))]
+// pub struct ConnectInfo<T>(pub T);
 
 #[derive(FromRequest)]
 #[from_request(rejection(crate::routes::ApiError))]

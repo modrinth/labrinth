@@ -5,14 +5,16 @@ use super::{ids::*, User};
 use crate::database::models;
 use crate::database::models::DatabaseError;
 use crate::database::redis::RedisPool;
-use crate::models::ids::base62_impl::{parse_base62, to_base62};
+use crate::models::ids::base62_impl::parse_base62;
 use crate::models::projects::{MonetizationStatus, ProjectStatus};
 use chrono::{DateTime, Utc};
 use dashmap::{DashMap, DashSet};
 use futures::TryStreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Debug, Display};
 use std::future::Future;
+use std::hash::Hash;
 
 pub const PROJECTS_NAMESPACE: &str = "projects";
 pub const PROJECTS_SLUGS_NAMESPACE: &str = "projects_slugs";
@@ -517,7 +519,7 @@ impl Project {
     }
 
     #[allow(clippy::manual_async_fn)]
-    pub fn get_many<'a, 'c, E, T: ToString + std::marker::Sync>(
+    pub fn get_many<'a, 'c, E, T: Display + Hash + Eq + PartialEq + Clone + Debug + std::marker::Sync + std::marker::Send>(
         project_strings: &'a [T],
         exec: E,
         redis: &'a RedisPool,
@@ -526,72 +528,25 @@ impl Project {
         E: sqlx::Acquire<'c, Database = sqlx::Postgres> + Send + 'a,
     {
         async move {
-            let project_strings = project_strings
-                .iter()
-                .map(|x| x.to_string())
-                .unique()
-                .collect::<Vec<String>>();
+            let val = redis.get_cached_keys_with_slug(
+                PROJECTS_NAMESPACE,
+                PROJECTS_SLUGS_NAMESPACE,
+                false,
+                project_strings,
+                |ids| async move {
+                    let mut exec = exec.acquire().await?;
+                    let project_ids_parsed: Vec<i64> = ids
+                        .iter()
+                        .flat_map(|x| parse_base62(&x.to_string()).ok())
+                        .map(|x| x as i64)
+                        .collect();
+                    let slugs = ids
+                        .into_iter()
+                        .map(|x| x.to_string().to_lowercase())
+                        .collect::<Vec<_>>();
 
-            if project_strings.is_empty() {
-                return Ok(Vec::new());
-            }
-
-            let mut redis = redis.connect().await?;
-            let mut exec = exec.acquire().await?;
-
-            let mut found_projects = Vec::new();
-            let mut remaining_strings = project_strings.clone();
-
-            let mut project_ids = project_strings
-                .iter()
-                .flat_map(|x| parse_base62(&x.to_string()).map(|x| x as i64))
-                .collect::<Vec<_>>();
-
-            project_ids.append(
-                &mut redis
-                    .multi_get::<i64>(
-                        PROJECTS_SLUGS_NAMESPACE,
-                        project_strings.iter().map(|x| x.to_string().to_lowercase()),
-                    )
-                    .await?
-                    .into_iter()
-                    .flatten()
-                    .collect(),
-            );
-            if !project_ids.is_empty() {
-                let projects = redis
-                    .multi_get::<String>(
-                        PROJECTS_NAMESPACE,
-                        project_ids.iter().map(|x| x.to_string()),
-                    )
-                    .await?;
-                for project in projects {
-                    if let Some(project) =
-                        project.and_then(|x| serde_json::from_str::<QueryProject>(&x).ok())
-                    {
-                        remaining_strings.retain(|x| {
-                            &to_base62(project.inner.id.0 as u64) != x
-                                && project.inner.slug.as_ref().map(|x| x.to_lowercase())
-                                    != Some(x.to_lowercase())
-                        });
-                        found_projects.push(project);
-                        continue;
-                    }
-                }
-            }
-            if !remaining_strings.is_empty() {
-                let project_ids_parsed: Vec<i64> = remaining_strings
-                    .iter()
-                    .flat_map(|x| parse_base62(&x.to_string()).ok())
-                    .map(|x| x as i64)
-                    .collect();
-                let slugs = remaining_strings
-                    .into_iter()
-                    .map(|x| x.to_lowercase())
-                    .collect::<Vec<_>>();
-
-                let all_version_ids = DashSet::new();
-                let versions: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>> = sqlx::query!(
+                    let all_version_ids = DashSet::new();
+                    let versions: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>> = sqlx::query!(
                     "
                     SELECT DISTINCT mod_id, v.id as id, date_published
                     FROM mods m
@@ -605,23 +560,23 @@ impl Project {
                         .map(|x| x.to_string())
                         .collect::<Vec<String>>()
                 )
-                .fetch(&mut *exec)
-                .try_fold(
-                    DashMap::new(),
-                    |acc: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>>, m| {
-                        let version_id = VersionId(m.id);
-                        let date_published = m.date_published;
-                        all_version_ids.insert(version_id);
-                        acc.entry(ProjectId(m.mod_id))
-                            .or_default()
-                            .push((version_id, date_published));
-                        async move { Ok(acc) }
-                    },
-                )
-                .await?;
+                        .fetch(&mut *exec)
+                        .try_fold(
+                            DashMap::new(),
+                            |acc: DashMap<ProjectId, Vec<(VersionId, DateTime<Utc>)>>, m| {
+                                let version_id = VersionId(m.id);
+                                let date_published = m.date_published;
+                                all_version_ids.insert(version_id);
+                                acc.entry(ProjectId(m.mod_id))
+                                    .or_default()
+                                    .push((version_id, date_published));
+                                async move { Ok(acc) }
+                            },
+                        )
+                        .await?;
 
-                let loader_field_enum_value_ids = DashSet::new();
-                let version_fields: DashMap<ProjectId, Vec<QueryVersionField>> = sqlx::query!(
+                    let loader_field_enum_value_ids = DashSet::new();
+                    let version_fields: DashMap<ProjectId, Vec<QueryVersionField>> = sqlx::query!(
                     "
                     SELECT DISTINCT mod_id, version_id, field_id, int_value, enum_value, string_value
                     FROM versions v
@@ -630,29 +585,29 @@ impl Project {
                     ",
                     &all_version_ids.iter().map(|x| x.0).collect::<Vec<_>>()
                 )
-                .fetch(&mut *exec)
-                .try_fold(
-                    DashMap::new(),
-                    |acc: DashMap<ProjectId, Vec<QueryVersionField>>, m| {
-                        let qvf = QueryVersionField {
-                            version_id: VersionId(m.version_id),
-                            field_id: LoaderFieldId(m.field_id),
-                            int_value: m.int_value,
-                            enum_value: m.enum_value.map(LoaderFieldEnumValueId),
-                            string_value: m.string_value,
-                        };
+                        .fetch(&mut *exec)
+                        .try_fold(
+                            DashMap::new(),
+                            |acc: DashMap<ProjectId, Vec<QueryVersionField>>, m| {
+                                let qvf = QueryVersionField {
+                                    version_id: VersionId(m.version_id),
+                                    field_id: LoaderFieldId(m.field_id),
+                                    int_value: m.int_value,
+                                    enum_value: m.enum_value.map(LoaderFieldEnumValueId),
+                                    string_value: m.string_value,
+                                };
 
-                        if let Some(enum_value) = m.enum_value {
-                            loader_field_enum_value_ids.insert(LoaderFieldEnumValueId(enum_value));
-                        }
+                                if let Some(enum_value) = m.enum_value {
+                                    loader_field_enum_value_ids.insert(LoaderFieldEnumValueId(enum_value));
+                                }
 
-                        acc.entry(ProjectId(m.mod_id)).or_default().push(qvf);
-                        async move { Ok(acc) }
-                    },
-                )
-                .await?;
+                                acc.entry(ProjectId(m.mod_id)).or_default().push(qvf);
+                                async move { Ok(acc) }
+                            },
+                        )
+                        .await?;
 
-                let loader_field_enum_values: Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
+                    let loader_field_enum_values: Vec<QueryLoaderFieldEnumValue> = sqlx::query!(
                     "
                     SELECT DISTINCT id, enum_id, value, ordering, created, metadata
                     FROM loader_field_enum_values lfev
@@ -664,19 +619,19 @@ impl Project {
                         .map(|x| x.0)
                         .collect::<Vec<_>>()
                 )
-                .fetch(&mut *exec)
-                .map_ok(|m| QueryLoaderFieldEnumValue {
-                    id: LoaderFieldEnumValueId(m.id),
-                    enum_id: LoaderFieldEnumId(m.enum_id),
-                    value: m.value,
-                    ordering: m.ordering,
-                    created: m.created,
-                    metadata: m.metadata,
-                })
-                .try_collect()
-                .await?;
+                        .fetch(&mut *exec)
+                        .map_ok(|m| QueryLoaderFieldEnumValue {
+                            id: LoaderFieldEnumValueId(m.id),
+                            enum_id: LoaderFieldEnumId(m.enum_id),
+                            value: m.value,
+                            ordering: m.ordering,
+                            created: m.created,
+                            metadata: m.metadata,
+                        })
+                        .try_collect()
+                        .await?;
 
-                let mods_gallery: DashMap<ProjectId, Vec<GalleryItem>> = sqlx::query!(
+                    let mods_gallery: DashMap<ProjectId, Vec<GalleryItem>> = sqlx::query!(
                     "
                     SELECT DISTINCT mod_id, mg.image_url, mg.featured, mg.name, mg.description, mg.created, mg.ordering
                     FROM mods_gallery mg
@@ -686,22 +641,22 @@ impl Project {
                     &project_ids_parsed,
                     &slugs
                 ).fetch(&mut *exec)
-                    .try_fold(DashMap::new(), |acc : DashMap<ProjectId, Vec<GalleryItem>>, m| {
-                        acc.entry(ProjectId(m.mod_id))
-                            .or_default()
-                            .push(GalleryItem {
-                                image_url: m.image_url,
-                                featured: m.featured.unwrap_or(false),
-                                name: m.name,
-                                description: m.description,
-                                created: m.created,
-                                ordering: m.ordering,
-                            });
-                        async move { Ok(acc) }
-                    }
-                    ).await?;
+                        .try_fold(DashMap::new(), |acc : DashMap<ProjectId, Vec<GalleryItem>>, m| {
+                            acc.entry(ProjectId(m.mod_id))
+                                .or_default()
+                                .push(GalleryItem {
+                                    image_url: m.image_url,
+                                    featured: m.featured.unwrap_or(false),
+                                    name: m.name,
+                                    description: m.description,
+                                    created: m.created,
+                                    ordering: m.ordering,
+                                });
+                            async move { Ok(acc) }
+                        }
+                        ).await?;
 
-                let links: DashMap<ProjectId, Vec<LinkUrl>> = sqlx::query!(
+                    let links: DashMap<ProjectId, Vec<LinkUrl>> = sqlx::query!(
                     "
                     SELECT DISTINCT joining_mod_id as mod_id, joining_platform_id as platform_id, lp.name as platform_name, url, lp.donation as donation
                     FROM mods_links ml
@@ -711,31 +666,30 @@ impl Project {
                     ",
                     &project_ids_parsed,
                     &slugs
-                )
-                    .fetch(&mut *exec)
-                    .try_fold(DashMap::new(), |acc : DashMap<ProjectId, Vec<LinkUrl>>, m| {
-                        acc.entry(ProjectId(m.mod_id))
-                            .or_default()
-                            .push(LinkUrl {
-                                platform_id: LinkPlatformId(m.platform_id),
-                                platform_name: m.platform_name,
-                                url: m.url,
-                                donation: m.donation,
-                            });
-                        async move { Ok(acc) }
+                ).fetch(&mut *exec)
+                        .try_fold(DashMap::new(), |acc : DashMap<ProjectId, Vec<LinkUrl>>, m| {
+                            acc.entry(ProjectId(m.mod_id))
+                                .or_default()
+                                .push(LinkUrl {
+                                    platform_id: LinkPlatformId(m.platform_id),
+                                    platform_name: m.platform_name,
+                                    url: m.url,
+                                    donation: m.donation,
+                                });
+                            async move { Ok(acc) }
+                        }
+                        ).await?;
+
+                    #[derive(Default)]
+                    struct VersionLoaderData {
+                        loaders: Vec<String>,
+                        project_types: Vec<String>,
+                        games: Vec<String>,
+                        loader_loader_field_ids: Vec<LoaderFieldId>,
                     }
-                    ).await?;
 
-                #[derive(Default)]
-                struct VersionLoaderData {
-                    loaders: Vec<String>,
-                    project_types: Vec<String>,
-                    games: Vec<String>,
-                    loader_loader_field_ids: Vec<LoaderFieldId>,
-                }
-
-                let loader_field_ids = DashSet::new();
-                let loaders_ptypes_games: DashMap<ProjectId, VersionLoaderData> = sqlx::query!(
+                    let loader_field_ids = DashSet::new();
+                    let loaders_ptypes_games: DashMap<ProjectId, VersionLoaderData> = sqlx::query!(
                     "
                     SELECT DISTINCT mod_id,
                         ARRAY_AGG(DISTINCT l.loader) filter (where l.loader is not null) loaders,
@@ -754,31 +708,30 @@ impl Project {
                     GROUP BY mod_id
                     ",
                     &all_version_ids.iter().map(|x| x.0).collect::<Vec<_>>()
-                    )
-                    .fetch(&mut *exec)
-                    .map_ok(|m| {
-                        let project_id = ProjectId(m.mod_id);
+                ).fetch(&mut *exec)
+                        .map_ok(|m| {
+                            let project_id = ProjectId(m.mod_id);
 
-                        // Add loader fields to the set we need to fetch
-                        let loader_loader_field_ids = m.loader_fields.unwrap_or_default().into_iter().map(LoaderFieldId).collect::<Vec<_>>();
-                        for loader_field_id in loader_loader_field_ids.iter() {
-                            loader_field_ids.insert(*loader_field_id);
+                            // Add loader fields to the set we need to fetch
+                            let loader_loader_field_ids = m.loader_fields.unwrap_or_default().into_iter().map(LoaderFieldId).collect::<Vec<_>>();
+                            for loader_field_id in loader_loader_field_ids.iter() {
+                                loader_field_ids.insert(*loader_field_id);
+                            }
+
+                            // Add loader + loader associated data to the map
+                            let version_loader_data = VersionLoaderData {
+                                loaders: m.loaders.unwrap_or_default(),
+                                project_types: m.project_types.unwrap_or_default(),
+                                games: m.games.unwrap_or_default(),
+                                loader_loader_field_ids,
+                            };
+
+                            (project_id, version_loader_data)
+
                         }
+                        ).try_collect().await?;
 
-                        // Add loader + loader associated data to the map
-                        let version_loader_data = VersionLoaderData {
-                            loaders: m.loaders.unwrap_or_default(),
-                            project_types: m.project_types.unwrap_or_default(),
-                            games: m.games.unwrap_or_default(),
-                            loader_loader_field_ids,
-                        };
-
-                        (project_id, version_loader_data)
-
-                    }
-                    ).try_collect().await?;
-
-                let loader_fields: Vec<QueryLoaderField> = sqlx::query!(
+                    let loader_fields: Vec<QueryLoaderField> = sqlx::query!(
                     "
                     SELECT DISTINCT id, field, field_type, enum_type, min_val, max_val, optional
                     FROM loader_fields lf
@@ -786,20 +739,20 @@ impl Project {
                     ",
                     &loader_field_ids.iter().map(|x| x.0).collect::<Vec<_>>()
                 )
-                .fetch(&mut *exec)
-                .map_ok(|m| QueryLoaderField {
-                    id: LoaderFieldId(m.id),
-                    field: m.field,
-                    field_type: m.field_type,
-                    enum_type: m.enum_type.map(LoaderFieldEnumId),
-                    min_val: m.min_val,
-                    max_val: m.max_val,
-                    optional: m.optional,
-                })
-                .try_collect()
-                .await?;
+                        .fetch(&mut *exec)
+                        .map_ok(|m| QueryLoaderField {
+                            id: LoaderFieldId(m.id),
+                            field: m.field,
+                            field_type: m.field_type,
+                            enum_type: m.enum_type.map(LoaderFieldEnumId),
+                            min_val: m.min_val,
+                            max_val: m.max_val,
+                            optional: m.optional,
+                        })
+                        .try_collect()
+                        .await?;
 
-                let db_projects: Vec<QueryProject> = sqlx::query!(
+                    let projects = sqlx::query!(
                     "
                     SELECT m.id id, m.name name, m.summary summary, m.downloads downloads, m.follows follows,
                     m.icon_url icon_url, m.description description, m.published published,
@@ -820,9 +773,8 @@ impl Project {
                     &project_ids_parsed,
                     &slugs,
                 )
-                    .fetch_many(&mut *exec)
-                    .try_filter_map(|e| async {
-                        Ok(e.right().map(|m| {
+                        .fetch(&mut *exec)
+                        .try_fold(DashMap::new(), |acc, m| {
                             let id = m.id;
                             let project_id = ProjectId(id);
                             let VersionLoaderData {
@@ -840,7 +792,7 @@ impl Project {
                                 .filter(|x| loader_loader_field_ids.contains(&x.id))
                                 .collect::<Vec<_>>();
 
-                            QueryProject {
+                            let project = QueryProject {
                                 inner: Project {
                                     id: ProjectId(id),
                                     team_id: TeamId(m.team_id),
@@ -889,35 +841,18 @@ impl Project {
                                 urls,
                                 aggregate_version_fields: VersionField::from_query_json(version_fields, &loader_fields, &loader_field_enum_values, true),
                                 thread_id: ThreadId(m.thread_id),
-                            }}))
-                    })
-                    .try_collect::<Vec<QueryProject>>()
-                    .await?;
+                            };
 
-                for project in db_projects {
-                    redis
-                        .set_serialized_to_json(
-                            PROJECTS_NAMESPACE,
-                            project.inner.id.0,
-                            &project,
-                            None,
-                        )
+                            acc.insert(m.id, (m.slug, project));
+                            async move { Ok(acc) }
+                        })
                         .await?;
-                    if let Some(slug) = &project.inner.slug {
-                        redis
-                            .set(
-                                PROJECTS_SLUGS_NAMESPACE,
-                                &slug.to_lowercase(),
-                                &project.inner.id.0.to_string(),
-                                None,
-                            )
-                            .await?;
-                    }
-                    found_projects.push(project);
-                }
-            }
 
-            Ok(found_projects)
+                    Ok(projects)
+                },
+            ).await?;
+
+            Ok(val)
         }
     }
 

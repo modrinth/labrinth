@@ -328,13 +328,10 @@ pub async fn version_edit(
             }
 
             if let Some(dependencies) = &new_version.dependencies {
-                // TODO: Re-add this exclusions when modpack also has separate dependency retrieval that was removed from validators
-                // if let Some(project) = project_item {
-                // if project.project_type != "modpack" {
                 sqlx::query!(
                     "
-                            DELETE FROM dependencies WHERE dependent_id = $1
-                            ",
+                    DELETE FROM dependencies WHERE dependent_id = $1
+                    ",
                     id as database::models::ids::VersionId,
                 )
                 .execute(&mut *transaction)
@@ -352,8 +349,6 @@ pub async fn version_edit(
 
                 DependencyBuilder::insert_many(builders, version_item.inner.id, &mut transaction)
                     .await?;
-                // }
-                // }
             }
 
             if !new_version.fields.is_empty() {

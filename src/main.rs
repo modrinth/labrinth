@@ -110,7 +110,6 @@ async fn main() -> std::io::Result<()> {
     let maxmind_reader = Arc::new(queue::maxmind::MaxMindIndexer::new().await.unwrap());
 
     let search_config = search::SearchConfig::new(None);
-    info!("Starting Actix HTTP server!");
 
     let labrinth_config = labrinth::app_setup(
         pool.clone(),
@@ -160,8 +159,8 @@ async fn main() -> std::io::Result<()> {
             AUTHORIZATION,
         )))
         .layer(TraceLayer::new_for_http())
-        .layer(sentry_tower::NewSentryLayer::new_from_top())
-        .layer(sentry_tower::SentryHttpLayer::with_transaction())
+        // .layer(sentry::NewSentryLayer::new_from_top())
+        // .layer(sentry::SentryHttpLayer::with_transaction())
         .into_make_service_with_connect_info::<SocketAddr>();
 
     // run our app with hyper, listening globally on port 3000

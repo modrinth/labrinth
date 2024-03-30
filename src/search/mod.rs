@@ -50,7 +50,7 @@ impl IntoResponse for SearchError {
                 SearchError::InvalidIndex(..) => "invalid_input",
                 SearchError::FormatError(..) => "invalid_input",
             },
-            description: &self.to_string(),
+            description: self.to_string(),
         };
 
         (status_code, Json(error_message)).into_response()

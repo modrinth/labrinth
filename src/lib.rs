@@ -18,6 +18,7 @@ use clickhouse_crate::Client;
 use crate::routes::not_found;
 use crate::scheduler::schedule;
 use crate::util::cors::default_cors;
+use crate::queue::moderation::AutomatedModerationQueue;
 use crate::{
     queue::payouts::process_payout,
     search::indexing::index_projects,
@@ -54,6 +55,7 @@ pub struct LabrinthConfig {
     pub payouts_queue: Arc<PayoutsQueue>,
     pub analytics_queue: Arc<AnalyticsQueue>,
     pub active_sockets: Arc<ActiveSockets>,
+    pub automated_moderation_queue: Arc<AutomatedModerationQueue>,
 }
 
 pub fn app_setup(
@@ -69,6 +71,17 @@ pub fn app_setup(
         "Starting Labrinth on {}",
         dotenvy::var("BIND_ADDR").unwrap()
     );
+
+    let automated_moderation_queue = Arc::new(AutomatedModerationQueue::default());
+
+    let automated_moderation_queue_ref = automated_moderation_queue.clone();
+    let pool_ref = pool.clone();
+    let redis_pool_ref = redis_pool.clone();
+    tokio::spawn(async move {
+        automated_moderation_queue_ref
+            .task(pool_ref, redis_pool_ref)
+            .await;
+    });
 
     // The interval in seconds at which the local database is indexed
     // for searching.  Defaults to 1 hour if unset.
@@ -245,6 +258,7 @@ pub fn app_setup(
         payouts_queue,
         analytics_queue,
         active_sockets,
+        automated_moderation_queue,
     }
 }
 
@@ -266,6 +280,7 @@ pub fn app_config(labrinth_config: LabrinthConfig) -> Router {
         .layer(Extension(labrinth_config.clickhouse.clone()))
         .layer(Extension(labrinth_config.maxmind.clone()))
         .layer(Extension(labrinth_config.active_sockets.clone()))
+        .layer(Extension(labrinth_config.automated_moderation_queue.clone()))
         .layer(DefaultBodyLimit::max(5 * 1024 * 1024))
 }
 
@@ -386,6 +401,8 @@ pub fn check_env_vars() -> bool {
     failed |= check_var::<String>("MAXMIND_LICENSE_KEY");
 
     failed |= check_var::<u64>("PAYOUTS_BUDGET");
+
+    failed |= check_var::<String>("FLAME_ANVIL_URL");
 
     failed
 }
