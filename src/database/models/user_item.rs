@@ -1,5 +1,6 @@
 use super::ids::{ProjectId, UserId};
 use super::{CollectionId, ThreadId};
+use crate::database::models;
 use crate::database::models::{DatabaseError, OrganizationId};
 use crate::database::redis::RedisPool;
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
@@ -10,7 +11,6 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use crate::database::models;
 
 const USERS_NAMESPACE: &str = "users";
 const USER_USERNAMES_NAMESPACE: &str = "users_usernames";
@@ -463,10 +463,10 @@ impl User {
                 ",
                 id as UserId,
             )
-                .fetch_many(&mut **transaction)
-                .try_filter_map(|e| async { Ok(e.right().map(|x| ThreadId(x.id))) })
-                .try_collect::<Vec<_>>()
-                .await?;
+            .fetch_many(&mut **transaction)
+            .try_filter_map(|e| async { Ok(e.right().map(|x| CollectionId(x.id))) })
+            .try_collect::<Vec<_>>()
+            .await?;
 
             for collection_id in user_collections {
                 models::Collection::remove(collection_id, transaction, &redis).await?;
@@ -481,10 +481,10 @@ impl User {
                 ",
                 id as UserId,
             )
-                .fetch_many(&mut **transaction)
-                .try_filter_map(|e| async { Ok(e.right().map(|x| ThreadId(x.id))) })
-                .try_collect::<Vec<_>>()
-                .await?;
+            .fetch_many(&mut **transaction)
+            .try_filter_map(|e| async { Ok(e.right().map(|x| ThreadId(x.id))) })
+            .try_collect::<Vec<_>>()
+            .await?;
 
             for thread_id in report_threads {
                 models::Thread::remove_full(thread_id, transaction).await?;
