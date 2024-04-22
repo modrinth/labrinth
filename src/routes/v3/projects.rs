@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::auth::checks::is_visible_project;
+use crate::auth::checks::{filter_visible_versions, is_visible_project};
 use crate::auth::{filter_visible_projects, get_user_from_headers};
 use crate::database::models::notification_item::NotificationBuilder;
 use crate::database::models::project_item::{GalleryItem, ModCategory};
@@ -20,6 +20,7 @@ use crate::models::projects::{
 };
 use crate::models::teams::ProjectPermissions;
 use crate::models::threads::MessageBody;
+use crate::queue::moderation::AutomatedModerationQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use crate::search::indexing::remove_documents;
@@ -137,7 +138,7 @@ pub async fn projects_get(
     .map(|x| x.1)
     .ok();
 
-    let projects = filter_visible_projects(projects_data, &user_option, &pool).await?;
+    let projects = filter_visible_projects(projects_data, &user_option, &pool, false).await?;
 
     Ok(HttpResponse::Ok().json(projects))
 }
@@ -164,7 +165,7 @@ pub async fn project_get(
     .ok();
 
     if let Some(data) = project_data {
-        if is_visible_project(&data.inner, &user_option, &pool).await? {
+        if is_visible_project(&data.inner, &user_option, &pool, false).await? {
             return Ok(HttpResponse::Ok().json(Project::from(data)));
         }
     }
@@ -229,6 +230,7 @@ pub struct EditProject {
     pub monetization_status: Option<MonetizationStatus>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn project_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
@@ -237,6 +239,7 @@ pub async fn project_edit(
     new_project: web::Json<EditProject>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
+    moderation_queue: web::Data<AutomatedModerationQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
         &req,
@@ -352,16 +355,9 @@ pub async fn project_edit(
                     .execute(&mut *transaction)
                     .await?;
 
-                    sqlx::query!(
-                        "
-                        UPDATE threads
-                        SET show_in_mod_inbox = FALSE
-                        WHERE id = $1
-                        ",
-                        project_item.thread_id as db_ids::ThreadId,
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
+                    moderation_queue
+                        .projects
+                        .insert(project_item.inner.id.into());
                 }
 
                 if status.is_approved() && !project_item.inner.status.is_approved() {
@@ -457,6 +453,7 @@ pub async fn project_edit(
                         old_status: project_item.inner.status,
                     },
                     thread_id: project_item.thread_id,
+                    hide_identity: true,
                 }
                 .insert(&mut transaction)
                 .await?;
@@ -971,7 +968,7 @@ pub async fn dependency_list(
     .ok();
 
     if let Some(project) = result {
-        if !is_visible_project(&project.inner, &user_option, &pool).await? {
+        if !is_visible_project(&project.inner, &user_option, &pool, false).await? {
             return Err(ApiError::NotFound);
         }
 
@@ -1004,14 +1001,10 @@ pub async fn dependency_list(
         )
         .await?;
 
-        let mut projects = projects_result
-            .into_iter()
-            .map(models::projects::Project::from)
-            .collect::<Vec<_>>();
-        let mut versions = versions_result
-            .into_iter()
-            .map(models::projects::Version::from)
-            .collect::<Vec<_>>();
+        let mut projects =
+            filter_visible_projects(projects_result, &user_option, &pool, false).await?;
+        let mut versions =
+            filter_visible_versions(versions_result, &user_option, &pool, &redis).await?;
 
         projects.sort_by(|a, b| b.published.cmp(&a.published));
         projects.dedup_by(|a, b| a.id == b.id);
@@ -2064,7 +2057,7 @@ pub async fn project_follow(
     let user_id: db_ids::UserId = user.id.into();
     let project_id: db_ids::ProjectId = result.inner.id;
 
-    if !is_visible_project(&result.inner, &Some(user), &pool).await? {
+    if !is_visible_project(&result.inner, &Some(user), &pool, false).await? {
         return Err(ApiError::NotFound);
     }
 
@@ -2215,7 +2208,7 @@ pub async fn project_get_organization(
             ApiError::InvalidInput("The specified project does not exist!".to_string())
         })?;
 
-    if !is_visible_project(&result.inner, &current_user, &pool).await? {
+    if !is_visible_project(&result.inner, &current_user, &pool, false).await? {
         Err(ApiError::InvalidInput(
             "The specified project does not exist!".to_string(),
         ))
