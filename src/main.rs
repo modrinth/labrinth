@@ -3,14 +3,15 @@ use actix_web_prom::PrometheusMetricsBuilder;
 use env_logger::Env;
 use labrinth::database::redis::RedisPool;
 use labrinth::file_hosting::S3Host;
-use labrinth::ratelimit::errors::ARError;
-use labrinth::ratelimit::memory::{MemoryStore, MemoryStoreActor};
-use labrinth::ratelimit::middleware::RateLimiter;
 use labrinth::search;
-use labrinth::util::env::parse_var;
+use labrinth::util::ratelimit::RateLimit;
 use labrinth::{check_env_vars, clickhouse, database, file_hosting, queue};
 use log::{error, info};
 use std::sync::Arc;
+
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[derive(Clone)]
 pub struct Pepper {
@@ -86,15 +87,12 @@ async fn main() -> std::io::Result<()> {
 
     let maxmind_reader = Arc::new(queue::maxmind::MaxMindIndexer::new().await.unwrap());
 
-    let store = MemoryStore::new();
-
     let prometheus = PrometheusMetricsBuilder::new("labrinth")
         .endpoint("/metrics")
         .build()
         .expect("Failed to create prometheus metrics middleware");
 
     let search_config = search::SearchConfig::new(None);
-    info!("Starting Actix HTTP server!");
 
     let labrinth_config = labrinth::app_setup(
         pool.clone(),
@@ -105,32 +103,14 @@ async fn main() -> std::io::Result<()> {
         maxmind_reader.clone(),
     );
 
+    info!("Starting Actix HTTP server!");
+
     // Init App
     HttpServer::new(move || {
         App::new()
             .wrap(prometheus.clone())
+            .wrap(RateLimit(Arc::clone(&labrinth_config.rate_limiter)))
             .wrap(actix_web::middleware::Compress::default())
-            .wrap(
-                RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
-                    .with_identifier(|req| {
-                        let connection_info = req.connection_info();
-                        let ip =
-                            String::from(if parse_var("CLOUDFLARE_INTEGRATION").unwrap_or(false) {
-                                if let Some(header) = req.headers().get("CF-Connecting-IP") {
-                                    header.to_str().map_err(|_| ARError::Identification)?
-                                } else {
-                                    connection_info.peer_addr().ok_or(ARError::Identification)?
-                                }
-                            } else {
-                                connection_info.peer_addr().ok_or(ARError::Identification)?
-                            });
-
-                        Ok(ip)
-                    })
-                    .with_interval(std::time::Duration::from_secs(60))
-                    .with_max_requests(300)
-                    .with_ignore_key(dotenvy::var("RATE_LIMIT_IGNORE_KEY").ok()),
-            )
             .wrap(sentry_actix::Sentry::new())
             .configure(|cfg| labrinth::app_config(cfg, labrinth_config.clone()))
     })

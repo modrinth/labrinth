@@ -1,6 +1,5 @@
-use crate::database::models::project_item::{GalleryItem, LinkUrl};
 use crate::models::error::ApiError;
-use crate::models::projects::{MonetizationStatus, ProjectStatus, SearchRequest};
+use crate::models::projects::SearchRequest;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use chrono::{DateTime, Utc};
@@ -53,12 +52,12 @@ impl actix_web::ResponseError for SearchError {
                 SearchError::InvalidIndex(..) => "invalid_input",
                 SearchError::FormatError(..) => "invalid_input",
             },
-            description: &self.to_string(),
+            description: self.to_string(),
         })
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct SearchConfig {
     pub address: String,
     pub key: String,
@@ -83,8 +82,10 @@ impl SearchConfig {
         Client::new(self.address.as_str(), Some(self.key.as_str()))
     }
 
-    pub fn get_index_name(&self, index: &str) -> String {
-        format!("{}_{}", self.meta_namespace, index)
+    // Next: true if we want the next index (we are preparing the next swap), false if we want the current index (searching)
+    pub fn get_index_name(&self, index: &str, next: bool) -> String {
+        let alt = if next { "_alt" } else { "" };
+        format!("{}_{}_{}", self.meta_namespace, index, alt)
     }
 }
 
@@ -94,6 +95,7 @@ impl SearchConfig {
 pub struct UploadSearchProject {
     pub version_id: String,
     pub project_id: String,
+    //
     pub project_types: Vec<String>,
     pub slug: Option<String>,
     pub author: String,
@@ -119,20 +121,7 @@ pub struct UploadSearchProject {
     pub color: Option<u32>,
 
     // Hidden fields to get the Project model out of the search results.
-    pub license_url: Option<String>,
-    pub monetization_status: Option<MonetizationStatus>,
-    pub team_id: String,
-    pub thread_id: String,
-    pub versions: Vec<String>,
-    pub date_published: DateTime<Utc>,
-    pub date_queued: Option<DateTime<Utc>>,
-    pub status: ProjectStatus,
-    pub requested_status: Option<ProjectStatus>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
-    pub links: Vec<LinkUrl>,
-    pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
-    pub games: Vec<String>,
-    pub organization_id: Option<String>,
     pub project_loader_fields: HashMap<String, Vec<serde_json::Value>>, // Aggregation of loader_fields from all versions of the project, allowing for reconstruction of the Project model.
 
     #[serde(flatten)]
@@ -171,20 +160,7 @@ pub struct ResultSearchProject {
     pub color: Option<u32>,
 
     // Hidden fields to get the Project model out of the search results.
-    pub license_url: Option<String>,
-    pub monetization_status: Option<String>,
-    pub team_id: String,
-    pub thread_id: String,
-    pub versions: Vec<String>,
-    pub date_published: String,
-    pub date_queued: Option<String>,
-    pub status: String,
-    pub requested_status: Option<String>,
     pub loaders: Vec<String>, // Search uses loaders as categories- this is purely for the Project model.
-    pub links: Vec<LinkUrl>,
-    pub gallery_items: Vec<GalleryItem>, // Gallery *only* urls are stored in gallery, but the gallery items are stored here- required for the Project model.
-    pub games: Vec<String>,
-    pub organization_id: Option<String>,
     pub project_loader_fields: HashMap<String, Vec<serde_json::Value>>, // Aggregation of loader_fields from all versions of the project, allowing for reconstruction of the Project model.
 
     #[serde(flatten)]
@@ -195,8 +171,8 @@ pub fn get_sort_index(
     config: &SearchConfig,
     index: &str,
 ) -> Result<(String, [&'static str; 1]), SearchError> {
-    let projects_name = config.get_index_name("projects");
-    let projects_filtered_name = config.get_index_name("projects_filtered");
+    let projects_name = config.get_index_name("projects", false);
+    let projects_filtered_name = config.get_index_name("projects_filtered", false);
     Ok(match index {
         "relevance" => (projects_name, ["downloads:desc"]),
         "downloads" => (projects_filtered_name, ["downloads:desc"]),
@@ -215,7 +191,12 @@ pub async fn search_for_project(
 
     let offset: usize = info.offset.as_deref().unwrap_or("0").parse()?;
     let index = info.index.as_deref().unwrap_or("relevance");
-    let limit = info.limit.as_deref().unwrap_or("10").parse()?;
+    let limit = info
+        .limit
+        .as_deref()
+        .unwrap_or("10")
+        .parse::<usize>()?
+        .min(100);
 
     let sort = get_sort_index(config, index)?;
     let meilisearch_index = client.get_index(sort.0).await?;

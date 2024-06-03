@@ -60,7 +60,7 @@ pub async fn team_members_get_project(
         .map(|x| x.1)
         .ok();
 
-        if !is_visible_project(&project.inner, &current_user, &pool).await? {
+        if !is_visible_project(&project.inner, &current_user, &pool, false).await? {
             return Err(ApiError::NotFound);
         }
         let members_data =
@@ -504,9 +504,11 @@ pub async fn add_team_member(
             .as_ref()
             .map(|tm| tm.is_owner)
             .unwrap_or(false)
+            && new_member.permissions != ProjectPermissions::all()
         {
             return Err(ApiError::InvalidInput(
-                "You cannot add the owner of an organization to a project team owned by that organization".to_string(),
+                "You cannot override the owner of an organization's permissions in a project team"
+                    .to_string(),
             ));
         }
 
@@ -567,6 +569,7 @@ pub async fn add_team_member(
 
     transaction.commit().await?;
     TeamMember::clear_cache(team_id, &redis).await?;
+    User::clear_project_cache(&[new_member.user_id.into()], &redis).await?;
 
     Ok(HttpResponse::NoContent().body(""))
 }
@@ -634,6 +637,22 @@ pub async fn edit_team_member(
             } else {
                 None
             };
+
+            if organization_team_member
+                .as_ref()
+                .map(|x| x.is_owner)
+                .unwrap_or(false)
+                && edit_member
+                    .permissions
+                    .map(|x| x != ProjectPermissions::all())
+                    .unwrap_or(false)
+            {
+                return Err(ApiError::CustomAuthentication(
+                    "You cannot override the project permissions of the organization owner!"
+                        .to_string(),
+                ));
+            }
+
             let permissions = ProjectPermissions::get_permissions_by_role(
                 &current_user.role,
                 &member.clone(),

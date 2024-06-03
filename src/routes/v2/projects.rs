@@ -7,6 +7,7 @@ use crate::models::projects::{
 };
 use crate::models::v2::projects::{DonationLink, LegacyProject, LegacySideType, LegacyVersion};
 use crate::models::v2::search::LegacySearchResults;
+use crate::queue::moderation::AutomatedModerationQueue;
 use crate::queue::session::AuthQueue;
 use crate::routes::v3::projects::ProjectIds;
 use crate::routes::{v2_reroute, v3, ApiError};
@@ -380,14 +381,16 @@ pub struct EditProject {
 }
 
 #[patch("{id}")]
+#[allow(clippy::too_many_arguments)]
 pub async fn project_edit(
     req: HttpRequest,
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
-    config: web::Data<SearchConfig>,
+    search_config: web::Data<SearchConfig>,
     new_project: web::Json<EditProject>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
+    moderation_queue: web::Data<AutomatedModerationQueue>,
 ) -> Result<HttpResponse, ApiError> {
     let v2_new_project = new_project.into_inner();
     let client_side = v2_new_project.client_side;
@@ -490,10 +493,11 @@ pub async fn project_edit(
         req.clone(),
         info,
         pool.clone(),
-        config,
+        search_config,
         web::Json(new_project),
         redis.clone(),
         session_queue.clone(),
+        moderation_queue,
     )
     .await
     .or_else(v2_reroute::flatten_404_error)?;
@@ -865,11 +869,11 @@ pub async fn project_delete(
     info: web::Path<(String,)>,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
-    config: web::Data<SearchConfig>,
+    search_config: web::Data<SearchConfig>,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     // Returns NoContent, so no need to convert
-    v3::projects::project_delete(req, info, pool, redis, config, session_queue)
+    v3::projects::project_delete(req, info, pool, redis, search_config, session_queue)
         .await
         .or_else(v2_reroute::flatten_404_error)
 }
