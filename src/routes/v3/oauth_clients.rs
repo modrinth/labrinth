@@ -287,10 +287,6 @@ pub async fn oauth_client_edit(
         .validate()
         .map_err(|e| ApiError::Validation(validation_errors_to_string(e, None)))?;
 
-    if client_updates.name.is_none() && client_updates.max_scopes.is_none() {
-        return Err(ApiError::InvalidInput("No changes provided".to_string()));
-    }
-
     if let Some(existing_client) = OAuthClient::get(client_id.into_inner().into(), &**pool).await? {
         existing_client.validate_authorized(Some(&current_user))?;
 
