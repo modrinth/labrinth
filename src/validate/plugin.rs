@@ -1,4 +1,4 @@
-use crate::validate::{SupportedGameVersions, ValidationError, ValidationResult};
+use crate::validate::{filter_out_packs, SupportedGameVersions, ValidationError, ValidationResult};
 use std::io::Cursor;
 use zip::ZipArchive;
 
@@ -10,7 +10,7 @@ impl super::Validator for PluginYmlValidator {
     }
 
     fn get_supported_loaders(&self) -> &[&str] {
-        &["bukkit", "spigot", "paper", "purpur"]
+        &["bukkit", "spigot", "paper", "purpur", "folia"]
     }
 
     fn get_supported_game_versions(&self) -> SupportedGameVersions {

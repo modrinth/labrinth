@@ -2,15 +2,15 @@ use crate::validate::{filter_out_packs, SupportedGameVersions, ValidationError, 
 use std::io::Cursor;
 use zip::ZipArchive;
 
-pub struct FabricValidator;
+pub struct NeoForgeValidator;
 
-impl super::Validator for FabricValidator {
+impl super::Validator for NeoForgeValidator {
     fn get_file_extensions(&self) -> &[&str] {
-        &["jar"]
+        &["jar", "zip"]
     }
 
     fn get_supported_loaders(&self) -> &[&str] {
-        &["fabric"]
+        &["forge"]
     }
 
     fn get_supported_game_versions(&self) -> SupportedGameVersions {
@@ -21,9 +21,12 @@ impl super::Validator for FabricValidator {
         &self,
         archive: &mut ZipArchive<Cursor<bytes::Bytes>>,
     ) -> Result<ValidationResult, ValidationError> {
-        if archive.by_name("fabric.mod.json").is_err() {
+        if archive.by_name("META-INF/mods.toml").is_err()
+            && archive.by_name("META-INF/neoforge.mods.toml").is_err()
+            && !archive.file_names().any(|x| x.ends_with(".class"))
+        {
             return Ok(ValidationResult::Warning(
-                "No fabric.mod.json present for Fabric file.",
+                "No neoforge.mods.toml, mods.toml, or valid class files present for NeoForge file.",
             ));
         }
 
