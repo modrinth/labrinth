@@ -32,6 +32,8 @@ impl super::Validator for QuiltValidator {
             ));
         }
 
+        filter_out_packs(archive)?;
+
         Ok(ValidationResult::Pass)
     }
 }
