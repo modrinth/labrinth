@@ -13,12 +13,8 @@ impl super::Validator for ModpackValidator {
         &["mrpack"]
     }
 
-    fn get_project_types(&self) -> &[&str] {
-        &["modpack"]
-    }
-
     fn get_supported_loaders(&self) -> &[&str] {
-        &["forge", "fabric", "quilt", "mrpack"]
+        &["mrpack"]
     }
 
     fn get_supported_game_versions(&self) -> SupportedGameVersions {
@@ -53,13 +49,13 @@ impl super::Validator for ModpackValidator {
         }
 
         for file in &pack.files {
-            if file.hashes.get(&PackFileHash::Sha1).is_none() {
+            if !file.hashes.contains_key(&PackFileHash::Sha1) {
                 return Err(ValidationError::InvalidInput(
                     "All pack files must provide a SHA1 hash!".into(),
                 ));
             }
 
-            if file.hashes.get(&PackFileHash::Sha512).is_none() {
+            if !file.hashes.contains_key(&PackFileHash::Sha512) {
                 return Err(ValidationError::InvalidInput(
                     "All pack files must provide a SHA512 hash!".into(),
                 ));
