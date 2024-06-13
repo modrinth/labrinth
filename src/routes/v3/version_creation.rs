@@ -505,8 +505,15 @@ async fn version_create_inner(
 
     models::Project::clear_cache(project_id, None, Some(true), redis).await?;
 
-    if let Some(project) = models::Project::get_id(project_id, &*pool, &redis).await? {
-        if project.inner.status == ProjectStatus::Processing {
+    let project_status = sqlx::query!(
+        "SELECT status FROM mods WHERE id = $1",
+        project_id as models::ProjectId,
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(project_status) = project_status {
+        if project_status.status == ProjectStatus::Processing.as_str() {
             moderation_queue.projects.insert(project_id.into());
         }
     }
