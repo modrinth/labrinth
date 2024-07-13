@@ -64,7 +64,6 @@ pub struct TempUser {
 
     pub avatar_url: Option<String>,
     pub bio: Option<String>,
-    pub name: Option<String>,
 
     pub country: Option<String>,
 }
@@ -219,7 +218,6 @@ impl TempUser {
                 venmo_handle: None,
                 totp_secret: None,
                 username,
-                name: self.name,
                 email: self.email,
                 email_verified: true,
                 avatar_url,
@@ -576,7 +574,6 @@ impl AuthProvider {
                     email: github_user.email,
                     avatar_url: Some(github_user.avatar_url),
                     bio: github_user.bio,
-                    name: github_user.name,
                     country: None,
                 }
             }
@@ -608,7 +605,6 @@ impl AuthProvider {
                         .avatar
                         .map(|x| format!("https://cdn.discordapp.com/avatars/{}/{}.webp", id, x)),
                     bio: None,
-                    name: discord_user.global_name,
                     country: None,
                 }
             }
@@ -617,7 +613,6 @@ impl AuthProvider {
                 #[serde(rename_all = "camelCase")]
                 pub struct MicrosoftUser {
                     pub id: String,
-                    pub display_name: Option<String>,
                     pub mail: Option<String>,
                     pub user_principal_name: String,
                 }
@@ -640,7 +635,6 @@ impl AuthProvider {
                     email: microsoft_user.mail,
                     avatar_url: None,
                     bio: None,
-                    name: microsoft_user.display_name,
                     country: None,
                 }
             }
@@ -670,7 +664,6 @@ impl AuthProvider {
                     email: gitlab_user.email,
                     avatar_url: gitlab_user.avatar_url,
                     bio: gitlab_user.bio,
-                    name: gitlab_user.name,
                     country: None,
                 }
             }
@@ -679,8 +672,6 @@ impl AuthProvider {
                 pub struct GoogleUser {
                     pub id: String,
                     pub email: String,
-                    pub name: Option<String>,
-                    pub bio: Option<String>,
                     pub picture: Option<String>,
                 }
 
@@ -704,7 +695,6 @@ impl AuthProvider {
                     email: Some(google_user.email),
                     avatar_url: google_user.picture,
                     bio: None,
-                    name: google_user.name,
                     country: None,
                 }
             }
@@ -724,7 +714,6 @@ impl AuthProvider {
                 #[derive(Deserialize)]
                 struct Player {
                     steamid: String,
-                    personaname: String,
                     profileurl: String,
                     avatar: Option<String>,
                 }
@@ -756,7 +745,6 @@ impl AuthProvider {
                         email: None,
                         avatar_url: player.avatar,
                         bio: None,
-                        name: Some(player.personaname),
                         country: None,
                     }
                 } else {
@@ -801,7 +789,6 @@ impl AuthProvider {
                     email: Some(paypal_user.email),
                     avatar_url: paypal_user.picture,
                     bio: None,
-                    name: None,
                     country: Some(paypal_user.address.country),
                 }
             }
@@ -1525,7 +1512,6 @@ pub async fn create_account_with_password(
         venmo_handle: None,
         totp_secret: None,
         username: new_account.username.clone(),
-        name: Some(new_account.username),
         email: Some(new_account.email.clone()),
         email_verified: false,
         avatar_url: None,
@@ -2069,7 +2055,6 @@ pub async fn change_password(
             &[
                 &user.username,
                 &user.email.clone().unwrap_or_default(),
-                &user.name.unwrap_or_default(),
             ],
         )?;
 
