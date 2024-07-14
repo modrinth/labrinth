@@ -508,9 +508,7 @@ async fn project_create_inner(
                             CreateError::InvalidIconFormat(file_extension.to_string())
                         })?;
                     let url = format!("data/{project_id}/images/{hash}.{file_extension}");
-                    let upload_data = file_host
-                        .upload_file(content_type, &url, data.freeze())
-                        .await?;
+                    let upload_data = file_host.upload_file(content_type, &url, data).await?;
                     uploaded_files.push(UploadedFile {
                         file_id: upload_data.file_id,
                         file_name: upload_data.file_name,
@@ -955,7 +953,7 @@ async fn process_icon_upload(
             .upload_file(
                 content_type,
                 &format!("data/{id}/{hash}.{file_extension}"),
-                data.freeze(),
+                data,
             )
             .await?;
 
