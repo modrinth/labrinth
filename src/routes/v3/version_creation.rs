@@ -904,7 +904,6 @@ pub async fn upload_file(
         }
     }
 
-    let data = data.freeze();
     let primary = (validation_result.is_passed()
         && version_files.iter().all(|x| !x.primary)
         && !ignore_primary)

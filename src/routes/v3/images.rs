@@ -41,7 +41,7 @@ pub async fn images_add(
     req: HttpRequest,
     web::Query(data): web::Query<ImageUpload>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
-    mut payload: web::Payload,
+    payload: web::Payload,
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
@@ -166,14 +166,14 @@ pub async fn images_add(
 
         // Upload the image to the file host
         let bytes =
-            read_from_payload(&mut payload, 1_048_576, "Icons must be smaller than 1MiB").await?;
+            read_from_payload(payload, 1_048_576, "Icons must be smaller than 1MiB").await?;
 
         let hash = sha1::Sha1::from(&bytes).hexdigest();
         let upload_data = file_host
             .upload_file(
                 content_type,
                 &format!("data/cached_images/{}.{}", hash, data.ext),
-                bytes.freeze(),
+                bytes,
             )
             .await?;
 
