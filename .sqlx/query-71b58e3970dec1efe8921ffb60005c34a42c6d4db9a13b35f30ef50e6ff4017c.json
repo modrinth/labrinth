@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, product_id, interval, price, currency_code\n            FROM products_prices\n            WHERE id = ANY($1::bigint[])",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "product_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "interval",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 3,
+        "name": "price",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "currency_code",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "71b58e3970dec1efe8921ffb60005c34a42c6d4db9a13b35f30ef50e6ff4017c"
+}

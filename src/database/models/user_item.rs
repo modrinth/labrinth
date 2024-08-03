@@ -32,6 +32,7 @@ pub struct User {
     pub paypal_country: Option<String>,
     pub paypal_email: Option<String>,
     pub venmo_handle: Option<String>,
+    pub stripe_customer_id: Option<String>,
 
     pub totp_secret: Option<String>,
 
@@ -60,13 +61,13 @@ impl User {
                 avatar_url, bio, created,
                 github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,
                 email_verified, password, paypal_id, paypal_country, paypal_email,
-                venmo_handle
+                venmo_handle, stripe_customer_id
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7,
                 $8, $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18, $19
+                $14, $15, $16, $17, $18, $19, $20
             )
             ",
             self.id as UserId,
@@ -87,7 +88,8 @@ impl User {
             self.paypal_id,
             self.paypal_country,
             self.paypal_email,
-            self.venmo_handle
+            self.venmo_handle,
+            self.stripe_customer_id
         )
         .execute(&mut **transaction)
         .await?;
@@ -170,7 +172,7 @@ impl User {
                         balance,
                         github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,
                         email_verified, password, totp_secret, paypal_id, paypal_country, paypal_email,
-                        venmo_handle
+                        venmo_handle, stripe_customer_id
                     FROM users
                     WHERE id = ANY($1) OR LOWER(username) = ANY($2)
                     ",
@@ -202,6 +204,7 @@ impl User {
                             paypal_country: u.paypal_country,
                             paypal_email: u.paypal_email,
                             venmo_handle: u.venmo_handle,
+                            stripe_customer_id: u.stripe_customer_id,
                             totp_secret: u.totp_secret,
                         };
 
