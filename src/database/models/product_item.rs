@@ -1,9 +1,13 @@
-use crate::database::models::{DatabaseError, ProductId, ProductPriceId};
+use crate::database::models::{product_item, DatabaseError, ProductId, ProductPriceId};
+use crate::database::redis::RedisPool;
 use crate::models::billing::{PriceInterval, ProductMetadata};
 use dashmap::DashMap;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::convert::TryInto;
+
+const PRODUCTS_NAMESPACE: &str = "products";
 
 pub struct ProductItem {
     pub id: ProductId,
@@ -82,6 +86,67 @@ impl ProductItem {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct QueryProduct {
+    pub id: ProductId,
+    pub metadata: ProductMetadata,
+    pub unitary: bool,
+    pub prices: Vec<ProductPriceItem>,
+}
+
+impl QueryProduct {
+    pub async fn list<'a, E>(exec: E, redis: &RedisPool) -> Result<Vec<QueryProduct>, DatabaseError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        let mut redis = redis.connect().await?;
+
+        let res: Option<Vec<QueryProduct>> = redis
+            .get_deserialized_from_json(PRODUCTS_NAMESPACE, "all")
+            .await?;
+
+        if let Some(res) = res {
+            return Ok(res);
+        }
+
+        let all_products = product_item::ProductItem::get_all(exec).await?;
+        let prices = product_item::ProductPriceItem::get_all_products_prices(
+            &all_products.iter().map(|x| x.id).collect::<Vec<_>>(),
+            exec,
+        )
+        .await?;
+
+        let products = all_products
+            .into_iter()
+            .map(|x| QueryProduct {
+                id: x.id.into(),
+                metadata: x.metadata,
+                prices: prices
+                    .remove(&x.id)
+                    .map(|x| x.1)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|x| ProductPriceItem {
+                        id: x.id,
+                        product_id: x.product_id,
+                        interval: x.interval,
+                        price: x.price,
+                        currency_code: x.currency_code,
+                    })
+                    .collect(),
+                unitary: x.unitary,
+            })
+            .collect::<Vec<_>>();
+
+        redis
+            .set_serialized_to_json(PRODUCTS_NAMESPACE, "all", &products, None)
+            .await?;
+
+        Ok(products)
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct ProductPriceItem {
     pub id: ProductPriceId,
     pub product_id: ProductId,

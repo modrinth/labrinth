@@ -76,14 +76,16 @@ pub fn app_setup(
 
     let automated_moderation_queue = web::Data::new(AutomatedModerationQueue::default());
 
-    let automated_moderation_queue_ref = automated_moderation_queue.clone();
-    let pool_ref = pool.clone();
-    let redis_pool_ref = redis_pool.clone();
-    actix_rt::spawn(async move {
-        automated_moderation_queue_ref
-            .task(pool_ref, redis_pool_ref)
-            .await;
-    });
+    {
+        let automated_moderation_queue_ref = automated_moderation_queue.clone();
+        let pool_ref = pool.clone();
+        let redis_pool_ref = redis_pool.clone();
+        actix_rt::spawn(async move {
+            automated_moderation_queue_ref
+                .task(pool_ref, redis_pool_ref)
+                .await;
+        });
+    }
 
     let mut scheduler = scheduler::Scheduler::new();
 
@@ -258,21 +260,14 @@ pub fn app_setup(
         });
     }
 
+    let stripe_client = stripe::Client::new(dotenvy::var("STRIPE_API_KEY").unwrap());
     {
         let pool_ref = pool.clone();
         let redis_ref = redis_pool.clone();
-        scheduler.run(std::time::Duration::from_secs(60 * 30), move || {
-            let pool_ref = pool_ref.clone();
-            let redis_ref = redis_ref.clone();
+        let stripe_client_ref = stripe_client.clone();
 
-            async move {
-                info!("Indexing billing queue");
-                let result = crate::routes::internal::billing::task(&pool_ref, &redis_ref).await;
-                if let Err(e) = result {
-                    warn!("Indexing billing queue failed: {:?}", e);
-                }
-                info!("Done indexing billing queue");
-            }
+        actix_rt::spawn(async move {
+            routes::internal::billing::task(stripe_client_ref, pool_ref, redis_ref).await;
         });
     }
 
@@ -282,8 +277,6 @@ pub fn app_setup(
 
     let payouts_queue = web::Data::new(PayoutsQueue::new());
     let active_sockets = web::Data::new(RwLock::new(ActiveSockets::default()));
-
-    let stripe_client = stripe::Client::new(dotenvy::var("STRIPE_API_KEY").unwrap());
 
     LabrinthConfig {
         pool,
