@@ -1,5 +1,5 @@
 use crate::database::models::{DatabaseError, ProductPriceId, UserId, UserSubscriptionId};
-use crate::models::billing::SubscriptionStatus;
+use crate::models::billing::{PriceDuration, SubscriptionStatus};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 
@@ -7,6 +7,7 @@ pub struct UserSubscriptionItem {
     pub id: UserSubscriptionId,
     pub user_id: UserId,
     pub price_id: ProductPriceId,
+    pub interval: PriceDuration,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
     pub last_charge: Option<DateTime<Utc>>,
@@ -17,6 +18,7 @@ struct UserSubscriptionResult {
     id: i64,
     user_id: i64,
     price_id: i64,
+    interval: String,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
     pub last_charge: Option<DateTime<Utc>>,
@@ -29,7 +31,7 @@ macro_rules! select_user_subscriptions_with_predicate {
             UserSubscriptionResult,
             r#"
             SELECT
-                id, user_id, price_id, created, expires, last_charge, status
+                id, user_id, price_id, interval, created, expires, last_charge, status
             FROM users_subscriptions
             "#
                 + $predicate,
@@ -44,6 +46,7 @@ impl From<UserSubscriptionResult> for UserSubscriptionItem {
             id: UserSubscriptionId(r.id),
             user_id: UserId(r.user_id),
             price_id: ProductPriceId(r.price_id),
+            interval: PriceDuration::from_string(&r.interval),
             created: r.created,
             expires: r.expires,
             last_charge: r.last_charge,
@@ -104,20 +107,22 @@ impl UserSubscriptionItem {
         sqlx::query!(
             "
             INSERT INTO users_subscriptions (
-                id, user_id, price_id, created, expires, last_charge, status
+                id, user_id, price_id, interval, created, expires, last_charge, status
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7
+                $1, $2, $3, $4, $5, $6, $7, $8
             )
             ON CONFLICT (id)
             DO UPDATE
-                SET expires = EXCLUDED.expires,
+                SET interval = EXCLUDED.interval,
+                    expires = EXCLUDED.expires,
                     last_charge = EXCLUDED.last_charge,
                     status = EXCLUDED.status
             ",
             self.id.0,
             self.user_id.0,
             self.price_id.0,
+            self.interval.as_str(),
             self.created,
             self.expires,
             self.last_charge,

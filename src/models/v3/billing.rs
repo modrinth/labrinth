@@ -2,6 +2,7 @@ use crate::models::ids::Base62Id;
 use crate::models::ids::UserId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(from = "Base62Id")]
@@ -31,30 +32,43 @@ pub struct ProductPriceId(pub u64);
 pub struct ProductPrice {
     pub id: ProductPriceId,
     pub product_id: ProductId,
-    pub interval: PriceInterval,
-    pub price: i32,
+    pub prices: Price,
     pub currency_code: String,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
-pub enum PriceInterval {
-    OneTime,
-    /// For recurring payments. amount: 1 and duration: 'week' would result in a recurring payment
-    /// every week
+pub enum Price {
+    OneTime {
+        price: i32,
+    },
     Recurring {
-        amount: usize,
-        duration: PriceDuration,
+        intervals: HashMap<PriceDuration, i32>,
     },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Debug, Copy, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub enum PriceDuration {
-    Day,
-    Week,
-    Month,
-    Year,
+    Monthly,
+    Yearly,
+}
+
+impl PriceDuration {
+    pub fn from_string(string: &str) -> PriceDuration {
+        match string {
+            "monthly" => PriceDuration::Monthly,
+            "yearly" => PriceDuration::Yearly,
+            _ => PriceDuration::Monthly,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PriceDuration::Monthly => "monthly",
+            PriceDuration::Yearly => "yearly",
+        }
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -67,6 +81,7 @@ pub struct UserSubscription {
     pub id: UserSubscriptionId,
     pub user_id: UserId,
     pub price_id: ProductPriceId,
+    pub interval: PriceDuration,
     pub status: SubscriptionStatus,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,

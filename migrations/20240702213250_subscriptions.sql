@@ -9,16 +9,15 @@ CREATE TABLE products (
 CREATE TABLE products_prices (
     id bigint PRIMARY KEY,
     product_id bigint REFERENCES products NOT NULL,
-    interval jsonb NOT NULL,
-    -- price in smallest currency unit (cents for USD)
-    price int not null,
-    currency_code text not null
+    currency_code text not null,
+    prices jsonb NOT NULL
 );
 
 CREATE TABLE users_subscriptions (
     id bigint PRIMARY KEY,
     user_id bigint REFERENCES users NOT NULL,
     price_id bigint REFERENCES products_prices NOT NULL,
+    interval text NOT NULL,
     created timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     expires timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     last_charge timestamptz NULL,

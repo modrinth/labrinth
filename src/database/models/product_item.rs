@@ -1,6 +1,6 @@
 use crate::database::models::{product_item, DatabaseError, ProductId, ProductPriceId};
 use crate::database::redis::RedisPool;
-use crate::models::billing::{PriceInterval, ProductMetadata};
+use crate::models::billing::{Price, ProductMetadata};
 use dashmap::DashMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -129,8 +129,7 @@ impl QueryProduct {
                     .map(|x| ProductPriceItem {
                         id: x.id,
                         product_id: x.product_id,
-                        interval: x.interval,
-                        price: x.price,
+                        prices: x.prices,
                         currency_code: x.currency_code,
                     })
                     .collect(),
@@ -150,16 +149,14 @@ impl QueryProduct {
 pub struct ProductPriceItem {
     pub id: ProductPriceId,
     pub product_id: ProductId,
-    pub interval: PriceInterval,
-    pub price: i32,
+    pub prices: Price,
     pub currency_code: String,
 }
 
 struct ProductPriceResult {
     id: i64,
     product_id: i64,
-    interval: serde_json::Value,
-    price: i32,
+    prices: serde_json::Value,
     currency_code: String,
 }
 
@@ -168,7 +165,7 @@ macro_rules! select_prices_with_predicate {
         sqlx::query_as!(
             ProductPriceResult,
             r#"
-            SELECT id, product_id, interval, price, currency_code
+            SELECT id, product_id, prices, currency_code
             FROM products_prices
             "#
                 + $predicate,
@@ -184,8 +181,7 @@ impl TryFrom<ProductPriceResult> for ProductPriceItem {
         Ok(ProductPriceItem {
             id: ProductPriceId(r.id),
             product_id: ProductId(r.product_id),
-            interval: serde_json::from_value(r.interval)?,
-            price: r.price,
+            prices: serde_json::from_value(r.prices)?,
             currency_code: r.currency_code,
         })
     }

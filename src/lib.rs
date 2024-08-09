@@ -266,9 +266,9 @@ pub fn app_setup(
         let redis_ref = redis_pool.clone();
         let stripe_client_ref = stripe_client.clone();
 
-        actix_rt::spawn(async move {
-            routes::internal::billing::task(stripe_client_ref, pool_ref, redis_ref).await;
-        });
+        // actix_rt::spawn(async move {
+        //     routes::internal::billing::task(stripe_client_ref, pool_ref, redis_ref).await;
+        // });
     }
 
     let ip_salt = Pepper {
