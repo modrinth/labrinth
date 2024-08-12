@@ -1216,7 +1216,7 @@ pub async fn auth_callback(
                             .insert(Duration::minutes(30), &redis)
                             .await?;
 
-                        if let Some(url) = url {
+                        return if let Some(url) = url {
                             let redirect_url = format!(
                                 "{}{}error=2fa_required&flow={}",
                                 url,
@@ -1224,9 +1224,9 @@ pub async fn auth_callback(
                                 flow
                             );
 
-                            return Ok(HttpResponse::TemporaryRedirect()
+                            Ok(HttpResponse::TemporaryRedirect()
                                 .append_header(("Location", &*redirect_url))
-                                .json(serde_json::json!({ "url": redirect_url })));
+                                .json(serde_json::json!({ "url": redirect_url })))
                         } else {
                             let mut ws_conn = {
                                 let db = sockets.read().await;
@@ -1250,10 +1250,10 @@ pub async fn auth_callback(
 
                             let _ = ws_conn.close(None).await;
 
-                            return Ok(crate::auth::templates::Success {
+                            Ok(crate::auth::templates::Success {
                                 icon: user.avatar_url.as_deref().unwrap_or("https://cdn-raw.modrinth.com/placeholder.svg"),
                                 name: &user.username,
-                            }.render());
+                            }.render())
                         }
                     }
 

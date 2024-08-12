@@ -475,14 +475,14 @@ pub async fn add_team_member(
         TeamMember::get_from_user_id_pending(team_id, new_member.user_id.into(), &**pool).await?;
 
     if let Some(req) = request {
-        if req.accepted {
-            return Err(ApiError::InvalidInput(
+        return if req.accepted {
+            Err(ApiError::InvalidInput(
                 "The user is already a member of that team".to_string(),
-            ));
+            ))
         } else {
-            return Err(ApiError::InvalidInput(
+            Err(ApiError::InvalidInput(
                 "There is already a pending member request for this user".to_string(),
-            ));
+            ))
         }
     }
     let new_user =
