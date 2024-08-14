@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, product_id, interval, price, currency_code\n            FROM products_prices\n            WHERE product_id = ANY($1::bigint[])",
+  "query": "\n            SELECT id, product_id, prices, currency_code\n            FROM products_prices\n            WHERE id = ANY($1::bigint[])",
   "describe": {
     "columns": [
       {
@@ -15,16 +15,11 @@
       },
       {
         "ordinal": 2,
-        "name": "interval",
+        "name": "prices",
         "type_info": "Jsonb"
       },
       {
         "ordinal": 3,
-        "name": "price",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 4,
         "name": "currency_code",
         "type_info": "Text"
       }
@@ -38,9 +33,8 @@
       false,
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "26db5e0232042725e9fb746c73f0cebccc187268c46d44f06874ec50c9f94fcf"
+  "hash": "f786bd5afbde34fe166e5535a66ff53036be39958038eaf7c539fd8a9383b724"
 }

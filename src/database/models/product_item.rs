@@ -119,7 +119,7 @@ impl QueryProduct {
         let products = all_products
             .into_iter()
             .map(|x| QueryProduct {
-                id: x.id.into(),
+                id: x.id,
                 metadata: x.metadata,
                 prices: prices
                     .remove(&x.id)

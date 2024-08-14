@@ -682,7 +682,6 @@ impl AuthProvider {
                     pub id: String,
                     pub email: String,
                     pub name: Option<String>,
-                    pub bio: Option<String>,
                     pub picture: Option<String>,
                 }
 

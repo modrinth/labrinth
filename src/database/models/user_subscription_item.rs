@@ -133,4 +133,21 @@ impl UserSubscriptionItem {
 
         Ok(())
     }
+
+    pub async fn remove(
+        id: UserSubscriptionId,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), DatabaseError> {
+        sqlx::query!(
+            "
+            DELETE FROM users_subscriptions
+            WHERE id = $1
+            ",
+            id.0 as i64
+        )
+        .execute(&mut **transaction)
+        .await?;
+
+        Ok(())
+    }
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id, user_id, price_id, created, expires, last_charge, status\n            FROM users_subscriptions\n            WHERE id = ANY($1::bigint[])",
+  "query": "\n            SELECT\n                id, user_id, price_id, interval, created, expires, last_charge, status\n            FROM users_subscriptions\n            WHERE expires < $1",
   "describe": {
     "columns": [
       {
@@ -20,31 +20,37 @@
       },
       {
         "ordinal": 3,
+        "name": "interval",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
         "name": "created",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "expires",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "last_charge",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "status",
         "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8Array"
+        "Timestamptz"
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
@@ -54,5 +60,5 @@
       false
     ]
   },
-  "hash": "1b924fd53e72564aab4a11333a93a461acde17dd1978f580f253d3c7b665857a"
+  "hash": "61a87b00baaba022ab32eedf177d5b9dc6d5b7568cf1df15fac6c9e85acfa448"
 }

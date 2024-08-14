@@ -267,8 +267,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.id))) })
+        .fetch(exec)
+        .map_ok(|m| ProjectId(m.id))
         .try_collect::<Vec<ProjectId>>()
         .await?;
 
@@ -296,8 +296,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| OrganizationId(m.id))) })
+        .fetch(exec)
+        .map_ok(|m| OrganizationId(m.id))
         .try_collect::<Vec<OrganizationId>>()
         .await?;
 
@@ -320,8 +320,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| CollectionId(m.id))) })
+        .fetch(exec)
+        .map_ok(|m| CollectionId(m.id))
         .try_collect::<Vec<CollectionId>>()
         .await?;
 
@@ -344,8 +344,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| to_base62(m.code as u64))) })
+        .fetch(exec)
+        .map_ok(|m| to_base62(m.code as u64))
         .try_collect::<Vec<String>>()
         .await?;
 
@@ -433,8 +433,8 @@ impl User {
                 ",
                 id as UserId,
             )
-            .fetch_many(&mut **transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|m| m.id)) })
+            .fetch(&mut **transaction)
+            .map_ok(|m| m.id)
             .try_collect::<Vec<i64>>()
             .await?;
 
@@ -466,8 +466,8 @@ impl User {
                 ",
                 id as UserId,
             )
-            .fetch_many(&mut **transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|x| CollectionId(x.id))) })
+            .fetch(&mut **transaction)
+            .map_ok(|x| CollectionId(x.id))
             .try_collect::<Vec<_>>()
             .await?;
 
@@ -484,8 +484,8 @@ impl User {
                 ",
                 id as UserId,
             )
-            .fetch_many(&mut **transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|x| ThreadId(x.id))) })
+            .fetch(&mut **transaction)
+            .map_ok(|x| ThreadId(x.id))
             .try_collect::<Vec<_>>()
             .await?;
 
