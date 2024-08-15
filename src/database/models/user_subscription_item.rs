@@ -118,6 +118,7 @@ impl UserSubscriptionItem {
                     expires = EXCLUDED.expires,
                     last_charge = EXCLUDED.last_charge,
                     status = EXCLUDED.status
+                    price_id = EXCLUDED.price_id
             ",
             self.id.0,
             self.user_id.0,
