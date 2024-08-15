@@ -682,7 +682,6 @@ pub async fn initiate_payment(
                 interval.as_str().to_string(),
             );
         }
-
         update_payment_intent.metadata = Some(metadata);
 
         if let PaymentRequestType::PaymentMethod { .. } = payment_request.type_ {
