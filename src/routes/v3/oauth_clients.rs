@@ -345,7 +345,7 @@ pub async fn oauth_client_icon_edit(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     file_host: web::Data<Arc<dyn FileHost + Send + Sync>>,
-    mut payload: web::Payload,
+    payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
     if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
@@ -376,14 +376,13 @@ pub async fn oauth_client_icon_edit(
             }
         }
 
-        let bytes =
-            read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB").await?;
+        let bytes = read_from_payload(payload, 262144, "Icons must be smaller than 256KiB").await?;
         let hash = sha1::Sha1::from(&bytes).hexdigest();
         let upload_data = file_host
             .upload_file(
                 content_type,
                 &format!("data/{}/{}.{}", client_id, hash, ext.ext),
-                bytes.freeze(),
+                bytes,
             )
             .await?;
 
