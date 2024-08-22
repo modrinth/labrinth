@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                    SELECT id, email,\n                        avatar_url, username, bio,\n                        created, role, badges,\n                        balance,\n                        github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,\n                        email_verified, password, totp_secret, paypal_id, paypal_country, paypal_email,\n                        venmo_handle\n                    FROM users\n                    WHERE id = ANY($1) OR LOWER(username) = ANY($2)\n                    ",
+  "query": "\n                    SELECT id, email,\n                        avatar_url, username, bio,\n                        created, role, badges,\n                        balance,\n                        github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,\n                        email_verified, password, totp_secret, paypal_id, paypal_country, paypal_email,\n                        venmo_handle, stripe_customer_id\n                    FROM users\n                    WHERE id = ANY($1) OR LOWER(username) = ANY($2)\n                    ",
   "describe": {
     "columns": [
       {
@@ -112,6 +112,11 @@
         "ordinal": 21,
         "name": "venmo_handle",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 22,
+        "name": "stripe_customer_id",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -142,8 +147,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "fed9fbeffd89652f539db8f2f361f2015e416d8d08a0af93c4ab865f74cd1518"
+  "hash": "93b8fff7ebe72e55e34e98bd365fe1866ec395146d5dabe071a13baa55ec3c09"
 }

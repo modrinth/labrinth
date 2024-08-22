@@ -2055,10 +2055,7 @@ pub async fn change_password(
     let update_password = if let Some(new_password) = &change_password.new_password {
         let score = zxcvbn::zxcvbn(
             new_password,
-            &[
-                &user.username,
-                &user.email.clone().unwrap_or_default(),
-            ],
+            &[&user.username, &user.email.clone().unwrap_or_default()],
         )?;
 
         if score.score() < 3 {
