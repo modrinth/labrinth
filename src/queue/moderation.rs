@@ -246,7 +246,11 @@ impl AutomatedModerationQueue {
                                 mod_messages.messages.push(ModerationMessage::MissingCustomLicenseUrl { license: project.inner.license.clone() });
                             }
 
-                            if (project.project_types.contains(&"resourcepack".to_string()) || project.project_types.contains(&"shader".to_string())) && project.gallery_items.is_empty() {
+                            if (project.project_types.contains(&"resourcepack".to_string()) || project.project_types.contains(&"shader".to_string())) &&
+                                project.gallery_items.is_empty() &&
+                                !project.categories.contains(&"audio".to_string()) &&
+                                !project.categories.contains(&"locale".to_string())
+                            {
                                 mod_messages.messages.push(ModerationMessage::MissingGalleryImage);
                             }
 
