@@ -505,7 +505,7 @@ async fn project_create_inner(
                     let (_, file_extension) =
                         super::version_creation::get_name_ext(&content_disposition)?;
 
-                    let url = format!("data/{project_id}/images/");
+                    let url = format!("data/{project_id}/images");
                     let upload_result = upload_image_optimized(
                         &url,
                         data.freeze(),

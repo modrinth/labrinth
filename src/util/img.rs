@@ -42,10 +42,7 @@ pub async fn upload_image_optimized(
 ) -> Result<UploadImageResult, ApiError> {
     let content_type =
         crate::util::ext::get_image_content_type(file_extension).ok_or_else(|| {
-            ApiError::InvalidInput(format!(
-                "Invalid format for image: {}",
-                file_extension
-            ))
+            ApiError::InvalidInput(format!("Invalid format for image: {}", file_extension))
         })?;
 
     let cdn_url = dotenvy::var("CDN_URL")?;
@@ -86,16 +83,16 @@ pub async fn upload_image_optimized(
 
     let url = format!("{}/{}", cdn_url, upload_data.file_name);
     Ok(UploadImageResult {
-        raw_url: processed_upload_data
+        url: processed_upload_data
             .clone()
             .map(|x| format!("{}/{}", cdn_url, x.file_name))
             .unwrap_or_else(|| url.clone()),
-        raw_url_path: processed_upload_data
+        url_path: processed_upload_data
             .map(|x| x.file_name)
             .unwrap_or_else(|| upload_data.file_name.clone()),
 
-        url,
-        url_path: upload_data.file_name,
+        raw_url: url,
+        raw_url_path: upload_data.file_name,
         color,
     })
 }
@@ -120,16 +117,18 @@ fn process_image(
     let aspect_ratio = orig_width as f32 / orig_height as f32;
 
     if let Some(target_width) = target_width {
-        let new_height = (target_width as f32 / aspect_ratio).round() as u32;
-        img = img.resize(target_width, new_height, FilterType::Lanczos3);
+        if img.width() > target_width {
+            let new_height = (target_width as f32 / aspect_ratio).round() as u32;
+            img = img.resize(target_width, new_height, FilterType::Lanczos3);
+        }
+    }
 
-        if let Some(min_aspect_ratio) = min_aspect_ratio {
-            // Crop if necessary
-            if aspect_ratio < min_aspect_ratio {
-                let crop_height = (target_width as f32 / min_aspect_ratio).round() as u32;
-                let y_offset = (new_height - crop_height) / 2;
-                img = img.crop_imm(0, y_offset, target_width, crop_height);
-            }
+    if let Some(min_aspect_ratio) = min_aspect_ratio {
+        // Crop if necessary
+        if aspect_ratio < min_aspect_ratio {
+            let crop_height = (img.width() as f32 / min_aspect_ratio).round() as u32;
+            let y_offset = (img.height() - crop_height) / 2;
+            img = img.crop_imm(0, y_offset, img.width(), crop_height);
         }
     }
 

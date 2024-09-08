@@ -1576,8 +1576,8 @@ pub async fn add_gallery_item(
     .await?;
 
     let id: ProjectId = project_item.inner.id.into();
-    let upload_result = crate::util::img::upload_image_optimized(
-        &format!("data/{}/images/", id),
+    let upload_result = upload_image_optimized(
+        &format!("data/{}/images", id),
         bytes.freeze(),
         &ext.ext,
         Some(350),
