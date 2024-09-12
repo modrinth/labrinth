@@ -903,7 +903,7 @@ pub async fn platform_revenue(
     };
 
     redis
-        .set_serialized_to_json(PLATFORM_REVENUE_NAMESPACE, 0, &res, None)
+        .set_serialized_to_json(PLATFORM_REVENUE_NAMESPACE, 0, &res, Some(60 * 60))
         .await?;
 
     Ok(HttpResponse::Ok().json(res))
