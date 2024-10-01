@@ -1,5 +1,5 @@
 use super::ids::{ProjectId, UserId};
-use super::{CollectionId, ThreadId};
+use super::{CollectionId, ReportId, ThreadId};
 use crate::database::models;
 use crate::database::models::{DatabaseError, OrganizationId};
 use crate::database::redis::RedisPool;
@@ -7,7 +7,6 @@ use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::users::Badges;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -32,20 +31,19 @@ pub struct User {
     pub paypal_country: Option<String>,
     pub paypal_email: Option<String>,
     pub venmo_handle: Option<String>,
+    pub stripe_customer_id: Option<String>,
 
     pub totp_secret: Option<String>,
 
     pub username: String,
-    pub name: Option<String>,
     pub email: Option<String>,
     pub email_verified: bool,
     pub avatar_url: Option<String>,
+    pub raw_avatar_url: Option<String>,
     pub bio: Option<String>,
     pub created: DateTime<Utc>,
     pub role: String,
     pub badges: Badges,
-
-    pub balance: Decimal,
 }
 
 impl User {
@@ -56,24 +54,24 @@ impl User {
         sqlx::query!(
             "
             INSERT INTO users (
-                id, username, name, email,
-                avatar_url, bio, created,
+                id, username, email,
+                avatar_url, raw_avatar_url, bio, created,
                 github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,
                 email_verified, password, paypal_id, paypal_country, paypal_email,
-                venmo_handle
+                venmo_handle, stripe_customer_id
             )
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7,
                 $8, $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18, $19
+                $14, $15, $16, $17, $18, $19, $20
             )
             ",
             self.id as UserId,
             &self.username,
-            self.name.as_ref(),
             self.email.as_ref(),
             self.avatar_url.as_ref(),
+            self.raw_avatar_url.as_ref(),
             self.bio.as_ref(),
             self.created,
             self.github_id,
@@ -87,7 +85,8 @@ impl User {
             self.paypal_id,
             self.paypal_country,
             self.paypal_email,
-            self.venmo_handle
+            self.venmo_handle,
+            self.stripe_customer_id
         )
         .execute(&mut **transaction)
         .await?;
@@ -164,13 +163,12 @@ impl User {
 
                 let users = sqlx::query!(
                     "
-                    SELECT id, name, email,
-                        avatar_url, username, bio,
+                    SELECT id, email,
+                        avatar_url, raw_avatar_url, username, bio,
                         created, role, badges,
-                        balance,
                         github_id, discord_id, gitlab_id, google_id, steam_id, microsoft_id,
                         email_verified, password, totp_secret, paypal_id, paypal_country, paypal_email,
-                        venmo_handle
+                        venmo_handle, stripe_customer_id
                     FROM users
                     WHERE id = ANY($1) OR LOWER(username) = ANY($2)
                     ",
@@ -187,21 +185,21 @@ impl User {
                             google_id: u.google_id,
                             steam_id: u.steam_id,
                             microsoft_id: u.microsoft_id,
-                            name: u.name,
                             email: u.email,
                             email_verified: u.email_verified,
                             avatar_url: u.avatar_url,
+                            raw_avatar_url: u.raw_avatar_url,
                             username: u.username.clone(),
                             bio: u.bio,
                             created: u.created,
                             role: u.role,
                             badges: Badges::from_bits(u.badges as u64).unwrap_or_default(),
-                            balance: u.balance,
                             password: u.password,
                             paypal_id: u.paypal_id,
                             paypal_country: u.paypal_country,
                             paypal_email: u.paypal_email,
                             venmo_handle: u.venmo_handle,
+                            stripe_customer_id: u.stripe_customer_id,
                             totp_secret: u.totp_secret,
                         };
 
@@ -264,8 +262,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| ProjectId(m.id))) })
+        .fetch(exec)
+        .map_ok(|m| ProjectId(m.id))
         .try_collect::<Vec<ProjectId>>()
         .await?;
 
@@ -293,8 +291,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| OrganizationId(m.id))) })
+        .fetch(exec)
+        .map_ok(|m| OrganizationId(m.id))
         .try_collect::<Vec<OrganizationId>>()
         .await?;
 
@@ -317,12 +315,54 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| CollectionId(m.id))) })
+        .fetch(exec)
+        .map_ok(|m| CollectionId(m.id))
         .try_collect::<Vec<CollectionId>>()
         .await?;
 
         Ok(projects)
+    }
+
+    pub async fn get_follows<'a, E>(user_id: UserId, exec: E) -> Result<Vec<ProjectId>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let projects = sqlx::query!(
+            "
+            SELECT mf.mod_id FROM mod_follows mf
+            WHERE mf.follower_id = $1
+            ",
+            user_id as UserId,
+        )
+        .fetch(exec)
+        .map_ok(|m| ProjectId(m.mod_id))
+        .try_collect::<Vec<ProjectId>>()
+        .await?;
+
+        Ok(projects)
+    }
+
+    pub async fn get_reports<'a, E>(user_id: UserId, exec: E) -> Result<Vec<ReportId>, sqlx::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
+    {
+        use futures::stream::TryStreamExt;
+
+        let reports = sqlx::query!(
+            "
+            SELECT r.id FROM reports r
+            WHERE r.user_id = $1
+            ",
+            user_id as UserId,
+        )
+        .fetch(exec)
+        .map_ok(|m| ReportId(m.id))
+        .try_collect::<Vec<ReportId>>()
+        .await?;
+
+        Ok(reports)
     }
 
     pub async fn get_backup_codes<'a, E>(
@@ -341,8 +381,8 @@ impl User {
             ",
             user_id as UserId,
         )
-        .fetch_many(exec)
-        .try_filter_map(|e| async { Ok(e.right().map(|m| to_base62(m.code as u64))) })
+        .fetch(exec)
+        .map_ok(|m| to_base62(m.code as u64))
         .try_collect::<Vec<String>>()
         .await?;
 
@@ -430,8 +470,8 @@ impl User {
                 ",
                 id as UserId,
             )
-            .fetch_many(&mut **transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|m| m.id)) })
+            .fetch(&mut **transaction)
+            .map_ok(|m| m.id)
             .try_collect::<Vec<i64>>()
             .await?;
 
@@ -463,13 +503,13 @@ impl User {
                 ",
                 id as UserId,
             )
-            .fetch_many(&mut **transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|x| CollectionId(x.id))) })
+            .fetch(&mut **transaction)
+            .map_ok(|x| CollectionId(x.id))
             .try_collect::<Vec<_>>()
             .await?;
 
             for collection_id in user_collections {
-                models::Collection::remove(collection_id, transaction, &redis).await?;
+                models::Collection::remove(collection_id, transaction, redis).await?;
             }
 
             let report_threads = sqlx::query!(
@@ -481,8 +521,8 @@ impl User {
                 ",
                 id as UserId,
             )
-            .fetch_many(&mut **transaction)
-            .try_filter_map(|e| async { Ok(e.right().map(|x| ThreadId(x.id))) })
+            .fetch(&mut **transaction)
+            .map_ok(|x| ThreadId(x.id))
             .try_collect::<Vec<_>>()
             .await?;
 

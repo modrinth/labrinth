@@ -14,7 +14,8 @@ use crate::routes::internal::session::issue_session;
 use crate::routes::ApiError;
 use crate::util::captcha::check_turnstile_captcha;
 use crate::util::env::parse_strings_from_var;
-use crate::util::ext::{get_image_content_type, get_image_ext};
+use crate::util::ext::get_image_ext;
+use crate::util::img::upload_image_optimized;
 use crate::util::validate::{validation_errors_to_string, RE_URL_SAFE};
 use actix_web::web::{scope, Data, Payload, Query, ServiceConfig};
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
@@ -26,10 +27,10 @@ use chrono::{Duration, Utc};
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use reqwest::header::AUTHORIZATION;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use validator::Validate;
@@ -64,7 +65,6 @@ pub struct TempUser {
 
     pub avatar_url: Option<String>,
     pub bio: Option<String>,
-    pub name: Option<String>,
 
     pub country: Option<String>,
 }
@@ -112,9 +112,7 @@ impl TempUser {
             }
         }
 
-        let avatar_url = if let Some(avatar_url) = self.avatar_url {
-            let cdn_url = dotenvy::var("CDN_URL")?;
-
+        let (avatar_url, raw_avatar_url) = if let Some(avatar_url) = self.avatar_url {
             let res = reqwest::get(&avatar_url).await?;
             let headers = res.headers().clone();
 
@@ -122,36 +120,34 @@ impl TempUser {
                 .get(reqwest::header::CONTENT_TYPE)
                 .and_then(|ct| ct.to_str().ok())
             {
-                get_image_ext(content_type).map(|ext| (ext, content_type))
-            } else if let Some(ext) = avatar_url.rsplit('.').next() {
-                get_image_content_type(ext).map(|content_type| (ext, content_type))
+                get_image_ext(content_type)
             } else {
-                None
+                avatar_url.rsplit('.').next()
             };
 
-            if let Some((ext, content_type)) = img_data {
+            if let Some(ext) = img_data {
                 let bytes = res.bytes().await?;
-                let hash = sha1::Sha1::from(&bytes).hexdigest();
 
-                let upload_data = file_host
-                    .upload_file(
-                        content_type,
-                        &format!(
-                            "user/{}/{}.{}",
-                            crate::models::users::UserId::from(user_id),
-                            hash,
-                            ext
-                        ),
-                        bytes,
-                    )
-                    .await?;
+                let upload_result = upload_image_optimized(
+                    &format!("user/{}", crate::models::users::UserId::from(user_id)),
+                    bytes,
+                    ext,
+                    Some(96),
+                    Some(1.0),
+                    &**file_host,
+                )
+                .await;
 
-                Some(format!("{}/{}", cdn_url, upload_data.file_name))
+                if let Ok(upload_result) = upload_result {
+                    (Some(upload_result.url), Some(upload_result.raw_url))
+                } else {
+                    (None, None)
+                }
             } else {
-                None
+                (None, None)
             }
         } else {
-            None
+            (None, None)
         };
 
         if let Some(username) = username {
@@ -217,17 +213,17 @@ impl TempUser {
                     None
                 },
                 venmo_handle: None,
+                stripe_customer_id: None,
                 totp_secret: None,
                 username,
-                name: self.name,
                 email: self.email,
                 email_verified: true,
                 avatar_url,
+                raw_avatar_url,
                 bio: self.bio,
                 created: Utc::now(),
                 role: Role::Developer.to_string(),
                 badges: Badges::default(),
-                balance: Decimal::ZERO,
             }
             .insert(transaction)
             .await?;
@@ -250,7 +246,7 @@ impl AuthProvider {
                 let client_id = dotenvy::var("GITHUB_CLIENT_ID")?;
 
                 format!(
-                    "https://github.com/login/oauth/authorize?client_id={}&state={}&scope=read%3Auser%20user%3Aemail&redirect_uri={}",
+                    "https://github.com/login/oauth/authorize?client_id={}&prompt=select_account&state={}&scope=read%3Auser%20user%3Aemail&redirect_uri={}",
                     client_id,
                     state,
                     redirect_uri,
@@ -576,7 +572,6 @@ impl AuthProvider {
                     email: github_user.email,
                     avatar_url: Some(github_user.avatar_url),
                     bio: github_user.bio,
-                    name: github_user.name,
                     country: None,
                 }
             }
@@ -608,7 +603,6 @@ impl AuthProvider {
                         .avatar
                         .map(|x| format!("https://cdn.discordapp.com/avatars/{}/{}.webp", id, x)),
                     bio: None,
-                    name: discord_user.global_name,
                     country: None,
                 }
             }
@@ -617,7 +611,6 @@ impl AuthProvider {
                 #[serde(rename_all = "camelCase")]
                 pub struct MicrosoftUser {
                     pub id: String,
-                    pub display_name: Option<String>,
                     pub mail: Option<String>,
                     pub user_principal_name: String,
                 }
@@ -640,7 +633,6 @@ impl AuthProvider {
                     email: microsoft_user.mail,
                     avatar_url: None,
                     bio: None,
-                    name: microsoft_user.display_name,
                     country: None,
                 }
             }
@@ -670,7 +662,6 @@ impl AuthProvider {
                     email: gitlab_user.email,
                     avatar_url: gitlab_user.avatar_url,
                     bio: gitlab_user.bio,
-                    name: gitlab_user.name,
                     country: None,
                 }
             }
@@ -679,8 +670,6 @@ impl AuthProvider {
                 pub struct GoogleUser {
                     pub id: String,
                     pub email: String,
-                    pub name: Option<String>,
-                    pub bio: Option<String>,
                     pub picture: Option<String>,
                 }
 
@@ -704,7 +693,6 @@ impl AuthProvider {
                     email: Some(google_user.email),
                     avatar_url: google_user.picture,
                     bio: None,
-                    name: google_user.name,
                     country: None,
                 }
             }
@@ -724,7 +712,6 @@ impl AuthProvider {
                 #[derive(Deserialize)]
                 struct Player {
                     steamid: String,
-                    personaname: String,
                     profileurl: String,
                     avatar: Option<String>,
                 }
@@ -756,7 +743,6 @@ impl AuthProvider {
                         email: None,
                         avatar_url: player.avatar,
                         bio: None,
-                        name: Some(player.personaname),
                         country: None,
                     }
                 } else {
@@ -801,7 +787,6 @@ impl AuthProvider {
                     email: Some(paypal_user.email),
                     avatar_url: paypal_user.picture,
                     bio: None,
-                    name: None,
                     country: Some(paypal_user.address.country),
                 }
             }
@@ -1523,17 +1508,17 @@ pub async fn create_account_with_password(
         paypal_country: None,
         paypal_email: None,
         venmo_handle: None,
+        stripe_customer_id: None,
         totp_secret: None,
         username: new_account.username.clone(),
-        name: Some(new_account.username),
         email: Some(new_account.email.clone()),
         email_verified: false,
         avatar_url: None,
+        raw_avatar_url: None,
         bio: None,
         created: Utc::now(),
         role: Role::Developer.to_string(),
         badges: Badges::default(),
-        balance: Decimal::ZERO,
     }
     .insert(&mut transaction)
     .await?;
@@ -1643,7 +1628,27 @@ async fn validate_2fa_code(
         .generate_current()
         .map_err(|_| AuthenticationError::InvalidCredentials)?;
 
+    const TOTP_NAMESPACE: &str = "used_totp";
+    let mut conn = redis.connect().await?;
+
+    // Check if TOTP has already been used
+    if conn
+        .get(TOTP_NAMESPACE, &format!("{}-{}", token, user_id.0))
+        .await?
+        .is_some()
+    {
+        return Err(AuthenticationError::InvalidCredentials);
+    }
+
     if input == token {
+        conn.set(
+            TOTP_NAMESPACE,
+            &format!("{}-{}", token, user_id.0),
+            "",
+            Some(60),
+        )
+        .await?;
+
         Ok(true)
     } else if allow_backup {
         let backup_codes = crate::database::models::User::get_backup_codes(user_id, pool).await?;
@@ -2066,11 +2071,7 @@ pub async fn change_password(
     let update_password = if let Some(new_password) = &change_password.new_password {
         let score = zxcvbn::zxcvbn(
             new_password,
-            &[
-                &user.username,
-                &user.email.clone().unwrap_or_default(),
-                &user.name.unwrap_or_default(),
-            ],
+            &[&user.username, &user.email.clone().unwrap_or_default()],
         )?;
 
         if score.score() < 3 {
@@ -2157,6 +2158,7 @@ pub async fn set_email(
     redis: Data<RedisPool>,
     email: web::Json<SetEmail>,
     session_queue: Data<AuthQueue>,
+    stripe_client: Data<stripe::Client>,
 ) -> Result<HttpResponse, ApiError> {
     email
         .0
@@ -2195,6 +2197,22 @@ pub async fn set_email(
             "If you did not make this change, please contact us immediately through our support channels on Discord or via email (support@modrinth.com).",
             None,
         )?;
+    }
+
+    if let Some(customer_id) = user
+        .stripe_customer_id
+        .as_ref()
+        .and_then(|x| stripe::CustomerId::from_str(x).ok())
+    {
+        stripe::Customer::update(
+            &stripe_client,
+            &customer_id,
+            stripe::UpdateCustomer {
+                email: Some(&email.email),
+                ..Default::default()
+            },
+        )
+        .await?;
     }
 
     let flow = Flow::ConfirmEmail {

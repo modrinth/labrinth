@@ -246,7 +246,11 @@ impl AutomatedModerationQueue {
                                 mod_messages.messages.push(ModerationMessage::MissingCustomLicenseUrl { license: project.inner.license.clone() });
                             }
 
-                            if (project.project_types.contains(&"resourcepack".to_string()) || project.project_types.contains(&"shader".to_string())) && project.gallery_items.is_empty() {
+                            if (project.project_types.contains(&"resourcepack".to_string()) || project.project_types.contains(&"shader".to_string())) &&
+                                project.gallery_items.is_empty() &&
+                                !project.categories.contains(&"audio".to_string()) &&
+                                !project.categories.contains(&"locale".to_string())
+                            {
                                 mod_messages.messages.push(ModerationMessage::MissingGalleryImage);
                             }
 
@@ -362,7 +366,7 @@ impl AutomatedModerationQueue {
                                         for file in
                                         files.iter().filter(|x| x.version_id == version.id.into())
                                         {
-                                            if let Some(hash) = file.hashes.get(&"sha1".to_string()) {
+                                            if let Some(hash) = file.hashes.get("sha1") {
                                                 if let Some((index, (sha1, _, file_name, _))) = hashes
                                                     .iter()
                                                     .enumerate()
@@ -660,15 +664,15 @@ impl AutomatedModerationQueue {
                                         .insert_many(members.into_iter().map(|x| x.user_id).collect(), &mut transaction, &redis)
                                         .await?;
 
-                                    if let Ok(webhook_url) = dotenvy::var("MODERATION_DISCORD_WEBHOOK") {
-                                        crate::util::webhook::send_discord_webhook(
+                                    if let Ok(webhook_url) = dotenvy::var("MODERATION_SLACK_WEBHOOK") {
+                                        crate::util::webhook::send_slack_webhook(
                                             project.inner.id.into(),
                                             &pool,
                                             &redis,
                                             webhook_url,
                                             Some(
                                                 format!(
-                                                    "**[AutoMod]({}/user/AutoMod)** changed project status from **{}** to **Rejected**",
+                                                    "*<{}/user/AutoMod|AutoMod>* changed project status from *{}* to *Rejected*",
                                                     dotenvy::var("SITE_URL")?,
                                                     &project.inner.status.as_friendly_str(),
                                                 )

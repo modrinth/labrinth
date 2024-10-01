@@ -48,14 +48,18 @@ impl super::Validator for ModpackValidator {
             ));
         }
 
+        if pack.files.is_empty() && !archive.file_names().any(|x| x.starts_with("overrides/")) {
+            return Err(ValidationError::InvalidInput("Pack has no files!".into()));
+        }
+
         for file in &pack.files {
-            if file.hashes.get(&PackFileHash::Sha1).is_none() {
+            if !file.hashes.contains_key(&PackFileHash::Sha1) {
                 return Err(ValidationError::InvalidInput(
                     "All pack files must provide a SHA1 hash!".into(),
                 ));
             }
 
-            if file.hashes.get(&PackFileHash::Sha512).is_none() {
+            if !file.hashes.contains_key(&PackFileHash::Sha512) {
                 return Err(ValidationError::InvalidInput(
                     "All pack files must provide a SHA512 hash!".into(),
                 ));
@@ -84,7 +88,11 @@ impl super::Validator for ModpackValidator {
                     (x.ends_with("jar") || x.ends_with("zip"))
                         && (x.starts_with("overrides/mods")
                             || x.starts_with("client-overrides/mods")
-                            || x.starts_with("server-overrides/mods"))
+                            || x.starts_with("server-overrides/mods")
+                            || x.starts_with("overrides/resourcepacks")
+                            || x.starts_with("server-overrides/resourcepacks")
+                            || x.starts_with("overrides/shaderpacks")
+                            || x.starts_with("client-overrides/shaderpacks"))
                 })
                 .flat_map(|x| x.rsplit('/').next().map(|x| x.to_string()))
                 .collect::<Vec<String>>(),

@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use validator::Validate;
 
+use super::{oauth_clients::get_user_clients, ApiError};
+use crate::util::img::delete_old_images;
 use crate::{
     auth::{filter_visible_projects, get_user_from_headers},
     database::{models::User, redis::RedisPool},
@@ -22,8 +24,6 @@ use crate::{
     queue::session::AuthQueue,
     util::{routes::read_from_payload, validate::validation_errors_to_string},
 };
-
-use super::{oauth_clients::get_user_clients, ApiError};
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("user", web::get().to(user_auth_get));
@@ -274,13 +274,6 @@ pub struct EditUser {
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    #[validate(length(min = 1, max = 64), regex = "RE_URL_SAFE")]
-    pub name: Option<Option<String>>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "::serde_with::rust::double_option"
-    )]
     #[validate(length(max = 160))]
     pub bio: Option<Option<String>>,
     pub role: Option<Role>,
@@ -343,20 +336,6 @@ pub async fn user_edit(
                         "Username {username} is taken!"
                     )));
                 }
-            }
-
-            if let Some(name) = &new_user.name {
-                sqlx::query!(
-                    "
-                    UPDATE users
-                    SET name = $1
-                    WHERE (id = $2)
-                    ",
-                    name.as_deref(),
-                    id as crate::database::models::ids::UserId,
-                )
-                .execute(&mut *transaction)
-                .await?;
             }
 
             if let Some(bio) = &new_user.bio {
@@ -467,71 +446,62 @@ pub async fn user_icon_edit(
     mut payload: web::Payload,
     session_queue: web::Data<AuthQueue>,
 ) -> Result<HttpResponse, ApiError> {
-    if let Some(content_type) = crate::util::ext::get_image_content_type(&ext.ext) {
-        let cdn_url = dotenvy::var("CDN_URL")?;
-        let user = get_user_from_headers(
-            &req,
-            &**pool,
-            &redis,
-            &session_queue,
-            Some(&[Scopes::USER_WRITE]),
-        )
-        .await?
-        .1;
-        let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::USER_WRITE]),
+    )
+    .await?
+    .1;
+    let id_option = User::get(&info.into_inner().0, &**pool, &redis).await?;
 
-        if let Some(actual_user) = id_option {
-            if user.id != actual_user.id.into() && !user.role.is_mod() {
-                return Err(ApiError::CustomAuthentication(
-                    "You don't have permission to edit this user's icon.".to_string(),
-                ));
-            }
-
-            let icon_url = actual_user.avatar_url;
-            let user_id: UserId = actual_user.id.into();
-
-            if let Some(icon) = icon_url {
-                let name = icon.split(&format!("{cdn_url}/")).nth(1);
-
-                if let Some(icon_path) = name {
-                    file_host.delete_file_version("", icon_path).await?;
-                }
-            }
-
-            let bytes =
-                read_from_payload(&mut payload, 2097152, "Icons must be smaller than 2MiB").await?;
-
-            let hash = sha1::Sha1::from(&bytes).hexdigest();
-            let upload_data = file_host
-                .upload_file(
-                    content_type,
-                    &format!("user/{}/{}.{}", user_id, hash, ext.ext),
-                    bytes.freeze(),
-                )
-                .await?;
-
-            sqlx::query!(
-                "
-                UPDATE users
-                SET avatar_url = $1
-                WHERE (id = $2)
-                ",
-                format!("{}/{}", cdn_url, upload_data.file_name),
-                actual_user.id as crate::database::models::ids::UserId,
-            )
-            .execute(&**pool)
-            .await?;
-            User::clear_caches(&[(actual_user.id, None)], &redis).await?;
-
-            Ok(HttpResponse::NoContent().body(""))
-        } else {
-            Err(ApiError::NotFound)
+    if let Some(actual_user) = id_option {
+        if user.id != actual_user.id.into() && !user.role.is_mod() {
+            return Err(ApiError::CustomAuthentication(
+                "You don't have permission to edit this user's icon.".to_string(),
+            ));
         }
+
+        delete_old_images(
+            actual_user.avatar_url,
+            actual_user.raw_avatar_url,
+            &***file_host,
+        )
+        .await?;
+
+        let bytes =
+            read_from_payload(&mut payload, 262144, "Icons must be smaller than 256KiB").await?;
+
+        let user_id: UserId = actual_user.id.into();
+        let upload_result = crate::util::img::upload_image_optimized(
+            &format!("data/{}", user_id),
+            bytes.freeze(),
+            &ext.ext,
+            Some(96),
+            Some(1.0),
+            &***file_host,
+        )
+        .await?;
+
+        sqlx::query!(
+            "
+            UPDATE users
+            SET avatar_url = $1, raw_avatar_url = $2
+            WHERE (id = $3)
+            ",
+            upload_result.url,
+            upload_result.raw_url,
+            actual_user.id as crate::database::models::ids::UserId,
+        )
+        .execute(&**pool)
+        .await?;
+        User::clear_caches(&[(actual_user.id, None)], &redis).await?;
+
+        Ok(HttpResponse::NoContent().body(""))
     } else {
-        Err(ApiError::InvalidInput(format!(
-            "Invalid format for user icon: {}",
-            ext.ext
-        )))
+        Err(ApiError::NotFound)
     }
 }
 
@@ -601,23 +571,7 @@ pub async fn user_follows(
             ));
         }
 
-        use futures::TryStreamExt;
-
-        let project_ids = sqlx::query!(
-            "
-            SELECT mf.mod_id FROM mod_follows mf
-            WHERE mf.follower_id = $1
-            ",
-            id as crate::database::models::ids::UserId,
-        )
-        .fetch_many(&**pool)
-        .try_filter_map(|e| async {
-            Ok(e.right()
-                .map(|m| crate::database::models::ProjectId(m.mod_id)))
-        })
-        .try_collect::<Vec<crate::database::models::ProjectId>>()
-        .await?;
-
+        let project_ids = User::get_follows(id, &**pool).await?;
         let projects: Vec<_> =
             crate::database::Project::get_many_ids(&project_ids, &**pool, &redis)
                 .await?
