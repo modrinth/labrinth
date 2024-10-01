@@ -1,7 +1,10 @@
-use crate::routes::{
-    v2_reroute,
-    v3::{self, statistics::V3Stats},
-    ApiError,
+use crate::{
+    database::redis::RedisPool,
+    routes::{
+        v2_reroute,
+        v3::{self, statistics::V3Stats},
+        ApiError,
+    },
 };
 use actix_web::{get, web, HttpResponse};
 use sqlx::PgPool;
@@ -12,15 +15,18 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 #[derive(serde::Serialize)]
 pub struct V2Stats {
-    pub projects: Option<i64>,
-    pub versions: Option<i64>,
-    pub authors: Option<i64>,
-    pub files: Option<i64>,
+    pub projects: i64,
+    pub versions: i64,
+    pub authors: i64,
+    pub files: i64,
 }
 
 #[get("statistics")]
-pub async fn get_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
-    let response = v3::statistics::get_stats(pool)
+pub async fn get_stats(
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+) -> Result<HttpResponse, ApiError> {
+    let response = v3::statistics::get_stats(pool, redis)
         .await
         .or_else(v2_reroute::flatten_404_error)?;
 
