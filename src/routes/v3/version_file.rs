@@ -1,6 +1,7 @@
 use super::ApiError;
 use crate::auth::checks::{filter_visible_versions, is_visible_version};
 use crate::auth::{filter_visible_projects, get_user_from_headers};
+use crate::database::models::loader_fields::Loader;
 use crate::database::redis::RedisPool;
 use crate::models::ids::VersionId;
 use crate::models::pats::Scopes;
@@ -149,6 +150,8 @@ pub async fn get_update_from_hash(
         if let Some(project) =
             database::models::Project::get_id(file.project_id, &**pool, &redis).await?
         {
+            let all_loaders_data: Vec<Loader> = Loader::list(&**pool, &redis).await?;
+
             let versions = database::models::Version::get_many(&project.versions, &**pool, &redis)
                 .await?
                 .into_iter()
@@ -160,7 +163,22 @@ pub async fn get_update_from_hash(
                             .any(|y| y.as_str() == x.inner.version_type);
                     }
                     if let Some(loaders) = &update_data.loaders {
-                        bool &= x.loaders.iter().any(|y| loaders.contains(y));
+                        let loaders = loaders
+                            .iter()
+                            .filter(|loader| {
+                                let loader_data = all_loaders_data
+                                    .iter()
+                                    .find(|game_loader| game_loader.loader == **loader)
+                                    .unwrap();
+
+                                loader_data
+                                    .supported_project_types
+                                    .iter()
+                                    .any(|project_type| x.project_types.contains(project_type))
+                            })
+                            .collect_vec();
+
+                        bool &= x.loaders.iter().any(|y| loaders.contains(&y));
                     }
                     if let Some(loader_fields) = &update_data.loader_fields {
                         for (key, values) in loader_fields {
