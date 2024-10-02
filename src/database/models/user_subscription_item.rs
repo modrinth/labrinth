@@ -89,17 +89,6 @@ impl UserSubscriptionItem {
         Ok(results.into_iter().map(|r| r.into()).collect())
     }
 
-    pub async fn get_all_expired(
-        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
-    ) -> Result<Vec<UserSubscriptionItem>, DatabaseError> {
-        let now = Utc::now();
-        let results = select_user_subscriptions_with_predicate!("WHERE expires < $1", now)
-            .fetch_all(exec)
-            .await?;
-
-        Ok(results.into_iter().map(|r| r.into()).collect())
-    }
-
     pub async fn upsert(
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,

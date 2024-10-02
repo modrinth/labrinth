@@ -1,11 +1,11 @@
 use crate::auth::{get_user_from_headers, send_email};
 use crate::database::models::{
-    generate_user_subscription_id, product_item, user_subscription_item,
+    generate_charge_id, generate_user_subscription_id, product_item, user_subscription_item,
 };
 use crate::database::redis::RedisPool;
 use crate::models::billing::{
-    Price, PriceDuration, Product, ProductMetadata, ProductPrice, SubscriptionStatus,
-    UserSubscription,
+    Charge, ChargeStatus, Price, PriceDuration, Product, ProductMetadata, ProductPrice,
+    SubscriptionStatus, UserSubscription,
 };
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
 use crate::models::pats::Scopes;
@@ -140,6 +140,8 @@ pub async fn cancel_subscription(
             )
             .execute(&mut *transaction)
             .await?;
+
+            // TODO: delete open charges for this subscription
         } else {
             subscription.status = SubscriptionStatus::Cancelled;
             subscription.upsert(&mut transaction).await?;
@@ -191,7 +193,6 @@ pub async fn charges(
     pool: web::Data<PgPool>,
     redis: web::Data<RedisPool>,
     session_queue: web::Data<AuthQueue>,
-    stripe_client: web::Data<stripe::Client>,
 ) -> Result<HttpResponse, ApiError> {
     let user = get_user_from_headers(
         &req,
@@ -203,25 +204,27 @@ pub async fn charges(
     .await?
     .1;
 
-    if let Some(customer_id) = user
-        .stripe_customer_id
-        .as_ref()
-        .and_then(|x| stripe::CustomerId::from_str(x).ok())
-    {
-        let charges = stripe::Charge::list(
-            &stripe_client,
-            &ListCharges {
-                customer: Some(customer_id),
-                limit: Some(100),
-                ..Default::default()
-            },
-        )
-        .await?;
+    let charges =
+        crate::database::models::charge_item::ChargeItem::get_from_user(user.id.into(), &**pool)
+            .await?;
 
-        Ok(HttpResponse::Ok().json(charges.data))
-    } else {
-        Ok(HttpResponse::NoContent().finish())
-    }
+    Ok(HttpResponse::Ok().json(
+        charges
+            .into_iter()
+            .map(|x| Charge {
+                id: x.id.into(),
+                user_id: x.user_id.into(),
+                price_id: x.price_id.into(),
+                amount: x.amount,
+                currency_code: x.currency_code,
+                subscription_id: x.subscription_id.map(|x| x.into()),
+                interval: x.interval,
+                status: x.status,
+                due: x.due,
+                last_attempt: x.last_attempt,
+            })
+            .collect::<Vec<_>>(),
+    ))
 }
 
 #[post("payment_method")]
@@ -467,91 +470,26 @@ pub enum PaymentRequestType {
 }
 
 #[derive(Deserialize)]
+pub enum ChargeRequestType {
+    Existing {
+        id: crate::models::ids::ChargeId,
+    },
+    New {
+        product_id: crate::models::ids::ProductId,
+        interval: Option<PriceDuration>,
+    },
+}
+
+#[derive(Deserialize)]
 pub struct PaymentRequest {
-    pub product_id: crate::models::ids::ProductId,
-    pub interval: Option<PriceDuration>,
     #[serde(flatten)]
     pub type_: PaymentRequestType,
+    pub charge: ChargeRequestType,
     pub existing_payment_intent: Option<stripe::PaymentIntentId>,
 }
 
-#[post("payment")]
-pub async fn initiate_payment(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-    redis: web::Data<RedisPool>,
-    session_queue: web::Data<AuthQueue>,
-    stripe_client: web::Data<stripe::Client>,
-    payment_request: web::Json<PaymentRequest>,
-) -> Result<HttpResponse, ApiError> {
-    let user = get_user_from_headers(
-        &req,
-        &**pool,
-        &redis,
-        &session_queue,
-        Some(&[Scopes::SESSION_ACCESS]),
-    )
-    .await?
-    .1;
-
-    let product = product_item::ProductItem::get(payment_request.product_id.into(), &**pool)
-        .await?
-        .ok_or_else(|| {
-            ApiError::InvalidInput("Specified product could not be found!".to_string())
-        })?;
-
-    let (user_country, payment_method) = match &payment_request.type_ {
-        PaymentRequestType::PaymentMethod { id } => {
-            let payment_method_id = stripe::PaymentMethodId::from_str(id)
-                .map_err(|_| ApiError::InvalidInput("Invalid payment method id".to_string()))?;
-
-            let payment_method =
-                stripe::PaymentMethod::retrieve(&stripe_client, &payment_method_id, &[]).await?;
-
-            let country = payment_method
-                .billing_details
-                .address
-                .as_ref()
-                .and_then(|x| x.country.clone());
-
-            (country, payment_method)
-        }
-        PaymentRequestType::ConfirmationToken { token } => {
-            #[derive(Deserialize)]
-            struct ConfirmationToken {
-                payment_method_preview: Option<stripe::PaymentMethod>,
-            }
-
-            let mut confirmation: serde_json::Value = stripe_client
-                .get(&format!("confirmation_tokens/{token}"))
-                .await?;
-
-            // We patch the JSONs to support the PaymentMethod struct
-            let p: json_patch::Patch = serde_json::from_value(serde_json::json!([
-                { "op": "add", "path": "/payment_method_preview/id", "value": "pm_1PirTdJygY5LJFfKmPIaM1N1" },
-                { "op": "add", "path": "/payment_method_preview/created", "value": 1723183475 },
-                { "op": "add", "path": "/payment_method_preview/livemode", "value": false }
-            ])).unwrap();
-            json_patch::patch(&mut confirmation, &p).unwrap();
-
-            let confirmation: ConfirmationToken = serde_json::from_value(confirmation)?;
-
-            let payment_method = confirmation.payment_method_preview.ok_or_else(|| {
-                ApiError::InvalidInput("Confirmation token is missing payment method!".to_string())
-            })?;
-
-            let country = payment_method
-                .billing_details
-                .address
-                .as_ref()
-                .and_then(|x| x.country.clone());
-
-            (country, payment_method)
-        }
-    };
-
-    let country = user_country.as_deref().unwrap_or("US");
-    let recommended_currency_code = match country {
+fn infer_currency_code(country: &str) -> String {
+    match country {
         "US" => "USD",
         "GB" => "GBP",
         "EU" => "EUR",
@@ -606,38 +544,186 @@ pub async fn initiate_payment(
         "SA" => "SAR",
         "QA" => "QAR",
         _ => "USD",
-    };
+    }
+    .to_string()
+}
 
-    let mut product_prices =
-        product_item::ProductPriceItem::get_all_product_prices(product.id, &**pool).await?;
+#[post("payment")]
+pub async fn initiate_payment(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    redis: web::Data<RedisPool>,
+    session_queue: web::Data<AuthQueue>,
+    stripe_client: web::Data<stripe::Client>,
+    payment_request: web::Json<PaymentRequest>,
+) -> Result<HttpResponse, ApiError> {
+    let user = get_user_from_headers(
+        &req,
+        &**pool,
+        &redis,
+        &session_queue,
+        Some(&[Scopes::SESSION_ACCESS]),
+    )
+    .await?
+    .1;
 
-    let price_item = if let Some(pos) = product_prices
-        .iter()
-        .position(|x| x.currency_code == recommended_currency_code)
-    {
-        product_prices.remove(pos)
-    } else if let Some(pos) = product_prices.iter().position(|x| x.currency_code == "USD") {
-        product_prices.remove(pos)
-    } else {
-        return Err(ApiError::InvalidInput(
-            "Could not find a valid price for the user's country".to_string(),
-        ));
-    };
+    let (user_country, payment_method) = match &payment_request.type_ {
+        PaymentRequestType::PaymentMethod { id } => {
+            let payment_method_id = stripe::PaymentMethodId::from_str(id)
+                .map_err(|_| ApiError::InvalidInput("Invalid payment method id".to_string()))?;
 
-    let price = match price_item.prices {
-        Price::OneTime { price } => price,
-        Price::Recurring { ref intervals } => {
-            let interval = payment_request.interval.ok_or_else(|| {
-                ApiError::InvalidInput(
-                    "Could not find a valid interval for the user's country".to_string(),
-                )
+            let payment_method =
+                stripe::PaymentMethod::retrieve(&stripe_client, &payment_method_id, &[]).await?;
+
+            let country = payment_method
+                .billing_details
+                .address
+                .as_ref()
+                .and_then(|x| x.country.clone());
+
+            (country, payment_method)
+        }
+        PaymentRequestType::ConfirmationToken { token } => {
+            #[derive(Deserialize)]
+            struct ConfirmationToken {
+                payment_method_preview: Option<stripe::PaymentMethod>,
+            }
+
+            let mut confirmation: serde_json::Value = stripe_client
+                .get(&format!("confirmation_tokens/{token}"))
+                .await?;
+
+            // We patch the JSONs to support the PaymentMethod struct
+            let p: json_patch::Patch = serde_json::from_value(serde_json::json!([
+                { "op": "add", "path": "/payment_method_preview/id", "value": "pm_1PirTdJygY5LJFfKmPIaM1N1" },
+                { "op": "add", "path": "/payment_method_preview/created", "value": 1723183475 },
+                { "op": "add", "path": "/payment_method_preview/livemode", "value": false }
+            ])).unwrap();
+            json_patch::patch(&mut confirmation, &p).unwrap();
+
+            let confirmation: ConfirmationToken = serde_json::from_value(confirmation)?;
+
+            let payment_method = confirmation.payment_method_preview.ok_or_else(|| {
+                ApiError::InvalidInput("Confirmation token is missing payment method!".to_string())
             })?;
 
-            *intervals.get(&interval).ok_or_else(|| {
-                ApiError::InvalidInput(
+            let country = payment_method
+                .billing_details
+                .address
+                .as_ref()
+                .and_then(|x| x.country.clone());
+
+            (country, payment_method)
+        }
+    };
+
+    let country = user_country.as_deref().unwrap_or("US");
+    let recommended_currency_code = infer_currency_code(country);
+
+    let (price, currency_code, interval, price_id, charge_id) = match payment_request.charge {
+        ChargeRequestType::Existing { id } => {
+            let charge = crate::database::models::charge_item::ChargeItem::get(id.into(), &**pool)
+                .await?
+                .ok_or_else(|| {
+                    ApiError::InvalidInput("Specified charge could not be found!".to_string())
+                })?;
+
+            (
+                charge.amount,
+                charge.currency_code,
+                charge.interval,
+                charge.price_id,
+                Some(id),
+            )
+        }
+        ChargeRequestType::New {
+            product_id,
+            interval,
+        } => {
+            let product = product_item::ProductItem::get(product_id.into(), &**pool)
+                .await?
+                .ok_or_else(|| {
+                    ApiError::InvalidInput("Specified product could not be found!".to_string())
+                })?;
+
+            let mut product_prices =
+                product_item::ProductPriceItem::get_all_product_prices(product.id, &**pool).await?;
+
+            let price_item = if let Some(pos) = product_prices
+                .iter()
+                .position(|x| x.currency_code == recommended_currency_code)
+            {
+                product_prices.remove(pos)
+            } else if let Some(pos) = product_prices.iter().position(|x| x.currency_code == "USD") {
+                product_prices.remove(pos)
+            } else {
+                return Err(ApiError::InvalidInput(
                     "Could not find a valid price for the user's country".to_string(),
-                )
-            })?
+                ));
+            };
+
+            let price = match price_item.prices {
+                Price::OneTime { price } => price,
+                Price::Recurring { ref intervals } => {
+                    let interval = interval.ok_or_else(|| {
+                        ApiError::InvalidInput(
+                            "Could not find a valid interval for the user's country".to_string(),
+                        )
+                    })?;
+
+                    *intervals.get(&interval).ok_or_else(|| {
+                        ApiError::InvalidInput(
+                            "Could not find a valid price for the user's country".to_string(),
+                        )
+                    })?
+                }
+            };
+
+            if let Price::Recurring { .. } = price_item.prices {
+                if product.unitary {
+                    let user_subscriptions =
+                        user_subscription_item::UserSubscriptionItem::get_all_user(
+                            user.id.into(),
+                            &**pool,
+                        )
+                        .await?;
+
+                    let user_products = product_item::ProductPriceItem::get_many(
+                        &user_subscriptions
+                            .iter()
+                            .map(|x| x.price_id)
+                            .collect::<Vec<_>>(),
+                        &**pool,
+                    )
+                    .await?;
+
+                    if let Some(product) = user_products
+                        .into_iter()
+                        .find(|x| x.product_id == product.id)
+                    {
+                        if let Some(subscription) = user_subscriptions
+                            .into_iter()
+                            .find(|x| x.price_id == product.id)
+                        {
+                            return Err(ApiError::InvalidInput(if !(subscription.status == SubscriptionStatus::Cancelled
+                                || subscription.status == SubscriptionStatus::PaymentFailed)
+                            {
+                                "You are already subscribed to this product!"
+                            } else {
+                                "You are already subscribed to this product, but the payment failed!"
+                            }.to_string()));
+                        }
+                    }
+                }
+            }
+
+            (
+                price as i64,
+                price_item.currency_code,
+                interval,
+                price_item.id,
+                None,
+            )
         }
     };
 
@@ -650,30 +736,16 @@ pub async fn initiate_payment(
         &redis,
     )
     .await?;
-    let stripe_currency = Currency::from_str(&price_item.currency_code.to_lowercase())
+    let stripe_currency = Currency::from_str(&currency_code.to_lowercase())
         .map_err(|_| ApiError::InvalidInput("Invalid currency code".to_string()))?;
 
     if let Some(payment_intent_id) = &payment_request.existing_payment_intent {
         let mut update_payment_intent = stripe::UpdatePaymentIntent {
-            amount: Some(price as i64),
+            amount: Some(price),
             currency: Some(stripe_currency),
             customer: Some(customer),
             ..Default::default()
         };
-
-        let mut metadata = HashMap::new();
-        metadata.insert("modrinth_user_id".to_string(), to_base62(user.id.0));
-        metadata.insert(
-            "modrinth_price_id".to_string(),
-            to_base62(price_item.id.0 as u64),
-        );
-        if let Some(interval) = payment_request.interval {
-            metadata.insert(
-                "modrinth_subscription_interval".to_string(),
-                interval.as_str().to_string(),
-            );
-        }
-        update_payment_intent.metadata = Some(metadata);
 
         if let PaymentRequestType::PaymentMethod { .. } = payment_request.type_ {
             update_payment_intent.payment_method = Some(payment_method.id.clone());
@@ -689,68 +761,20 @@ pub async fn initiate_payment(
             "payment_method": payment_method,
         })))
     } else {
-        let mut intent = CreatePaymentIntent::new(price as i64, stripe_currency);
+        let mut intent = CreatePaymentIntent::new(price, stripe_currency);
 
-        let mut transaction = pool.begin().await?;
         let mut metadata = HashMap::new();
         metadata.insert("modrinth_user_id".to_string(), to_base62(user.id.0));
-        metadata.insert(
-            "modrinth_price_id".to_string(),
-            to_base62(price_item.id.0 as u64),
-        );
 
-        if let Price::Recurring { .. } = price_item.prices {
-            if product.unitary {
-                let user_subscriptions =
-                    user_subscription_item::UserSubscriptionItem::get_all_user(
-                        user.id.into(),
-                        &**pool,
-                    )
-                    .await?;
+        if let Some(charge_id) = charge_id {
+            metadata.insert("modrinth_charge_id".to_string(), to_base62(charge_id.0));
+        } else {
+            metadata.insert(
+                "modrinth_price_id".to_string(),
+                to_base62(price_id.0 as u64),
+            );
 
-                let user_products = product_item::ProductPriceItem::get_many(
-                    &user_subscriptions
-                        .iter()
-                        .map(|x| x.price_id)
-                        .collect::<Vec<_>>(),
-                    &**pool,
-                )
-                .await?;
-
-                if let Some(product) = user_products
-                    .into_iter()
-                    .find(|x| x.product_id == product.id)
-                {
-                    if let Some(subscription) = user_subscriptions
-                        .into_iter()
-                        .find(|x| x.price_id == product.id)
-                    {
-                        if subscription.status == SubscriptionStatus::Cancelled
-                            || subscription.status == SubscriptionStatus::PaymentFailed
-                        {
-                            metadata.insert(
-                                "modrinth_subscription_id".to_string(),
-                                to_base62(subscription.id.0 as u64),
-                            );
-                        } else {
-                            return Err(ApiError::InvalidInput(
-                                "You are already subscribed to this product!".to_string(),
-                            ));
-                        }
-                    }
-                }
-            }
-
-            if !metadata.contains_key("modrinth_subscription_id") {
-                let user_subscription_id = generate_user_subscription_id(&mut transaction).await?;
-
-                metadata.insert(
-                    "modrinth_subscription_id".to_string(),
-                    to_base62(user_subscription_id.0 as u64),
-                );
-            }
-
-            if let Some(interval) = payment_request.interval {
+            if let Some(interval) = interval {
                 metadata.insert(
                     "modrinth_subscription_interval".to_string(),
                     interval.as_str().to_string(),
@@ -766,14 +790,12 @@ pub async fn initiate_payment(
         });
         intent.receipt_email = user.email.as_deref();
         intent.setup_future_usage = Some(PaymentIntentSetupFutureUsage::OffSession);
-        intent.payment_method_types = Some(vec!["card".to_string(), "cashapp".to_string()]);
 
         if let PaymentRequestType::PaymentMethod { .. } = payment_request.type_ {
             intent.payment_method = Some(payment_method.id.clone());
         }
 
         let payment_intent = stripe::PaymentIntent::create(&stripe_client, intent).await?;
-        transaction.commit().await?;
 
         Ok(HttpResponse::Ok().json(serde_json::json!({
             "payment_intent_id": payment_intent.id,
@@ -814,6 +836,7 @@ pub async fn stripe_webhook(
             user_subscription: Option<user_subscription_item::UserSubscriptionItem>,
             product: product_item::ProductItem,
             product_price: product_item::ProductPriceItem,
+            charge_item: Option<crate::database::models::charge_item::ChargeItem>,
         }
 
         async fn get_payment_intent_metadata(
@@ -1115,16 +1138,29 @@ async fn get_or_create_customer(
 }
 
 pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool) {
+    // Check for open charges which are open AND last charge hasn't already been attempted
+    // CHeck for open charges which are failed ANd last attempt > 2 days ago (and unprovision)
+
     // if subscription is cancelled and expired, unprovision and remove
     // if subscription is payment failed and last attempt is > 2 days ago, try again to charge and unprovision
     // if subscription is active and expired, attempt to charge and set as processing
     loop {
         info!("Indexing billing queue");
         let res = async {
-            let expired =
-                user_subscription_item::UserSubscriptionItem::get_all_expired(&pool).await?;
+            let charges_to_do = crate::database::models::charge_item::ChargeItem::get_chargeable(&pool).await?;
+
+            let subscription_items = user_subscription_item::UserSubscriptionItem::get_many(
+                &charges_to_do
+                    .iter()
+                    .flat_map(|x| x.subscription_id)
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                &pool,
+            )
+            .await?;
             let subscription_prices = product_item::ProductPriceItem::get_many(
-                &expired
+                &charges_to_do
                     .iter()
                     .map(|x| x.price_id)
                     .collect::<HashSet<_>>()
@@ -1144,7 +1180,7 @@ pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool)
             )
             .await?;
             let users = crate::database::models::User::get_many_ids(
-                &expired
+                &charges_to_do
                     .iter()
                     .map(|x| x.user_id)
                     .collect::<HashSet<_>>()
@@ -1158,13 +1194,13 @@ pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool)
             let mut transaction = pool.begin().await?;
             let mut clear_cache_users = Vec::new();
 
-            for mut subscription in expired {
-                let user = users.iter().find(|x| x.id == subscription.user_id);
+            for mut charge in charges_to_do {
+                let user = users.iter().find(|x| x.id == charge.user_id);
 
                 if let Some(user) = user {
                     let product_price = subscription_prices
                         .iter()
-                        .find(|x| x.id == subscription.price_id);
+                        .find(|x| x.id == charge.price_id);
 
                     if let Some(product_price) = product_price {
                         let product = subscription_products
@@ -1238,11 +1274,21 @@ pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool)
                                     )
                                     .await?;
 
-                                    let mut intent = CreatePaymentIntent::new(
-                                        *price as i64,
-                                        Currency::from_str(&product_price.currency_code)
-                                            .unwrap_or(Currency::USD),
-                                    );
+                                    let currency = match Currency::from_str(
+                                        &product_price.currency_code.to_lowercase(),
+                                    ) {
+                                        Ok(x) => x,
+                                        Err(_) => {
+                                            warn!(
+                                                "Could not find currency for {}",
+                                                product_price.currency_code
+                                            );
+                                            continue;
+                                        }
+                                    };
+
+                                    let mut intent =
+                                        CreatePaymentIntent::new(*price as i64, currency);
 
                                     let mut metadata = HashMap::new();
                                     metadata.insert(

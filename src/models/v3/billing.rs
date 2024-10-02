@@ -134,3 +134,53 @@ impl SubscriptionStatus {
         }
     }
 }
+
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[serde(from = "Base62Id")]
+#[serde(into = "Base62Id")]
+pub struct ChargeId(pub u64);
+
+#[derive(Serialize, Deserialize)]
+pub struct Charge {
+    pub id: ChargeId,
+    pub user_id: UserId,
+    pub price_id: ProductPriceId,
+    pub amount: i64,
+    pub currency_code: String,
+    pub subscription_id: Option<UserSubscriptionId>,
+    pub interval: Option<PriceDuration>,
+    pub status: ChargeStatus,
+    pub due: DateTime<Utc>,
+    pub last_attempt: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChargeStatus {
+    // Open charges are for the next billing interval
+    Open,
+    Processing,
+    Succeeded,
+    Failed,
+}
+
+impl ChargeStatus {
+    pub fn from_string(string: &str) -> ChargeStatus {
+        match string {
+            "processing" => ChargeStatus::Processing,
+            "succeeded" => ChargeStatus::Succeeded,
+            "failed" => ChargeStatus::Failed,
+            "open" => ChargeStatus::Open,
+            _ => ChargeStatus::Failed,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ChargeStatus::Processing => "processing",
+            ChargeStatus::Succeeded => "succeeded",
+            ChargeStatus::Failed => "failed",
+            ChargeStatus::Open => "open",
+        }
+    }
+}
