@@ -456,5 +456,7 @@ pub fn check_env_vars() -> bool {
 
     failed |= check_var::<u64>("ADITUDE_API_KEY");
 
+    failed |= check_var::<String>("PYRO_API_KEY");
+
     failed
 }

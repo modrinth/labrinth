@@ -3,7 +3,7 @@ use crate::database::models::{
 };
 use crate::models::billing::{ChargeStatus, PriceDuration};
 use chrono::{DateTime, Utc};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 pub struct ChargeItem {
     pub id: ChargeId,
@@ -65,14 +65,19 @@ macro_rules! select_charges_with_predicate {
 }
 
 impl ChargeItem {
-    pub async fn insert(
+    pub async fn upsert(
         &self,
-        exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<ChargeId, DatabaseError> {
         sqlx::query!(
             r#"
             INSERT INTO charges (id, user_id, price_id, amount, currency_code, subscription_id, interval, status, due, last_attempt)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id)
+            DO UPDATE
+                SET status = EXCLUDED.status,
+                    last_attempt = EXCLUDED.last_attempt,
+                    due = EXCLUDED.due
             "#,
             self.id.0,
             self.user_id.0,
@@ -85,7 +90,7 @@ impl ChargeItem {
             self.due,
             self.last_attempt,
         )
-        .execute(exec)
+            .execute(&mut **transaction)
         .await?;
 
         Ok(self.id)
@@ -95,17 +100,19 @@ impl ChargeItem {
         id: ChargeId,
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Option<ChargeItem>, DatabaseError> {
+        let id = id.0;
         let res = select_charges_with_predicate!("WHERE id = $1", id)
             .fetch_optional(exec)
             .await?;
 
-        Ok(res.map(|r| r.try_into()))
+        Ok(res.and_then(|r| r.try_into().ok()))
     }
 
     pub async fn get_from_user(
         user_id: UserId,
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Vec<ChargeItem>, DatabaseError> {
+        let user_id = user_id.0;
         let res = select_charges_with_predicate!("WHERE user_id = $1", user_id)
             .fetch_all(exec)
             .await?;
@@ -119,7 +126,9 @@ impl ChargeItem {
     pub async fn get_chargeable(
         exec: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
     ) -> Result<Vec<ChargeItem>, DatabaseError> {
-        let res = select_charges_with_predicate!("WHERE (status = 'open' AND due < NOW()) OR (status = 'failed' AND last_attempt < NOW() - INTERVAL '2 days')")
+        let now = Utc::now();
+
+        let res = select_charges_with_predicate!("WHERE (status = 'open' AND due < $1) OR (status = 'failed' AND last_attempt < $1 - INTERVAL '2 days')", now)
             .fetch_all(exec)
             .await?;
 

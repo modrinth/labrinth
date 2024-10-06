@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO users_subscriptions (\n                id, user_id, price_id, interval, created, expires, status, metadata\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8\n            )\n            ON CONFLICT (id)\n            DO UPDATE\n                SET interval = EXCLUDED.interval,\n                    expires = EXCLUDED.expires,\n                    status = EXCLUDED.status,\n                    price_id = EXCLUDED.price_id,\n                    metadata = EXCLUDED.metadata\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Varchar",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "75d10a180e66d5741318da652b7192c73c1d4e8bdb43b0755607f1182d24c46d"
+}

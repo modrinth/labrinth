@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                                                    UPDATE users\n                                                    SET badges = $1\n                                                    WHERE (id = $2)\n                                                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7aae2ea58ac43d7597a8075692359012beddbf0de01a78e63101ef265f096a03"
+}

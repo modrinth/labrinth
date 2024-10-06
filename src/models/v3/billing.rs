@@ -21,6 +21,7 @@ pub struct Product {
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum ProductMetadata {
     Midas,
+    Pyro { ram: u32 },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -55,6 +56,13 @@ pub enum PriceDuration {
 }
 
 impl PriceDuration {
+    pub fn duration(&self) -> chrono::Duration {
+        match self {
+            PriceDuration::Monthly => chrono::Duration::days(30),
+            PriceDuration::Yearly => chrono::Duration::days(365),
+        }
+    }
+
     pub fn from_string(string: &str) -> PriceDuration {
         match string {
             "monthly" => PriceDuration::Monthly,
@@ -85,7 +93,7 @@ pub struct UserSubscription {
     pub status: SubscriptionStatus,
     pub created: DateTime<Utc>,
     pub expires: DateTime<Utc>,
-    pub last_charge: Option<DateTime<Utc>>,
+    pub metadata: Option<SubscriptionMetadata>,
 }
 
 impl From<crate::database::models::user_subscription_item::UserSubscriptionItem>
@@ -100,7 +108,7 @@ impl From<crate::database::models::user_subscription_item::UserSubscriptionItem>
             status: x.status,
             created: x.created,
             expires: x.expires,
-            last_charge: x.last_charge,
+            metadata: x.metadata,
         }
     }
 }
@@ -135,6 +143,12 @@ impl SubscriptionStatus {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum SubscriptionMetadata {
+    Pyro { id: String },
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(from = "Base62Id")]
 #[serde(into = "Base62Id")]
@@ -154,7 +168,7 @@ pub struct Charge {
     pub last_attempt: Option<DateTime<Utc>>,
 }
 
-#[derive(Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Copy, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub enum ChargeStatus {
     // Open charges are for the next billing interval

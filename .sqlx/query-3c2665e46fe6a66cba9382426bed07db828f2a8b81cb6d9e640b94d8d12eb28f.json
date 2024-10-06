@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, user_id, price_id, amount, currency_code, subscription_id, interval, status, due, last_attempt\n            FROM charges\n            WHERE (status = 'open' AND due < $1) OR (status = 'failed' AND last_attempt < $1 - INTERVAL '2 days')",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "price_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "amount",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "currency_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "subscription_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "interval",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "due",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "last_attempt",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3c2665e46fe6a66cba9382426bed07db828f2a8b81cb6d9e640b94d8d12eb28f"
+}
