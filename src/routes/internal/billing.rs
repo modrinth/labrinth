@@ -160,7 +160,7 @@ pub async fn edit_subscription(
 
         if let Some(cancelled) = &edit_subscription.cancelled {
             if open_charge.status != ChargeStatus::Open
-                || open_charge.status != ChargeStatus::Cancelled
+                && open_charge.status != ChargeStatus::Cancelled
             {
                 return Err(ApiError::InvalidInput(
                     "You may not change the status of this subscription!".to_string(),
@@ -189,6 +189,8 @@ pub async fn edit_subscription(
                 _ => {}
             };
         }
+
+        open_charge.upsert(&mut transaction).await?;
 
         transaction.commit().await?;
 
