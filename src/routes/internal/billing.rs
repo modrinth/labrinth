@@ -4,7 +4,7 @@ use crate::database::models::{
 };
 use crate::database::redis::RedisPool;
 use crate::models::billing::{
-    Charge, ChargeStatus, Price, PriceDuration, Product, ProductMetadata, ProductPrice,
+    Charge, ChargeStatus, ChargeType, Price, PriceDuration, Product, ProductMetadata, ProductPrice,
     SubscriptionMetadata, SubscriptionStatus, UserSubscription,
 };
 use crate::models::ids::base62_impl::{parse_base62, to_base62};
@@ -13,7 +13,7 @@ use crate::models::users::Badges;
 use crate::queue::session::AuthQueue;
 use crate::routes::ApiError;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse};
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use log::{info, warn};
 use serde::Serialize;
 use serde_with::serde_derive::Deserialize;
@@ -21,8 +21,8 @@ use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use stripe::{
-    CreateCustomer, CreatePaymentIntent, CreatePaymentIntentAutomaticPaymentMethods,
-    CreateSetupIntent, CreateSetupIntentAutomaticPaymentMethods,
+    CreateCustomer, CreatePaymentIntent, CreateSetupIntent,
+    CreateSetupIntentAutomaticPaymentMethods,
     CreateSetupIntentAutomaticPaymentMethodsAllowRedirects, Currency, CustomerId,
     CustomerInvoiceSettings, CustomerPaymentMethodRetrieval, EventObject, EventType,
     PaymentIntentOffSession, PaymentIntentSetupFutureUsage, PaymentMethodId, SetupIntent,
@@ -105,7 +105,7 @@ pub async fn subscriptions(
 #[derive(Deserialize)]
 pub struct SubscriptionEdit {
     pub interval: Option<PriceDuration>,
-    pub status: Option<SubscriptionStatus>,
+    pub cancelled: Option<bool>,
     pub product: Option<crate::models::ids::ProductId>,
 }
 
@@ -130,35 +130,64 @@ pub async fn edit_subscription(
 
     let (id,) = info.into_inner();
 
-    if let Some(mut subscription) =
+    if let Some(subscription) =
         user_subscription_item::UserSubscriptionItem::get(id.into(), &**pool).await?
     {
         if subscription.user_id != user.id.into() && !user.role.is_admin() {
             return Err(ApiError::NotFound);
         }
 
-        // cancel: set status to cancelled + delete all open charges
-        // uncancel: set status to active + create new open charge
-        // change interval: set interval + update existing open charge
-        //.change plan: update existing open charge
-
         let mut transaction = pool.begin().await?;
 
-        if subscription.expires < Utc::now() {
-            sqlx::query!(
-                "
-                DELETE FROM users_subscriptions
-                WHERE id = $1
-                ",
-                subscription.id.0 as i64
+        let mut open_charge =
+            crate::database::models::charge_item::ChargeItem::get_open_subscription(
+                subscription.id,
+                &mut *transaction,
             )
-            .execute(&mut *transaction)
-            .await?;
+            .await?
+            .ok_or_else(|| {
+                ApiError::InvalidInput(
+                    "Could not find open charge for this subscription".to_string(),
+                )
+            })?;
 
-            // TODO: delete open charges for this subscription
-        } else {
-            subscription.status = SubscriptionStatus::Cancelled;
-            subscription.upsert(&mut transaction).await?;
+        let current_price =
+            product_item::ProductPriceItem::get(subscription.price_id, &mut *transaction)
+                .await?
+                .ok_or_else(|| {
+                    ApiError::InvalidInput("Could not find current product price".to_string())
+                })?;
+
+        if let Some(cancelled) = &edit_subscription.cancelled {
+            if open_charge.status != ChargeStatus::Open
+                || open_charge.status != ChargeStatus::Cancelled
+            {
+                return Err(ApiError::InvalidInput(
+                    "You may not change the status of this subscription!".to_string(),
+                ));
+            }
+
+            if *cancelled {
+                open_charge.status = ChargeStatus::Cancelled;
+            } else {
+                open_charge.status = ChargeStatus::Open;
+            }
+        }
+
+        if let Some(interval) = &edit_subscription.interval {
+            match &current_price.prices {
+                Price::Recurring { intervals } => {
+                    if let Some(price) = intervals.get(interval) {
+                        open_charge.subscription_interval = Some(*interval);
+                        open_charge.amount = *price as i64;
+                    } else {
+                        return Err(ApiError::InvalidInput(
+                            "Interval is not valid for this subscription!".to_string(),
+                        ));
+                    }
+                }
+                _ => {}
+            };
         }
 
         transaction.commit().await?;
@@ -231,11 +260,12 @@ pub async fn charges(
                 price_id: x.price_id.into(),
                 amount: x.amount,
                 currency_code: x.currency_code,
-                subscription_id: x.subscription_id.map(|x| x.into()),
-                interval: x.interval,
                 status: x.status,
                 due: x.due,
                 last_attempt: x.last_attempt,
+                type_: x.type_,
+                subscription_id: x.subscription_id.map(|x| x.into()),
+                subscription_interval: x.subscription_interval,
             })
             .collect::<Vec<_>>(),
     ))
@@ -404,7 +434,7 @@ pub async fn remove_payment_method(
 
     if user_subscriptions
         .iter()
-        .any(|x| x.status != SubscriptionStatus::Cancelled)
+        .any(|x| x.status != SubscriptionStatus::Unprovisioned)
     {
         let customer = stripe::Customer::retrieve(&stripe_client, &customer, &[]).await?;
 
@@ -484,6 +514,7 @@ pub enum PaymentRequestType {
 }
 
 #[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChargeRequestType {
     Existing {
         id: crate::models::ids::ChargeId,
@@ -655,7 +686,11 @@ pub async fn initiate_payment(
             (
                 charge.amount,
                 charge.currency_code,
-                charge.interval,
+                if let Some(interval) = charge.subscription_interval {
+                    Some(interval)
+                } else {
+                    None
+                },
                 charge.price_id,
                 Some(id),
             )
@@ -715,6 +750,7 @@ pub async fn initiate_payment(
                     let user_products = product_item::ProductPriceItem::get_many(
                         &user_subscriptions
                             .iter()
+                            .filter(|x| x.status == SubscriptionStatus::Provisioned)
                             .map(|x| x.price_id)
                             .collect::<Vec<_>>(),
                         &**pool,
@@ -820,10 +856,6 @@ pub async fn initiate_payment(
 
         intent.customer = Some(customer);
         intent.metadata = Some(metadata);
-        intent.automatic_payment_methods = Some(CreatePaymentIntentAutomaticPaymentMethods {
-            allow_redirects: None,
-            enabled: false,
-        });
         intent.receipt_email = user.email.as_deref();
         intent.setup_future_usage = Some(PaymentIntentSetupFutureUsage::OffSession);
 
@@ -877,7 +909,6 @@ pub async fn stripe_webhook(
             pool: &PgPool,
             redis: &RedisPool,
             charge_status: ChargeStatus,
-            subscription_status: SubscriptionStatus,
             transaction: &mut Transaction<'_, Postgres>,
         ) -> Result<PaymentIntentMetadata, ApiError> {
             'metadata: {
@@ -938,18 +969,20 @@ pub async fn stripe_webhook(
 
                     if let Some(subscription_id) = charge.subscription_id {
                         let mut subscription = if let Some(subscription) =
-                            user_subscription_item::UserSubscriptionItem::get(subscription_id, pool)
-                                .await?
+                            user_subscription_item::UserSubscriptionItem::get(
+                                subscription_id.into(),
+                                pool,
+                            )
+                            .await?
                         {
                             subscription
                         } else {
                             break 'metadata;
                         };
 
-                        if charge_status == ChargeStatus::Succeeded {
-                            subscription.expires = Utc::now() + subscription.interval.duration();
+                        if let Some(interval) = charge.subscription_interval {
+                            subscription.interval = interval;
                         }
-                        subscription.status = subscription_status;
                         subscription.upsert(transaction).await?;
 
                         (charge, price, product, Some(subscription))
@@ -1013,8 +1046,11 @@ pub async fn stripe_webhook(
                                     price_id,
                                     interval,
                                     created: Utc::now(),
-                                    expires: Utc::now() + interval.duration(),
-                                    status: subscription_status,
+                                    status: if charge_status == ChargeStatus::Succeeded {
+                                        SubscriptionStatus::Provisioned
+                                    } else {
+                                        SubscriptionStatus::Unprovisioned
+                                    },
                                     metadata: None,
                                 };
 
@@ -1035,11 +1071,16 @@ pub async fn stripe_webhook(
                         price_id,
                         amount: amount as i64,
                         currency_code: price.currency_code.clone(),
-                        subscription_id: subscription.as_ref().map(|x| x.id),
-                        interval: subscription.as_ref().map(|x| x.interval),
                         status: charge_status,
                         due: Utc::now(),
                         last_attempt: Some(Utc::now()),
+                        type_: if subscription.is_some() {
+                            ChargeType::Subscription
+                        } else {
+                            ChargeType::OneTime
+                        },
+                        subscription_id: subscription.as_ref().map(|x| x.id),
+                        subscription_interval: subscription.as_ref().map(|x| x.interval),
                     };
 
                     if charge_status != ChargeStatus::Failed {
@@ -1074,7 +1115,6 @@ pub async fn stripe_webhook(
                         &pool,
                         &redis,
                         ChargeStatus::Succeeded,
-                        SubscriptionStatus::Active,
                         &mut transaction,
                     )
                     .await?;
@@ -1152,20 +1192,25 @@ pub async fn stripe_webhook(
                     }
 
                     if let Some(subscription) = metadata.user_subscription_item {
-                        let charge_id = generate_charge_id(&mut transaction).await?;
-                        let charge = crate::database::models::charge_item::ChargeItem {
-                            id: charge_id,
-                            user_id: metadata.user_item.id,
-                            price_id: metadata.product_price_item.id,
-                            amount: metadata.charge_item.amount,
-                            currency_code: metadata.product_price_item.currency_code,
-                            subscription_id: Some(subscription.id),
-                            interval: Some(subscription.interval),
-                            status: ChargeStatus::Open,
-                            due: subscription.expires,
-                            last_attempt: None,
-                        };
-                        charge.upsert(&mut transaction).await?;
+                        if metadata.charge_item.status != ChargeStatus::Cancelled {
+                            let charge_id = generate_charge_id(&mut transaction).await?;
+                            let charge = crate::database::models::charge_item::ChargeItem {
+                                id: charge_id,
+                                user_id: metadata.user_item.id,
+                                price_id: metadata.product_price_item.id,
+                                amount: metadata.charge_item.amount,
+                                currency_code: metadata.product_price_item.currency_code,
+                                status: ChargeStatus::Open,
+                                due: Utc::now() + subscription.interval.duration(),
+                                last_attempt: None,
+                                type_: ChargeType::Subscription,
+                                subscription_id: Some(subscription.id),
+                                subscription_interval: Some(subscription.interval),
+                            };
+                            let err = charge.upsert(&mut transaction).await;
+
+                            err?;
+                        }
                     }
 
                     transaction.commit().await?;
@@ -1184,7 +1229,6 @@ pub async fn stripe_webhook(
                         &pool,
                         &redis,
                         ChargeStatus::Processing,
-                        SubscriptionStatus::PaymentProcessing,
                         &mut transaction,
                     )
                     .await?;
@@ -1200,7 +1244,6 @@ pub async fn stripe_webhook(
                         &pool,
                         &redis,
                         ChargeStatus::Failed,
-                        SubscriptionStatus::PaymentFailed,
                         &mut transaction,
                     )
                     .await?;
@@ -1306,29 +1349,19 @@ async fn get_or_create_customer(
     }
 }
 
-pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool) {
-    // Check for open charges which are open AND last charge hasn't already been attempted
-    // CHeck for open charges which are failed ANd last attempt > 2 days ago (and unprovision)
-    // If charge's subscription is cancelled and expired, unprovision and remove
-
+pub async fn subscription_task(pool: PgPool, redis: RedisPool) {
     loop {
-        info!("Indexing billing queue");
-        let res = async {
-            let charges_to_do =
-                crate::database::models::charge_item::ChargeItem::get_chargeable(&pool).await?;
+        info!("Indexing subscriptions");
 
-            let mut subscription_items = user_subscription_item::UserSubscriptionItem::get_many(
-                &charges_to_do
-                    .iter()
-                    .flat_map(|x| x.subscription_id)
-                    .collect::<HashSet<_>>()
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                &pool,
-            )
-            .await?;
+        let res = async {
+            let mut transaction = pool.begin().await?;
+            let mut clear_cache_users = Vec::new();
+
+            // If an active subscription has a canceled charge OR a failed charge more than two days ago, it should be cancelled
+            let all_subscriptions =
+                user_subscription_item::UserSubscriptionItem::get_all_unprovision(&pool).await?;
             let subscription_prices = product_item::ProductPriceItem::get_many(
-                &charges_to_do
+                &all_subscriptions
                     .iter()
                     .map(|x| x.price_id)
                     .collect::<HashSet<_>>()
@@ -1348,7 +1381,7 @@ pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool)
             )
             .await?;
             let users = crate::database::models::User::get_many_ids(
-                &charges_to_do
+                &all_subscriptions
                     .iter()
                     .map(|x| x.user_id)
                     .collect::<HashSet<_>>()
@@ -1359,184 +1392,81 @@ pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool)
             )
             .await?;
 
-            let mut transaction = pool.begin().await?;
-            let mut clear_cache_users = Vec::new();
+            for mut subscription in all_subscriptions {
+                let product_price = if let Some(product_price) = subscription_prices
+                    .iter()
+                    .find(|x| x.id == subscription.price_id)
+                {
+                    product_price
+                } else {
+                    continue;
+                };
 
-            for charge in charges_to_do {
-                let user = users.iter().find(|x| x.id == charge.user_id);
+                let product = if let Some(product) = subscription_products
+                    .iter()
+                    .find(|x| x.id == product_price.product_id)
+                {
+                    product
+                } else {
+                    continue;
+                };
 
-                if let Some(user) = user {
-                    let product_price =
-                        subscription_prices.iter().find(|x| x.id == charge.price_id);
+                let user = if let Some(user) = users.iter().find(|x| x.id == subscription.user_id) {
+                    user
+                } else {
+                    continue;
+                };
 
-                    if let Some(product_price) = product_price {
-                        let product = subscription_products
-                            .iter()
-                            .find(|x| x.id == product_price.product_id);
+                let unprovisioned = match product.metadata {
+                    ProductMetadata::Midas => {
+                        let badges = user.badges - Badges::MIDAS;
 
-                        if let Some(product) = product {
-                            let mut subscription = charge
-                                .subscription_id
-                                .and_then(|x| subscription_items.iter_mut().find(|y| y.id == x));
+                        sqlx::query!(
+                            "
+                            UPDATE users
+                            SET badges = $1
+                            WHERE (id = $2)
+                            ",
+                            badges.bits() as i64,
+                            user.id as crate::database::models::ids::UserId,
+                        )
+                        .execute(&mut *transaction)
+                        .await?;
 
-                            let price = match &product_price.prices {
-                                Price::OneTime { price } => Some(price),
-                                Price::Recurring { intervals } => {
-                                    if let Some(ref subscription) = subscription {
-                                        intervals.get(&subscription.interval)
-                                    } else {
-                                        warn!(
-                                            "Could not find subscription for charge {:?}",
-                                            charge.id
-                                        );
-                                        continue;
-                                    }
-                                }
-                            };
+                        true
+                    }
+                    ProductMetadata::Pyro { .. } => {
+                        if let Some(SubscriptionMetadata::Pyro { id }) = &subscription.metadata {
+                            let res = reqwest::Client::new()
+                                .post(format!(
+                                    "https://archon.pyro.host/v0/servers/{}/suspend",
+                                    id
+                                ))
+                                .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
+                                .json(&serde_json::json!({
+                                    "reason": "cancelled"
+                                }))
+                                .send()
+                                .await;
 
-                            if let Some(price) = price {
-                                let should_charge = if let Some(ref subscription) = subscription {
-                                    let cancelled =
-                                        subscription.status == SubscriptionStatus::Cancelled;
-                                    let payment_failed = charge
-                                        .last_attempt
-                                        .map(|y| {
-                                            subscription.status == SubscriptionStatus::PaymentFailed
-                                                && Utc::now() - y > Duration::days(2)
-                                        })
-                                        .unwrap_or(false);
-                                    let active = subscription.status == SubscriptionStatus::Active;
-
-                                    // Unprovision subscription
-                                    if cancelled || payment_failed {
-                                        match product.metadata {
-                                            ProductMetadata::Midas => {
-                                                let badges = user.badges - Badges::MIDAS;
-
-                                                sqlx::query!(
-                                                    "
-                                                    UPDATE users
-                                                    SET badges = $1
-                                                    WHERE (id = $2)
-                                                    ",
-                                                    badges.bits() as i64,
-                                                    user.id as crate::database::models::ids::UserId,
-                                                )
-                                                .execute(&mut *transaction)
-                                                .await?;
-                                            }
-                                            ProductMetadata::Pyro { .. } => {
-                                                if let Some(SubscriptionMetadata::Pyro { id }) = &subscription.metadata {
-                                                    let res = reqwest::Client::new()
-                                                        .post(format!("https://archon.pyro.host/v0/servers/{}/suspend", id))
-                                                        .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
-                                                        .json(&serde_json::json!({
-                                                            "reason": if cancelled { "cancelled" } else { "paymentfailed" }
-                                                        }))
-                                                        .send()
-                                                        .await;
-
-                                                    if let Err(e) = res {
-                                                        warn!("Error suspending pyro server: {:?}", e);
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        clear_cache_users.push(user.id);
-                                    }
-
-                                    if cancelled {
-                                        user_subscription_item::UserSubscriptionItem::remove(
-                                            subscription.id,
-                                            &mut transaction,
-                                        )
-                                        .await?;
-                                        false
-                                    } else {
-                                        payment_failed || active
-                                    }
-                                } else {
-                                    true
-                                };
-
-                                if should_charge {
-                                    let customer_id = get_or_create_customer(
-                                        user.id.into(),
-                                        user.stripe_customer_id.as_deref(),
-                                        user.email.as_deref(),
-                                        &stripe_client,
-                                        &pool,
-                                        &redis,
-                                    )
-                                    .await?;
-
-                                    let customer = stripe::Customer::retrieve(
-                                        &stripe_client,
-                                        &customer_id,
-                                        &[],
-                                    )
-                                    .await?;
-
-                                    let currency = match Currency::from_str(
-                                        &product_price.currency_code.to_lowercase(),
-                                    ) {
-                                        Ok(x) => x,
-                                        Err(_) => {
-                                            warn!(
-                                                "Could not find currency for {}",
-                                                product_price.currency_code
-                                            );
-                                            continue;
-                                        }
-                                    };
-
-                                    let mut intent =
-                                        CreatePaymentIntent::new(*price as i64, currency);
-
-                                    let mut metadata = HashMap::new();
-                                    metadata.insert(
-                                        "modrinth_user_id".to_string(),
-                                        to_base62(user.id.0 as u64),
-                                    );
-                                    metadata.insert(
-                                        "modrinth_charge_id".to_string(),
-                                        to_base62(charge.id.0 as u64),
-                                    );
-
-                                    intent.metadata = Some(metadata);
-                                    intent.customer = Some(customer_id);
-
-                                    if let Some(payment_method) = customer
-                                        .invoice_settings
-                                        .and_then(|x| x.default_payment_method.map(|x| x.id()))
-                                    {
-                                        intent.payment_method = Some(payment_method);
-                                        intent.confirm = Some(true);
-                                        intent.off_session =
-                                            Some(PaymentIntentOffSession::Exists(true));
-
-                                        if let Some(ref mut subscription) = subscription {
-                                            subscription.status =
-                                                SubscriptionStatus::PaymentProcessing;
-                                        }
-
-                                        stripe::PaymentIntent::create(&stripe_client, intent)
-                                            .await?;
-                                    } else {
-                                        if let Some(ref mut subscription) = subscription {
-                                            subscription.status = SubscriptionStatus::PaymentFailed;
-                                        }
-                                    }
-
-                                    if let Some(ref subscription) = subscription {
-                                        subscription.upsert(&mut transaction).await?;
-                                    }
-                                }
+                            if let Err(e) = res {
+                                warn!("Error suspending pyro server: {:?}", e);
+                                false
+                            } else {
+                                true
                             }
+                        } else {
+                            true
                         }
                     }
+                };
+
+                if unprovisioned {
+                    subscription.status = SubscriptionStatus::Unprovisioned;
+                    subscription.upsert(&mut transaction).await?;
                 }
+
+                clear_cache_users.push(user.id);
             }
 
             crate::database::models::User::clear_caches(
@@ -1550,6 +1480,141 @@ pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool)
             transaction.commit().await?;
 
             Ok::<(), ApiError>(())
+        };
+
+        if let Err(e) = res.await {
+            warn!("Error indexing billing queue: {:?}", e);
+        }
+
+        info!("Done indexing billing queue");
+
+        tokio::time::sleep(std::time::Duration::from_secs(60 * 1)).await;
+    }
+}
+
+pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool) {
+    loop {
+        info!("Indexing billing queue");
+        let res = async {
+            // If a charge is open and due or has been attempted more than two days ago, it should be processed
+            let charges_to_do =
+                crate::database::models::charge_item::ChargeItem::get_chargeable(&pool).await?;
+
+            let prices = product_item::ProductPriceItem::get_many(
+                &charges_to_do
+                    .iter()
+                    .map(|x| x.price_id)
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                &pool,
+            )
+            .await?;
+
+            let users = crate::database::models::User::get_many_ids(
+                &charges_to_do
+                    .iter()
+                    .map(|x| x.user_id)
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                &pool,
+                &redis,
+            )
+            .await?;
+
+            let mut transaction = pool.begin().await?;
+
+            for mut charge in charges_to_do {
+                let product_price =
+                    if let Some(price) = prices.iter().find(|x| x.id == charge.price_id) {
+                        price
+                    } else {
+                        continue;
+                    };
+
+                let user = if let Some(user) = users.iter().find(|x| x.id == charge.user_id) {
+                    user
+                } else {
+                    continue;
+                };
+
+                let price = match &product_price.prices {
+                    Price::OneTime { price } => Some(price),
+                    Price::Recurring { intervals } => {
+                        if let Some(ref interval) = charge.subscription_interval {
+                            intervals.get(interval)
+                        } else {
+                            warn!("Could not find subscription for charge {:?}", charge.id);
+                            continue;
+                        }
+                    }
+                };
+
+                if let Some(price) = price {
+                    let customer_id = get_or_create_customer(
+                        user.id.into(),
+                        user.stripe_customer_id.as_deref(),
+                        user.email.as_deref(),
+                        &stripe_client,
+                        &pool,
+                        &redis,
+                    )
+                    .await?;
+
+                    let customer =
+                        stripe::Customer::retrieve(&stripe_client, &customer_id, &[]).await?;
+
+                    let currency =
+                        match Currency::from_str(&product_price.currency_code.to_lowercase()) {
+                            Ok(x) => x,
+                            Err(_) => {
+                                warn!(
+                                    "Could not find currency for {}",
+                                    product_price.currency_code
+                                );
+                                continue;
+                            }
+                        };
+
+                    let mut intent = CreatePaymentIntent::new(*price as i64, currency);
+
+                    let mut metadata = HashMap::new();
+                    metadata.insert(
+                        "modrinth_user_id".to_string(),
+                        to_base62(charge.user_id.0 as u64),
+                    );
+                    metadata.insert(
+                        "modrinth_charge_id".to_string(),
+                        to_base62(charge.id.0 as u64),
+                    );
+
+                    intent.metadata = Some(metadata);
+                    intent.customer = Some(customer.id);
+
+                    if let Some(payment_method) = customer
+                        .invoice_settings
+                        .and_then(|x| x.default_payment_method.map(|x| x.id()))
+                    {
+                        intent.payment_method = Some(payment_method);
+                        intent.confirm = Some(true);
+                        intent.off_session = Some(PaymentIntentOffSession::Exists(true));
+
+                        charge.status = ChargeStatus::Processing;
+
+                        stripe::PaymentIntent::create(&stripe_client, intent).await?;
+                    } else {
+                        charge.status = ChargeStatus::Failed;
+                        charge.last_attempt = Some(Utc::now());
+                    }
+
+                    charge.upsert(&mut transaction).await?;
+                }
+            }
+
+            transaction.commit().await?;
+
+            Ok::<(), ApiError>(())
         }
         .await;
 
@@ -1559,6 +1624,6 @@ pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool)
 
         info!("Done indexing billing queue");
 
-        tokio::time::sleep(std::time::Duration::from_secs(60 * 5)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(60 * 1)).await;
     }
 }

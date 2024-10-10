@@ -92,7 +92,6 @@ pub struct UserSubscription {
     pub interval: PriceDuration,
     pub status: SubscriptionStatus,
     pub created: DateTime<Utc>,
-    pub expires: DateTime<Utc>,
     pub metadata: Option<SubscriptionMetadata>,
 }
 
@@ -107,38 +106,31 @@ impl From<crate::database::models::user_subscription_item::UserSubscriptionItem>
             interval: x.interval,
             status: x.status,
             created: x.created,
-            expires: x.expires,
             metadata: x.metadata,
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Copy, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub enum SubscriptionStatus {
-    Active,
-    PaymentProcessing,
-    PaymentFailed,
-    Cancelled,
+    Provisioned,
+    Unprovisioned,
 }
 
 impl SubscriptionStatus {
     pub fn from_string(string: &str) -> SubscriptionStatus {
         match string {
-            "active" => SubscriptionStatus::Active,
-            "payment-processing" => SubscriptionStatus::PaymentProcessing,
-            "payment-failed" => SubscriptionStatus::PaymentFailed,
-            "cancelled" => SubscriptionStatus::Cancelled,
-            _ => SubscriptionStatus::Cancelled,
+            "provisioned" => SubscriptionStatus::Provisioned,
+            "unprovisioned" => SubscriptionStatus::Unprovisioned,
+            _ => SubscriptionStatus::Provisioned,
         }
     }
 
     pub fn as_str(&self) -> &'static str {
         match self {
-            SubscriptionStatus::Active => "active",
-            SubscriptionStatus::PaymentProcessing => "payment-processing",
-            SubscriptionStatus::PaymentFailed => "payment-failed",
-            SubscriptionStatus::Cancelled => "cancelled",
+            SubscriptionStatus::Provisioned => "provisioned",
+            SubscriptionStatus::Unprovisioned => "unprovisioned",
         }
     }
 }
@@ -161,11 +153,40 @@ pub struct Charge {
     pub price_id: ProductPriceId,
     pub amount: i64,
     pub currency_code: String,
-    pub subscription_id: Option<UserSubscriptionId>,
-    pub interval: Option<PriceDuration>,
     pub status: ChargeStatus,
     pub due: DateTime<Utc>,
     pub last_attempt: Option<DateTime<Utc>>,
+    #[serde(flatten)]
+    pub type_: ChargeType,
+    pub subscription_id: Option<UserSubscriptionId>,
+    pub subscription_interval: Option<PriceDuration>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum ChargeType {
+    OneTime,
+    Subscription,
+    Proration,
+}
+
+impl ChargeType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ChargeType::OneTime => "one-time",
+            ChargeType::Subscription { .. } => "subscription",
+            ChargeType::Proration { .. } => "proration",
+        }
+    }
+
+    pub fn from_string(string: &str) -> ChargeType {
+        match string {
+            "one-time" => ChargeType::OneTime,
+            "subscription" => ChargeType::Subscription,
+            "proration" => ChargeType::Proration,
+            _ => ChargeType::OneTime,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Copy, Clone)]
@@ -176,6 +197,7 @@ pub enum ChargeStatus {
     Processing,
     Succeeded,
     Failed,
+    Cancelled,
 }
 
 impl ChargeStatus {
@@ -185,6 +207,7 @@ impl ChargeStatus {
             "succeeded" => ChargeStatus::Succeeded,
             "failed" => ChargeStatus::Failed,
             "open" => ChargeStatus::Open,
+            "cancelled" => ChargeStatus::Cancelled,
             _ => ChargeStatus::Failed,
         }
     }
@@ -195,6 +218,7 @@ impl ChargeStatus {
             ChargeStatus::Succeeded => "succeeded",
             ChargeStatus::Failed => "failed",
             ChargeStatus::Open => "open",
+            ChargeStatus::Cancelled => "cancelled",
         }
     }
 }
