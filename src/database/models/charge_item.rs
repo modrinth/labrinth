@@ -51,7 +51,7 @@ impl TryFrom<ChargeResult> for ChargeItem {
             subscription_id: r.subscription_id.map(UserSubscriptionId),
             subscription_interval: r
                 .subscription_interval
-                .map(|x| PriceDuration::from_string(&*x)),
+                .map(|x| PriceDuration::from_string(&x)),
         })
     }
 }

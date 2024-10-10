@@ -175,19 +175,16 @@ pub async fn edit_subscription(
         }
 
         if let Some(interval) = &edit_subscription.interval {
-            match &current_price.prices {
-                Price::Recurring { intervals } => {
-                    if let Some(price) = intervals.get(interval) {
-                        open_charge.subscription_interval = Some(*interval);
-                        open_charge.amount = *price as i64;
-                    } else {
-                        return Err(ApiError::InvalidInput(
-                            "Interval is not valid for this subscription!".to_string(),
-                        ));
-                    }
+            if let Price::Recurring { intervals } = &current_price.prices {
+                if let Some(price) = intervals.get(interval) {
+                    open_charge.subscription_interval = Some(*interval);
+                    open_charge.amount = *price as i64;
+                } else {
+                    return Err(ApiError::InvalidInput(
+                        "Interval is not valid for this subscription!".to_string(),
+                    ));
                 }
-                _ => {}
-            };
+            }
         }
 
         open_charge.upsert(&mut transaction).await?;
@@ -688,11 +685,7 @@ pub async fn initiate_payment(
             (
                 charge.amount,
                 charge.currency_code,
-                if let Some(interval) = charge.subscription_interval {
-                    Some(interval)
-                } else {
-                    None
-                },
+                charge.subscription_interval,
                 charge.price_id,
                 Some(id),
             )
@@ -761,8 +754,7 @@ pub async fn initiate_payment(
 
                     if user_products
                         .into_iter()
-                        .find(|x| x.product_id == product.id)
-                        .is_some()
+                        .any(|x| x.product_id == product.id)
                     {
                         return Err(ApiError::InvalidInput(
                             "You are already subscribed to this product!".to_string(),
@@ -971,11 +963,8 @@ pub async fn stripe_webhook(
 
                     if let Some(subscription_id) = charge.subscription_id {
                         let mut subscription = if let Some(subscription) =
-                            user_subscription_item::UserSubscriptionItem::get(
-                                subscription_id.into(),
-                                pool,
-                            )
-                            .await?
+                            user_subscription_item::UserSubscriptionItem::get(subscription_id, pool)
+                                .await?
                         {
                             subscription
                         } else {
@@ -1157,21 +1146,19 @@ pub async fn stripe_webhook(
                                     if let Err(e) = res {
                                         warn!("Error unsuspending pyro server: {:?}", e);
                                     }
-                                } else {
-                                    if let Some(PaymentRequestMetadata::Pyro {
-                                        server_name,
-                                        source,
-                                    }) = &metadata.payment_metadata
-                                    {
-                                        let server_name =
-                                            server_name.clone().unwrap_or_else(|| {
-                                                format!("{}'s server", metadata.user_item.username)
-                                            });
+                                } else if let Some(PaymentRequestMetadata::Pyro {
+                                    server_name,
+                                    source,
+                                }) = &metadata.payment_metadata
+                                {
+                                    let server_name = server_name.clone().unwrap_or_else(|| {
+                                        format!("{}'s server", metadata.user_item.username)
+                                    });
 
-                                        let res = client
-                                            .post("https://archon.pyro.host/v0/servers/create")
-                                            .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
-                                            .json(&serde_json::json!({
+                                    let res = client
+                                        .post("https://archon.pyro.host/v0/servers/create")
+                                        .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
+                                        .json(&serde_json::json!({
                                             "user_id": to_base62(metadata.user_item.id.0 as u64),
                                             "name": server_name,
                                             "specs": {
@@ -1181,12 +1168,11 @@ pub async fn stripe_webhook(
                                             },
                                             "source": source,
                                         }))
-                                            .send()
-                                            .await;
+                                        .send()
+                                        .await;
 
-                                        if let Err(e) = res {
-                                            warn!("Error creating pyro server: {:?}", e);
-                                        }
+                                    if let Err(e) = res {
+                                        warn!("Error creating pyro server: {:?}", e);
                                     }
                                 }
                             }
