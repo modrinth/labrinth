@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, user_id, price_id, amount, currency_code, subscription_id, interval, status, due, last_attempt\n            FROM charges\n            WHERE id = $1",
+  "query": "\n            SELECT id, user_id, price_id, amount, currency_code, status, due, last_attempt, charge_type, subscription_id, subscription_interval\n            FROM charges\n            WHERE user_id = $1 ORDER BY due DESC",
   "describe": {
     "columns": [
       {
@@ -30,28 +30,33 @@
       },
       {
         "ordinal": 5,
-        "name": "subscription_id",
-        "type_info": "Int8"
-      },
-      {
-        "ordinal": 6,
-        "name": "interval",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 7,
         "name": "status",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 8,
+        "ordinal": 6,
         "name": "due",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 7,
         "name": "last_attempt",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "charge_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "subscription_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "subscription_interval",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -65,12 +70,13 @@
       false,
       false,
       false,
-      true,
-      true,
       false,
       false,
-      false
+      true,
+      false,
+      true,
+      true
     ]
   },
-  "hash": "f6cb97b547c80e1f47467f33bbc641e3504bab316de4e30ea263ceb3ffcbc210"
+  "hash": "457493bd11254ba1c9f81c47f15e8154053ae4e90e319d34a940fb73e33a69d4"
 }

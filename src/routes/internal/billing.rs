@@ -1488,7 +1488,7 @@ pub async fn subscription_task(pool: PgPool, redis: RedisPool) {
 
         info!("Done indexing billing queue");
 
-        tokio::time::sleep(std::time::Duration::from_secs(60 * 1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(60 * 5)).await;
     }
 }
 
@@ -1624,6 +1624,6 @@ pub async fn task(stripe_client: stripe::Client, pool: PgPool, redis: RedisPool)
 
         info!("Done indexing billing queue");
 
-        tokio::time::sleep(std::time::Duration::from_secs(60 * 1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(60 * 5)).await;
     }
 }
