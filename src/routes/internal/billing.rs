@@ -244,6 +244,13 @@ pub async fn edit_subscription(
                     ApiError::InvalidInput("Could not convert proration to i32".to_string())
                 })?;
 
+            // TODO: Add downgrading plans
+            if proration <= 0 {
+                return Err(ApiError::InvalidInput(
+                    "You may not downgrade plans!".to_string(),
+                ));
+            }
+
             let charge_id = generate_charge_id(&mut transaction).await?;
             let charge = ChargeItem {
                 id: charge_id,
@@ -1268,46 +1275,65 @@ pub async fn stripe_webhook(
                                 if let Some(SubscriptionMetadata::Pyro { id }) =
                                     &subscription.metadata
                                 {
-                                    let res = client
+                                    client
                                         .post(format!(
-                                            "https://archon.pyro.host/v0/servers/{}/unsuspend",
+                                            "https://archon.pyro.host/modrinth/v0/servers/{}/unsuspend",
                                             id
                                         ))
                                         .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
                                         .send()
-                                        .await;
+                                        .await?
+                                        .error_for_status()?;
 
-                                    if let Err(e) = res {
-                                        warn!("Error unsuspending pyro server: {:?}", e);
-                                    }
-                                } else if let Some(PaymentRequestMetadata::Pyro {
-                                    server_name,
-                                    source,
-                                }) = &metadata.payment_metadata
-                                {
-                                    let server_name = server_name.clone().unwrap_or_else(|| {
+                                    // TODO: Send plan upgrade request for proration
+                                } else {
+                                    let (server_name, source) = if let Some(
+                                        PaymentRequestMetadata::Pyro {
+                                            ref server_name,
+                                            ref source,
+                                        },
+                                    ) = metadata.payment_metadata
+                                    {
+                                        (server_name.clone(), source.clone())
+                                    } else {
+                                        // Create a server with the latest version of Minecraft
+                                        let minecraft_versions = crate::database::models::legacy_loader_fields::MinecraftGameVersion::list(
+                                            Some("release"),
+                                            None,
+                                            &**pool,
+                                            &redis,
+                                        ).await?;
+
+                                        (
+                                            None,
+                                            serde_json::json!({
+                                                "loader": "Vanilla",
+                                                "game_version": minecraft_versions.first().map(|x| x.version.clone()),
+                                                "loader_version": ""
+                                            }),
+                                        )
+                                    };
+
+                                    let server_name = server_name.unwrap_or_else(|| {
                                         format!("{}'s server", metadata.user_item.username)
                                     });
 
                                     let res = client
-                                        .post("https://archon.pyro.host/v0/servers/create")
+                                        .post("https://archon.pyro.host/modrinth/v0/servers/create")
                                         .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
                                         .json(&serde_json::json!({
                                             "user_id": to_base62(metadata.user_item.id.0 as u64),
                                             "name": server_name,
                                             "specs": {
-                                                "ram": ram,
+                                                "memory_mb": ram,
                                                 "cpu": std::cmp::max(2, (ram / 1024) / 2),
-                                                "swap": ram / 4,
+                                                "swap_mb": ram / 4,
                                             },
                                             "source": source,
                                         }))
                                         .send()
-                                        .await;
-
-                                    if let Err(e) = res {
-                                        warn!("Error creating pyro server: {:?}", e);
-                                    }
+                                        .await?
+                                        .error_for_status()?;
                                 }
                             }
                         }
@@ -1581,7 +1607,7 @@ pub async fn subscription_task(pool: PgPool, redis: RedisPool) {
                         if let Some(SubscriptionMetadata::Pyro { id }) = &subscription.metadata {
                             let res = reqwest::Client::new()
                                 .post(format!(
-                                    "https://archon.pyro.host/v0/servers/{}/suspend",
+                                    "https://archon.pyro.host/modrinth/v0/servers/{}/suspend",
                                     id
                                 ))
                                 .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
