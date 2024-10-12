@@ -1242,7 +1242,7 @@ pub async fn stripe_webhook(
                 if let EventObject::PaymentIntent(payment_intent) = event.data.object {
                     let mut transaction = pool.begin().await?;
 
-                    let metadata = get_payment_intent_metadata(
+                    let mut metadata = get_payment_intent_metadata(
                         payment_intent.metadata,
                         &pool,
                         &redis,
