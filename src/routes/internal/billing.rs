@@ -1318,6 +1318,11 @@ pub async fn stripe_webhook(
                                         format!("{}'s server", metadata.user_item.username)
                                     });
 
+                                    #[derive(Deserialize)]
+                                    struct PyroServerResponse {
+                                        uuid: String,
+                                    }
+
                                     let res = client
                                         .post("https://archon.pyro.host/modrinth/v0/servers/create")
                                         .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
@@ -1333,7 +1338,14 @@ pub async fn stripe_webhook(
                                         }))
                                         .send()
                                         .await?
-                                        .error_for_status()?;
+                                        .error_for_status()?
+                                        .json::<PyroServerResponse>()
+                                        .await?;
+
+                                    if let Some(ref mut subscription) = metadata.user_subscription_item {
+                                        subscription.metadata = Some(SubscriptionMetadata::Pyro { id: res.uuid });
+                                        subscription.upsert(&mut transaction).await?;
+                                    }
                                 }
                             }
                         }
