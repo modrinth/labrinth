@@ -70,12 +70,15 @@ impl PriceDuration {
             _ => PriceDuration::Monthly,
         }
     }
-
     pub fn as_str(&self) -> &'static str {
         match self {
             PriceDuration::Monthly => "monthly",
             PriceDuration::Yearly => "yearly",
         }
+    }
+
+    pub fn iterator() -> impl Iterator<Item = PriceDuration> {
+        vec![PriceDuration::Monthly, PriceDuration::Yearly].into_iter()
     }
 }
 
