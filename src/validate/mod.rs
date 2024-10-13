@@ -89,7 +89,7 @@ pub trait Validator: Sync {
     ) -> Result<ValidationResult, ValidationError>;
 }
 
-static ALWAYS_ALLOWED_EXT: &[&str] = &["zip", "txt"];
+static ALWAYS_ALLOWED_EXT: &[&str] = &["zip", "txt", "pom"];
 
 static VALIDATORS: &[&dyn Validator] = &[
     &ModpackValidator,
