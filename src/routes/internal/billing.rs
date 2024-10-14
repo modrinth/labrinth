@@ -1178,11 +1178,7 @@ pub async fn stripe_webhook(
                                     price_id,
                                     interval,
                                     created: Utc::now(),
-                                    status: if charge_status == ChargeStatus::Succeeded {
-                                        SubscriptionStatus::Provisioned
-                                    } else {
-                                        SubscriptionStatus::Unprovisioned
-                                    },
+                                    status: SubscriptionStatus::Unprovisioned,
                                     metadata: None,
                                 };
 
@@ -1342,16 +1338,18 @@ pub async fn stripe_webhook(
                                         .json::<PyroServerResponse>()
                                         .await?;
 
-                                    if let Some(ref mut subscription) = metadata.user_subscription_item {
-                                        subscription.metadata = Some(SubscriptionMetadata::Pyro { id: res.uuid });
-                                        subscription.upsert(&mut transaction).await?;
+                                    if let Some(ref mut subscription) =
+                                        metadata.user_subscription_item
+                                    {
+                                        subscription.metadata =
+                                            Some(SubscriptionMetadata::Pyro { id: res.uuid });
                                     }
                                 }
                             }
                         }
                     }
 
-                    if let Some(subscription) = metadata.user_subscription_item {
+                    if let Some(mut subscription) = metadata.user_subscription_item {
                         let open_charge =
                             ChargeItem::get_open_subscription(subscription.id, &mut *transaction)
                                 .await?;
@@ -1382,7 +1380,11 @@ pub async fn stripe_webhook(
                                 amount: new_price as i64,
                                 currency_code: metadata.product_price_item.currency_code,
                                 status: ChargeStatus::Open,
-                                due: Utc::now() + subscription.interval.duration(),
+                                due: if subscription.status == SubscriptionStatus::Unprovisioned {
+                                    Utc::now() + subscription.interval.duration()
+                                } else {
+                                    metadata.charge_item.due + subscription.interval.duration()
+                                },
                                 last_attempt: None,
                                 type_: ChargeType::Subscription,
                                 subscription_id: Some(subscription.id),
@@ -1391,6 +1393,9 @@ pub async fn stripe_webhook(
                             .upsert(&mut transaction)
                             .await?;
                         };
+
+                        subscription.status = SubscriptionStatus::Provisioned;
+                        subscription.upsert(&mut transaction).await?;
                     }
 
                     transaction.commit().await?;
@@ -1538,8 +1543,18 @@ pub async fn subscription_task(pool: PgPool, redis: RedisPool) {
             let mut clear_cache_users = Vec::new();
 
             // If an active subscription has a canceled charge OR a failed charge more than two days ago, it should be cancelled
-            let all_subscriptions =
-                user_subscription_item::UserSubscriptionItem::get_all_unprovision(&pool).await?;
+            let all_charges = ChargeItem::get_unprovision(&pool).await?;
+
+            let mut all_subscriptions = user_subscription_item::UserSubscriptionItem::get_many(
+                &all_charges
+                    .iter()
+                    .filter_map(|x| x.subscription_id)
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                &pool,
+            )
+            .await?;
             let subscription_prices = product_item::ProductPriceItem::get_many(
                 &all_subscriptions
                     .iter()
@@ -1572,7 +1587,20 @@ pub async fn subscription_task(pool: PgPool, redis: RedisPool) {
             )
             .await?;
 
-            for mut subscription in all_subscriptions {
+            for charge in all_charges {
+                let subscription = if let Some(subscription) = all_subscriptions
+                    .iter_mut()
+                    .find(|x| Some(x.id) == charge.subscription_id)
+                {
+                    subscription
+                } else {
+                    continue;
+                };
+
+                if subscription.status == SubscriptionStatus::Unprovisioned {
+                    continue;
+                }
+
                 let product_price = if let Some(product_price) = subscription_prices
                     .iter()
                     .find(|x| x.id == subscription.price_id)
@@ -1624,7 +1652,11 @@ pub async fn subscription_task(pool: PgPool, redis: RedisPool) {
                                 ))
                                 .header("X-Master-Key", dotenvy::var("PYRO_API_KEY")?)
                                 .json(&serde_json::json!({
-                                    "reason": "cancelled"
+                                    "reason": if charge.status == ChargeStatus::Cancelled {
+                                        "cancelled"
+                                    } else {
+                                        "paymentfailed"
+                                    }
                                 }))
                                 .send()
                                 .await;
