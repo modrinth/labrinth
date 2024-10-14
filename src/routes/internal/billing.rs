@@ -1264,7 +1264,12 @@ pub async fn stripe_webhook(
                             .execute(&mut *transaction)
                             .await?;
                         }
-                        ProductMetadata::Pyro { ram } => {
+                        ProductMetadata::Pyro {
+                            ram,
+                            cpu,
+                            swap,
+                            storage,
+                        } => {
                             if let Some(ref subscription) = metadata.user_subscription_item {
                                 let client = reqwest::Client::new();
 
@@ -1327,8 +1332,9 @@ pub async fn stripe_webhook(
                                             "name": server_name,
                                             "specs": {
                                                 "memory_mb": ram,
-                                                "cpu": std::cmp::max(2, (ram / 1024) / 2),
-                                                "swap_mb": ram / 4,
+                                                "cpu": cpu,
+                                                "swap_mb": swap,
+                                                "storage_mb": storage,
                                             },
                                             "source": source,
                                         }))
