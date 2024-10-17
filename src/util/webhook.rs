@@ -571,7 +571,7 @@ fn get_gv_range(
     for interval in new_intervals {
         if interval.len() == 2 {
             output.push(format!(
-                "{}—{}",
+                "{}–{}",
                 &game_versions[interval[0][0]].version, &game_versions[interval[1][0]].version
             ))
         } else {
