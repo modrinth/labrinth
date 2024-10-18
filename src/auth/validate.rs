@@ -8,6 +8,7 @@ use crate::queue::session::AuthQueue;
 use crate::routes::internal::session::get_session_metadata;
 use actix_web::http::header::{HeaderValue, AUTHORIZATION};
 use actix_web::HttpRequest;
+use base64::Engine;
 use chrono::Utc;
 
 pub async fn get_user_from_headers<'a, E>(
@@ -49,11 +50,12 @@ pub async fn get_user_record_from_bearer_token<'a, 'b, E>(
 where
     E: sqlx::Executor<'a, Database = sqlx::Postgres> + Copy,
 {
-    let token = if let Some(token) = token {
-        token
-    } else {
-        extract_authorization_header(req)?
-    };
+    // This is silly, but the compiler kept complaining and this is the only way this would work
+    let mut temp: String = String::new();
+    if token.is_none() {
+        temp = extract_authorization_header(req)?;
+    }
+    let token = token.unwrap_or(&temp);
 
     let possible_user = match token.split_once('_') {
         Some(("mrp", _)) => {
@@ -135,13 +137,33 @@ where
     Ok(possible_user)
 }
 
-pub fn extract_authorization_header(req: &HttpRequest) -> Result<&str, AuthenticationError> {
+pub fn extract_authorization_header(req: &HttpRequest) -> Result<String, AuthenticationError> {
     let headers = req.headers();
     let token_val: Option<&HeaderValue> = headers.get(AUTHORIZATION);
-    token_val
+    let val = token_val
         .ok_or_else(|| AuthenticationError::InvalidAuthMethod)?
         .to_str()
-        .map_err(|_| AuthenticationError::InvalidCredentials)
+        .map_err(|_| AuthenticationError::InvalidCredentials)?;
+
+    return match val.split_once(' ') {
+        Some(("Bearer", token)) => Ok(token.trim().to_string()),
+        Some(("Basic", token)) => {
+            let decoded = base64::engine::general_purpose::STANDARD
+                .decode(token.trim())
+                .map_err(|_| AuthenticationError::InvalidCredentials)?;
+
+            let credentials: String =
+                String::from_utf8(decoded).map_err(|_| AuthenticationError::InvalidCredentials)?;
+
+            Ok(credentials
+                .split_once(':')
+                .ok_or_else(|| AuthenticationError::InvalidCredentials)?
+                .1
+                .trim()
+                .to_string())
+        }
+        _ => Ok(val.trim().to_string()),
+    };
 }
 
 pub async fn check_is_moderator_from_headers<'a, 'b, E>(
